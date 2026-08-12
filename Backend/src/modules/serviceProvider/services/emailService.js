@@ -96,16 +96,27 @@ const emailWrapper = (content, title, preheader = '') => `
 </html>
 `;
 
+// Memoised. This used to build a fresh nodemailer transport on every send, and
+// there are six send sites -- each call opened its own SMTP connection pool that
+// was never closed, so a burst of mail exhausted connections against the provider.
+// nodemailer transports are designed to be long-lived and reused.
+// Matches how master's src/services/email.service.js does it.
+let transporter = null;
+
 const createTransporter = () => {
-  return nodemailer.createTransport({
+  if (transporter) return transporter;
+
+  const port = parseInt(process.env.EMAIL_PORT) || 587;
+  transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
-    port: parseInt(process.env.EMAIL_PORT) || 587,
-    secure: false,
+    port,
+    secure: port === 465, // implicit TLS on 465; STARTTLS otherwise
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS
     }
   });
+  return transporter;
 };
 
 /**
@@ -387,6 +398,8 @@ const sendDuesPaymentApprovedEmail = async (vendor, amount, balanceAfter) => {
 };
 
 module.exports = {
+  // exported so tests can assert the transport really is reused, not rebuilt per send
+  _createTransporter: createTransporter,
   sendOTPEmail,
   sendWelcomeEmail,
   sendBookingEmails,

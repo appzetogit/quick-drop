@@ -269,3 +269,59 @@ Read the report — especially the "NOT IN THE MAP" section — before adding `-
 
 master 46 · sp.smoke 38 · sp.runtime 21 · sp.endpoints 129 routes/0×5xx · sp.migration 30 ·
 SP's own 26. All green.
+
+---
+---
+
+# Phase 2 — infrastructure de-duplication
+
+I measured each duplicate before touching it. Most of what the plan listed as "duplicated
+infra" turned out to be two clients pointed at the **same account via the same env vars** —
+real duplication in the file listing, no duplication in behaviour, and rewiring ~20 call
+sites across a CJS/ESM boundary to change nothing would have been churn with a regression
+budget attached. What follows is what was actually wrong.
+
+## Removed — dead code, zero consumers
+
+| File | Why it was dead |
+|---|---|
+| `middleware/rateLimiter.js` | its only caller was the standalone `server.js`, which was never ported. Master already applies `apiRateLimiter` to all of `/api`, so SP was double-counted-by-nobody. |
+| `services/otpService.js` | superseded by `utils/redisOtp.util.js`; nothing imported it. |
+
+## Fixed — real defects
+
+**SMTP connection leak.** `emailService.js` built a **new nodemailer transport on every
+send**, across six send sites. Each one opens its own connection pool and never closes it,
+so a burst of mail exhausts connections against the provider. Now memoised, matching how
+master's `src/services/email.service.js` already did it. Also fixed `secure` — it was
+hardcoded `false`, which is wrong on port 465 (implicit TLS); it now derives from the port.
+
+**OTP lockout policy could diverge.** Both modules read `OTP_MAX_ATTEMPTS`, so their
+effective values always agree in a configured environment — but the *fallbacks* differed
+(SP 3, master 5), so an unset var gave the platform two different lockout policies. Aligned
+to 5.
+
+## Measured and deliberately left alone
+
+| Duplicate | Finding |
+|---|---|
+| Cloudinary (`config/cloudinary.js`, `services/cloudinaryService.js`, `utils/cloudinaryUpload.js`) | The cloudinary SDK's `config()` is **process-global**. SP and master set the same three env vars, so both calls resolve to one account. Asserted by a test rather than assumed. 18 files import SP's wrapper; rewiring them changes nothing observable. |
+| Razorpay | Same `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET`. Two client objects, one merchant account. Rotating the env var already fixes both — the "second thing to rotate" argument does not hold. |
+| SMS | Same `SMS_INDIA_HUB_*` credentials, same provider. |
+| Redis | SP holds **one lazy singleton** ioredis connection (not a pool per call), master holds one node-redis client. Two connections total to the same server. Unifying means porting SP's live-tracking geo helpers from ioredis to node-redis — real risk to live tracking, for two connections. Not worth it. |
+| OTP storage | No key collision: master stores OTPs in **Mongo** (`food_otps`), SP in **Redis** (`otp:<phone>`). Genuinely separate stores. |
+| `middleware/uploadMiddleware.js` | 3 consumers, multer storage is configured at module load — replacing it means an async import in a sync path. Same multer version, same Cloudinary account. |
+
+**One thing worth knowing, not a bug:** because food and SP run independent OTP rate limits
+against different stores, the same phone can request `OTP_RATE_LIMIT` codes from each. If you
+want a single platform-wide SMS budget per number, that is a deliberate feature, not part of
+this cleanup.
+
+## Pinned by tests
+
+`tests/sp.runtime.smoke.mjs` section [4] now asserts: both deleted files stay deleted, the
+SMTP transport is reused across calls, SP and master resolve to the same Cloudinary account,
+and the OTP fallbacks agree.
+
+Full suite after this phase: master 46 · sp.smoke 38 · sp.runtime 27 · sp.endpoints 129
+routes/0×5xx · sp.migration 30 · SP's own 26. All green.

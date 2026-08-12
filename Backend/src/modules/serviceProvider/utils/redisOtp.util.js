@@ -7,7 +7,11 @@ const { TOKEN_TYPES } = require('./constants'); // Need to ensure constants file
 
 // Constants if not imported
 const OTP_EXPIRY = parseInt(process.env.OTP_EXPIRY_SECONDS) || 300;
-const MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS) || 3;
+// Default aligned with master's config.otpMaxAttempts (src/config/env.js), which
+// defaults to 5. Both read the same OTP_MAX_ATTEMPTS env var, so in a configured
+// environment they already agree -- this only matters when the var is unset, where
+// the old 3-vs-5 split gave the platform two different lockout policies.
+const MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS) || 5;
 const RATE_LIMIT_COUNT = parseInt(process.env.OTP_RATE_LIMIT) || 3;
 const RATE_LIMIT_WINDOW = parseInt(process.env.OTP_RATE_WINDOW) || 600;
 

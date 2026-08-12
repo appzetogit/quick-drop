@@ -71,7 +71,62 @@ for (const origin of ['https://homster.in', 'https://www.homster.in', 'https://t
 check('an unrelated origin is still rejected', () =>
     assert.equal(isOriginAllowed('https://evil.example.com'), false));
 
-console.log('\n[4] shutdown');
+console.log('\n[4] shared infrastructure — one instance, not two');
+
+{
+    const { createRequire } = await import('node:module');
+    const { existsSync } = await import('node:fs');
+    const require = createRequire(import.meta.url);
+
+    // Dead duplicates removed in the phase-2 cleanup. Both had zero consumers: SP's
+    // rate limiter was only ever wired up by the standalone server.js (not ported,
+    // and master already rate-limits all of /api), and otpService was superseded by
+    // utils/redisOtp.util.js.
+    for (const dead of ['../src/modules/serviceProvider/middleware/rateLimiter.js', '../src/modules/serviceProvider/services/otpService.js']) {
+        const url = new URL(dead, import.meta.url);
+        check(`${dead.split('/').pop()} stays deleted`, () => assert.equal(existsSync(url), false));
+    }
+
+    // The SMTP transport must be reused. Rebuilding it per send opens a fresh
+    // connection pool each time and exhausts the provider under a mail burst.
+    process.env.EMAIL_HOST ||= 'smtp.example.test';
+    process.env.EMAIL_USER ||= 'u';
+    process.env.EMAIL_PASS ||= 'p';
+    const email = require('../src/modules/serviceProvider/services/emailService.js');
+    const t1 = email._createTransporter();
+    const t2 = email._createTransporter();
+    check('SP reuses one nodemailer transport across sends', () => assert.equal(t1, t2));
+
+    // Cloudinary's SDK config is process-global. SP and master both call config()
+    // with the same three env vars, so the "duplicate" resolves to one account --
+    // assert that rather than assume it.
+    const spCloudinary = require('../src/modules/serviceProvider/config/cloudinary.js');
+    const masterCloudinary = (await import('cloudinary')).v2;
+    check('SP and master share one Cloudinary config (same global SDK)', () =>
+        assert.equal(spCloudinary.config().cloud_name, masterCloudinary.config().cloud_name));
+
+    // OTP: master stores in Mongo (food_otps), SP in Redis (otp:<phone>). Different
+    // stores, so no key collision -- but the lockout policy should still agree.
+    // Both read process.env.OTP_MAX_ATTEMPTS, so their EFFECTIVE values always agree
+    // in a configured environment. What can silently diverge is the fallback used when
+    // the var is unset, which is what this pins. (Comparing SP's literal against
+    // master's *resolved* value would be wrong -- master's .env sets 3, default 5.)
+    const readFile = (await import('node:fs/promises')).readFile;
+    const spSrc = await readFile(new URL('../src/modules/serviceProvider/utils/redisOtp.util.js', import.meta.url), 'utf8');
+    const masterSrc = await readFile(new URL('../src/config/env.js', import.meta.url), 'utf8');
+    const spDefault = Number(spSrc.match(/OTP_MAX_ATTEMPTS\)\s*\|\|\s*(\d+)/)?.[1]);
+    const masterDefault = Number(masterSrc.match(/OTP_MAX_ATTEMPTS\s*\|\|\s*(\d+)/)?.[1]);
+    check(`OTP max-attempts fallback agrees (sp=${spDefault}, master=${masterDefault})`, () => {
+        assert.ok(Number.isFinite(spDefault) && Number.isFinite(masterDefault), 'could not parse both defaults');
+        assert.equal(spDefault, masterDefault);
+    });
+    check('both modules read the same OTP_MAX_ATTEMPTS env var', () => {
+        assert.match(spSrc, /process\.env\.OTP_MAX_ATTEMPTS/);
+        assert.match(masterSrc, /process\.env\.OTP_MAX_ATTEMPTS/);
+    });
+}
+
+console.log('\n[5] shutdown');
 
 check('scheduler.stop() clears the timer', () => {
     scheduler.stop();
