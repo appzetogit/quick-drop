@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "Frontend",
+      "port": 5173,
+      "env": {
+        "VITE_BACKEND_PROXY_TARGET": "http://localhost:5000"
+      }
+    }
+  ]
+}
