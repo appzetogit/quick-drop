@@ -23,7 +23,7 @@
     "migrate:unify-drivers": "node scripts/migrate-unify-drivers.js",
     "cleanup:legacy-collections": "node scripts/cleanup-legacy-collections.js",
     "verify-cancel": "node verify_cancellation.js",
-    "test": "npm run test:flow && npm run test:unify && npm run test:assignment && npm run test:workmode && npm run test:api && npm run test:sp && npm run test:sp-runtime && npm run test:sp-endpoints && npm run test:sp-migration && npm run test:sp-unit",
+    "test": "npm run test:flow && npm run test:unify && npm run test:assignment && npm run test:workmode && npm run test:api && npm run test:otp-ratelimit && npm run test:sp && npm run test:sp-runtime && npm run test:sp-endpoints && npm run test:sp-migration && npm run test:sp-unit",
     "test:sp": "node tests/sp.smoke.mjs",
     "test:sp-runtime": "node tests/sp.runtime.smoke.mjs",
     "test:sp-endpoints": "node tests/sp.endpoints.smoke.mjs",
@@ -35,7 +35,8 @@
     "test:workmode": "node tests/workmode.smoke.mjs",
     "test:api": "node tests/api.smoke.mjs",
     "test:sp-migration": "node tests/sp.migration.smoke.mjs",
-    "migrate:sp-data": "node scripts/sp-migrate-data.js"
+    "migrate:sp-data": "node scripts/sp-migrate-data.js",
+    "test:otp-ratelimit": "node tests/otp.ratelimit.smoke.mjs"
   },
   "keywords": [],
   "author": "",

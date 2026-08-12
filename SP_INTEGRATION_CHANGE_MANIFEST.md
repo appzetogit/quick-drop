@@ -325,3 +325,66 @@ and the OTP fallbacks agree.
 
 Full suite after this phase: master 46 · sp.smoke 38 · sp.runtime 27 · sp.endpoints 129
 routes/0×5xx · sp.migration 30 · SP's own 26. All green.
+
+---
+---
+
+# Platform-wide OTP rate limit
+
+## What was actually there
+
+| service | throttle | effective |
+|---|---|---|
+| food (`core/otp`) | Mongo `requestCount`, **per scope** | one quota each for user / restaurant / delivery |
+| taxi user login | none | unlimited |
+| taxi driver login | none | unlimited |
+| taxi driver onboarding | none | unlimited, and open to unauthenticated callers |
+| service-provider | Redis `rate:otp:<phone>`, **fails open when Redis is down** | **nothing** — `REDIS_ENABLED` is unset, so `isRedisConnected()` is false and every request was waved through |
+
+So only food throttled anything, and even it handed out a fresh quota per scope. The
+practical limit on SMS spend against a single number was close to none.
+
+## What it is now
+
+`src/core/otp/otpRateLimit.service.js` + `otpRateLimit.model.js` — one budget per phone
+number, consumed by every OTP send path on the platform.
+
+- **Mongo-backed, not Redis.** A rate limiter that silently vanishes when an optional
+  cache is disabled is not a rate limiter. Mongo is always present; Redis is not.
+- Keyed by the normalised **last 10 digits** as `_id`, so `+91XXXXXXXXXX`,
+  `91XXXXXXXXXX` and `XXXXXXXXXX` are one budget and concurrent requests contend on a
+  single document. Reuses master's existing `normalizePhoneToTenDigits`.
+- `OTP_RATE_LIMIT` requests per `OTP_RATE_WINDOW` seconds (default 3 / 600) — same env
+  vars as before, so no config change is needed.
+- Fails open on a DB error, logged. If Mongo is unreachable the platform is down anyway;
+  refusing logins on top of that helps nobody.
+- Refusals return **429** with a shared `otpRateLimitMessage()` so every service says the
+  same thing.
+
+Wired into all five send paths: `core/otp/otp.service.js`, taxi `userOtpService`,
+`loginOtpService`, `onboardingService`, and SP's `redisOtp.util.js` (via `await import()`,
+since that module is CommonJS and core is ESM).
+
+Food's `requestCount` is still written to the OTP record for support/debugging, but it no
+longer enforces anything. SP's Redis counter and its dead `RATE_LIMIT_*` constants are gone.
+
+## Known ceiling
+
+Two genuinely concurrent *first* requests for a number can both open a window and both set
+`count = 1`, letting one extra SMS through at a window boundary. Bounded at +1 per window,
+marked with a `ponytail:` comment. A findAndModify token bucket would close it; not worth
+the complexity unless boundary spend ever shows up.
+
+## Tests — `tests/otp.ratelimit.smoke.mjs`, 26 checks
+
+The one that matters is cross-service: spend the budget across taxi's three entry points,
+then confirm **food and service-provider are already exhausted for that number**. Also
+covers per-number isolation, window reset, fail-open on junk input, five phone formats
+collapsing to one counter, no Redis dependency, and a static check that all five send paths
+call `consumeOtpQuota` and that the old per-service counters are gone.
+
+## Worth knowing
+
+In development this now applies to you too: more than `OTP_RATE_LIMIT` logins with the same
+test number inside the window will be refused across every service. Raise `OTP_RATE_LIMIT`
+locally if that gets annoying.

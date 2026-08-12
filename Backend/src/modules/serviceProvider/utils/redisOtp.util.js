@@ -12,8 +12,6 @@ const OTP_EXPIRY = parseInt(process.env.OTP_EXPIRY_SECONDS) || 300;
 // environment they already agree -- this only matters when the var is unset, where
 // the old 3-vs-5 split gave the platform two different lockout policies.
 const MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS) || 5;
-const RATE_LIMIT_COUNT = parseInt(process.env.OTP_RATE_LIMIT) || 3;
-const RATE_LIMIT_WINDOW = parseInt(process.env.OTP_RATE_WINDOW) || 600;
 
 // Test-OTP escape hatch. Fail-closed: must be explicitly enabled AND never in production.
 const TEST_PHONE = (process.env.TEST_OTP_PHONE || '6266925739').replace(/\D/g, '').slice(-10);
@@ -39,30 +37,24 @@ const hashOTP = (otp) => {
 };
 
 /**
- * Check rate limit for phone number
- * Returns true if allowed, false if limit exceeded
- * NOTE: Rate limiting primarily uses Redis. If Redis is down, we ALLOW the request 
- * to prevent blocking users during outages (fail-open), or we could implement basic memory/mongo limit.
- * For now: Fail-open for simple rate limiting if Redis is down.
+ * Check the OTP request rate limit for a phone number.
+ * Returns true if allowed, false if the limit is exceeded.
+ *
+ * The budget is PLATFORM-WIDE and lives in core/otp/otpRateLimit.service.js — the same
+ * counter food and taxi consume — so a number cannot get a fresh quota per service.
  */
 const checkRateLimit = async (phone) => {
-  const redis = getRedis();
-  if (!isRedisConnected() || !redis) {
-    console.warn('[OTP] Redis down, skipping rate limit check (fail-open)');
-    return true;
-  }
-
-  const key = `rate:otp:${phone}`;
-  try {
-    const current = await redis.incr(key);
-    if (current === 1) {
-      await redis.expire(key, RATE_LIMIT_WINDOW);
-    }
-    return current <= RATE_LIMIT_COUNT;
-  } catch (err) {
-    console.error('[OTP] Rate limit error:', err);
-    return true; // Fail open
-  }
+  // Delegates to the platform-wide budget in core/otp, shared with food and taxi, so
+  // one phone number gets ONE quota across every service rather than one per service.
+  //
+  // The old implementation counted in Redis and fell open when Redis was unavailable.
+  // REDIS_ENABLED is optional and currently unset, which meant this check did nothing
+  // at all in practice. The shared limiter is Mongo-backed for exactly that reason.
+  //
+  // Dynamic import because this module is CommonJS and core/otp is ESM.
+  const { consumeOtpQuota, OTP_SERVICES } = await import('../../../core/otp/otpRateLimit.service.js');
+  const { allowed } = await consumeOtpQuota(phone, { service: OTP_SERVICES.SERVICE_PROVIDER });
+  return allowed;
 };
 
 /**

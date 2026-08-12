@@ -19,6 +19,7 @@ import {
 import { hashPassword, signAccessToken } from './authService.js';
 import { findZoneByPickup } from './locationService.js';
 import { sendOtpSms } from '../../services/smsService.js';
+import { consumeOtpQuota, otpRateLimitMessage, OTP_SERVICES } from '../../../../core/otp/otpRateLimit.service.js';
 import { WalletTransaction } from '../models/WalletTransaction.js';
 import { applyDriverWalletAdjustment } from './walletService.js';
 
@@ -490,6 +491,13 @@ export const startDriverOnboarding = async ({ phone, role = 'driver' }) => {
 
   if (!normalizedPhone || normalizedPhone.length !== 10) {
     throw new ApiError(400, 'A valid 10-digit mobile number is required');
+  }
+
+  // Shared platform-wide budget. This path previously had no throttle at all, and it
+  // is the easiest one to abuse: driver onboarding is open to unauthenticated callers.
+  const quota = await consumeOtpQuota(normalizedPhone, { service: OTP_SERVICES.TAXI_ONBOARDING });
+  if (!quota.allowed) {
+    throw new ApiError(429, otpRateLimitMessage(quota));
   }
 
   const normalizedRole = normalizeRole(role);

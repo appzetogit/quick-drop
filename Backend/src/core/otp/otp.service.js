@@ -4,6 +4,7 @@ import { FoodOtp } from './otp.model.js';
 import { config } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { ValidationError } from '../auth/errors.js';
+import { consumeOtpQuota, otpRateLimitMessage, OTP_SERVICES } from './otpRateLimit.service.js';
 
 const generateOtpCode = () => {
     const code = crypto.randomInt(1000, 9999);
@@ -99,21 +100,19 @@ export const createOrUpdateOtp = async (phone, scope = 'default') => {
     }
     const now = new Date();
 
-    // Rate Limiting Logic
+    // Platform-wide rate limit. Replaces the old per-scope counter below: that let one
+    // phone pull a full quota from each scope (user / restaurant / delivery), and did
+    // nothing about the same number also hitting taxi and service-provider.
+    const quota = await consumeOtpQuota(phone, { service: OTP_SERVICES.FOOD });
+    if (!quota.allowed) {
+        throw new ValidationError(otpRateLimitMessage(quota));
+    }
+
+    // requestCount is still maintained on the OTP record for support/debugging, but it
+    // is no longer what enforces the limit.
     if (existing) {
         const windowMs = (config.otpRateWindow || 600) * 1000;
-        const isInWindow = now - existing.lastRequestAt < windowMs;
-
-        if (isInWindow) {
-            if (existing.requestCount >= (config.otpRateLimit || 3)) {
-                logger.warn(`Rate limit exceeded for phone ${phone} scope=${normalizedScope}`);
-                throw new ValidationError(`Too many OTP requests. Please try again after ${Math.ceil(windowMs / 60000)} minutes.`);
-            }
-            existing.requestCount += 1;
-        } else {
-            // Reset count if window has passed
-            existing.requestCount = 1;
-        }
+        existing.requestCount = now - existing.lastRequestAt < windowMs ? existing.requestCount + 1 : 1;
     }
 
     let otp;

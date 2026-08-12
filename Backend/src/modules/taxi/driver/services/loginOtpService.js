@@ -9,6 +9,7 @@ import { BusDriver } from '../models/BusDriver.js';
 import { DriverLoginSession } from '../models/DriverLoginSession.js';
 import { signAccessToken } from './authService.js';
 import { sendOtpSms } from '../../services/smsService.js';
+import { consumeOtpQuota, otpRateLimitMessage, OTP_SERVICES } from '../../../../core/otp/otpRateLimit.service.js';
 
 const LOGIN_OTP_TTL_MS = 10 * 60 * 1000;
 
@@ -228,6 +229,12 @@ export const startDriverLoginOtp = async ({ phone, role = 'driver' }) => {
 
   if (!normalizedPhone || normalizedPhone.length !== 10) {
     throw new ApiError(400, 'A valid 10-digit mobile number is required');
+  }
+
+  // Shared platform-wide budget. This path previously had no throttle at all.
+  const quota = await consumeOtpQuota(normalizedPhone, { service: OTP_SERVICES.TAXI_DRIVER });
+  if (!quota.allowed) {
+    throw new ApiError(429, otpRateLimitMessage(quota));
   }
 
   const account =

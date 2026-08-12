@@ -5,6 +5,7 @@ import { UserAuthSession } from '../models/UserAuthSession.js';
 import { User } from '../models/User.js';
 import { signAccessToken } from './authService.js';
 import { sendOtpSms } from '../../services/smsService.js';
+import { consumeOtpQuota, otpRateLimitMessage, OTP_SERVICES } from '../../../../core/otp/otpRateLimit.service.js';
 import { assignPushTokenToEntity } from '../../services/pushTokenService.js';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -104,6 +105,12 @@ const publicOtpSession = (session, debugOtp = null) => ({
 export const startUserOtp = async ({ phone }) => {
   const normalizedPhone = normalizeUserPhone(phone);
   validateUserPhone(normalizedPhone);
+
+  // Shared platform-wide budget. This path previously had no throttle at all.
+  const quota = await consumeOtpQuota(normalizedPhone, { service: OTP_SERVICES.TAXI_USER });
+  if (!quota.allowed) {
+    throw new ApiError(429, otpRateLimitMessage(quota));
+  }
 
   const user = await User.findOne({ phone: normalizedPhone }).lean();
 
