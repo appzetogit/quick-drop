@@ -28,6 +28,14 @@
  */
 
 import mongoose from 'mongoose';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
+
+// Target cluster config comes from Backend/.env, the same file the server reads.
+// Resolved relative to this file so the script works from any cwd.
+dotenv.config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../.env') });
 
 const args = process.argv.slice(2);
 const APPLY = args.includes('--apply');
@@ -36,7 +44,36 @@ const VERIFY = args.includes('--verify');
 const ONLY = (args.find((a) => a.startsWith('--only=')) || '').replace('--only=', '').split(',').filter(Boolean);
 const BATCH = 500;
 
-const SOURCE_URI = process.env.SP_SOURCE_MONGO_URI;
+/**
+ * Read MONGO_URI / MONGODB_URI straight out of an .env file.
+ *
+ * Preferred over passing the connection string on the command line: argv is visible
+ * in process listings and lands in shell history, and the value never needs to be
+ * echoed anywhere. Nothing in this script ever prints a URI -- only database names,
+ * collection names and counts.
+ */
+const readUriFromEnvFile = (envPath) => {
+  const resolved = path.resolve(envPath);
+  if (!fs.existsSync(resolved)) return { error: `no such file: ${resolved}` };
+  const text = fs.readFileSync(resolved, 'utf8');
+  const match = text.match(/^\s*MONGO(?:DB)?_URI\s*=\s*(.+)$/m);
+  if (!match) return { error: `no MONGO_URI / MONGODB_URI in ${resolved}` };
+  return { uri: match[1].trim().replace(/^["']|["']$/g, '') };
+};
+
+const SOURCE_ENV = (args.find((a) => a.startsWith('--source-env=')) || '').replace('--source-env=', '');
+let SOURCE_URI = process.env.SP_SOURCE_MONGO_URI;
+let SOURCE_ORIGIN = 'SP_SOURCE_MONGO_URI';
+
+if (!SOURCE_URI && SOURCE_ENV) {
+  const { uri, error } = readUriFromEnvFile(SOURCE_ENV);
+  if (error) {
+    console.error(`\n--source-env: ${error}\n`);
+    process.exit(1);
+  }
+  SOURCE_URI = uri;
+  SOURCE_ORIGIN = `--source-env=${SOURCE_ENV}`;
+}
 const TARGET_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
 const TARGET_DB = process.env.MONGODB_DB_NAME || undefined;
 
@@ -192,9 +229,11 @@ async function reportUserOverlap(srcDb, tgtDb) {
 
 async function main() {
   if (!SOURCE_URI) {
-    console.error('\nSP_SOURCE_MONGO_URI is not set.\n');
-    console.error('Set it to the Service-Provider (Truliq) connection string, e.g.\n');
-    console.error('  SP_SOURCE_MONGO_URI="mongodb+srv://...:.../Truliq" node scripts/sp-migrate-data.js\n');
+    console.error('\nNo source connection string.\n');
+    console.error('Point the script at the Service-Provider .env (preferred -- keeps the URI');
+    console.error('out of argv and shell history):\n');
+    console.error('  node scripts/sp-migrate-data.js --source-env=../../service-provider/Backend/.env\n');
+    console.error('or set SP_SOURCE_MONGO_URI in the environment.\n');
     process.exit(1);
   }
   if (!TARGET_URI) {
@@ -203,6 +242,7 @@ async function main() {
   }
 
   console.log(`\nmode: ${VERIFY ? 'VERIFY' : APPLY ? 'APPLY (writes to target)' : 'DRY RUN (no writes)'}${FORCE ? ' +FORCE' : ''}`);
+  console.log(`source from: ${SOURCE_ORIGIN}`);
 
   const srcConn = await connect(SOURCE_URI);
   const tgtConn = await connect(TARGET_URI, TARGET_DB);
@@ -211,6 +251,25 @@ async function main() {
 
   console.log(`source db: ${srcDb.databaseName}`);
   console.log(`target db: ${tgtDb.databaseName}\n`);
+
+  // --list-dbs: the connection string pins one database, and it is easy to point this
+  // at a staging db by mistake. This shows the siblings so you can confirm you picked
+  // the right one before --apply.
+  if (args.includes('--list-dbs')) {
+    const { databases } = await srcConn.getClient().db().admin().listDatabases();
+    console.log('databases on the SOURCE cluster:');
+    for (const d of databases) {
+      if (['admin', 'local', 'config'].includes(d.name)) continue;
+      const cols = await srcConn.getClient().db(d.name).listCollections().toArray();
+      let docs = 0;
+      for (const c of cols) docs += await srcConn.getClient().db(d.name).collection(c.name).countDocuments();
+      console.log(`  ${pad(d.name, 26)} ${String(cols.length).padStart(3)} collections, ${String(docs).padStart(7)} docs${d.name === srcDb.databaseName ? '   <-- selected' : ''}`);
+    }
+    console.log('');
+    await srcConn.close();
+    await tgtConn.close();
+    return;
+  }
 
   // --- nothing-left-behind check: every source collection must be accounted for ---
   const actual = (await srcDb.listCollections().toArray()).map((c) => c.name).filter((n) => !n.startsWith('system.'));
@@ -266,6 +325,36 @@ async function main() {
     const r = await copyCollection(srcDb, tgtDb, from, to);
     results.push(r);
     console.log(`  ${pad(r.from, 30)}${pad('-> ' + r.to, 32)}${num(r.srcCount)}  ${r.status}`);
+  }
+
+  // --- referential integrity, informational ---
+  // Copying a collection whose parents are missing produces a panel full of blanks that
+  // looks like a migration bug. Better to know before --apply than after.
+  const REF_CHECKS = [
+    { from: 'bookings', field: 'vendorId', to: 'vendors' },
+    { from: 'bookings', field: 'userId', to: 'users' },
+    { from: 'bookings', field: 'workerId', to: 'workers' },
+    { from: 'bookings', field: 'serviceId', to: 'services' },
+    { from: 'vendorbills', field: 'vendorId', to: 'vendors' },
+    { from: 'userservices', field: 'categoryId', to: 'categories' },
+    { from: 'carts', field: 'userId', to: 'users' },
+  ];
+  const dangling = [];
+  for (const { from, field, to } of REF_CHECKS) {
+    if (!actual.includes(from)) continue;
+    const ids = await srcDb.collection(from).distinct(field, { [field]: { $ne: null } });
+    if (ids.length === 0) continue;
+    const present = await srcDb.collection(to).countDocuments({ _id: { $in: ids } });
+    if (present < ids.length) {
+      dangling.push({ from, field, to, referenced: ids.length, found: present, missing: ids.length - present });
+    }
+  }
+  if (dangling.length) {
+    console.log('\n--- DANGLING REFERENCES IN THE SOURCE (pre-existing, not caused by migrating) ---');
+    for (const d of dangling) {
+      console.log(`  ${pad(`${d.from}.${d.field}`, 30)} -> ${pad(d.to, 14)} ${d.missing} of ${d.referenced} referenced id(s) do not exist`);
+    }
+    console.log('  These will copy across as-is and render as blanks in the admin panel.');
   }
 
   // --- identity overlap, informational (drives the later user merge) ---
