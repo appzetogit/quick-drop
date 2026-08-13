@@ -10,7 +10,20 @@ let cachedServiceAccount = null;
 
 const sanitizeString = (value) => String(value ?? '').trim();
 
+/**
+ * Service account from the admin-managed settings document, if one is stored there.
+ * Set by server.js before Firebase is initialised, because credentials cannot be
+ * swapped on a live firebase-admin app -- they have to be right at init time.
+ */
+let dbServiceAccount = null;
+let dbDatabaseUrl = '';
+export const setFirebaseServiceAccountOverride = (sa, databaseURL) => {
+    dbServiceAccount = sa || null;
+    dbDatabaseUrl = databaseURL || '';
+};
+
 const getServiceAccountFromEnv = () => {
+    if (dbServiceAccount) return dbServiceAccount;
     if (cachedServiceAccount) return cachedServiceAccount;
 
     const rawJson = sanitizeString(config.firebaseServiceAccount);
@@ -50,7 +63,7 @@ export const initializeFirebaseRealtime = () => {
         // only because nothing else initialised Firebase first. The service-provider
         // module does (its firebaseAdmin.js runs at import time, before server.js calls
         // this), so that branch is now live.
-        const databaseURL = config.firebaseDatabaseUrl;
+        const databaseURL = dbDatabaseUrl || config.firebaseDatabaseUrl;
 
         if (admin.apps.length > 0) {
             db = databaseURL ? admin.database() : null;

@@ -65,7 +65,31 @@ const SwipeableNotification = ({ t, data, onClick }) => {
 
 const SocketContext = createContext(null);
 
-const SOCKET_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/api$/, '') || 'http://localhost:5000';
+/**
+ * Origin + namespace for the service-provider socket.
+ *
+ * Two things changed when this module moved into master:
+ *  - the API base is now VITE_SP_API_BASE_URL (food and taxi own VITE_API_BASE_URL,
+ *    and set it to `<origin>/api/v1`, which this file's `/api$` strip would miss);
+ *  - SP no longer owns the Socket.IO server. It is a NAMESPACE on master's single
+ *    io instance, so the client has to connect to `<origin>/sp` -- connecting to the
+ *    origin alone lands on master's default namespace and silently receives nothing.
+ */
+const SP_SOCKET_NAMESPACE = '/sp';
+
+const resolveSocketUrl = () => {
+  const base = import.meta.env.VITE_SP_API_BASE_URL || '/api/v1/sp';
+  let origin;
+  try {
+    // Absolute base -> take its origin. Relative base -> same origin as the page.
+    origin = new URL(base, typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000').origin;
+  } catch {
+    origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5000';
+  }
+  return `${origin}${SP_SOCKET_NAMESPACE}`;
+};
+
+const SOCKET_URL = resolveSocketUrl();
 
 export const SocketProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
@@ -132,7 +156,7 @@ export const SocketProvider = ({ children }) => {
     }
 
     // Use HTTP URL for socket.io client - it handles WS upgrade automatically
-    const socketBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/api$/, '') || 'http://localhost:5000';
+    const socketBaseUrl = SOCKET_URL;
 
     const newSocket = io(socketBaseUrl, {
       auth: {

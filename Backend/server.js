@@ -15,7 +15,7 @@ import { expireExpiredOffers } from './src/modules/food/admin/services/admin.ser
 import { syncExpiredFssaiNotifications } from './src/modules/food/restaurant/services/fssaiExpiry.service.js';
 
 import { logger } from './src/utils/logger.js';
-import { initializeFirebaseRealtime } from './src/config/firebase.js';
+import { initializeFirebaseRealtime, setFirebaseServiceAccountOverride } from './src/config/firebase.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10000;
 let server = null;
@@ -53,12 +53,27 @@ const gracefulShutdown = async (signal) => {
 const startServer = async () => {
     try {
         validateConfig();
-        initializeFirebaseRealtime();
 
-        // 1. Connect to Database (MongoDB) - Asynchronously to prevent blocking startup
-        connectDB().catch((err) => {
-            logger.error(`Failed to connect to MongoDB: ${err.message}`);
-        });
+        // 1. Connect to Database (MongoDB).
+        //
+        // Awaited now, where it used to be fire-and-forget, because the Firebase
+        // credentials may live in the settings document that the admin panel writes.
+        // firebase-admin cannot have its credentials changed after initializeApp, so
+        // they have to be resolved BEFORE the next step, not patched in afterwards.
+        // Failure is still non-fatal: we log and fall through to the env values.
+        try {
+            await connectDB();
+            const { getFirebaseServiceAccount, getFirebaseSettings } = await import('./src/core/settings/firebaseSettings.service.js');
+            const [sa, settings] = await Promise.all([getFirebaseServiceAccount(), getFirebaseSettings()]);
+            if (settings.source === 'database' && sa) {
+                setFirebaseServiceAccountOverride(sa, settings.databaseURL);
+                logger.info(`Firebase credentials loaded from the settings document (project ${sa.project_id})`);
+            }
+        } catch (err) {
+            logger.error(`Failed to connect to MongoDB or read Firebase settings: ${err.message}`);
+        }
+
+        initializeFirebaseRealtime();
 
         // 2. Create HTTP server from Express app
         const httpServer = http.createServer(app);

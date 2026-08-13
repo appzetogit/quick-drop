@@ -4,6 +4,14 @@
  */
 
 import { messaging, getToken, onMessage } from '../firebase';
+
+// The service-provider API base, matching services/api.js.
+//
+// This used to read VITE_API_BASE_URL, which food and taxi already own and set to
+// `<origin>/api/v1`. These endpoints live under the SP mount instead, so sharing that
+// variable meant one value had to be two different things and one caller was always
+// wrong. Uses the SP-specific variable, same default as services/api.js.
+const SP_API_BASE = import.meta.env.VITE_SP_API_BASE_URL || '/api/v1/sp';
 import { toast } from 'react-hot-toast';
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY;
@@ -251,7 +259,7 @@ async function registerFCMToken(userType = 'user', forceUpdate = false) {
       return null;
     }
 
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+    const baseUrl = SP_API_BASE;
     console.log(`[FCM] Saving to backend: ${baseUrl}${endpoint}`);
 
     const response = await fetch(`${baseUrl}${endpoint}`, {
@@ -318,7 +326,7 @@ async function removeFCMToken(userType = 'user') {
 
     const authToken = localStorage.getItem(authTokenKey);
     if (authToken) {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+      const baseUrl = SP_API_BASE;
       await fetch(`${baseUrl}${endpoint}`, {
         method: 'DELETE',
         headers: {
