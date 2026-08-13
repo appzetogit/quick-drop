@@ -39,13 +39,45 @@ const FirebaseSettings = () => {
     e.preventDefault();
     try {
       setSubmitting(true);
+
+      // The upload used to record only the FILENAME, so picking a service account
+      // here changed nothing the server could authenticate with. Read the file and
+      // persist its contents as firebase_service_account -- that is the field
+      // core/settings/firebaseSettings.service.js hands to firebase-admin.
+      let serviceAccountJson = settings.firebase_service_account || '';
+      if (selectedFile) {
+        const text = await selectedFile.text();
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed.type !== 'service_account' || !parsed.private_key || !parsed.project_id) {
+            toast.error('That file is not a Firebase service account key.');
+            setSubmitting(false);
+            return;
+          }
+          serviceAccountJson = JSON.stringify(parsed);
+        } catch {
+          toast.error('Service account file is not valid JSON.');
+          setSubmitting(false);
+          return;
+        }
+      }
+
       const data = {
         ...settings,
+        firebase_service_account: serviceAccountJson,
         firebase_json_name: selectedFile?.name || settings.firebase_json_name,
       };
 
       await adminService.updateFirebaseSettings(data);
-      toast.success('Firebase configuration updated successfully');
+
+      // Client-facing values are read per page load, so they apply immediately.
+      // The service account does not: firebase-admin cannot have its credentials
+      // swapped after initializeApp, so the API has to restart to pick a new one up.
+      if (selectedFile) {
+        toast.success('Saved. Restart the API for the new service account to take effect.', { duration: 8000 });
+      } else {
+        toast.success('Firebase configuration updated. Clients pick it up on their next load.');
+      }
       fetchData();
       setSelectedFile(null);
     } catch (err) {
@@ -186,6 +218,19 @@ const FirebaseSettings = () => {
                 </div>
 
                 <div className="md:col-span-2">
+                   <label className={labelClass}>Web Push VAPID Key</label>
+                   <input
+                    className={inputClass}
+                    value={settings.firebase_vapid_key || ''}
+                    onChange={(e) => updateField('firebase_vapid_key', e.target.value)}
+                    placeholder="BB... (Project settings -> Cloud Messaging -> Web Push certificates)"
+                   />
+                   <p className="mt-1 text-[11px] text-gray-400">
+                     Public key pair only. Browsers need this to register for push; without it web notifications silently never arrive.
+                   </p>
+                </div>
+
+                <div className="md:col-span-2">
                    <label className={labelClass}>Service Account JSON</label>
                    <div className="mt-2 group relative">
                       <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer bg-gray-50/50 hover:bg-gray-50 hover:border-indigo-300 transition-all">
@@ -212,15 +257,42 @@ const FirebaseSettings = () => {
                         />
                       </label>
                    </div>
-                   {settings.firebase_json_name && !selectedFile && (
-                     <div className="mt-4 p-3 bg-indigo-50/50 rounded-lg flex items-center justify-between border border-indigo-100">
-                        <div className="flex items-center gap-2">
-                           <FileJson size={14} className="text-indigo-600" />
-                           <span className="text-xs font-semibold text-indigo-900">{settings.firebase_json_name}</span>
-                        </div>
-                        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-tighter italic">Currently Active</span>
-                     </div>
-                   )}
+                   {/* Report what is actually STORED, not just a remembered filename.
+                       The old badge said "Currently Active" purely because a name had
+                       been saved once, while the server had no credentials at all. */}
+                   {!selectedFile && (() => {
+                     let stored = null;
+                     try { stored = settings.firebase_service_account ? JSON.parse(settings.firebase_service_account) : null; } catch { stored = 'invalid'; }
+
+                     if (stored && stored !== 'invalid') {
+                       return (
+                         <div className="mt-4 p-3 bg-green-50/50 rounded-lg flex items-center justify-between border border-green-100">
+                           <div className="flex items-center gap-2">
+                             <FileJson size={14} className="text-green-600" />
+                             <span className="text-xs font-semibold text-green-900">
+                               {stored.project_id} · {stored.client_email}
+                             </span>
+                           </div>
+                           <span className="text-[10px] font-bold text-green-500 uppercase tracking-tighter italic">Stored &amp; in use</span>
+                         </div>
+                       );
+                     }
+                     return (
+                       <div className="mt-4 p-3 bg-amber-50/60 rounded-lg flex items-center justify-between border border-amber-100">
+                         <div className="flex items-center gap-2">
+                           <FileJson size={14} className="text-amber-600" />
+                           <span className="text-xs font-semibold text-amber-900">
+                             {stored === 'invalid'
+                               ? 'Stored credentials are not valid JSON'
+                               : settings.firebase_json_name
+                                 ? `Only a filename is on record (${settings.firebase_json_name}) — no credentials stored`
+                                 : 'No service account stored — the server is falling back to its environment'}
+                           </span>
+                         </div>
+                         <span className="text-[10px] font-bold text-amber-500 uppercase tracking-tighter italic">Upload to fix</span>
+                       </div>
+                     );
+                   })()}
                 </div>
 
              </div>
