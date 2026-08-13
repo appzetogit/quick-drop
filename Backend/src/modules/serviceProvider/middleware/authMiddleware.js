@@ -5,6 +5,7 @@ const Worker = require('../models/Worker');
 const Admin = require('../models/Admin');
 const { USER_ROLES } = require('../utils/constants');
 const { hasServiceProviderAccess } = require('../utils/serviceAccess');
+const { resolveSharedCustomer } = require('../utils/identityBridge');
 
 /**
  * Authentication middleware - verifies JWT token
@@ -45,6 +46,23 @@ const authenticate = async (req, res, next) => {
     switch (decoded.role) {
       case USER_ROLES.USER:
         user = await User.findById(decoded.userId).select('-password').lean();
+        // A customer signed in through the super app carries a MASTER-issued
+        // token, so decoded.userId names a document in the shared `users`
+        // collection rather than `sp_users`. Bridge it (and provision on first
+        // use) so one login serves food, taxi and services. An SP-native token
+        // resolved above and never reaches this. See utils/identityBridge.js.
+        if (!user) {
+          user = await resolveSharedCustomer(decoded.userId);
+          // The rest of the request must act as the SP user, not the master
+          // one: every SP document -- bookings, cart, wallet -- is keyed by
+          // sp_users._id, and the socket rooms the server emits to are
+          // `user_<spUserId>`.
+          if (user) {
+            decoded.userId = user._id.toString();
+            // Master tokens carry no loginSessionId, so the session check below
+            // is skipped for them by design; do not inherit the SP user's.
+          }
+        }
         break;
       case USER_ROLES.VENDOR:
         user = await Vendor.findById(decoded.userId).select('-password').lean();

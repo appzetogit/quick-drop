@@ -39,7 +39,28 @@ const configureSPSocketServer = (rootIo) => {
       const { verifyAccessToken } = require('../utils/tokenService');
       const decoded = verifyAccessToken(token);
 
-      socket.userId = decoded.userId;
+      let userId = decoded.userId;
+
+      // Same bridge as the REST middleware. A super-app customer connects with
+      // a MASTER-issued token, whose userId names a `users` document. Without
+      // this the socket joins `user_<masterId>` while every server emit targets
+      // `user_<spUserId>` -- the customer would appear connected and silently
+      // receive no booking_accepted / booking_updated / live_location_update.
+      // See utils/identityBridge.js.
+      if (decoded.role === 'USER') {
+        const SPUser = require('../models/User');
+        const known = await SPUser.exists({ _id: userId }).catch(() => null);
+        if (!known) {
+          const { resolveSharedCustomer } = require('../utils/identityBridge');
+          const bridged = await resolveSharedCustomer(userId);
+          if (!bridged) {
+            return next(new Error('Authentication error: unknown customer'));
+          }
+          userId = bridged._id.toString();
+        }
+      }
+
+      socket.userId = userId;
       socket.userRole = decoded.role;
 
       next();
