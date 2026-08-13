@@ -128,6 +128,17 @@ export const config = {
     petpoojaOutletId: process.env.PETPOOJA_OUTLET_ID || '',
     petpoojaApiUrl: process.env.PETPOOJA_API_URL || 'https://api.petpooja.com/v2',
 
+    // Background jobs: boot watchdog, seeders, offer/FSSAI expiry sweeps, and the
+    // service-provider booking scheduler. Default ON so normal deployments are
+    // unchanged; set BACKGROUND_JOBS_ENABLED=false on any SECOND instance sharing a
+    // database with a primary.
+    //
+    // This is not a nice-to-have. recoverStuckOrders() nulls the delivery partner on
+    // orders stuck in `assigned` and re-triggers auto-assign — a second instance
+    // booting against live data would unassign real riders from in-flight orders and
+    // re-dispatch them on every restart.
+    backgroundJobsEnabled: process.env.BACKGROUND_JOBS_ENABLED !== 'false',
+
     // Driver unification: when true, dispatch treats taxi drivers + delivery partners as one
     // pool and honors workMode + the activeAssignment busy-lock. Default OFF for safe dual-run —
     // flip only after the backfill migration has run and been validated on staging.

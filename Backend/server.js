@@ -150,16 +150,23 @@ const startServer = async () => {
             }
         };
 
-        if (mongoose.connection.readyState === 1) {
+        // All three WRITE to the database. runWatchdog() is the dangerous one: it
+        // unassigns delivery partners from stuck orders and re-dispatches them.
+        // A second instance sharing a primary's database must not run these.
+        const runBootJobs = () => {
+            if (!config.backgroundJobsEnabled) {
+                logger.warn('BACKGROUND_JOBS_ENABLED=false — skipping watchdog, bus seed and settings sync (read-mostly instance)');
+                return;
+            }
             runWatchdog();
             ensureBusDaysUpdated();
             seedBusDriverInDb();
+        };
+
+        if (mongoose.connection.readyState === 1) {
+            runBootJobs();
         } else {
-            mongoose.connection.once('connected', () => {
-                runWatchdog();
-                ensureBusDaysUpdated();
-                seedBusDriverInDb();
-            });
+            mongoose.connection.once('connected', runBootJobs);
         }
 
         // 5. Conditionally initialize BullMQ queues.
@@ -252,6 +259,11 @@ const startServer = async () => {
         };
 
         const startIntervals = () => {
+            if (!config.backgroundJobsEnabled) {
+                logger.warn('BACKGROUND_JOBS_ENABLED=false — skipping offer expiry, FSSAI sync and the SP booking scheduler');
+                return;
+            }
+
             runExpire();
             expireOffersInterval = setInterval(runExpire, 5 * 60 * 1000);
 

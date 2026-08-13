@@ -59,6 +59,9 @@ console.log('\n[2] booking scheduler');
 
 const scheduler = getScheduler();
 check('scheduler instance was created', () => assert.ok(scheduler, 'initializeScheduler never ran'));
+const { config: envConfig } = await import('../src/config/env.js');
+check('BACKGROUND_JOBS_ENABLED defaults to on (live behaviour unchanged)', () =>
+    assert.equal(envConfig.backgroundJobsEnabled, true));
 check('scheduler is running', () => assert.equal(scheduler.isRunning, true));
 check('scheduler holds a timer handle', () => assert.ok(scheduler.intervalId));
 check('scheduler got the SP namespace as its io', () => assert.equal(scheduler.io, spNs));
