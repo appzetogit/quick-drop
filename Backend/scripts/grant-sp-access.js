@@ -44,13 +44,23 @@ const admins = conn.db.collection('admins');
 // projection excludes every credential field -- this script has no business reading them
 const SAFE = { password: 0, resetPasswordOtp: 0, resetPasswordExpires: 0 };
 
+// Mirrors modules/serviceProvider/middleware/roleMiddleware.js isSuperAdmin. Keep the
+// two in step -- a listing that disagrees with the running check is worse than none.
+const SUPER_ROLES = new Set(['super_admin', 'super-admin', 'superadmin']);
+
 const describe = (a) => {
     const access = Array.isArray(a.servicesAccess) ? a.servicesAccess : null;
     const spAllowed = !access || access.length === 0 || access.includes('serviceProvider');
-    const isSuper = a.role === 'super_admin';
+    const role = String(a.role || '').trim().toLowerCase();
+    const isSuper =
+        SUPER_ROLES.has(role) ||
+        a.adminLevel === 'platform_superadmin' ||
+        a.adminLevel === 'sp_superadmin' ||
+        (a.admin_type === 'superadmin' && role !== 'subadmin');
+
     const blockers = [];
     if (!spAllowed) blockers.push('needs serviceProvider in servicesAccess');
-    if (!isSuper) blockers.push(`role is "${a.role || '(unset)'}", needs super_admin`);
+    if (!isSuper) blockers.push(`not a super-admin (role "${a.role || '(unset)'}", level "${a.adminLevel || '(unset)'}")`);
     return { access, spAllowed, isSuper, blockers };
 };
 

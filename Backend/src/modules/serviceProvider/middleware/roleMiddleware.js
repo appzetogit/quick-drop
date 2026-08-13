@@ -69,9 +69,34 @@ const isSuperAdmin = async (req, res, next) => {
 
     // Role lives on the Admin document, not the JWT — always re-check against the DB
     const Admin = require('../models/Admin');
-    const admin = await Admin.findById(req.user.id).select('role').lean();
+    const admin = await Admin.findById(req.user.id)
+      .select('role admin_type adminLevel')
+      .lean();
 
-    if (!admin || admin.role !== 'super_admin') {
+    // Recognise the PLATFORM's notion of a super-admin, not one exact spelling.
+    //
+    // The three modules each name the role differently -- food/master issues `ADMIN`
+    // with adminLevel `platform_superadmin`, taxi uses `super-admin`, and this module
+    // used to require literally `super_admin`. Since an account carries a single role
+    // string, every existing platform super-admin was rejected here with
+    // "Super Admin role required" -- and because cityManagement.routes.js applies this
+    // check path-lessly across the whole /admin mount, that meant the entire
+    // service-provider panel, not one endpoint.
+    //
+    // This does NOT widen who is authorised: reaching this module at all already
+    // requires servicesAccess to include 'serviceProvider' (see utils/serviceAccess.js
+    // and the auth middleware). A subadmin is still refused -- admin_type 'subadmin'
+    // and a non-super role do not satisfy anything below.
+    const SUPER_ROLES = new Set(['super_admin', 'super-admin', 'superadmin']);
+    const role = String(admin?.role || '').trim().toLowerCase();
+    const isSuper =
+      Boolean(admin) &&
+      (SUPER_ROLES.has(role) ||
+        admin.adminLevel === 'platform_superadmin' ||
+        admin.adminLevel === 'sp_superadmin' ||
+        (admin.admin_type === 'superadmin' && role !== 'subadmin'));
+
+    if (!isSuper) {
       return res.status(403).json({
         success: false,
         message: 'Access denied. Super Admin role required.'
