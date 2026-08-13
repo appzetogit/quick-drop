@@ -13,18 +13,35 @@ const OTP_EXPIRY = parseInt(process.env.OTP_EXPIRY_SECONDS) || 300;
 // the old 3-vs-5 split gave the platform two different lockout policies.
 const MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS) || 5;
 
-// Test-OTP escape hatch. Fail-closed: must be explicitly enabled AND never in production.
-const TEST_PHONE = (process.env.TEST_OTP_PHONE || '6266925739').replace(/\D/g, '').slice(-10);
-const testOtpAllowed = () =>
-  process.env.ALLOW_TEST_OTP === 'true' && process.env.NODE_ENV !== 'production';
+// Test-OTP escape hatch. Still fail-closed: off unless ALLOW_TEST_OTP is explicitly
+// 'true', and even then it applies to ONE number.
+//
+// It used to also require NODE_ENV !== 'production', which made it unusable on a
+// staging deployment (those run NODE_ENV=production), and the only way to get a
+// static OTP was to flip NODE_ENV -- which on a shared-database box also re-enables
+// the write-side background jobs, including the watchdog that unassigns riders from
+// live in-flight orders. Scoping to a single number is the safer trade.
+//
+// USE_DEFAULT_OTP is deliberately honoured ONLY outside production. It applies to
+// EVERY phone, so on a publicly reachable backend sharing the live database it would
+// let anyone log in as any customer.
+const TEST_PHONE = (process.env.TEST_OTP_PHONE || '').replace(/\D/g, '').slice(-10);
+const STATIC_TEST_OTP = process.env.TEST_OTP_CODE || '123456';
+
+const testOtpAllowed = () => process.env.ALLOW_TEST_OTP === 'true';
+const defaultOtpForEveryone = () =>
+  process.env.USE_DEFAULT_OTP === 'true' && process.env.NODE_ENV !== 'production';
+
+const isStaticOtpPhone = (cleanPhone) =>
+  (testOtpAllowed() && TEST_PHONE && cleanPhone === TEST_PHONE) || defaultOtpForEveryone();
 
 /**
  * Generate 6-digit OTP
  */
 const generateOTP = (phone = null) => {
   const cleanPhone = (phone || '').toString().replace(/\D/g, '').slice(-10);
-  if (testOtpAllowed() && (cleanPhone === TEST_PHONE || process.env.USE_DEFAULT_OTP === 'true')) {
-    return '123456';
+  if (isStaticOtpPhone(cleanPhone)) {
+    return STATIC_TEST_OTP;
   }
   return crypto.randomInt(100000, 1000000).toString();
 };
@@ -107,8 +124,10 @@ const verifyOTP = async (phone, plainOtp) => {
 
   const cleanPhone = (phone || '').toString().replace(/\D/g, '').slice(-10);
 
-  // Static OTP: test number only, gated behind ALLOW_TEST_OTP and never in production
-  if (testOtpAllowed() && cleanPhone === TEST_PHONE && plainOtp === '123456') {
+  // Static OTP. Uses the same predicate and code as generateOTP so the two halves
+  // cannot drift -- a generator that hands out 123456 while the verifier still expects
+  // a different constant fails in a way that looks like a broken OTP service.
+  if (isStaticOtpPhone(cleanPhone) && plainOtp === STATIC_TEST_OTP) {
     console.log(`[OTP] ✅ Static OTP used for ${phone}`);
     return { success: true };
   }
