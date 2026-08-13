@@ -70,7 +70,17 @@ export const getFirebaseSettings = async () => {
         serviceAccount: pick('firebase_service_account', config.firebaseServiceAccount),
     };
 
-    resolved.source = Object.keys(db).some((k) => clean(db[k])) ? 'database' : 'env';
+    // Only the fields resolved above count. The stored block also carries
+    // `firebase_json_name`, which the taxi defaults populate with a filename -- keying
+    // off "any non-empty key" therefore reported 'database' for a completely empty
+    // config, and the startup log claimed credentials came from the settings document
+    // when they had in fact come from env.
+    const RESOLVED_KEYS = [
+        'firebase_api_key', 'firebase_auth_domain', 'firebase_project_id', 'firebase_database_url',
+        'firebase_storage_bucket', 'firebase_messaging_sender_id', 'firebase_app_id',
+        'firebase_measurement_id', 'firebase_vapid_key', 'firebase_service_account',
+    ];
+    resolved.source = RESOLVED_KEYS.some((k) => clean(db[k])) ? 'database' : 'env';
 
     cache = resolved;
     cachedAt = Date.now();
