@@ -22,7 +22,14 @@ const FirebaseSettings = () => {
     try {
       setLoading(true);
       const res = await adminService.getFirebaseSettings();
-      setSettings(res.data?.settings || {});
+      // The payload is double-wrapped: the controller returns
+      // { settings: <service result> } and the service itself returns
+      // { settings: <fields> }, so the fields live at data.settings.settings.
+      // Reading data.settings gave the inner wrapper, so every input bound to
+      // undefined and the form always rendered blank -- for all fields, not just
+      // the ones added here. Accept either shape.
+      const payload = res.data?.settings ?? {};
+      setSettings(payload.settings ?? payload);
     } catch (err) {
       console.error('Fetch error:', err);
       toast.error('Failed to load Firebase settings');

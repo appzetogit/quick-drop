@@ -60,8 +60,17 @@ const show = (k, v) => {
     }
 };
 
-const conn = await mongoose.createConnection(URI).asPromise();
-const col = conn.db.collection('adminthirdpartysettings');
+await mongoose.connect(URI);
+
+// Derive the collection from the MODEL, never from a guessed name. The model is
+// registered as TaxiAdminThirdPartySetting, so mongoose pluralises it to
+// `taxiadminthirdpartysettings` -- an earlier version of this script hardcoded
+// `adminthirdpartysettings` and wrote every value into a stray collection that
+// nothing reads, while the admin panel showed an empty form.
+const { AdminThirdPartySetting } = await import('../src/modules/taxi/admin/models/AdminThirdPartySetting.js');
+const conn = { db: mongoose.connection.db, close: () => mongoose.disconnect() };
+const col = mongoose.connection.db.collection(AdminThirdPartySetting.collection.name);
+console.log(`\ncollection: ${AdminThirdPartySetting.collection.name} (from the model)`);
 
 let doc = await col.findOne({});
 if (!doc) {
