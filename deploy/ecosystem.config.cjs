@@ -5,21 +5,27 @@
  * serving k9.appzeto.com) which is the LIVE pre-integration build of this same
  * project. Nothing here may collide with it:
  *
- *   name  k9-superapp-api   (live one is `k9-backend`)
- *   cwd   /opt/k9-superapp  (live one is /opt/k9)
- *   port  5007              (live one is 5005)
- *   db    set in .env       (must NOT be the live K9 database -- server.js seeds
- *                            on boot and the SP scheduler alerts vendors every 5s)
+ *   name  master-api   (live one is `k9-backend`)
+ *   cwd   /opt/master   (live one is /opt/k9)
+ *   port  5007          (live one is 5005)
+ *   db    the database name must be in the MONGODB_URI PATH.
+ *
+ * That last point is not a style preference. src/config/db.js calls
+ * mongoose.connect(uri) with NO dbName option, and MONGODB_DB_NAME is read nowhere
+ * in the codebase -- so the database comes from the URI path alone, and defaults to
+ * `test` when the URI has none. Setting MONGODB_DB_NAME on a staging instance looks
+ * like isolation and gives you none: the process joins whatever the live app uses.
+ * server.js seeds on boot and the SP scheduler polls every 5s, so that matters.
  *
  * Start:   pm2 start deploy/ecosystem.config.cjs
- * Reload:  pm2 reload k9-superapp-api
+ * Reload:  pm2 reload master-api
  * Never:   pm2 delete all / pm2 kill / pm2 restart all  <- would take down 12 live apps
  */
 module.exports = {
   apps: [
     {
-      name: 'k9-superapp-api',
-      cwd: '/opt/k9-superapp/Backend',
+      name: 'master-api',
+      cwd: '/opt/master/Backend',
       script: 'server.js',
       // fork, not cluster: the SP booking scheduler and the socket namespace are
       // singletons. Two workers would double every vendor alert.
@@ -34,8 +40,8 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 5007
       },
-      error_file: '/var/log/pm2/k9-superapp-api.error.log',
-      out_file: '/var/log/pm2/k9-superapp-api.out.log',
+      error_file: '/var/log/pm2/master-api.error.log',
+      out_file: '/var/log/pm2/master-api.out.log',
       merge_logs: true,
       time: true
     }

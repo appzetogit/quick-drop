@@ -75,7 +75,14 @@ if (!SOURCE_URI && SOURCE_ENV) {
   SOURCE_ORIGIN = `--source-env=${SOURCE_ENV}`;
 }
 const TARGET_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
-const TARGET_DB = process.env.MONGODB_DB_NAME || undefined;
+
+// DO NOT default this to MONGODB_DB_NAME. That variable is read nowhere in the
+// application -- src/config/db.js calls mongoose.connect(uri) with no dbName, so the
+// database comes from the URI path alone (and is `test` when the URI has none).
+// Honouring MONGODB_DB_NAME here would migrate every document into a database the
+// app never opens, and the migration would look like it silently did nothing.
+// Migrate where the app actually reads; --target-db= is an explicit override.
+const TARGET_DB = (args.find((a) => a.startsWith('--target-db=')) || '').replace('--target-db=', '') || undefined;
 
 /**
  * source collection (mongoose-pluralised from the old model name) -> target collection.
@@ -250,7 +257,12 @@ async function main() {
   const tgtDb = tgtConn.db;
 
   console.log(`source db: ${srcDb.databaseName}`);
-  console.log(`target db: ${tgtDb.databaseName}\n`);
+  console.log(`target db: ${tgtDb.databaseName}${tgtDb.databaseName === 'test' ? '   (from the URI — the app reads this one)' : ''}`);
+  if (process.env.MONGODB_DB_NAME && process.env.MONGODB_DB_NAME !== tgtDb.databaseName) {
+    console.log(`  NOTE: MONGODB_DB_NAME=${process.env.MONGODB_DB_NAME} is set but the app ignores it`);
+    console.log(`        (config/db.js passes no dbName), so migrating into "${tgtDb.databaseName}" is correct.`);
+  }
+  console.log('');
 
   // --list-dbs: the connection string pins one database, and it is easy to point this
   // at a staging db by mistake. This shows the siblings so you can confirm you picked
