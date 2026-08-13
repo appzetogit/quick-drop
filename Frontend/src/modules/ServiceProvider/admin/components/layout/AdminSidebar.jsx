@@ -48,69 +48,69 @@ const iconMap = {
 // Helper function to convert child name to route path
 const getChildRoute = (parentRoute, childName) => {
   const routeMap = {
-    "/admin/users": {
-      "All Users": "/admin/users/all",
-      "User Bookings": "/admin/users/bookings",
-      "Transactions": "/admin/users/transactions",
-      "User Analytics": "/admin/users/analytics",
+    "/admin/sp/users": {
+      "All Users": "/admin/sp/users/all",
+      "User Bookings": "/admin/sp/users/bookings",
+      "Transactions": "/admin/sp/users/transactions",
+      "User Analytics": "/admin/sp/users/analytics",
     },
-    "/admin/vendors": {
-      "All Vendors": "/admin/vendors/all",
-      "Vendor Bookings": "/admin/vendors/bookings",
-      "Vendor Analytics": "/admin/vendors/analytics",
-      "Vendor Payments": "/admin/vendors/payments",
+    "/admin/sp/vendors": {
+      "All Vendors": "/admin/sp/vendors/all",
+      "Vendor Bookings": "/admin/sp/vendors/bookings",
+      "Vendor Analytics": "/admin/sp/vendors/analytics",
+      "Vendor Payments": "/admin/sp/vendors/payments",
     },
-    "/admin/workers": {
-      "All Workers": "/admin/workers/all",
-      "Worker Jobs": "/admin/workers/jobs",
-      "Worker Analytics": "/admin/workers/analytics",
-      "Worker Payments": "/admin/workers/payments",
+    "/admin/sp/workers": {
+      "All Workers": "/admin/sp/workers/all",
+      "Worker Jobs": "/admin/sp/workers/jobs",
+      "Worker Analytics": "/admin/sp/workers/analytics",
+      "Worker Payments": "/admin/sp/workers/payments",
     },
-    "/admin/bookings": {
-      "All Bookings": "/admin/bookings",
-      "Booking Tracking": "/admin/bookings/tracking",
-      "Booking Notifications": "/admin/bookings/notifications",
+    "/admin/sp/bookings": {
+      "All Bookings": "/admin/sp/bookings",
+      "Booking Tracking": "/admin/sp/bookings/tracking",
+      "Booking Notifications": "/admin/sp/bookings/notifications",
     },
-    "/admin/user-categories": {
-      "Home": "/admin/user-categories/home",
-      "Manage Categories": "/admin/user-categories/categories",
-      "Manage Brands": "/admin/user-categories/brands",
-      "Manage Services": "/admin/user-categories/sections",
+    "/admin/sp/user-categories": {
+      "Home": "/admin/sp/user-categories/home",
+      "Manage Categories": "/admin/sp/user-categories/categories",
+      "Manage Brands": "/admin/sp/user-categories/brands",
+      "Manage Services": "/admin/sp/user-categories/sections",
     },
-    "/admin/payments": {
-      "Payment Overview": "/admin/payments/overview",
-      "User Payments": "/admin/payments/users",
-      "Worker Payments": "/admin/payments/workers",
-      "Vendor Payments": "/admin/payments/vendors",
-      "Admin Revenue": "/admin/payments/revenue",
-      "Payment Reports": "/admin/payments/reports",
+    "/admin/sp/payments": {
+      "Payment Overview": "/admin/sp/payments/overview",
+      "User Payments": "/admin/sp/payments/users",
+      "Worker Payments": "/admin/sp/payments/workers",
+      "Vendor Payments": "/admin/sp/payments/vendors",
+      "Admin Revenue": "/admin/sp/payments/revenue",
+      "Payment Reports": "/admin/sp/payments/reports",
     },
-    "/admin/reports": {
-      "Revenue Report": "/admin/reports/revenue",
-      "Booking Report": "/admin/reports/bookings",
-      "Payment Report": "/admin/payments/reports",
+    "/admin/sp/reports": {
+      "Revenue Report": "/admin/sp/reports/revenue",
+      "Booking Report": "/admin/sp/reports/bookings",
+      "Payment Report": "/admin/sp/payments/reports",
     },
-    "/admin/notifications": {
-      "Push Notifications": "/admin/notifications/push",
-      "Custom Messages": "/admin/notifications/messages",
-      "Notification Settings": "/admin/notifications/settings",
+    "/admin/sp/notifications": {
+      "Push Notifications": "/admin/sp/notifications/push",
+      "Custom Messages": "/admin/sp/notifications/messages",
+      "Notification Settings": "/admin/sp/notifications/settings",
     },
-    "/admin/settings": {
-      "General Settings": "/admin/settings/general",
-      "Worker Assignment": "/admin/settings/worker-assignment",
-      "Service Configuration": "/admin/settings/service-config",
-      "System Settings": "/admin/settings/system",
+    "/admin/sp/settings": {
+      "General Settings": "/admin/sp/settings/general",
+      "Worker Assignment": "/admin/sp/settings/worker-assignment",
+      "Service Configuration": "/admin/sp/settings/service-config",
+      "System Settings": "/admin/sp/settings/system",
     },
-    "/admin/settlements": {
-      "Pending": "/admin/settlements/pending",
-      "Withdrawals": "/admin/settlements/withdrawals",
-      "Vendors with Due": "/admin/settlements/vendors",
-      "History": "/admin/settlements/history",
+    "/admin/sp/settlements": {
+      "Pending": "/admin/sp/settlements/pending",
+      "Withdrawals": "/admin/sp/settlements/withdrawals",
+      "Vendors with Due": "/admin/sp/settlements/vendors",
+      "History": "/admin/sp/settlements/history",
     },
-    "/admin/legal": {
-      "Terms & Conditions": "/admin/legal/terms",
-      "Privacy Policy": "/admin/legal/privacy",
-      "Support": "/admin/legal/support",
+    "/admin/sp/legal": {
+      "Terms & Conditions": "/admin/sp/legal/terms",
+      "Privacy Policy": "/admin/sp/legal/privacy",
+      "Support": "/admin/sp/legal/support",
     },
   };
 
@@ -236,8 +236,8 @@ const AdminSidebar = ({ isOpen, onClose }) => {
   // Auto-expand menu items when their route is active
   useEffect(() => {
     const activeItem = filteredMenu.find((item) => {
-      if (item.route === "/admin/dashboard") {
-        return location.pathname === "/admin/dashboard";
+      if (item.route === "/admin/sp/dashboard") {
+        return location.pathname === "/admin/sp/dashboard";
       }
       const isChildRoute =
         location.pathname.startsWith(item.route) &&
@@ -258,13 +258,13 @@ const AdminSidebar = ({ isOpen, onClose }) => {
 
   // Check if a menu item is active
   const isActive = (route) => {
-    if (route === "/admin/dashboard") {
-      return location.pathname === "/admin/dashboard";
+    if (route === "/admin/sp/dashboard") {
+      return location.pathname === "/admin/sp/dashboard";
     }
 
     // Special case for User Catalog to avoid overlap with Vendor Services/Parts
-    if (route === "/admin/user-categories") {
-      if (location.pathname.startsWith("/admin/user-categories/vendor-")) {
+    if (route === "/admin/sp/user-categories") {
+      if (location.pathname.startsWith("/admin/sp/user-categories/vendor-")) {
         return false;
       }
     }

@@ -118,7 +118,7 @@ const ReportsOverview = () => {
     <div className="space-y-6">
       {/* Quick Action Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Link to="/admin/reports/bookings" className="group">
+        <Link to="/admin/sp/reports/bookings" className="group">
           <CardShell className="bg-gradient-to-br from-primary-600 to-primary-700 text-white border-none hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -135,7 +135,7 @@ const ReportsOverview = () => {
           </CardShell>
         </Link>
 
-        <Link to="/admin/reports/vendors" className="group">
+        <Link to="/admin/sp/reports/vendors" className="group">
           <CardShell className="bg-gradient-to-br from-amber-500 to-amber-600 text-white border-none hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -152,7 +152,7 @@ const ReportsOverview = () => {
           </CardShell>
         </Link>
 
-        <Link to="/admin/reports/workers" className="group">
+        <Link to="/admin/sp/reports/workers" className="group">
           <CardShell className="bg-gradient-to-br from-indigo-500 to-indigo-600 text-white border-none hover:shadow-xl hover:-translate-y-1 transition-all duration-300 p-4">
             <div className="flex items-center justify-between">
               <div>

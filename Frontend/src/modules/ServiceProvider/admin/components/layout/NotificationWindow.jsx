@@ -47,12 +47,12 @@ const NotificationWindow = ({
       // For now, if we have bookingId in data, use it.
       const bookingId = notification.relatedId || notification.bookingId;
       if (bookingId) {
-        navigate(`/admin/bookings`);
+        navigate(`/admin/sp/bookings`);
       }
     }
 
     if (notification.relatedType === 'scrap') {
-      navigate('/admin/scrap');
+      navigate('/admin/sp/scrap');
     }
     onClose();
   };

@@ -1,7 +1,7 @@
 [
   {
     "title": "Dashboard",
-    "route": "/admin/dashboard",
+    "route": "/admin/sp/dashboard",
     "allowedRoles": [
       "super_admin",
       "admin"
@@ -10,7 +10,7 @@
   },
   {
     "title": "Users",
-    "route": "/admin/users",
+    "route": "/admin/sp/users",
     "allowedRoles": [
       "super_admin",
       "admin"
@@ -23,7 +23,7 @@
   },
   {
     "title": "Vendors",
-    "route": "/admin/vendors",
+    "route": "/admin/sp/vendors",
     "allowedRoles": [
       "super_admin",
       "admin"
@@ -36,7 +36,7 @@
   },
   {
     "title": "Workers",
-    "route": "/admin/workers",
+    "route": "/admin/sp/workers",
     "allowedRoles": [
       "super_admin",
       "admin"
@@ -49,7 +49,7 @@
   },
   {
     "title": "Bookings",
-    "route": "/admin/bookings",
+    "route": "/admin/sp/bookings",
     "allowedRoles": [
       "super_admin",
       "admin"
@@ -61,7 +61,7 @@
   },
   {
     "title": "Scrap Items",
-    "route": "/admin/scrap",
+    "route": "/admin/sp/scrap",
     "allowedRoles": [
       "super_admin",
       "admin"
@@ -70,7 +70,7 @@
   },
   {
     "title": "Payments",
-    "route": "/admin/payments",
+    "route": "/admin/sp/payments",
     "allowedRoles": [
       "super_admin"
     ],
@@ -84,7 +84,7 @@
   },
   {
     "title": "Settlements",
-    "route": "/admin/settlements",
+    "route": "/admin/sp/settlements",
     "allowedRoles": [
       "super_admin"
     ],
@@ -97,7 +97,7 @@
   },
   {
     "title": "User Catalog",
-    "route": "/admin/user-categories",
+    "route": "/admin/sp/user-categories",
     "allowedRoles": [
       "super_admin",
       "admin"
@@ -111,7 +111,7 @@
   },
   {
     "title": "Reports",
-    "route": "/admin/reports",
+    "route": "/admin/sp/reports",
     "isHidden": true,
     "allowedRoles": [
       "super_admin"
@@ -124,7 +124,7 @@
   },
   {
     "title": "Reviews",
-    "route": "/admin/reviews",
+    "route": "/admin/sp/reviews",
     "allowedRoles": [
       "super_admin"
     ],
@@ -132,7 +132,7 @@
   },
   {
     "title": "Plans",
-    "route": "/admin/plans",
+    "route": "/admin/sp/plans",
     "allowedRoles": [
       "super_admin"
     ],
@@ -140,7 +140,7 @@
   },
   {
     "title": "Worker Plans",
-    "route": "/admin/worker-plans",
+    "route": "/admin/sp/worker-plans",
     "allowedRoles": [
       "super_admin"
     ],
@@ -148,7 +148,7 @@
   },
   {
     "title": "Legal",
-    "route": "/admin/legal",
+    "route": "/admin/sp/legal",
     "allowedRoles": [
       "super_admin"
     ],
@@ -160,7 +160,7 @@
   },
   {
     "title": "Settings",
-    "route": "/admin/settings",
+    "route": "/admin/sp/settings",
     "allowedRoles": [
       "super_admin",
       "admin"

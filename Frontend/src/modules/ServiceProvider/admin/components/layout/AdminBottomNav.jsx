@@ -12,15 +12,15 @@ const AdminBottomNav = () => {
   const location = useLocation();
 
   const navItems = [
-    { path: "/admin/dashboard", icon: FiHome, label: "Home" },
-    { path: "/admin/users", icon: FiUsers, label: "Users" },
-    { path: "/admin/bookings", icon: FiShoppingBag, label: "Bookings" },
-    { path: "/admin/settings", icon: FiSettings, label: "Settings" },
+    { path: "/admin/sp/dashboard", icon: FiHome, label: "Home" },
+    { path: "/admin/sp/users", icon: FiUsers, label: "Users" },
+    { path: "/admin/sp/bookings", icon: FiShoppingBag, label: "Bookings" },
+    { path: "/admin/sp/settings", icon: FiSettings, label: "Settings" },
   ];
 
   const isActive = (path) => {
-    if (path === "/admin/dashboard") {
-      return location.pathname === "/admin/dashboard";
+    if (path === "/admin/sp/dashboard") {
+      return location.pathname === "/admin/sp/dashboard";
     }
     return location.pathname.startsWith(path);
   };
