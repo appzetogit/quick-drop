@@ -59,8 +59,12 @@ router.use('/v1/petpooja/webhook', petpoojaWebhookRoutes);
 router.use('/v1/fcm-tokens', fcmRoutes);
 router.use('/fcm-tokens', fcmRoutes);
 
-// router.get('/v1/env/public', getPublicEnvController);
-// router.get('/env/public', getPublicEnvController);
+// Runtime config for the frontend. Enabled so the client can read Firebase settings
+// at load time instead of having them baked in by Vite at build time -- that is what
+// makes the admin panel's Firebase settings take effect without a redeploy.
+// Returns only client-safe values; the service account never leaves the server.
+router.get('/v1/env/public', getPublicEnvController);
+router.get('/env/public', getPublicEnvController);
 
 router.get('/v1/admin/queues', authMiddleware, requireRoles('ADMIN'), getQueuesController);
 router.use('/v1', taxiPromotionsRouter);

@@ -9172,6 +9172,11 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
     };
     settings.markModified('firebase');
     await settings.save();
+    // core/settings/firebaseSettings.service.js caches this for 30s so it is not
+    // read per request. Drop the cache here so a save in the admin panel is visible
+    // on the very next page load rather than up to half a minute later.
+    const { invalidateFirebaseSettingsCache } = await import('../../../../core/settings/firebaseSettings.service.js');
+    invalidateFirebaseSettingsCache();
     return { settings: settings.firebase };
   };
 
