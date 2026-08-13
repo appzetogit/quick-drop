@@ -45,6 +45,13 @@ const getServiceAccountFromEnv = () => {
  */
 export const initializeFirebaseRealtime = () => {
     try {
+        // Declared before the early return below. It used to be declared after it, and
+        // the early return referenced it -- a TDZ ReferenceError that stayed invisible
+        // only because nothing else initialised Firebase first. The service-provider
+        // module does (its firebaseAdmin.js runs at import time, before server.js calls
+        // this), so that branch is now live.
+        const databaseURL = config.firebaseDatabaseUrl;
+
         if (admin.apps.length > 0) {
             db = databaseURL ? admin.database() : null;
             messaging = admin.messaging();
@@ -52,7 +59,6 @@ export const initializeFirebaseRealtime = () => {
         }
 
         const serviceAccount = getServiceAccountFromEnv();
-        const databaseURL = config.firebaseDatabaseUrl;
 
         if (!serviceAccount) {
             logger.warn('⚠️ Firebase service account not configured. Firebase features may not work.');

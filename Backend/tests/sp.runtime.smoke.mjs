@@ -126,7 +126,45 @@ console.log('\n[4] shared infrastructure — one instance, not two');
     });
 }
 
-console.log('\n[5] shutdown');
+console.log('\n[5] Firebase — one app, master owns the Realtime DB URL');
+
+{
+    // The SP module initialises Firebase at import time, before server.js calls
+    // initializeFirebaseRealtime(). Two things broke because of that ordering:
+    //   1. config/firebase.js referenced databaseURL inside its already-initialised
+    //      early return, but declared it below -- a TDZ ReferenceError that was
+    //      invisible while that branch was dead.
+    //   2. SP hardcoded the Truliq RTDB URL, which would have become the default
+    //      app's database for the WHOLE process -- pointing master's live delivery
+    //      tracking at the wrong Firebase project.
+    const { readFile } = await import('node:fs/promises');
+
+    const fbSrc = await readFile(new URL('../src/config/firebase.js', import.meta.url), 'utf8');
+    const declIdx = fbSrc.indexOf('const databaseURL');
+    const useIdx = fbSrc.indexOf('db = databaseURL ?');
+    check('config/firebase declares databaseURL before the early return uses it', () => {
+        assert.ok(declIdx > -1 && useIdx > -1, 'could not locate both sites');
+        assert.ok(declIdx < useIdx, 'databaseURL is still declared after its first use (TDZ)');
+    });
+
+    const spFbSrc = await readFile(new URL('../src/modules/serviceProvider/services/firebaseAdmin.js', import.meta.url), 'utf8');
+    check('SP does not hardcode a Realtime DB URL into initializeApp', () =>
+        assert.doesNotMatch(spFbSrc, /databaseURL:\s*["']https:\/\/truliq-default-rtdb/));
+    check('SP prefers the platform-configured RTDB url', () =>
+        assert.match(spFbSrc, /VITE_FIREBASE_DATABASE_URL/));
+
+    // initializeFirebaseRealtime must not throw on the already-initialised path,
+    // which is the path that actually runs inside master.
+    const { initializeFirebaseRealtime } = await import('../src/config/firebase.js');
+    check('initializeFirebaseRealtime() survives being called twice', () => {
+        assert.doesNotThrow(() => {
+            initializeFirebaseRealtime();
+            initializeFirebaseRealtime();
+        });
+    });
+}
+
+console.log('\n[6] shutdown');
 
 check('scheduler.stop() clears the timer', () => {
     scheduler.stop();

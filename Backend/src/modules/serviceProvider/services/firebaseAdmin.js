@@ -31,13 +31,29 @@ try {
   console.error('❌ Failed to load Firebase credentials:', error.message);
 }
 
-// Initialize only if not already initialized
+// Initialize only if not already initialized.
+//
+// This module is required at import time (routes -> controllers -> here), which is
+// BEFORE server.js calls initializeFirebaseRealtime(). So inside master this is
+// usually the call that creates the process-wide default app -- and whatever
+// databaseURL it passes becomes the Realtime Database for every module, including
+// master's live delivery tracking in config/socket.js.
+//
+// It used to hardcode the Truliq RTDB, which would have silently pointed master's
+// order tracking at the service-provider's Firebase project. Prefer the platform's
+// configured URL (the same VITE_FIREBASE_DATABASE_URL that config/env.js reads) and
+// keep the Truliq URL only as a fallback for running this module standalone.
+const RTDB_URL =
+  process.env.VITE_FIREBASE_DATABASE_URL ||
+  process.env.FIREBASE_DATABASE_URL ||
+  'https://truliq-default-rtdb.asia-southeast1.firebasedatabase.app/';
+
 if (!admin.apps.length && serviceAccount) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://truliq-default-rtdb.asia-southeast1.firebasedatabase.app/"
+    databaseURL: RTDB_URL
   });
-  console.log('✅ Firebase Admin SDK initialized');
+  console.log(`✅ Firebase Admin SDK initialized (rtdb: ${RTDB_URL})`);
 }
 
 const NotificationLog = require('../models/NotificationLog');
