@@ -29,6 +29,49 @@ const isDevMockOrder = (orderId) => {
   return noCredentials || String(orderId || '').startsWith('order_mock_');
 };
 
+/**
+ * Mirror a confirmed gateway payment into the shared `payments` collection, so
+ * service-provider revenue appears in the cross-vertical totals alongside food and
+ * quick-commerce.
+ *
+ * This is deliberately NOT a move of `sp_transactions`. That collection is a wallet
+ * LEDGER -- balanceBefore/balanceAfter, and 17 type values of which most are internal
+ * movements (commission, settlement, tds_deduction, earnings_credit). Only a handful
+ * are gateway events. The ledger keeps its own collection and is untouched here; this
+ * records the gateway payment, which is a different aggregate.
+ *
+ * Never throws. A reporting write must not be able to fail a payment the customer has
+ * already made and the gateway has already captured -- the money moved regardless.
+ */
+const mirrorToSharedPayments = async ({ orderId, paymentId, amount, notes }) => {
+  try {
+    const userId = notes?.userId;
+    if (!userId) {
+      // Nothing to attribute it to. Worth knowing about rather than silently dropping.
+      console.warn(`[Payments] no userId in order notes for ${orderId}; not recorded centrally`);
+      return;
+    }
+
+    // CommonJS module reaching the ESM core.
+    const { recordPayment } = await import('../../../core/payments/payments.facade.js');
+
+    await recordPayment({
+      vertical: 'serviceProvider',
+      userId,
+      amount,
+      method: 'razorpay',
+      gateway: 'razorpay',
+      status: 'success',            // only reached once the gateway reports `captured`
+      gatewayOrderId: orderId,
+      gatewayPaymentId: paymentId,
+      ...(notes?.bookingId ? { subjectId: notes.bookingId } : {}),
+      metadata: { notes },
+    });
+  } catch (err) {
+    console.error(`[Payments] central record failed for ${orderId} (payment still valid): ${err.message}`);
+  }
+};
+
 const confirmGatewayPayment = async ({ orderId, paymentId }) => {
   if (isDevMockOrder(orderId)) {
     console.warn(`[Payments] DEV: skipping gateway confirmation for mock order ${orderId}`);
@@ -61,7 +104,13 @@ const confirmGatewayPayment = async ({ orderId, paymentId }) => {
     return { ok: false, status: 502, message: 'Could not confirm the order with the gateway. Please try again.' };
   }
 
-  return { ok: true, mock: false, amount, notes: orderRes.order.notes || {}, payment };
+  const notes = orderRes.order.notes || {};
+
+  // Awaited so a failure is logged in request context, but it cannot throw.
+  // Mock orders are skipped above -- no real money moved, nothing to report on.
+  await mirrorToSharedPayments({ orderId, paymentId, amount, notes });
+
+  return { ok: true, mock: false, amount, notes, payment };
 };
 
 module.exports = { confirmGatewayPayment, isDevMockOrder };
