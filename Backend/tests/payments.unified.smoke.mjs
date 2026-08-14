@@ -136,7 +136,41 @@ console.log('\n[7] food is cut over — createPayment now goes through the facad
     check('same gatewayOrderId still collapses to one row', () => assert.equal(dupes, 1));
 }
 
-console.log('\n[8] the wallet ledger is deliberately NOT merged in');
+console.log('\n[8] quick-commerce is cut over — reads AND writes moved together');
+{
+    const qc = await import('../src/modules/quickCommerce/core/payments/payment.service.js');
+    const { Payment: QCPaymentModel } = await import('../src/modules/quickCommerce/core/payments/models/payment.model.js');
+    const orderId = oid(); const userId = oid();
+
+    check('QC now resolves to the SHARED payments collection', () =>
+        assert.equal(QCPaymentModel.collection.name, 'payments'));
+    check('and is literally the same model object as core', () =>
+        assert.equal(QCPaymentModel, Payment));
+
+    const p = await qc.createPayment({ orderId, userId, amount: 420, method: 'upi', gateway: 'razorpay' });
+    check('tagged quickCommerce, not food', () => assert.equal(p.vertical, 'quickCommerce'));
+    check('subjectModel is QCOrder', () => assert.equal(p.subjectModel, 'QCOrder'));
+
+    // The split this guards against: writing to `payments` while still reading
+    // `qc_payments` would make a payment vanish the moment after it was created.
+    const readBack = await qc.getPaymentsByOrder(orderId);
+    check('QC can read back what QC just wrote', () => assert.equal(readBack.length, 1));
+    check('and it is the same document', () => assert.equal(String(readBack[0]._id), String(p._id)));
+
+    const found = await Payment.findById(p._id);
+    check('core sees the quick-commerce payment too', () => assert.ok(found));
+
+    // findOrCreatePayment queries { orderId }, so the mirror must hold for QC as well.
+    const again = await qc.findOrCreatePayment({ orderId, userId, amount: 420, method: 'upi' });
+    check('findOrCreatePayment returns the existing row, not a duplicate', () =>
+        assert.equal(String(again._id), String(p._id)));
+
+    const totals = await getPaymentTotals({ status: 'success' });
+    const verticals = totals.byVertical.map((v) => v.vertical);
+    check('quick-commerce revenue is attributed to itself', () => assert.ok(verticals.includes('quickCommerce')));
+}
+
+console.log('\n[9] the wallet ledger is deliberately NOT merged in');
 {
     const { default: SPTransaction } = await import('../src/modules/serviceProvider/models/Transaction.js');
     check('SP wallet ledger keeps its own collection', () =>

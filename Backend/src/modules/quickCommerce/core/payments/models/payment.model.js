@@ -1,59 +1,21 @@
-import mongoose from 'mongoose';
-
 /**
- * Payment — one record per payment attempt on an order.
- * Tracks gateway interactions and final payment status.
+ * Quick-commerce payments live in the SHARED `payments` collection.
+ *
+ * This file used to define its own model on `qc_payments` -- a copy of the same schema
+ * master already had, because quick-commerce is a fork of master's food module. That
+ * meant "how much did we take yesterday" had to be asked separately per vertical and
+ * no single query could produce a platform total.
+ *
+ * It is now a re-export of core/payments. That matters more than it looks: this module
+ * reads Payment from here in eight places (payment.service.js, refund.service.js), so
+ * re-exporting moves the READS and the WRITES together. Switching only the write would
+ * have left quick-commerce writing to `payments` while still searching `qc_payments`,
+ * and every lookup of a payment it had just created would miss.
+ *
+ * Rows are distinguished by `vertical: 'quickCommerce'`, set by
+ * core/payments/payments.facade.js. See SUPERAPP_DATA_MODEL.md.
+ *
+ * Safe to do without a data migration: `qc_payments` was never created -- this module
+ * had not run against the database when the cutover happened.
  */
-const paymentSchema = new mongoose.Schema(
-    {
-        orderId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'QCOrder',
-            required: true,
-            index: true
-        },
-        userId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'QCUser',
-            required: true,
-            index: true
-        },
-        amount: { type: Number, required: true, min: 0 },
-        currency: { type: String, default: 'INR', trim: true },
-
-        method: {
-            type: String,
-            enum: ['cash', 'razorpay', 'razorpay_qr', 'wallet', 'upi', 'card', 'netbanking'],
-            required: true
-        },
-        gateway: {
-            type: String,
-            enum: ['razorpay', 'stripe', 'paypal', 'none'],
-            default: 'none'
-        },
-
-        gatewayOrderId: { type: String, default: '', sparse: true },
-        gatewayPaymentId: { type: String, default: '', sparse: true },
-
-        status: {
-            type: String,
-            enum: ['created', 'pending', 'success', 'failed', 'refunded'],
-            default: 'created',
-            index: true
-        },
-
-        /** Module that triggered the payment (future: dining, grocery, etc.) */
-        module: { type: String, default: 'food', trim: true, index: true },
-
-        /** Full gateway response snapshot — stored for audit/support. Never expose to clients. */
-        rawResponse: { type: mongoose.Schema.Types.Mixed, default: undefined },
-
-        metadata: { type: mongoose.Schema.Types.Mixed, default: undefined }
-    },
-    { collection: 'payments', timestamps: true }
-);
-
-paymentSchema.index({ orderId: 1, createdAt: -1 });
-paymentSchema.index({ userId: 1, status: 1, createdAt: -1 });
-
-export const Payment = mongoose.models.QCPayment || mongoose.model('QCPayment', paymentSchema, 'qc_payments');
+export { Payment, PAYMENT_VERTICALS } from '../../../../../core/payments/models/payment.model.js';

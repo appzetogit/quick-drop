@@ -80,8 +80,15 @@ export const recordPayment = async (input) => {
         status,
         subjectModel,
         ...(subjectId ? { subjectId } : {}),
-        // food's existing readers still query orderId; keep it populated for that vertical
-        ...(vertical === 'food' && subjectId ? { orderId: subjectId } : {}),
+        // Mirror the subject into `orderId` for the order-shaped verticals. Both food
+        // and quick-commerce have readers that query { orderId } -- getPaymentsByOrder,
+        // findOrCreatePayment -- against an existing index, and leaving it unset made
+        // every lookup of a payment they had just written come back empty.
+        //
+        // It is a QUERY key only. `orderId` still declares ref: 'FoodOrder', so
+        // populate('orderId') is correct for food alone; anything polymorphic must
+        // populate('subjectId'), which resolves through subjectModel.
+        ...(subjectId && (vertical === 'food' || vertical === 'quickCommerce') ? { orderId: subjectId } : {}),
         ...(gatewayOrderId ? { gatewayOrderId } : {}),
         ...(gatewayPaymentId ? { gatewayPaymentId } : {}),
         ...(rawResponse ? { rawResponse } : {}),

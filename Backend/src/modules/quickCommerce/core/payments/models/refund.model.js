@@ -8,7 +8,10 @@ const refundSchema = new mongoose.Schema(
     {
         paymentId: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'QCPayment',
+            // Quick-commerce payments moved into the shared `payments` collection, so
+            // the QCPayment model no longer exists. Populating this would have thrown
+            // MissingSchemaError at request time.
+            ref: 'Payment',
             required: true,
             index: true
         },

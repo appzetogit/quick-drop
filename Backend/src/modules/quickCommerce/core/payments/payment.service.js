@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { Payment } from './models/payment.model.js';
 import { recordTransaction } from './transaction.service.js';
+import { recordPayment } from '../../../../core/payments/payments.facade.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -9,11 +10,19 @@ import { logger } from '../../utils/logger.js';
  */
 export async function createPayment({
     orderId, userId, amount, method, gateway = 'none',
-    gatewayOrderId = '', module = 'food', metadata
+    gatewayOrderId = '', module = 'quickCommerce', metadata
 }) {
     const status = method === 'cash' ? 'pending' : method === 'wallet' ? 'success' : 'created';
-    const doc = await Payment.create({
-        orderId: new mongoose.Types.ObjectId(orderId),
+
+    // Routed through the shared facade so this vertical lands in the same `payments`
+    // collection as food, tagged vertical: 'quickCommerce'.
+    //
+    // `module` defaulted to 'food' here -- a leftover of this module being a fork of
+    // master's food module. Left uncorrected it would have stamped every
+    // quick-commerce payment as food revenue in the cross-vertical totals.
+    const doc = await recordPayment({
+        vertical: module || 'quickCommerce',
+        subjectId: new mongoose.Types.ObjectId(orderId),
         userId: new mongoose.Types.ObjectId(userId),
         amount: Number(amount),
         currency: 'INR',
@@ -21,7 +30,6 @@ export async function createPayment({
         gateway,
         gatewayOrderId,
         status,
-        module,
         metadata
     });
 
@@ -107,7 +115,7 @@ export async function getPaymentByGatewayId(gatewayPaymentId) {
  */
 export async function findOrCreatePayment({
     orderId, userId, amount, method, gateway = 'none',
-    gatewayOrderId = '', module = 'food'
+    gatewayOrderId = '', module = 'quickCommerce'
 }) {
     // Check if a non-failed payment already exists
     const existing = await Payment.findOne({

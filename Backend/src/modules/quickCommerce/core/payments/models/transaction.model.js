@@ -14,7 +14,10 @@ const transactionSchema = new mongoose.Schema(
         /** Link to the Payment document that triggered this transaction (optional for manual adjustments) */
         paymentId: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'QCPayment',
+            // Quick-commerce payments moved into the shared `payments` collection, so
+            // the QCPayment model no longer exists. Populating this would have thrown
+            // MissingSchemaError at request time.
+            ref: 'Payment',
             default: null
         },
         /** Link to the order (optional — wallet top-ups / adjustments may not have an order) */
