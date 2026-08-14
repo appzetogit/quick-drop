@@ -75,6 +75,16 @@ const startServer = async () => {
 
         initializeFirebaseRealtime();
 
+        // Cross-vertical activity feed. Hooks the four aggregate schemas so the feed
+        // stays in step without every controller having to remember to update it.
+        // Non-fatal: a failure here costs the unified history, not the platform.
+        try {
+            const { attachAllActivityHooks } = await import('./src/core/activity/attachActivityHooks.js');
+            await attachAllActivityHooks();
+        } catch (err) {
+            logger.error(`Activity feed hooks failed to attach: ${err.message}`);
+        }
+
         // 2. Create HTTP server from Express app
         const httpServer = http.createServer(app);
 
