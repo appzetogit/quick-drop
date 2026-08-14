@@ -132,6 +132,63 @@ console.log('\n[5] hooks fire on BOTH write paths');
     });
 }
 
+console.log('\n[6] the endpoint unifies ids across verticals');
+{
+    const { default: app } = await import('../src/app.js');
+    const server = app.listen(0);
+
+    const { FoodUser } = await import('../src/core/users/user.model.js');
+    const { createRequire } = await import('node:module');
+    const require = createRequire(import.meta.url);
+    const SPUser = require('../src/modules/serviceProvider/models/User.js');
+
+    // ONE person, but a different user document per vertical -- exactly what makes a
+    // naive feed keyed on the token id silently omit half the customer's history.
+    const phone = '9876500123';
+    const master = await FoodUser.create({ phone, name: 'Cross Vertical' });
+    const sp = await SPUser.create({ phone, name: 'Cross Vertical' });
+
+    await recordActivity({ vertical: 'food', refModel: 'FoodOrder', refId: oid(), userId: master._id, rawStatus: 'delivered', amount: 200, occurredAt: new Date('2026-08-01') });
+    await recordActivity({ vertical: 'serviceProvider', refModel: 'SPBooking', refId: oid(), userId: sp._id, rawStatus: 'completed', amount: 800, occurredAt: new Date('2026-08-02') });
+
+    const { resolveCustomerIdentities } = await import('../src/core/activity/identityResolver.js');
+    const { ids, resolved } = await resolveCustomerIdentities(master._id);
+    check(`resolver found ${ids.length} identities for one person`, () => assert.ok(ids.length >= 2, JSON.stringify(resolved)));
+    check('service-provider identity resolved by phone', () => assert.ok(resolved.includes('serviceProvider')));
+
+    const { getMyActivityController, getMySpendController } = await import('../src/core/activity/activity.controller.js');
+
+    let payload = null;
+    await getMyActivityController(
+        { user: { userId: master._id }, query: {} },
+        { status: () => ({ json: (b) => { payload = b; return b; } }) },
+        (e) => { throw e; },
+    );
+    check('endpoint returns BOTH verticals for one customer', () => {
+        const vs = payload.data.items.map((i) => i.vertical).sort();
+        assert.deepEqual(vs, ['food', 'serviceProvider']);
+    });
+    check('cross-vertical total is right', () => assert.equal(payload.data.total, 2));
+
+    let spendBody = null;
+    await getMySpendController(
+        { user: { userId: master._id } },
+        { status: () => ({ json: (b) => { spendBody = b; return b; } }) },
+        (e) => { throw e; },
+    );
+    check('spend sums across verticals (1000)', () => assert.equal(spendBody.data.total, 1000));
+
+    // Unauthenticated must not leak anyone's history.
+    let unauth = null;
+    await getMyActivityController({ query: {} }, { status: (c) => ({ json: (b) => { unauth = { c, b }; return b; } }) }, () => {});
+    check('no token -> 401, no data', () => {
+        assert.equal(unauth.c, 401);
+        assert.equal(unauth.b.data, undefined);
+    });
+
+    server.close();
+}
+
 await mongoose.disconnect();
 await mongod.stop();
 console.log(`\n${failures === 0 ? 'PASS' : `FAIL — ${failures} check(s) failed`}\n`);

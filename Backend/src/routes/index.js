@@ -16,6 +16,7 @@ import * as businessSettingsController from '../modules/food/admin/controllers/b
 import { requireRoles } from '../core/roles/role.middleware.js';
 import { getQueuesController } from '../controllers/admin.controller.js';
 import { getPublicEnvController } from '../modules/food/landing/controllers/publicEnv.controller.js';
+import { getMyActivityController, getMySpendController } from '../core/activity/activity.controller.js';
 import webhookRoutes from '../core/payments/routes/webhook.routes.js'; // ✅ NEW
 import petpoojaWebhookRoutes from '../modules/food/orders/routes/petpooja.routes.js';
 import searchRoutes from '../modules/food/search/routes/search.routes.js';
@@ -74,6 +75,13 @@ router.get('/v1/admin/queues', authMiddleware, requireRoles('ADMIN'), getQueuesC
 router.use('/v1', taxiPromotionsRouter);
 
 router.use('/v1/taxi', taxiRouter);
+
+// ─── Cross-vertical customer feed ──────────────────────────────────────────
+// One customer's history and spend across food, taxi, quick-commerce and
+// service-provider. Mounted at the platform root rather than under any vertical,
+// because it belongs to none of them.
+router.get('/v1/me/activity', authMiddleware, getMyActivityController);
+router.get('/v1/me/spend', authMiddleware, getMySpendController);
 
 // ─── Quick-Commerce ────────────────────────────────────────────────────────
 // No legacy alias block: unlike service-provider, this module's original paths were
