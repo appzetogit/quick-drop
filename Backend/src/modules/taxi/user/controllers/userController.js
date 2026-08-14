@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
+import { mirrorTaxiPayment } from '../../services/paymentMirror.service.js';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { User } from '../models/User.js';
 import { UserWallet } from '../models/UserWallet.js';
@@ -2079,6 +2080,10 @@ export const verifyRazorpayWalletTopup = async (req, res) => {
 
   const amount = Math.round(amountPaise) / 100;
   const userId = req.auth?.sub;
+
+  // Verified against the gateway above -- mirror into the shared payments collection.
+  // Cannot throw; see services/paymentMirror.service.js.
+  await mirrorTaxiPayment({ orderId, paymentId, amount, userId, purpose: 'wallet_topup' });
 
   await ensureUserWallet(userId);
 

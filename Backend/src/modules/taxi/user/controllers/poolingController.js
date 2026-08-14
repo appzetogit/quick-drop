@@ -4,6 +4,7 @@ import { PoolingVehicle } from '../../admin/models/PoolingVehicle.js';
 import { PoolingBooking } from '../../admin/models/PoolingBooking.js';
 import { PoolingSeatReservation } from '../../admin/models/PoolingSeatReservation.js';
 import { asyncHandler } from '../../../../utils/asyncHandler.js';
+import { mirrorTaxiPayment } from '../../services/paymentMirror.service.js';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { resolveConfiguredGatewayCredentials } from '../../services/paymentGatewayService.js';
 
@@ -496,6 +497,19 @@ export const verifyPoolingBookingPayment = asyncHandler(async (req, res) => {
       status: 'paid',
       paidAt: new Date(),
     },
+  });
+
+  // Booking persisted and paid -- mirror into the shared payments collection.
+  // Uses the fare the SERVER computed (fareBreakdown), never a client-supplied
+  // amount. Cannot throw; see services/paymentMirror.service.js.
+  await mirrorTaxiPayment({
+    orderId,
+    paymentId,
+    amount: fareBreakdown.totalFare,
+    userId,
+    subjectId: booking._id,
+    purpose: 'pooling',
+    mock: signature === 'mock_signature_bypass',
   });
 
   try {

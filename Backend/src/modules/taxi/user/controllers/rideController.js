@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 import { ApiError } from '../../../../utils/ApiError.js';
+import { mirrorTaxiPayment } from '../../services/paymentMirror.service.js';
 import { normalizePoint } from '../../../../utils/geo.js';
 import { resolveConfiguredGatewayCredentials } from '../../services/paymentGatewayService.js';
 import { Driver } from '../../driver/models/Driver.js';
@@ -622,6 +623,14 @@ export const verifyRazorpayRideCompletion = async (req, res) => {
     throw new ApiError(400, 'Verified payment amount does not match the payable ride total');
   }
 
+  // Signature checked, amount read back from the gateway and matched against the ride
+  // total -- the payment is real. Mirror it into the shared payments collection.
+  // Cannot throw; see paymentMirror.service.js.
+  await mirrorTaxiPayment({
+    orderId, paymentId, amount: verifiedTotalCharge, userId: req.auth.sub,
+    subjectId: ride._id, purpose: 'ride', mock: isMock,
+  });
+
   const existingWalletCredit = await WalletTransaction.findOne({
     driverId: ride.driverId,
     'metadata.providerPaymentId': paymentId,
@@ -949,6 +958,11 @@ export const verifyRazorpayRideTip = async (req, res) => {
   if (Math.abs(verifiedTipAmount - tipAmount) > 0.001) {
     throw new ApiError(400, 'Verified tip amount does not match selected tip');
   }
+
+  await mirrorTaxiPayment({
+    orderId, paymentId, amount: verifiedTipAmount, userId: req.auth.sub,
+    subjectId: ride._id, purpose: 'tip', mock: isMock,
+  });
 
   const driver = await Driver.findById(ride.driverId);
   if (!driver) {

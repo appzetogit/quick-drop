@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import mongoose from "mongoose";
 import QRCode from "qrcode";
 import { env } from "../../../../config/env.js";
+import { mirrorTaxiPayment } from '../../services/paymentMirror.service.js';
 import { ApiError } from "../../../../utils/ApiError.js";
 import { normalizePoint, toPoint } from "../../../../utils/geo.js";
 import { Driver } from "../models/Driver.js";
@@ -4979,6 +4980,12 @@ export const verifyDriverWalletTopup = async (req, res) => {
 
   const amount = Math.round(amountPaise) / 100;
   const driverId = req.auth?.sub;
+
+  // The payer here is the DRIVER topping up their own wallet, not a rider.
+  await mirrorTaxiPayment({
+    orderId, paymentId, amount, userId: driverId,
+    purpose: 'driver_wallet_topup', mock: isMock,
+  });
 
   const alreadyCredited = await WalletTransaction.findOne({
     driverId,

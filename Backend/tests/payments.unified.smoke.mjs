@@ -217,7 +217,62 @@ console.log('\n[9] service-provider mirrors gateway payments — and only those'
     });
 }
 
-console.log('\n[10] the wallet ledger is deliberately NOT merged in');
+console.log('\n[10] taxi — all five gateway flows mirrored');
+{
+    const readFile = (await import('node:fs/promises')).readFile;
+    const rel = (p) => readFile(new URL(p, import.meta.url), 'utf8');
+
+    const { mirrorTaxiPayment } = await import('../src/modules/taxi/services/paymentMirror.service.js');
+
+    // Taxi verifies inline in five handlers rather than through one choke point, so
+    // the risk is missing one. Assert each file is wired.
+    const wiring = {
+        'rideController (completion + tip)': ['../src/modules/taxi/user/controllers/rideController.js', 2],
+        'poolingController': ['../src/modules/taxi/user/controllers/poolingController.js', 1],
+        'userController (wallet top-up)': ['../src/modules/taxi/user/controllers/userController.js', 1],
+        'driverController (driver top-up)': ['../src/modules/taxi/driver/controllers/driverController.js', 1],
+    };
+    for (const [label, [path, expected]] of Object.entries(wiring)) {
+        const src = await rel(path);
+        const calls = (src.match(/await mirrorTaxiPayment\(/g) || []).length;
+        const imported = /import \{ mirrorTaxiPayment \}/.test(src);
+        check(`${label}: ${calls}/${expected} call(s), imported`, () => {
+            assert.equal(calls, expected, `expected ${expected} mirror call(s), found ${calls}`);
+            assert.ok(imported, 'mirrorTaxiPayment is not imported');
+        });
+    }
+
+    const svc = await rel('../src/modules/taxi/services/paymentMirror.service.js');
+    check('mirror cannot throw', () => assert.match(svc, /catch \(err\)[\s\S]*payment still valid/));
+    check('mock orders are skipped', () => assert.match(svc, /if \(mock\) return;/));
+
+    // Behaviour
+    const userId = oid(); const subjectId = oid();
+    await mirrorTaxiPayment({ orderId: `order_taxi_${Date.now()}`, paymentId: 'pay_1', amount: 250, userId, subjectId, purpose: 'ride' });
+    const p = await Payment.findOne({ vertical: 'taxi', userId });
+    check('a taxi ride payment reaches the shared collection', () => assert.ok(p));
+    check('subjectModel is TaxiRide', () => assert.equal(p.subjectModel, 'TaxiRide'));
+
+    // A mock order must never be counted as revenue.
+    const mockUser = oid();
+    await mirrorTaxiPayment({ orderId: 'mock_order_1', paymentId: 'x', amount: 999, userId: mockUser, purpose: 'ride', mock: true });
+    const mocked = await Payment.findOne({ userId: mockUser });
+    check('mock orders are not recorded', () => assert.equal(mocked, null));
+
+    // A bad amount is dropped, not thrown.
+    let threw = null;
+    try { await mirrorTaxiPayment({ orderId: 'o', paymentId: 'p', amount: 0, userId: oid(), purpose: 'ride' }); }
+    catch (e) { threw = e; }
+    check('a zero amount is skipped without throwing', () => assert.equal(threw, null));
+
+    const totals = await getPaymentTotals({ status: 'success' });
+    const vs = totals.byVertical.map((v) => v.vertical);
+    check('ALL FOUR verticals now report into one total', () => {
+        for (const v of ['food', 'quickCommerce', 'serviceProvider', 'taxi']) assert.ok(vs.includes(v), `${v} missing`);
+    });
+}
+
+console.log('\n[11] the wallet ledger is deliberately NOT merged in');
 {
     const { default: SPTransaction } = await import('../src/modules/serviceProvider/models/Transaction.js');
     check('SP wallet ledger keeps its own collection', () =>
