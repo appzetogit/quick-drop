@@ -24,6 +24,10 @@ import { promotionsRouter as taxiPromotionsRouter } from '../modules/taxi/admin/
 // Service-Provider module is CommonJS (see modules/serviceProvider/package.json).
 // ESM importing CJS yields module.exports as the default export.
 import spRouter from '../modules/serviceProvider/routes/index.js';
+// Quick-commerce is a fork of this repo's own food module -- 55 of its 61 model names
+// were identical. Its models are renamed QC* on qc_* collections so nothing shares a
+// collection with food, and its routes are mounted here rather than on /v1/food.
+import qcRouter from '../modules/quickCommerce/routes/index.js';
 
 const router = express.Router();
 
@@ -70,6 +74,12 @@ router.get('/v1/admin/queues', authMiddleware, requireRoles('ADMIN'), getQueuesC
 router.use('/v1', taxiPromotionsRouter);
 
 router.use('/v1/taxi', taxiRouter);
+
+// ─── Quick-Commerce ────────────────────────────────────────────────────────
+// No legacy alias block: unlike service-provider, this module's original paths were
+// /v1/food/*, which master's own food module already owns. Aliasing them would hand
+// food traffic to quick-commerce.
+router.use('/v1/qc', qcRouter);
 
 // ─── Service-Provider (Homster) ────────────────────────────────────────────
 // Canonical prefix.
