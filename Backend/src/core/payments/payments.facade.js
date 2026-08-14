@@ -88,21 +88,21 @@ export const recordPayment = async (input) => {
         ...(metadata ? { metadata } : {}),
     };
 
-    // Dedupe key: the gateway order id when there is one, otherwise the subject.
-    const filter = gatewayOrderId
-        ? { gatewayOrderId }
-        : subjectId
-            ? { vertical, subjectId }
-            : null;
+    // Dedupe ONLY on a real gateway order id.
+    //
+    // Deliberately not on (vertical, subjectId): an order legitimately has several
+    // payment attempts -- the first fails, the customer retries with another method --
+    // and each attempt is its own row that support and reconciliation rely on.
+    // Collapsing them would destroy that history. A retried webhook always carries the
+    // same gatewayOrderId, which is the case worth protecting against.
+    const dedupeKey = typeof gatewayOrderId === 'string' && gatewayOrderId.trim() ? gatewayOrderId.trim() : null;
 
-    if (!filter) {
-        // Nothing stable to dedupe on -- a cash payment with no subject. Insert, but say so.
-        logger.warn(`recordPayment: no gatewayOrderId or subjectId for a ${vertical} payment; cannot dedupe`);
+    if (!dedupeKey) {
         return Payment.create(doc);
     }
 
     return Payment.findOneAndUpdate(
-        filter,
+        { gatewayOrderId: dedupeKey },
         { $set: doc },
         { new: true, upsert: true, setDefaultsOnInsert: true },
     );

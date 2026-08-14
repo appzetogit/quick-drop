@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { Payment } from './models/payment.model.js';
 import { recordTransaction } from './transaction.service.js';
+import { recordPayment } from './payments.facade.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -12,8 +13,14 @@ export async function createPayment({
     gatewayOrderId = '', module = 'food', metadata
 }) {
     const status = method === 'cash' ? 'pending' : method === 'wallet' ? 'success' : 'created';
-    const doc = await Payment.create({
-        orderId: new mongoose.Types.ObjectId(orderId),
+
+    // Food is the first vertical cut over to the shared facade. The status rules above
+    // and the wallet debit below are unchanged -- only the write itself moved, so every
+    // vertical now lands in one collection with `vertical` set and a consistent shape.
+    // `module` stays an argument because callers already pass it; it maps to `vertical`.
+    const doc = await recordPayment({
+        vertical: module || 'food',
+        subjectId: new mongoose.Types.ObjectId(orderId),
         userId: new mongoose.Types.ObjectId(userId),
         amount: Number(amount),
         currency: 'INR',
@@ -21,7 +28,6 @@ export async function createPayment({
         gateway,
         gatewayOrderId,
         status,
-        module,
         metadata
     });
 

@@ -106,7 +106,37 @@ console.log('\n[6] guardrails');
     check('rejects a missing payer', () => assert.match(e3 || '', /userId is required/));
 }
 
-console.log('\n[7] the wallet ledger is deliberately NOT merged in');
+console.log('\n[7] food is cut over — createPayment now goes through the facade');
+{
+    const { createPayment, getPaymentsByOrder } = await import('../src/core/payments/payment.service.js');
+    const orderId = oid(); const userId = oid();
+
+    const cash = await createPayment({ orderId, userId, amount: 300, method: 'cash' });
+    check('cash still lands as pending', () => assert.equal(cash.status, 'pending'));
+    check('vertical is stamped food', () => assert.equal(cash.vertical, 'food'));
+    check('orderId still written, so getPaymentsByOrder keeps working', () =>
+        assert.equal(String(cash.orderId), String(orderId)));
+    check('subjectModel is FoodOrder', () => assert.equal(cash.subjectModel, 'FoodOrder'));
+    check('returns a plain object as before', () => assert.equal(typeof cash.toObject, 'undefined'));
+
+    const byOrder = await getPaymentsByOrder(orderId);
+    check('getPaymentsByOrder finds it', () => assert.equal(byOrder.length, 1));
+
+    // An order legitimately has several attempts: the first fails, the customer retries.
+    // Each must stay its own row or support and reconciliation lose the history.
+    await createPayment({ orderId, userId, amount: 300, method: 'razorpay', gateway: 'razorpay' });
+    const attempts = await getPaymentsByOrder(orderId);
+    check(`a second attempt is a SEPARATE row (${attempts.length})`, () => assert.equal(attempts.length, 2));
+
+    // ...but a retried webhook carrying the same gateway order id must not duplicate.
+    const g = `order_food_retry_${Date.now()}`;
+    await createPayment({ orderId: oid(), userId, amount: 75, method: 'razorpay', gateway: 'razorpay', gatewayOrderId: g });
+    await createPayment({ orderId: oid(), userId, amount: 75, method: 'razorpay', gateway: 'razorpay', gatewayOrderId: g });
+    const dupes = await Payment.countDocuments({ gatewayOrderId: g });
+    check('same gatewayOrderId still collapses to one row', () => assert.equal(dupes, 1));
+}
+
+console.log('\n[8] the wallet ledger is deliberately NOT merged in');
 {
     const { default: SPTransaction } = await import('../src/modules/serviceProvider/models/Transaction.js');
     check('SP wallet ledger keeps its own collection', () =>
