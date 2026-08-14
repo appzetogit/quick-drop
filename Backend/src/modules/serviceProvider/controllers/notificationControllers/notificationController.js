@@ -69,6 +69,11 @@ const createNotification = async ({
       data
     });
 
+    // Mirror into the shared platform inbox so this shows up in the cross-vertical
+    // feed. Never throws -- a mirror failure must not fail a delivered notification.
+    const { mirrorNotification } = require('../../utils/mirrorNotification');
+    await mirrorNotification(notification);
+
     // Check Socket Connectivity to prevent Duplicate Notifications (Push + Socket)
     let io = null;
     let room = null;

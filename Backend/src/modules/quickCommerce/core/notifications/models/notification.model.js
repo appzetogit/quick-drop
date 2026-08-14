@@ -1,78 +1,25 @@
 import mongoose from 'mongoose';
+import { notificationSchema } from '../../../../../core/notifications/models/notification.model.js';
 
-const notificationSchema = new mongoose.Schema(
-    {
-        ownerType: {
-            type: String,
-            enum: ['USER', 'RESTAURANT', 'DELIVERY_PARTNER'],
-            required: true,
-            index: true
-        },
-        ownerId: {
-            type: mongoose.Schema.Types.ObjectId,
-            required: true,
-            index: true
-        },
-        title: {
-            type: String,
-            required: true,
-            trim: true
-        },
-        message: {
-            type: String,
-            required: true,
-            trim: true
-        },
-        link: {
-            type: String,
-            default: '',
-            trim: true
-        },
-        category: {
-            type: String,
-            default: 'broadcast',
-            trim: true
-        },
-        source: {
-            type: String,
-            enum: ['ADMIN_BROADCAST', 'FSSAI_EXPIRY', 'SUPPORT_RESPONSE'],
-            default: 'ADMIN_BROADCAST',
-            index: true
-        },
-        broadcastId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'QCBroadcastNotification',
-            default: null,
-            index: true
-        },
-        metadata: {
-            type: mongoose.Schema.Types.Mixed,
-            default: {}
-        },
-        isRead: {
-            type: Boolean,
-            default: false,
-            index: true
-        },
-        readAt: {
-            type: Date,
-            default: null
-        },
-        dismissedAt: {
-            type: Date,
-            default: null,
-            index: true
-        }
-    },
-    {
-        collection: 'food_notifications',
-        timestamps: true
-    }
-);
+/**
+ * Quick-commerce notifications now live in the shared `food_notifications` collection.
+ *
+ * This file used to hold a near-identical fork of the core schema writing to
+ * `qc_notifications`. The two had drifted only in the `source` enum, which core has
+ * since absorbed.
+ *
+ * It is a second model over the SAME schema and the SAME collection rather than a
+ * plain re-export, for one reason: the seven call sites in this module create
+ * notifications without naming a vertical, so a re-export would silently label every
+ * quick-commerce notification 'food' (the core default). Cloning lets the default
+ * carry the vertical instead of editing all seven -- and, more to the point, instead
+ * of relying on nobody forgetting it at the eighth.
+ */
+const qcNotificationSchema = notificationSchema.clone();
+qcNotificationSchema.path('vertical').default('quickCommerce');
 
-notificationSchema.index({ ownerType: 1, ownerId: 1, createdAt: -1 });
-notificationSchema.index({ ownerType: 1, ownerId: 1, isRead: 1, dismissedAt: 1 });
-notificationSchema.index({ broadcastId: 1, ownerType: 1, ownerId: 1 }, { unique: true, sparse: true });
-notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 7 * 24 * 60 * 60 });
-
-export const FoodNotification = mongoose.models.QCNotification || mongoose.model('QCNotification', notificationSchema, 'qc_notifications');
+// Exported under the food name because this module is a fork of the food codebase and
+// every importer here already says `FoodNotification`.
+export const FoodNotification =
+    mongoose.models.QCNotification ||
+    mongoose.model('QCNotification', qcNotificationSchema, 'food_notifications');

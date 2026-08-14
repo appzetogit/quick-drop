@@ -56,14 +56,37 @@ const collectionOf = (n) => mongoose.models[n].collection.name;
 const qcCollections = qc.map(collectionOf);
 const otherCollections = all.filter((n) => !n.startsWith('QC')).map(collectionOf);
 
-check('every QC model is on a qc_ collection', () => {
-    const bad = qc.map((n) => [n, collectionOf(n)]).filter(([, c]) => !c.startsWith('qc_'));
+// Isolation was the rule when quick-commerce was merged in as its own fork: 55 of its
+// 61 model names collided with food, and nothing was safe to share. Unification since
+// has made a few collections shared ON PURPOSE -- a platform aggregate that spans
+// verticals and carries a `vertical` field to tell the rows apart.
+//
+// The exceptions are listed rather than the rule being dropped, so an ACCIDENTAL
+// share still fails this test. Adding a name here should be a deliberate decision.
+const DELIBERATELY_SHARED = new Set([
+    // The unified notification inbox. QC keeps its own model so its writes default to
+    // vertical:'quickCommerce', but they land in the shared collection.
+    'food_notifications',
+]);
+
+const leaked = (c) => !c.startsWith('qc_') && !DELIBERATELY_SHARED.has(c);
+
+check('every QC model is on a qc_ collection (or a declared shared one)', () => {
+    const bad = qc.map((n) => [n, collectionOf(n)]).filter(([, c]) => leaked(c));
     assert.deepEqual(bad, [], `not namespaced: ${JSON.stringify(bad)}`);
 });
 
-check('no QC collection is shared with food, taxi, sp or core', () => {
-    const shared = qcCollections.filter((c) => otherCollections.includes(c));
+check('no QC collection is shared with food, taxi, sp or core by accident', () => {
+    const shared = qcCollections.filter((c) => otherCollections.includes(c) && !DELIBERATELY_SHARED.has(c));
     assert.deepEqual([...new Set(shared)], [], `SHARED: ${[...new Set(shared)].join(', ')}`);
+});
+
+check('the shared collections really are shared, not a stale exception', () => {
+    // If a name here stops being shared, the exception is dead and should be removed.
+    for (const c of DELIBERATELY_SHARED) {
+        assert.ok(qcCollections.includes(c), `${c} is allowlisted but no QC model uses it`);
+        assert.ok(otherCollections.includes(c), `${c} is allowlisted but nothing outside QC uses it`);
+    }
 });
 
 for (const live of ['users', 'admins', 'payments', 'refunds', 'settlements', 'food_orders', 'food_items', 'food_restaurants']) {
