@@ -284,8 +284,25 @@ const startServer = async () => {
         };
 
         const startIntervals = () => {
+            // The SP scheduler is gated SEPARATELY from the rest.
+            //
+            // BACKGROUND_JOBS_ENABLED covers the food/taxi watchdog, offer expiry
+            // and FSSAI sync, and defaults to ON — the k9-backend instance leaves
+            // it unset and already runs those against the same cluster. Running a
+            // second copy here is what that flag exists to prevent.
+            //
+            // The Service-Provider module lives only in this deployment, so its
+            // scheduler has no competing instance. Tying it to the same switch
+            // meant SP dispatch was collateral damage: no wave promotion, no
+            // notifiedWorkers, and no realtime alert to any vendor or worker.
+            if (process.env.SP_SCHEDULER_ENABLED !== 'false') {
+                startSPScheduler();
+            } else {
+                logger.warn('SP_SCHEDULER_ENABLED=false — SP wave alerting is OFF; partners will only see work by polling');
+            }
+
             if (!config.backgroundJobsEnabled) {
-                logger.warn('BACKGROUND_JOBS_ENABLED=false — skipping offer expiry, FSSAI sync and the SP booking scheduler');
+                logger.warn('BACKGROUND_JOBS_ENABLED=false — skipping offer expiry and FSSAI sync (read-mostly instance)');
                 return;
             }
 
@@ -294,8 +311,6 @@ const startServer = async () => {
 
             runFssaiExpirySync();
             fssaiExpiryInterval = setInterval(runFssaiExpirySync, 60 * 60 * 1000);
-
-            startSPScheduler();
         };
 
         if (mongoose.connection.readyState === 1) {

@@ -58,8 +58,33 @@ router.get('/status', authenticate, isWorker, async (req, res) => {
  * POST /api/workers/subscription/activate
  * Admin can manually activate a plan for a worker (or after Razorpay webhook)
  */
+// Development convenience ONLY — activates a plan with no payment.
+//
+// Gated on the same predicate the payment layer uses for its mock path: refused
+// outright in production, and otherwise only when Razorpay is unconfigured (i.e.
+// a local box that cannot take a real payment anyway). Without this gate any
+// authenticated worker could grant themselves the longest plan for free, which
+// matters because dispatch uses an active subscription as the gate on receiving
+// paid work.
+//
+// The real flow is create-order -> verify-payment, which checks the signature,
+// confirms with the gateway, and takes planId from server-set order notes.
+const devActivationAllowed = () => {
+  if (process.env.NODE_ENV === 'production') return false;
+  return !process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET;
+};
+
 router.post('/activate', authenticate, isWorker, async (req, res) => {
   try {
+    if (!devActivationAllowed()) {
+      console.warn(`[Subscription] BLOCKED free activation attempt by worker ${req.user.id}`);
+      return res.status(403).json({
+        success: false,
+        message: 'Subscriptions must be purchased. Please complete payment to activate a plan.'
+      });
+    }
+    console.warn(`[Subscription] DEV: activating plan without payment for worker ${req.user.id}`);
+
     const { planId } = req.body;
     const plan = await WorkerSubscriptionPlan.findById(planId);
     if (!plan || !plan.isActive) {

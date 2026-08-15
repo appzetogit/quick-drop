@@ -25,7 +25,12 @@ const MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS) || 5;
 // USE_DEFAULT_OTP is deliberately honoured ONLY outside production. It applies to
 // EVERY phone, so on a publicly reachable backend sharing the live database it would
 // let anyone log in as any customer.
-const TEST_PHONE = (process.env.TEST_OTP_PHONE || '').replace(/\D/g, '').slice(-10);
+// TEST_OTP_PHONE is a comma-separated LIST, so a whole QA team can sign in with the
+// static code without opening it to every number on a publicly reachable host.
+const TEST_PHONES = (process.env.TEST_OTP_PHONE || '')
+  .split(',')
+  .map((entry) => entry.replace(/\D/g, '').slice(-10))
+  .filter(Boolean);
 const STATIC_TEST_OTP = process.env.TEST_OTP_CODE || '123456';
 
 const testOtpAllowed = () => process.env.ALLOW_TEST_OTP === 'true';
@@ -33,7 +38,34 @@ const defaultOtpForEveryone = () =>
   process.env.USE_DEFAULT_OTP === 'true' && process.env.NODE_ENV !== 'production';
 
 const isStaticOtpPhone = (cleanPhone) =>
-  (testOtpAllowed() && TEST_PHONE && cleanPhone === TEST_PHONE) || defaultOtpForEveryone();
+  (testOtpAllowed() && TEST_PHONES.includes(cleanPhone)) || defaultOtpForEveryone();
+
+/**
+ * True when this number is served the static code AND therefore must not be sent a
+ * real SMS.
+ *
+ * Exported so services/smsService.js suppresses the message on exactly this
+ * condition. The two used to be gated separately -- the SMS mock on
+ * USE_DEFAULT_OTP alone, the static code on ALLOW_TEST_OTP plus a production veto --
+ * and when they disagreed the result was a backend that mocked every message while
+ * serving an unguessable random OTP. Nothing could log in, and the config looked
+ * intentional, so it read as a broken OTP service rather than a misconfiguration.
+ * One predicate for both halves is what stops that recurring.
+ */
+const usesStaticOtp = (phone) =>
+  isStaticOtpPhone((phone || '').toString().replace(/\D/g, '').slice(-10));
+
+// Say so loudly at boot. A static-OTP path left on by accident is invisible
+// otherwise -- it looks exactly like a working login.
+if (testOtpAllowed() || defaultOtpForEveryone()) {
+  const scope = defaultOtpForEveryone()
+    ? 'EVERY phone number'
+    : `${TEST_PHONES.length} test number(s)`;
+  console.warn(
+    `[OTP] TEST OTP MODE ACTIVE - static code accepted for ${scope}, and their SMS ` +
+    `is suppressed. Unset ALLOW_TEST_OTP / USE_DEFAULT_OTP before real users rely on this.`,
+  );
+}
 
 /**
  * Generate 6-digit OTP
@@ -240,5 +272,6 @@ module.exports = {
   hashOTP,
   checkRateLimit,
   storeOTP,
-  verifyOTP
+  verifyOTP,
+  usesStaticOtp
 };

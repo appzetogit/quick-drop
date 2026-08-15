@@ -8,8 +8,17 @@ const axios = require('axios');
  */
 const sendSMS = async (phone, message) => {
   try {
-    // Check for Test Mode
-    if (process.env.USE_DEFAULT_OTP === 'true') {
+    // Suppress the real SMS for exactly the numbers that are served the static test
+    // code, using the SAME predicate that decides that -- see usesStaticOtp().
+    //
+    // Gating this on USE_DEFAULT_OTP by itself is what caused the deadlock: in
+    // production that flag mocked every message while the static code was vetoed,
+    // so every user got a silent send and an unguessable OTP.
+    //
+    // Required lazily to keep this module free of a load-order dependency on the
+    // OTP util (which pulls in redis and the Token model).
+    const { usesStaticOtp } = require('../utils/redisOtp.util');
+    if (usesStaticOtp(phone)) {
       console.log(`[SMS MOCK] To: ${phone}, Msg: ${message}`);
       return { success: true, data: 'Mock Success' };
     }
