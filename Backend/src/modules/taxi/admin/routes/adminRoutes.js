@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../middlewares/authMiddleware.js';
+import { requireServiceAccess } from '../../../../core/roles/serviceAccess.middleware.js';
 import {
   approveOwner,
   approveOwnerSignupFromDriver,
@@ -233,7 +234,7 @@ adminRouter.get('/admin/service-locations', getServiceLocations);
 adminRouter.get('/admin/service-locations/nearby', getNearbyServiceLocations);
 adminRouter.get('/admin/notification-channels', getNotificationChannels);
 adminRouter.get('/admin/zones', getZones);
-adminRouter.use('/admin', authenticate(['admin']));
+adminRouter.use('/admin', authenticate(['admin']), requireServiceAccess('taxi'));
 
 adminRouter.get('/admin/permissions', getAdminPermissions);
 adminRouter.get('/admin/admin-management/admins', getAdmins);

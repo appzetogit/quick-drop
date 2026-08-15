@@ -23,52 +23,14 @@ router.get('/check', (req, res) => {
         success: true, 
         message: 'FCM tokens service is operational',
         timestamp: new Date().toISOString(),
-        endpoints: ['/save', '/mobile/save', '/remove', '/test', '/test-set-token/:phone/:token']
+        endpoints: ['/save', '/mobile/save', '/remove', '/test']
     });
 });
 
-// Temporary administrative test route to set token by phone
-router.get('/test-set-token/:phone/:token', async (req, res, next) => {
-    try {
-        const { phone, token } = req.params;
-        const user = await FoodUser.findOne({ phone: phone.trim() });
-        if (!user) return res.status(404).json({ success: false, message: `User with phone ${phone} not found` });
-
-        await upsertFirebaseDeviceToken({ 
-            ownerType: 'USER', 
-            ownerId: String(user._id), 
-            token, 
-            platform: 'mobile' 
-        });
-
-        return res.status(200).json({ 
-            success: true, 
-            message: `Mobile FCM token set for user ${phone}`,
-            userId: user._id
-        });
-    } catch (error) {
-        next(error);
-    }
-});
-
-// Temporary administrative test route to get tokens by phone
-router.get('/test-get-token/:phone', async (req, res, next) => {
-    try {
-        const { phone } = req.params;
-        const user = await FoodUser.findOne({ phone: phone.trim() }).select('fcmTokens fcmTokenMobile');
-        if (!user) return res.status(404).json({ success: false, message: `User with phone ${phone} not found` });
-
-        return res.status(200).json({ 
-            success: true, 
-            data: {
-                web: user.fcmTokens || [],
-                mobile: user.fcmTokenMobile || []
-            }
-        });
-    } catch (error) {
-        next(error);
-    }
-});
+// The unauthenticated /test-set-token and /test-get-token routes that lived here let
+// anyone who knew a customer's phone number redirect that customer's push
+// notifications to their own device, or read their tokens. Deleted; use the
+// authenticated /save and /test endpoints instead.
 
 router.post('/save', authMiddleware, async (req, res, next) => {
     try {

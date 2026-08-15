@@ -31,6 +31,8 @@ import chatRoutes from '../modules/food/chat/routes/chat.routes.js';
 import { getCashbackSettingsPublicController } from '../modules/food/user/controllers/cashback.controller.js';
 import { config } from '../config/env.js';
 import { getRateLimitSummary } from '../middleware/rateLimit.js';
+// Platform-level vertical gate (lives in master's core, not this fork).
+import { requireServiceAccess } from '../../../core/roles/serviceAccess.middleware.js';
 
 const router = express.Router();
 
@@ -66,7 +68,7 @@ router.get('/admin/feature-settings/public', adminController.getFeatureSettings)
 router.get('/admin/fee-settings/public', adminController.getFeeSettings);
 router.get('/admin/cashback-settings/public', getCashbackSettingsPublicController);
 
-router.use('/admin', authMiddleware, requireRoles('ADMIN'), restaurantAdminRoutes);
+router.use('/admin', authMiddleware, requireRoles('ADMIN'), requireServiceAccess('quickCommerce'), restaurantAdminRoutes);
 router.use('/user', authMiddleware, requireRoles('USER'), userRoutes);
 router.use('/notifications', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER'), notificationRoutes);
 router.use('/chat', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER', 'ADMIN'), chatRoutes);

@@ -174,6 +174,15 @@ const VERTICAL_BRANDING = {
       [/\bRestaurants\b/g, "Sellers"],
       [/\bRestaurant\b/g, "Seller"],
     ],
+    // Food-domain concepts that make no sense for a quick-commerce vertical. They
+    // operate on qc_* data so nothing leaks, but a grocery panel offering dine-in
+    // management is noise. Paths are pre-rebase (as written in adminSidebarMenu).
+    hiddenPaths: [
+      "/admin/food/point-of-sale",
+      "/admin/food/dining-management",
+      "/admin/food/dining-list",
+    ],
+    hiddenSections: ["DINING MANAGEMENT"],
   },
 }
 
@@ -186,19 +195,22 @@ export const rebaseAdminMenu = (nodes, base) => {
     typeof path === "string" && path.startsWith(FOOD_ADMIN_BASE)
       ? `${base}${path.slice(FOOD_ADMIN_BASE.length)}`
       : path
-  const { labels, words = [] } = brandingFor(base)
+  const { labels, words = [], hiddenPaths = [], hiddenSections = [] } = brandingFor(base)
   const relabel = (label) => {
     if (!label) return label
     if (labels[label]) return labels[label]
     return words.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), label)
   }
-  return nodes.map((node) => ({
-    ...node,
-    ...(node.path ? { path: rebase(node.path) } : {}),
-    ...(node.label ? { label: relabel(node.label) } : {}),
-    ...(node.items ? { items: rebaseAdminMenu(node.items, base) } : {}),
-    ...(node.subItems ? { subItems: rebaseAdminMenu(node.subItems, base) } : {}),
-  }))
+  return nodes
+    .filter((node) => !(node.path && hiddenPaths.includes(node.path)))
+    .filter((node) => !(node.label && hiddenSections.includes(node.label)))
+    .map((node) => ({
+      ...node,
+      ...(node.path ? { path: rebase(node.path) } : {}),
+      ...(node.label ? { label: relabel(node.label) } : {}),
+      ...(node.items ? { items: rebaseAdminMenu(node.items, base) } : {}),
+      ...(node.subItems ? { subItems: rebaseAdminMenu(node.subItems, base) } : {}),
+    }))
 }
 
 export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange }) {

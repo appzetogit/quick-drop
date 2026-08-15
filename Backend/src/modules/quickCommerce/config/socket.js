@@ -37,18 +37,31 @@ const roomNames = {
 };
 
 /**
- * Initializes Socket.IO with the provided HTTP server.
- * When REDIS_ENABLED=true and REDIS_URL is set, attaches Redis adapter for horizontal scaling.
- * @param {import('http').Server} server
- * @returns {Promise<Server>}
+ * Attaches the quick-commerce socket handlers to the /qc NAMESPACE of master's one
+ * Socket.IO server.
+ *
+ * This used to build `new Server(server, ...)` of its own -- and was never called,
+ * because a second Socket.IO server on the same HTTP server would fight master's for
+ * the /socket.io path. Every QC realtime feature (order tracking, chat, emergency
+ * alerts, admin broadcast) was silently dead: getIO() logged a warning and returned
+ * undefined. Same conversion the service-provider module got (see
+ * modules/serviceProvider/sockets/index.js).
+ *
+ * Auth, rooms and events below are unchanged; they run on the namespace. Rooms are
+ * namespace-scoped, so QC's `user:<id>` cannot collide with food's. CORS is inherited
+ * from the root server.
+ *
+ * Clients connect with:  io(BASE_URL + '/qc', { auth: { token } })
+ *
+ * @param {import('socket.io').Server} rootIo  master's io instance
  */
-export const initSocket = async (server) => {
-    io = new Server(server, {
-        cors: {
-            origin: config.socketCorsOrigin,
-            methods: ['GET', 'POST']
-        }
-    });
+export const initSocket = async (rootIo) => {
+    if (!rootIo) {
+        logger.warn('[QC Socket] no root io provided; QC realtime is disabled');
+        return null;
+    }
+    if (io) return io;
+    io = rootIo.of('/qc');
 
     // Socket auth middleware (Bearer token).
     io.use((socket, next) => {
@@ -179,7 +192,8 @@ export const initSocket = async (server) => {
             }
             const room = roomNames.delivery(deliveryPartnerId);
             socket.join(room);
-            const roomSize = io?.sockets?.adapter?.rooms?.get(room)?.size || 0;
+            // io is a Namespace now: the adapter hangs off it directly, not .sockets.
+            const roomSize = io?.adapter?.rooms?.get(room)?.size || 0;
             logDeliverySocket('Delivery room joined', {
                 socketId: socket.id,
                 deliveryPartnerId: String(deliveryPartnerId),

@@ -104,6 +104,12 @@ const startServer = async () => {
         const spNamespace = configureSPSocketServer(getIO());
         app.set('io', spNamespace);
 
+        // 3d. Quick-commerce socket handlers, on namespace /qc. Until this line
+        // existed, QC's initSocket was never called at all and every QC realtime
+        // feature (order tracking, chat, emergency alerts) was silently dead.
+        const { initSocket: initQCSocket } = await import('./src/modules/quickCommerce/config/socket.js');
+        await initQCSocket(getIO());
+
         if (config.redisEnabled) {
             await connectRedis();
         }
@@ -206,13 +212,8 @@ const startServer = async () => {
             logger.warn('BullMQ is enabled but Redis is disabled. Queue initialization skipped.');
         }
 
-        app.post('/api/debug-log', (req, res) => {
-            console.log("[FRONTEND_LOG]", req.body.message);
-            import('fs').then(fs => {
-                fs.appendFileSync('s:/Appezeto task-2/k9rides/Backend/scratch_socket_debug.log', `${new Date().toISOString()} [FRONTEND_LOG] ${req.body.message}\n`);
-            }).catch(err => console.error(err));
-            res.sendStatus(200);
-        });
+        // /api/debug-log used to live here: an unauthenticated endpoint that appended
+        // arbitrary request bodies to a hardcoded dev-machine path. Deleted.
 
         app.post('/api/deploy', (req, res) => {
             const signature = req.headers['x-hub-signature-256'];
@@ -228,7 +229,12 @@ const startServer = async () => {
                 .update(JSON.stringify(req.body))
                 .digest('hex');
 
-            if (signature !== hash) {
+            // timingSafeEqual, not ===: a plain compare leaks how many leading bytes
+            // matched through response timing. Length is checked first because
+            // timingSafeEqual throws on unequal lengths.
+            const sigBuf = Buffer.from(String(signature || ''));
+            const hashBuf = Buffer.from(hash);
+            if (sigBuf.length !== hashBuf.length || !crypto.timingSafeEqual(sigBuf, hashBuf)) {
                 return res.status(403).send('Unauthorized');
             }
 
