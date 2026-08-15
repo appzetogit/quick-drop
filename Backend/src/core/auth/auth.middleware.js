@@ -4,7 +4,7 @@ import { FoodUser } from '../users/user.model.js';
 import mongoose from 'mongoose';
 
 export const requireAdmin = (req, res, next) => {
-    if (req.user?.role !== 'ADMIN') {
+    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'SUPER_ADMIN') {
         return sendError(res, 403, 'Admin access required');
     }
     next();

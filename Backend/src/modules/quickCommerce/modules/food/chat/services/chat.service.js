@@ -11,7 +11,7 @@ import { logger } from '../../../../utils/logger.js';
 const ROLES = ['USER', 'RESTAURANT', 'DELIVERY_PARTNER', 'ADMIN'];
 
 /** Stable identifier for a participant. ADMIN carries no id (shared inbox). */
-export const partyToken = (role, id) => (role === 'ADMIN' ? 'ADMIN' : `${role}:${String(id)}`);
+export const partyToken = (role, id) => (role === 'ADMIN' || role === 'SUPER_ADMIN' ? 'ADMIN' : `${role}:${String(id)}`);
 
 /** Deterministic conversation id — same two parties (+ order) always collide to one thread. */
 const buildConversationId = (tokenA, tokenB, orderId) => {
@@ -21,7 +21,7 @@ const buildConversationId = (tokenA, tokenB, orderId) => {
 
 /** Socket room a party listens on. */
 const roomForToken = (role, id) => {
-    if (role === 'ADMIN') return rooms.admin();
+    if (role === 'ADMIN' || role === 'SUPER_ADMIN') return rooms.admin();
     if (role === 'USER') return rooms.user(id);
     if (role === 'RESTAURANT') return rooms.restaurant(id);
     if (role === 'DELIVERY_PARTNER') return rooms.delivery(id);

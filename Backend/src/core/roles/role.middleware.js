@@ -8,7 +8,14 @@ export const requireRoles = (...allowedRoles) => {
 
         const userRole = String(req.user.role).toUpperCase();
         const allowedSet = new Set(allowedRoles.map((r) => String(r).toUpperCase()));
-        if (!allowedSet.has(userRole)) {
+
+        // A super admin IS an admin. Tokens mint role from the admin document
+        // (auth.service: `role: admin.role`), so promoting an account to super_admin
+        // changed its token role and locked it out of every requireRoles('ADMIN')
+        // mount -- the panel rendered, every API call 403'd, and screens showed zeros.
+        const satisfies = allowedSet.has(userRole)
+            || (userRole === 'SUPER_ADMIN' && allowedSet.has('ADMIN'));
+        if (!satisfies) {
             return sendError(res, 403, 'Forbidden: insufficient permissions');
         }
 

@@ -20,7 +20,7 @@ const hydrateAdmin = async (req) => {
 
 export const requireAdminPermission = (section, action = 'view') => async (req, res, next) => {
     try {
-        if (!req.user?.userId || req.user?.role !== 'ADMIN') {
+        if (!req.user?.userId || !['ADMIN', 'SUPER_ADMIN'].includes(req.user?.role)) {
             return sendError(res, 401, 'Not authenticated');
         }
 
@@ -45,7 +45,7 @@ export const requireAdminPermission = (section, action = 'view') => async (req, 
 
 export const requireAnyAdminPermission = (rules = []) => async (req, res, next) => {
     try {
-        if (!req.user?.userId || req.user?.role !== 'ADMIN') {
+        if (!req.user?.userId || !['ADMIN', 'SUPER_ADMIN'].includes(req.user?.role)) {
             return sendError(res, 401, 'Not authenticated');
         }
 

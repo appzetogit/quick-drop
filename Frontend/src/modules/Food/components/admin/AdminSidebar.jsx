@@ -150,6 +150,24 @@ const REUSED_ADMIN_BASES = ["/admin/quick-commerce"]
 export const currentAdminBase = (pathname = "") =>
   REUSED_ADMIN_BASES.find((base) => pathname.startsWith(base)) || FOOD_ADMIN_BASE
 
+/**
+ * What the panel calls itself per vertical. The screens are shared; the words on them
+ * must not be, or the operator cannot tell which vertical they are editing -- which is
+ * exactly how quick-commerce banner uploads ended up in food.
+ */
+const VERTICAL_BRANDING = {
+  "/admin/food": { title: "K9 Food", labels: {} },
+  "/admin/quick-commerce": {
+    title: "K9 Quick",
+    labels: {
+      "FOOD MANAGEMENT": "ITEM MANAGEMENT",
+      "RESTAURANT MANAGEMENT": "STORE MANAGEMENT",
+    },
+  },
+}
+
+export const brandingFor = (base) => VERTICAL_BRANDING[base] || VERTICAL_BRANDING[FOOD_ADMIN_BASE]
+
 /** Re-point every menu path at `base`. Returns the menu untouched for food. */
 export const rebaseAdminMenu = (nodes, base) => {
   if (base === FOOD_ADMIN_BASE || !Array.isArray(nodes)) return nodes
@@ -157,9 +175,11 @@ export const rebaseAdminMenu = (nodes, base) => {
     typeof path === "string" && path.startsWith(FOOD_ADMIN_BASE)
       ? `${base}${path.slice(FOOD_ADMIN_BASE.length)}`
       : path
+  const labels = brandingFor(base).labels
   return nodes.map((node) => ({
     ...node,
     ...(node.path ? { path: rebase(node.path) } : {}),
+    ...(node.label && labels[node.label] ? { label: labels[node.label] } : {}),
     ...(node.items ? { items: rebaseAdminMenu(node.items, base) } : {}),
     ...(node.subItems ? { subItems: rebaseAdminMenu(node.subItems, base) } : {}),
   }))
@@ -698,13 +718,13 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1 transition-all">
                   <img
                     src={activeLogo || logoUrl}
-                    alt="K9 Food"
+                    alt={brandingFor(adminBase).title}
                     className="h-9 w-9 object-contain"
                   />
                 </div>
                 <div className="flex flex-col">
                   <h3 className="text-[15px] font-extrabold leading-tight text-white tracking-tight">
-                    K9 Food
+                    {brandingFor(adminBase).title}
                   </h3>
                   <div className="mt-1 flex items-center gap-1.5">
                     <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />

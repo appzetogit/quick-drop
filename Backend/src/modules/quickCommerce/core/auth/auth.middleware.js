@@ -5,7 +5,7 @@ import { FoodRestaurant } from '../../modules/food/restaurant/models/restaurant.
 import { FoodDeliveryPartner } from '../../modules/food/delivery/models/deliveryPartner.model.js';
 
 export const requireAdmin = (req, res, next) => {
-    if (req.user?.role !== 'ADMIN') {
+    if (req.user?.role !== 'ADMIN' && req.user?.role !== 'SUPER_ADMIN') {
         return sendError(res, 403, 'Admin access required');
     }
     next();
@@ -41,7 +41,9 @@ export const authMiddleware = (req, res, next) => {
 
     req.user = {
         userId: decoded.userId,
-        role: decoded.role,
+        // Uppercased to match master's middleware: every role gate downstream compares
+        // against 'ADMIN'/'SUPER_ADMIN' literals, and tokens mint lowercase roles.
+        role: String(decoded.role || '').toUpperCase(),
         adminType: decoded.adminType
     };
 

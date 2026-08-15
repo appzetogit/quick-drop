@@ -18,7 +18,7 @@ router.get('/business-settings/public', businessSettingsController.getBusinessSe
 
 const requireAdmin = (req, _res, next) => {
     const user = req.user;
-    if (!user || user.role !== 'ADMIN') {
+    if (!user || (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN')) {
         return next(new AuthError('Admin access required'));
     }
     return next();
