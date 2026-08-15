@@ -47,6 +47,7 @@ import {
   IndianRupee,
   PiggyBank,
   Lock,
+  ShoppingBasket,
 } from "lucide-react"
 import { cn } from "@food/utils/utils"
 import { Input } from "@food/components/ui/input"
@@ -65,7 +66,7 @@ import { useSettings } from "../../../Taxi/shared/context/SettingsContext"
  */
 const useServiceAccess = () =>
   useMemo(() => {
-    const showAll = { food: true, taxi: true, serviceProvider: true }
+    const showAll = { food: true, taxi: true, serviceProvider: true, quickCommerce: true }
     try {
       const raw = localStorage.getItem("admin_user") || sessionStorage.getItem("admin_user")
       if (!raw) return showAll
@@ -77,6 +78,7 @@ const useServiceAccess = () =>
         food: access.includes("food"),
         taxi: access.includes("taxi"),
         serviceProvider: access.includes("serviceProvider"),
+        quickCommerce: access.includes("quickCommerce"),
       }
     } catch {
       return showAll
@@ -795,6 +797,26 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                   )}
                 />
                 Services
+              </button>
+              )}
+              {serviceAccess.quickCommerce && (
+              <button
+                type="button"
+                onClick={() => navigate("/admin/quick-commerce")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                  location.pathname.startsWith("/admin/quick-commerce")
+                    ? "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)] scale-[1.02]"
+                    : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                )}
+              >
+                <ShoppingBasket
+                  className={cn(
+                    "w-3.5 h-3.5",
+                    location.pathname.startsWith("/admin/quick-commerce") ? "text-black" : "text-neutral-500"
+                  )}
+                />
+                Quick
               </button>
               )}
             </div>

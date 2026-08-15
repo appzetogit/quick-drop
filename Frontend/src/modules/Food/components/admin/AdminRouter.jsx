@@ -131,45 +131,19 @@ const SPAdminRoutes = lazy(() => import("@sp/admin/routes"));
 const FoodSubadmins = lazy(() => import("@food/pages/admin/management/FoodSubadmins"));
 const FoodSubadminCreate = lazy(() => import("@food/pages/admin/management/FoodSubadminCreate"));
 
-export default function AdminRouter() {
-  return (
-    <Suspense fallback={<Loader />}>
-      <Routes>
-        {/* Protected Routes - With Layout */}
-        {/* Admin Login - Same as earlier */}
-        <Route path="login" element={<AdminLogin />} />
-        <Route path="forgot-password" element={<AdminForgotPassword />} />
-        <Route path="signup" element={<AdminSignup />} />
-
-        {/* SERVICE PROVIDER ADMIN.
-            Deliberately OUTSIDE master's AdminLayout: the SP pages ship their own
-            AdminLayout (sidebar + a position:fixed header), so nesting them inside
-            master's shell stacked two sidebars and overlapped two headers. Taxi has
-            the same shape and is handled the same way -- it owns its chrome inside
-            TaxiApp. Auth is still shared: same ProtectedRoute, same /admin/login,
-            same token. */}
-        <Route
-          path="sp/*"
-          element={
-            <ProtectedRoute>
-              <SPAdminRoutes />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Protected Routes - With Layout */}
-        <Route
-          element={
-            <ProtectedRoute>
-              <AdminLayout />
-            </ProtectedRoute>
-          }
-        >
-          {/* Default Admin Redirect */}
-          <Route path="/" element={<Navigate to="food" replace />} />
-
-          {/* FOOD ADMIN - All food related routes nested here */}
-          <Route path="food/*">
+/**
+ * The admin pages for one vertical.
+ *
+ * Rendered at BOTH /admin/food and /admin/quick-commerce. Quick-commerce is a fork of
+ * this repo's own food module, so its admin API is the same route table on a different
+ * prefix (/v1/qc/admin instead of /v1/food/admin) -- there is no second UI to port, and
+ * shipping one would mean maintaining two copies of the same screens.
+ *
+ * The prefix swap happens once, in the axios request interceptor, keyed on the browser
+ * path. Nothing below needs to know which vertical it is serving.
+ */
+const verticalAdminRoutes = (
+  <>
             <Route index element={<AdminHome />} />
             <Route path="point-of-sale" element={<PointOfSale />} />
             <Route path="status-monitor" element={<StatusMonitor />} />
@@ -317,14 +291,56 @@ export default function AdminRouter() {
             <Route path="hero-banner-management" element={<LandingPageManagement />} />
             <Route path="dining-management" element={<DiningManagement />} />
             <Route path="dining-list" element={<DiningList />} />
-          </Route>
+  </>
+);
+
+export default function AdminRouter() {
+  return (
+    <Suspense fallback={<Loader />}>
+      <Routes>
+        {/* Protected Routes - With Layout */}
+        {/* Admin Login - Same as earlier */}
+        <Route path="login" element={<AdminLogin />} />
+        <Route path="forgot-password" element={<AdminForgotPassword />} />
+        <Route path="signup" element={<AdminSignup />} />
+
+        {/* SERVICE PROVIDER ADMIN.
+            Deliberately OUTSIDE master's AdminLayout: the SP pages ship their own
+            AdminLayout (sidebar + a position:fixed header), so nesting them inside
+            master's shell stacked two sidebars and overlapped two headers. Taxi has
+            the same shape and is handled the same way -- it owns its chrome inside
+            TaxiApp. Auth is still shared: same ProtectedRoute, same /admin/login,
+            same token. */}
+        <Route
+          path="sp/*"
+          element={
+            <ProtectedRoute>
+              <SPAdminRoutes />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Protected Routes - With Layout */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <AdminLayout />
+            </ProtectedRoute>
+          }
+        >
+          {/* Default Admin Redirect */}
+          <Route path="/" element={<Navigate to="food" replace />} />
+
+          {/* FOOD ADMIN - All food related routes nested here */}
+          {/* FOOD ADMIN */}
+          <Route path="food/*">{verticalAdminRoutes}</Route>
 
           {/* TAXI ADMIN - Redirect to integrated taxi admin */}
           <Route path="taxi/*" element={<Navigate to="/taxi/admin/dashboard" replace />} />
 
 
-          {/* QUICK COMMERCE ADMIN - Placeholder for future implementation */}
-          <Route path="quick-commerce/*" element={<div className="p-8 text-center text-gray-500 bg-white min-h-[50vh] flex items-center justify-center border rounded-xl m-4">Quick Commerce Administration - Coming Soon</div>} />
+                    {/* QUICK COMMERCE ADMIN - the same screens, pointed at /v1/qc/admin. */}
+          <Route path="quick-commerce/*">{verticalAdminRoutes}</Route>
         </Route>
 
         {/* Redirect unknown admin routes to food admin */}

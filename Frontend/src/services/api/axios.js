@@ -188,8 +188,31 @@ function onRefreshFailed(module) {
   }
 }
 
+/**
+ * Point the admin screens at quick-commerce when they are being viewed there.
+ *
+ * /admin/food and /admin/quick-commerce render the SAME components (see AdminRouter),
+ * because quick-commerce is a fork of this repo's food module and its admin API is the
+ * identical route table under /v1/qc/admin. Rather than thread a prefix through the
+ * ~150 call sites in services/api, the swap happens here, once.
+ *
+ * Derived from the current URL rather than held in a module variable on purpose: a
+ * mutable global would have to be kept in step with client-side navigation, and would
+ * be wrong for any request already in flight when the admin switches vertical.
+ *
+ * Only /food/admin moves. Auth is deliberately shared -- /food/auth/admin and
+ * /auth/admin stay pointed at the platform, so one login covers every vertical.
+ */
+const rewriteAdminVertical = (url) => {
+  if (typeof url !== "string" || !url) return url;
+  if (typeof window === "undefined") return url;
+  if (!window.location.pathname.startsWith("/admin/quick-commerce")) return url;
+  return url.replace(/(^|\/)food\/admin(?=\/|$)/, "$1qc/admin");
+};
+
 apiClient.interceptors.request.use(
   (config) => {
+    config.url = rewriteAdminVertical(config.url);
     config.contextModule = getModuleFromConfig(config);
 
     // If sending FormData, let the browser set proper multipart boundary.
