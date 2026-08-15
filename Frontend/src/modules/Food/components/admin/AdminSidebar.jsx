@@ -160,18 +160,19 @@ const VERTICAL_BRANDING = {
   "/admin/quick-commerce": {
     title: "K9 Quick",
     labels: {
-      "FOOD MANAGEMENT": "ITEM MANAGEMENT",
-      "RESTAURANT MANAGEMENT": "STORE MANAGEMENT",
+      "FOOD MANAGEMENT": "PRODUCT MANAGEMENT",
+      "RESTAURANT MANAGEMENT": "SELLER MANAGEMENT",
     },
     // Word-level rewrites applied to EVERY menu label, not just section headers.
     // The first branding pass only mapped the two headers, so the items under them
     // ("Food Approval", "Restaurants List") still read as the food vertical.
+    // Quick-commerce vocabulary: products and sellers, no food, no restaurants.
     // Longest word first, so "Foods" does not get caught by the "Food" rule.
     words: [
-      [/\bFoods\b/g, "Items"],
-      [/\bFood\b/g, "Item"],
-      [/\bRestaurants\b/g, "Stores"],
-      [/\bRestaurant\b/g, "Store"],
+      [/\bFoods\b/g, "Products"],
+      [/\bFood\b/g, "Product"],
+      [/\bRestaurants\b/g, "Sellers"],
+      [/\bRestaurant\b/g, "Seller"],
     ],
   },
 }

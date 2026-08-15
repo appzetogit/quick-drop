@@ -1,5 +1,6 @@
 import { Suspense, lazy } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, Outlet } from "react-router-dom";
+import VerticalVocabulary from "./VerticalVocabulary";
 import ProtectedRoute from "./ProtectedRoute";
 import AdminLayout from "./AdminLayout";
 import Loader from "@food/components/Loader";
@@ -340,7 +341,19 @@ export default function AdminRouter() {
 
 
                     {/* QUICK COMMERCE ADMIN - the same screens, pointed at /v1/qc/admin. */}
-          <Route path="quick-commerce/*">{verticalAdminRoutes}</Route>
+          {/* The vocabulary layer rewrites the shared screens' copy (Food -> Product,
+              Restaurant -> Seller) for every screen in this subtree, present and
+              future, instead of forking dozens of components for their strings. */}
+          <Route
+            path="quick-commerce/*"
+            element={
+              <VerticalVocabulary>
+                <Outlet />
+              </VerticalVocabulary>
+            }
+          >
+            {verticalAdminRoutes}
+          </Route>
         </Route>
 
         {/* Redirect unknown admin routes to food admin */}
