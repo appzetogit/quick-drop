@@ -163,6 +163,16 @@ const VERTICAL_BRANDING = {
       "FOOD MANAGEMENT": "ITEM MANAGEMENT",
       "RESTAURANT MANAGEMENT": "STORE MANAGEMENT",
     },
+    // Word-level rewrites applied to EVERY menu label, not just section headers.
+    // The first branding pass only mapped the two headers, so the items under them
+    // ("Food Approval", "Restaurants List") still read as the food vertical.
+    // Longest word first, so "Foods" does not get caught by the "Food" rule.
+    words: [
+      [/\bFoods\b/g, "Items"],
+      [/\bFood\b/g, "Item"],
+      [/\bRestaurants\b/g, "Stores"],
+      [/\bRestaurant\b/g, "Store"],
+    ],
   },
 }
 
@@ -175,11 +185,16 @@ export const rebaseAdminMenu = (nodes, base) => {
     typeof path === "string" && path.startsWith(FOOD_ADMIN_BASE)
       ? `${base}${path.slice(FOOD_ADMIN_BASE.length)}`
       : path
-  const labels = brandingFor(base).labels
+  const { labels, words = [] } = brandingFor(base)
+  const relabel = (label) => {
+    if (!label) return label
+    if (labels[label]) return labels[label]
+    return words.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), label)
+  }
   return nodes.map((node) => ({
     ...node,
     ...(node.path ? { path: rebase(node.path) } : {}),
-    ...(node.label && labels[node.label] ? { label: labels[node.label] } : {}),
+    ...(node.label ? { label: relabel(node.label) } : {}),
     ...(node.items ? { items: rebaseAdminMenu(node.items, base) } : {}),
     ...(node.subItems ? { subItems: rebaseAdminMenu(node.subItems, base) } : {}),
   }))
