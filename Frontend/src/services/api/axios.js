@@ -55,11 +55,21 @@ function getModuleFromUrl(url = "") {
   
   // Admin detection
   if (
-    normalized.includes("/admin/") || 
-    normalized.includes("/food/admin/") || 
-    normalized.includes("/food/auth/admin") || 
-    normalized.includes("/auth/admin") || 
+    normalized.includes("/admin/") ||
+    normalized.includes("/food/admin/") ||
+    normalized.includes("/food/auth/admin") ||
+    normalized.includes("/auth/admin") ||
     normalized.includes("admin/login")
+  ) return "admin";
+
+  // Landing management (hero/top banners) is an admin surface even though its URLs
+  // carry no /admin/ segment -- the backend guards every non-public path on it with
+  // requireRoles('ADMIN'). Classifying it as "user" meant no admin token was attached
+  // and every banner call 401'd on pages that rely on the interceptor. Public reads
+  // stay unclassified so the user app's banner fetches keep working tokenless.
+  if (
+    (normalized.includes("/hero-banners") || normalized.includes("/top-banners")) &&
+    !/\/public(\?|$)/.test(normalized)
   ) return "admin";
   
   // Delivery detection - Catch all delivery-specific functional and auth routes
@@ -108,7 +118,9 @@ function isTokenForModule(token, module) {
   const role = String(payload.role || "").toLowerCase();
 
   if (module === "user") return role === "user" && Boolean(payload.userId);
-  if (module === "admin") return role === "admin" && Boolean(payload.userId);
+  // super_admin included: promoting an account changed its token role and made this
+  // exact match silently DROP the stored admin token from admin requests.
+  if (module === "admin") return ["admin", "super_admin"].includes(role) && Boolean(payload.userId);
   if (module === "restaurant") return role === "restaurant" && Boolean(payload.userId);
   if (module === "delivery") return ["delivery_partner", "delivery"].includes(role) && Boolean(payload.userId);
 
