@@ -155,6 +155,12 @@ export const verifyUserOtpAndLogin = async (
       isVerified: true,
       ...(trimmedName ? { name: trimmedName } : {}),
     });
+
+    // Link to the customer's one platform identity (identity merge, phase 1).
+    // Never blocks the login; an unlinked document is repaired by the backfill.
+    import('../../../../core/identity/identityLink.service.js')
+      .then(({ linkSatellite }) => linkSatellite(FoodUser, userDoc._id, { phone, name: trimmedName }))
+      .catch(() => {});
   } else {
     let needsSave = false;
     if (!userDoc.isVerified) {

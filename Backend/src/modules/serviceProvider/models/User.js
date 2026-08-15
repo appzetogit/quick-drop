@@ -2,6 +2,16 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
+  // The customer's ONE platform identity (shared `users` collection). Stamped at
+  // registration by core/identity/identityLink.service.js and backfilled by
+  // scripts/link-user-identities.js. Replaces phone-suffix matching as the way to
+  // say "this sp_user and that platform user are the same person".
+  platformUserId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'FoodUser',
+    default: null,
+    index: true
+  },
   name: {
     type: String,
     required: [true, 'Please provide a name'],

@@ -111,15 +111,34 @@ check('no dangling ref in any QC schema', () => {
     assert.deepEqual(missing, [], missing.slice(0, 6).join(', '));
 });
 
-check('no QC schema still points at a Food* model', () => {
+// Refs that cross into the platform ON PURPOSE. Same rule as the shared-collection
+// allowlist above: exceptions are named, so an accidental cross-ref still fails.
+const DELIBERATE_PLATFORM_REFS = new Set([
+    // The identity link: every satellite user points at the customer's ONE platform
+    // identity in the shared `users` collection. That is the identity merge working,
+    // not a leak.
+    'QCUser.platformUserId -> FoodUser',
+]);
+
+check('no QC schema still points at a Food* model (undeclared)', () => {
     const crossed = [];
     for (const n of qc) {
         mongoose.models[n].schema.eachPath((p, type) => {
             const ref = type.options?.ref || type.caster?.options?.ref;
-            if (ref && ref.startsWith('Food')) crossed.push(`${n}.${p} -> ${ref}`);
+            const entry = `${n}.${p} -> ${ref}`;
+            if (ref && ref.startsWith('Food') && !DELIBERATE_PLATFORM_REFS.has(entry)) crossed.push(entry);
         });
     }
     assert.deepEqual(crossed, [], `would read food data: ${crossed.slice(0, 6).join(', ')}`);
+});
+
+check('the declared platform refs actually exist (no stale exceptions)', () => {
+    for (const entry of DELIBERATE_PLATFORM_REFS) {
+        const [modelDotPath] = entry.split(' -> ');
+        const [model, ...pathParts] = modelDotPath.split('.');
+        const type = mongoose.models[model]?.schema.path(pathParts.join('.'));
+        assert.ok(type?.options?.ref, `${entry} is allowlisted but the ref is gone`);
+    }
 });
 
 console.log('\n[4] routing');
