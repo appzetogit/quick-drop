@@ -1,0 +1,352 @@
+[
+ {
+  "model": "QCAddon",
+  "from": "food_addons",
+  "to": "qc_addons"
+ },
+ {
+  "model": "QCAdmin",
+  "from": "food_admins",
+  "to": "qc_admins"
+ },
+ {
+  "model": "QCAdminResetOtp",
+  "from": "food_admin_reset_otps",
+  "to": "qc_admin_reset_otps"
+ },
+ {
+  "model": "QCAdminWallet",
+  "from": "food_admin_wallets",
+  "to": "qc_admin_wallets"
+ },
+ {
+  "model": "QCBroadcastNotification",
+  "from": "food_notification_broadcasts",
+  "to": "qc_broadcast_notifications"
+ },
+ {
+  "model": "QCBusinessSettings",
+  "from": "foodbusinesssettings",
+  "to": "qc_business_settingses"
+ },
+ {
+  "model": "QCCashbackSettings",
+  "from": "food_cashback_settings",
+  "to": "qc_cashback_settingses"
+ },
+ {
+  "model": "QCCategory",
+  "from": "food_categories",
+  "to": "qc_categories"
+ },
+ {
+  "model": "QCChatConversation",
+  "from": "food_chat_conversations",
+  "to": "qc_chat_conversations"
+ },
+ {
+  "model": "QCChatMessage",
+  "from": "food_chat_messages",
+  "to": "qc_chat_messages"
+ },
+ {
+  "model": "QCDeliveryBonusTransaction",
+  "from": "food_delivery_bonus_transactions",
+  "to": "qc_delivery_bonus_transactions"
+ },
+ {
+  "model": "QCDeliveryCashDeposit",
+  "from": "food_delivery_cash_deposits",
+  "to": "qc_delivery_cash_deposits"
+ },
+ {
+  "model": "QCDeliveryCashLimit",
+  "from": "food_delivery_cash_limits",
+  "to": "qc_delivery_cash_limits"
+ },
+ {
+  "model": "QCDeliveryCommissionRule",
+  "from": "food_delivery_commission_rules",
+  "to": "qc_delivery_commission_rules"
+ },
+ {
+  "model": "QCDeliveryEmergencyHelp",
+  "from": "food_delivery_emergency_help",
+  "to": "qc_delivery_emergency_helps"
+ },
+ {
+  "model": "QCDeliveryOrderEmergencyRequest",
+  "from": "food_delivery_order_emergency_requests",
+  "to": "qc_delivery_order_emergency_requests"
+ },
+ {
+  "model": "QCDeliveryPartner",
+  "from": "food_delivery_partners",
+  "to": "qc_delivery_partners"
+ },
+ {
+  "model": "QCDeliverySupportTicket",
+  "from": "food_delivery_support_tickets",
+  "to": "qc_delivery_support_tickets"
+ },
+ {
+  "model": "QCDeliveryWallet",
+  "from": "food_delivery_wallets",
+  "to": "qc_delivery_wallets"
+ },
+ {
+  "model": "QCDeliveryWithdrawal",
+  "from": "food_delivery_withdrawals",
+  "to": "qc_delivery_withdrawals"
+ },
+ {
+  "model": "QCDiningBanner",
+  "from": "food_dining_banners",
+  "to": "qc_dining_banners"
+ },
+ {
+  "model": "QCDiningCategory",
+  "from": "food_dining_categories",
+  "to": "qc_dining_categories"
+ },
+ {
+  "model": "QCDiningRestaurant",
+  "from": "food_dining_restaurants",
+  "to": "qc_dining_restaurants"
+ },
+ {
+  "model": "QCDriverRegistrationField",
+  "from": "food_driver_registration_fields",
+  "to": "qc_driver_registration_fields"
+ },
+ {
+  "model": "QCEarningAddon",
+  "from": "food_earning_addons",
+  "to": "qc_earning_addons"
+ },
+ {
+  "model": "QCEarningAddonHistory",
+  "from": "food_earning_addon_history",
+  "to": "qc_earning_addon_histories"
+ },
+ {
+  "model": "QCExploreIcon",
+  "from": "food_explore_icons",
+  "to": "qc_explore_icons"
+ },
+ {
+  "model": "QCFeatureSetting",
+  "from": "food_feature_settings",
+  "to": "qc_feature_settings"
+ },
+ {
+  "model": "QCFeeSettings",
+  "from": "food_fee_settings",
+  "to": "qc_fee_settingses"
+ },
+ {
+  "model": "QCFeedbackExperience",
+  "from": "food_feedback_experiences",
+  "to": "qc_feedback_experiences"
+ },
+ {
+  "model": "QCGourmetRestaurant",
+  "from": "food_gourmet_restaurants",
+  "to": "qc_gourmet_restaurants"
+ },
+ {
+  "model": "QCHeroBanner",
+  "from": "food_hero_banners",
+  "to": "qc_hero_banners"
+ },
+ {
+  "model": "QCHomePromotionBanner",
+  "from": "food_home_promotion_banners",
+  "to": "qc_home_promotion_banners"
+ },
+ {
+  "model": "QCItem",
+  "from": "food_items",
+  "to": "qc_items"
+ },
+ {
+  "model": "QCLandingSettings",
+  "from": "food_landing_settings",
+  "to": "qc_landing_settingses"
+ },
+ {
+  "model": "QCOffer",
+  "from": "food_offers",
+  "to": "qc_offers"
+ },
+ {
+  "model": "QCOfferUsage",
+  "from": "food_offer_usages",
+  "to": "qc_offer_usages"
+ },
+ {
+  "model": "QCOrder",
+  "from": "food_orders",
+  "to": "qc_orders"
+ },
+ {
+  "model": "QCOtp",
+  "from": "food_otps",
+  "to": "qc_otps"
+ },
+ {
+  "model": "QCPageContent",
+  "from": "food_page_contents",
+  "to": "qc_page_contents"
+ },
+ {
+  "model": "QCReferralLog",
+  "from": "food_referral_logs",
+  "to": "qc_referral_logs"
+ },
+ {
+  "model": "QCReferralSettings",
+  "from": "food_referral_settings",
+  "to": "qc_referral_settingses"
+ },
+ {
+  "model": "QCRefreshToken",
+  "from": "food_refresh_tokens",
+  "to": "qc_refresh_tokens"
+ },
+ {
+  "model": "QCRefund",
+  "from": "refunds",
+  "to": "qc_refunds"
+ },
+ {
+  "model": "QCRestaurant",
+  "from": "food_restaurants",
+  "to": "qc_restaurants"
+ },
+ {
+  "model": "QCRestaurantAppBanner",
+  "from": "food_restaurant_app_banners",
+  "to": "qc_restaurant_app_banners"
+ },
+ {
+  "model": "QCRestaurantCommission",
+  "from": "food_restaurant_commissions",
+  "to": "qc_restaurant_commissions"
+ },
+ {
+  "model": "QCRestaurantMenu",
+  "from": "food_restaurant_menus",
+  "to": "qc_restaurant_menus"
+ },
+ {
+  "model": "QCRestaurantOutletTimings",
+  "from": "food_restaurant_outlet_timings",
+  "to": "qc_restaurant_outlet_timings"
+ },
+ {
+  "model": "QCRestaurantSubscriptionHistory",
+  "from": "food_restaurant_subscription_history",
+  "to": "qc_restaurant_subscription_histories"
+ },
+ {
+  "model": "QCRestaurantSubscriptionSettings",
+  "from": "food_restaurant_subscription_settings",
+  "to": "qc_restaurant_subscription_settingses"
+ },
+ {
+  "model": "QCRestaurantSupportTicket",
+  "from": "food_restaurant_support_tickets",
+  "to": "qc_restaurant_support_tickets"
+ },
+ {
+  "model": "QCRestaurantWallet",
+  "from": "food_restaurant_wallets",
+  "to": "qc_restaurant_wallets"
+ },
+ {
+  "model": "QCRestaurantWithdrawal",
+  "from": "food_restaurant_withdrawals",
+  "to": "qc_restaurant_withdrawals"
+ },
+ {
+  "model": "QCSafetyEmergencyReport",
+  "from": "food_safety_emergency_reports",
+  "to": "qc_safety_emergency_reports"
+ },
+ {
+  "model": "QCSettings",
+  "from": "food_settings",
+  "to": "qc_settingses"
+ },
+ {
+  "model": "QCSettlement",
+  "from": "settlements",
+  "to": "qc_settlements"
+ },
+ {
+  "model": "QCSubscriptionBillingRun",
+  "from": "food_subscription_billing_runs",
+  "to": "qc_subscription_billing_runs"
+ },
+ {
+  "model": "QCSubscriptionInvoice",
+  "from": "food_subscription_invoices",
+  "to": "qc_subscription_invoices"
+ },
+ {
+  "model": "QCSubscriptionTransaction",
+  "from": "food_subscription_transactions",
+  "to": "qc_subscription_transactions"
+ },
+ {
+  "model": "QCSupportTicket",
+  "from": "food_support_tickets",
+  "to": "qc_support_tickets"
+ },
+ {
+  "model": "QCTopBanner",
+  "from": "topbanners",
+  "to": "qc_top_banners"
+ },
+ {
+  "model": "QCTransaction",
+  "from": "food_transactions",
+  "to": "qc_transactions"
+ },
+ {
+  "model": "QCUnder250Banner",
+  "from": "food_under250_banners",
+  "to": "qc_under250_banners"
+ },
+ {
+  "model": "QCUnregisteredRestaurant",
+  "from": "food_unregistered_restaurants",
+  "to": "qc_unregistered_restaurants"
+ },
+ {
+  "model": "QCUser",
+  "from": "food_users",
+  "to": "qc_users"
+ },
+ {
+  "model": "QCUserCart",
+  "from": "food_user_carts",
+  "to": "qc_user_carts"
+ },
+ {
+  "model": "QCUserFavorite",
+  "from": "food_user_favorites",
+  "to": "qc_user_favorites"
+ },
+ {
+  "model": "QCUserWallet",
+  "from": "food_user_wallets",
+  "to": "qc_user_wallets"
+ },
+ {
+  "model": "QCZone",
+  "from": "food_zones",
+  "to": "qc_zones"
+ }
+]

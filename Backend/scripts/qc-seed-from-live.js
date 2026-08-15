@@ -21,8 +21,19 @@ const fs = require('fs');
 const { MongoClient } = require('mongodb');
 
 const COMMIT = process.argv.includes('--commit');
-const PLAN = JSON.parse(fs.readFileSync(require('path').join(__dirname, 'qc-seed-plan.json'), 'utf8'));
 const BATCH = 500;
+
+/**
+ * Session and credential artifacts. These are derived state, not data worth seeding --
+ * copying them hands master live sessions minted by the standalone quick-commerce app.
+ *
+ * Excluded here rather than by editing the plan, because the plan is regenerated from
+ * the two codebases' models and would simply grow them back.
+ */
+const NEVER_COPY = new Set(['qc_refresh_tokens', 'qc_otps', 'qc_admin_reset_otps']);
+
+const PLAN = JSON.parse(fs.readFileSync(require('path').join(__dirname, 'qc-seed-plan.json'), 'utf8'))
+    .filter((p) => !NEVER_COPY.has(p.to));
 
 const uriFrom = (envPath) => {
     const m = fs.readFileSync(envPath, 'utf8').match(/^MONGODB_URI=(.*)$/m);
