@@ -200,14 +200,28 @@ function onRefreshFailed(module) {
  * mutable global would have to be kept in step with client-side navigation, and would
  * be wrong for any request already in flight when the admin switches vertical.
  *
- * Only /food/admin moves. Auth is deliberately shared -- /food/auth/admin and
- * /auth/admin stay pointed at the platform, so one login covers every vertical.
+ * The WHOLE /food namespace moves, not just /food/admin. quick-commerce mounts the
+ * same routers master mounts under /v1/food -- admin, restaurant, delivery, orders,
+ * user, notifications, search, dining and the landing router that owns hero-banners --
+ * so /food/<x> and /qc/<x> are the same endpoint in two verticals.
+ *
+ * Rewriting only /food/admin (as this first did) left every other screen writing into
+ * food while the operator was looking at quick-commerce. Banner uploads were the
+ * visible case -- they post to /food/hero-banners/multiple, which is not under
+ * /food/admin -- but restaurants, delivery, zones and orders had the same fault.
+ *
+ * EXCEPT auth: /food/auth/* stays pointed at the platform so one login covers every
+ * vertical. That exclusion is the reason this is a negative-lookahead rather than a
+ * blanket replace.
  */
+const SHARED_FOOD_PREFIXES = ["auth"];
+
 const rewriteAdminVertical = (url) => {
   if (typeof url !== "string" || !url) return url;
   if (typeof window === "undefined") return url;
   if (!window.location.pathname.startsWith("/admin/quick-commerce")) return url;
-  return url.replace(/(^|\/)food\/admin(?=\/|$)/, "$1qc/admin");
+  const shared = SHARED_FOOD_PREFIXES.join("|");
+  return url.replace(new RegExp(`(^|/)food/(?!(?:${shared})(?:/|$))`), "$1qc/");
 };
 
 apiClient.interceptors.request.use(
