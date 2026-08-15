@@ -91,5 +91,51 @@ console.log('\n[5] it must not corrupt unrelated urls');
         assert.equal(rewrite('/seafood/admin/x', QC), '/seafood/admin/x'));
 }
 
+
+console.log('[6] the sidebar rebases its links to the current vertical');
+{
+    // Mirrors currentAdminBase / rebaseAdminMenu in AdminSidebar.jsx. The menu hardcodes
+    // 68 /admin/food paths; unrebased, the QC sidebar shows food's links and clicking one
+    // navigates the operator straight back out into food.
+    const FOOD_ADMIN_BASE = '/admin/food';
+    const REUSED = ['/admin/quick-commerce'];
+    const currentAdminBase = (p = '') => REUSED.find((b) => p.startsWith(b)) || FOOD_ADMIN_BASE;
+    const rebaseAdminMenu = (nodes, base) => {
+        if (base === FOOD_ADMIN_BASE || !Array.isArray(nodes)) return nodes;
+        const reb = (x) => (typeof x === 'string' && x.startsWith(FOOD_ADMIN_BASE)
+            ? base + x.slice(FOOD_ADMIN_BASE.length) : x);
+        return nodes.map((n) => ({
+            ...n,
+            ...(n.path ? { path: reb(n.path) } : {}),
+            ...(n.items ? { items: rebaseAdminMenu(n.items, base) } : {}),
+            ...(n.subItems ? { subItems: rebaseAdminMenu(n.subItems, base) } : {}),
+        }));
+    };
+
+    check('QC path selects the QC base', () =>
+        assert.equal(currentAdminBase('/admin/quick-commerce/orders'), '/admin/quick-commerce'));
+    check('food path selects the food base', () =>
+        assert.equal(currentAdminBase('/admin/food/orders'), '/admin/food'));
+
+    const menu = [
+        { type: 'link', label: 'Dashboard', path: '/admin/food' },
+        { type: 'section', items: [
+            { type: 'expandable', label: 'Banners', path: '/admin/food/banners',
+              subItems: [{ label: 'Promo', path: '/admin/food/promotional-banner' }] },
+        ] },
+    ];
+    const qc = rebaseAdminMenu(menu, '/admin/quick-commerce');
+
+    check('top-level link rebased', () => assert.equal(qc[0].path, '/admin/quick-commerce'));
+    check('nested item rebased', () => assert.equal(qc[1].items[0].path, '/admin/quick-commerce/banners'));
+    check('deeply nested subItem rebased', () =>
+        assert.equal(qc[1].items[0].subItems[0].path, '/admin/quick-commerce/promotional-banner'));
+    check('the source menu is NOT mutated', () => {
+        assert.equal(menu[0].path, '/admin/food');
+        assert.equal(menu[1].items[0].subItems[0].path, '/admin/food/promotional-banner');
+    });
+    check('food menu returned untouched, same reference', () =>
+        assert.equal(rebaseAdminMenu(menu, '/admin/food'), menu));
+}
 console.log(`\n${failures === 0 ? 'PASS' : `FAIL — ${failures} check(s) failed`}\n`);
 process.exit(failures === 0 ? 0 : 1);

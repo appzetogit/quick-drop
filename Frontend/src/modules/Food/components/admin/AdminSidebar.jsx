@@ -135,9 +135,41 @@ const iconMap = {
   X,
 }
 
+/**
+ * Which vertical's admin the operator is currently in.
+ *
+ * The menu in adminSidebarMenu hardcodes 68 /admin/food/... paths. Quick-commerce
+ * renders these SAME screens (see AdminRouter), so without rebasing, its sidebar shows
+ * food's links and clicking any of them navigates the operator back out into food.
+ *
+ * Add a base here when another vertical starts reusing these screens.
+ */
+const FOOD_ADMIN_BASE = "/admin/food"
+const REUSED_ADMIN_BASES = ["/admin/quick-commerce"]
+
+export const currentAdminBase = (pathname = "") =>
+  REUSED_ADMIN_BASES.find((base) => pathname.startsWith(base)) || FOOD_ADMIN_BASE
+
+/** Re-point every menu path at `base`. Returns the menu untouched for food. */
+export const rebaseAdminMenu = (nodes, base) => {
+  if (base === FOOD_ADMIN_BASE || !Array.isArray(nodes)) return nodes
+  const rebase = (path) =>
+    typeof path === "string" && path.startsWith(FOOD_ADMIN_BASE)
+      ? `${base}${path.slice(FOOD_ADMIN_BASE.length)}`
+      : path
+  return nodes.map((node) => ({
+    ...node,
+    ...(node.path ? { path: rebase(node.path) } : {}),
+    ...(node.items ? { items: rebaseAdminMenu(node.items, base) } : {}),
+    ...(node.subItems ? { subItems: rebaseAdminMenu(node.subItems, base) } : {}),
+  }))
+}
+
 export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange }) {
   const { activeLogo } = useSettings()
   const location = useLocation()
+  const adminBase = currentAdminBase(location.pathname)
+  const verticalMenu = useMemo(() => rebaseAdminMenu(adminSidebarMenu, adminBase), [adminBase])
   const navigate = useNavigate()
   const serviceAccess = useServiceAccess()
   const [searchQuery, setSearchQuery] = useState("")
@@ -304,13 +336,13 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   // Filter menu items based on search query
   const filteredMenuData = useMemo(() => {
     if (!searchQuery.trim()) {
-      return adminSidebarMenu
+      return verticalMenu
     }
 
     const query = searchQuery.toLowerCase().trim()
     const filtered = []
 
-    adminSidebarMenu.forEach((item) => {
+    verticalMenu.forEach((item) => {
       if (item.type === "link") {
         if (item.label.toLowerCase().includes(query)) {
           filtered.push(item)
@@ -348,7 +380,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     })
 
     return filtered
-  }, [searchQuery])
+  }, [searchQuery, verticalMenu])
 
   // Auto-expand sections with matches when searching
   useEffect(() => {
@@ -387,7 +419,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     const matchesPath = (candidatePath) =>
       currentPath === candidatePath || currentPath.startsWith(`${candidatePath}/`)
 
-    if (targetPath === "/admin" || targetPath === "/admin/food") {
+    if (targetPath === "/admin" || targetPath === adminBase) {
       return currentPath === targetPath
     }
 
