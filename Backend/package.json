@@ -45,7 +45,8 @@
     "test:payments": "node tests/payments.unified.smoke.mjs",
     "test:activity": "node tests/activity.smoke.mjs",
     "test:security": "node tests/security.bypass.smoke.mjs",
-    "test:qc-returns": "node tests/qc.returns.smoke.mjs"
+    "test:qc-returns": "node tests/qc.returns.smoke.mjs",
+    "worker:all": "node src/queues/workers/index.js"
   },
   "keywords": [],
   "author": "",

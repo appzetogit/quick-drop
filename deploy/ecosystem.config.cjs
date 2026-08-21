@@ -43,6 +43,41 @@ module.exports = {
       error_file: '/var/log/pm2/master-api.error.log',
       out_file: '/var/log/pm2/master-api.out.log',
       merge_logs: true,
+      time: true,
+      // Give in-flight requests time to drain; server.js runs its own graceful
+      // shutdown on SIGTERM with a 10s ceiling.
+      kill_timeout: 12000
+    },
+    {
+      // The BullMQ consumers.
+      //
+      // package.json declares six worker entrypoints and this file started NONE of
+      // them. With BULLMQ_ENABLED=true the API happily enqueues OTP sends, order
+      // dispatch retries, tracking updates and payment reconciliation into queues
+      // nothing consumes -- they grow forever and no error appears anywhere, because
+      // a producer succeeds whether or not a consumer exists.
+      //
+      // src/queues/workers/index.js runs all six in one process; see the note there
+      // for why one process rather than six pm2 apps.
+      name: 'master-workers',
+      cwd: '/opt/master/Backend',
+      script: 'src/queues/workers/index.js',
+      exec_mode: 'fork',
+      instances: 1,
+      autorestart: true,
+      max_restarts: 10,
+      min_uptime: '20s',
+      max_memory_restart: '500M',
+      watch: false,
+      env: {
+        NODE_ENV: 'production'
+      },
+      // Longer than the API: workers wait for in-flight jobs (SHUTDOWN_TIMEOUT_MS is
+      // 15s in the bundle entrypoint).
+      kill_timeout: 20000,
+      error_file: '/var/log/pm2/master-workers.error.log',
+      out_file: '/var/log/pm2/master-workers.out.log',
+      merge_logs: true,
       time: true
     }
   ]
