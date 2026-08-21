@@ -40,7 +40,10 @@ app.use(requestIdMiddleware);
 app.get('/health', async (_req, res) => {
     try {
         const data = await healthCheck();
-        res.status(200).json(data);
+        // DEGRADED stays 200 so the instance keeps serving traffic while monitoring
+        // alerts on it; only DOWN (no MongoDB) is a non-2xx, which is what the
+        // post-deploy gate polls for.
+        res.status(data.status === 'DOWN' ? 503 : 200).json(data);
     } catch (err) {
         res.status(503).json({ status: 'DOWN', error: 'Health check failed' });
     }

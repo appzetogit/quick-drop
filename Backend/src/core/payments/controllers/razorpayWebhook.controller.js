@@ -25,7 +25,14 @@ export const handleRazorpayWebhook = async (req, res) => {
         .update(req.rawBody)
         .digest('hex');
 
-    if (expected !== signature) {
+    // timingSafeEqual, not ===: this signature is the ONLY thing standing between a
+    // stranger and "this order is paid". A plain compare short-circuits on the first
+    // differing byte, so response timing reveals how many leading characters matched.
+    // Lengths are compared first because timingSafeEqual throws on unequal lengths.
+    // Same pattern the deploy webhook in server.js already uses.
+    const expectedBuf = Buffer.from(expected);
+    const signatureBuf = Buffer.from(String(signature));
+    if (expectedBuf.length !== signatureBuf.length || !crypto.timingSafeEqual(expectedBuf, signatureBuf)) {
         logger.warn('Razorpay Webhook: Signature verification failed.');
         return res.status(400).send('Invalid signature');
     }

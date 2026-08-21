@@ -129,14 +129,29 @@ export function createPaymentLink({ amountPaise, currency = 'INR', description, 
 }
 
 export function verifyPaymentSignature(orderId, paymentId, signature) {
-    const isMockAllowed = config.nodeEnv !== 'production' || config.useDefaultOtp;
-    if (isMockAllowed && signature === 'mock_signature_bypass' && String(orderId || '').startsWith('mock_order_')) {
+    // The mock bypass marks a payment as verified without any signature at all, so it
+    // is only ever allowed outside production.
+    //
+    // It used to also switch on config.useDefaultOtp, which meant a flag whose entire
+    // purpose is "do not send SMS" silently disabled payment verification on a live
+    // server: set USE_DEFAULT_OTP=true and any client could claim an order was paid by
+    // sending the literal string below. The two settings are unrelated and the coupling
+    // is deliberately gone. NODE_ENV is the only thing that opens this door.
+    if (config.nodeEnv !== 'production'
+        && signature === 'mock_signature_bypass'
+        && String(orderId || '').startsWith('mock_order_')) {
         return true;
     }
     if (!KEY_SECRET) return false;
     const body = `${orderId}|${paymentId}`;
     const expected = crypto.createHmac('sha256', KEY_SECRET).update(body).digest('hex');
-    return expected === signature;
+    // timingSafeEqual, not ===: a plain string compare returns as soon as two bytes
+    // differ, so response time leaks how many leading hex characters were correct and
+    // a signature can be recovered byte by byte. Lengths are checked first because
+    // timingSafeEqual throws when the buffers differ in length.
+    const expectedBuf = Buffer.from(expected);
+    const actualBuf = Buffer.from(String(signature || ''));
+    return expectedBuf.length === actualBuf.length && crypto.timingSafeEqual(expectedBuf, actualBuf);
 }
 
 /**

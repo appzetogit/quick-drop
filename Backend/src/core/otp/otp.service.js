@@ -123,11 +123,18 @@ export const createOrUpdateOtp = async (phone, scope = 'default') => {
         otp = generateOtpCode();
     }
 
-    // Dev debugging: print generated OTP in backend logs.
-    // Keep this enabled only for local/testing usage.
-    logger.info(`[OTP DEBUG] Generated OTP ${otp} for phone ${normalizedPhone}`);
-    // eslint-disable-next-line no-console
-    console.log(`[OTP DEBUG] Generated OTP ${otp} for phone ${normalizedPhone}`);
+    // Dev debugging: print the generated OTP so local sign-in works without SMS.
+    //
+    // Never in production: an OTP in the log is a sign-in credential, so anyone with
+    // log access (pm2 logs, a shipped log aggregator, a support screenshot) could take
+    // over any account that requested one. Production logs the request, not the code.
+    if (config.nodeEnv !== 'production') {
+        logger.info(`[OTP DEBUG] Generated OTP ${otp} for phone ${normalizedPhone}`);
+        // eslint-disable-next-line no-console
+        console.log(`[OTP DEBUG] Generated OTP ${otp} for phone ${normalizedPhone}`);
+    } else {
+        logger.info(`[OTP] Issued OTP for phone ${normalizedPhone} scope ${normalizedScope}`);
+    }
 
     // Expiry calculation: prioritize seconds, then minutes, then fallback to MS string
     let ttlMs;
@@ -174,32 +181,49 @@ export const verifyOtp = async (phone, otp, scope = 'default') => {
 
     const otpStr = String(otp ?? '').trim();
 
-    // 1. Static OTP bypass from environment variables
-    const staticPhone = process.env.STATIC_OTP_PHONE ? normalizeOtpPhone(process.env.STATIC_OTP_PHONE) : null;
-    const staticCode = process.env.STATIC_OTP_CODE ? String(process.env.STATIC_OTP_CODE).trim() : null;
-    if (staticPhone && staticCode && normalizedPhone === staticPhone && otpStr === staticCode) {
-        logger.info(`[OTP VERIFY] Static OTP bypass matched for phone=${normalizedPhone} scope=${normalizedScope}`);
-        return { valid: true };
-    }
+    // ── Development sign-in shortcuts ──────────────────────────────────────────
+    //
+    // All three of these return { valid: true } WITHOUT comparing against the issued
+    // OTP, so each one is an authentication bypass. They exist so local development
+    // and QA do not need working SMS delivery.
+    //
+    // The whole block is gated on NODE_ENV !== 'production', matching how the very
+    // same default phone numbers are already gated in core/auth/auth.service.js.
+    // Until this gate existed the fallbacks below ("7974161582" / "1234") applied in
+    // every environment, so anyone who read them out of the source could sign in as
+    // those accounts on the live system.
+    //
+    // Do not add a bypass outside this guard, and do not widen the guard to include
+    // config.useDefaultOtp: that flag is an SMS-delivery switch, not an environment.
+    // Treating it as one is exactly what made this reachable in production.
+    if (config.nodeEnv !== 'production') {
+        // 1. Static OTP bypass from environment variables
+        const staticPhone = process.env.STATIC_OTP_PHONE ? normalizeOtpPhone(process.env.STATIC_OTP_PHONE) : null;
+        const staticCode = process.env.STATIC_OTP_CODE ? String(process.env.STATIC_OTP_CODE).trim() : null;
+        if (staticPhone && staticCode && normalizedPhone === staticPhone && otpStr === staticCode) {
+            logger.info(`[OTP VERIFY] Static OTP bypass matched for phone=${normalizedPhone} scope=${normalizedScope}`);
+            return { valid: true };
+        }
 
-    // 2. Default credentials bypass (user, restaurant, delivery)
-    const defaultRestaurantPhone = normalizeOtpPhone(process.env.DEFAULT_RESTAURANT_PHONE || "7974161582");
-    const defaultUserPhone = normalizeOtpPhone(process.env.DEFAULT_USER_PHONE || "7974161582");
-    const defaultDeliveryPhone = normalizeOtpPhone(process.env.DEFAULT_DELIVERY_PHONE || "7610416911");
+        // 2. Default credentials bypass (user, restaurant, delivery)
+        const defaultRestaurantPhone = normalizeOtpPhone(process.env.DEFAULT_RESTAURANT_PHONE || "7974161582");
+        const defaultUserPhone = normalizeOtpPhone(process.env.DEFAULT_USER_PHONE || "7974161582");
+        const defaultDeliveryPhone = normalizeOtpPhone(process.env.DEFAULT_DELIVERY_PHONE || "7610416911");
 
-    const isDefaultPhoneNum = normalizedPhone === defaultRestaurantPhone || 
-                               normalizedPhone === defaultUserPhone || 
-                               normalizedPhone === defaultDeliveryPhone;
+        const isDefaultPhoneNum = normalizedPhone === defaultRestaurantPhone ||
+                                   normalizedPhone === defaultUserPhone ||
+                                   normalizedPhone === defaultDeliveryPhone;
 
-    if (isDefaultPhoneNum && (otpStr === '1234' || otpStr === '123456')) {
-        logger.info(`[OTP VERIFY] Default credentials bypass matched for phone=${normalizedPhone} scope=${normalizedScope}`);
-        return { valid: true };
-    }
+        if (isDefaultPhoneNum && (otpStr === '1234' || otpStr === '123456')) {
+            logger.info(`[OTP VERIFY] Default credentials bypass matched for phone=${normalizedPhone} scope=${normalizedScope}`);
+            return { valid: true };
+        }
 
-    // 3. Default OTP bypass ('1234') when useDefaultOtp is enabled
-    if (config.useDefaultOtp && otpStr === '1234') {
-        logger.info(`[OTP VERIFY] Default OTP bypass ('1234') matched for phone=${normalizedPhone} scope=${normalizedScope}`);
-        return { valid: true };
+        // 3. Default OTP bypass ('1234') when useDefaultOtp is enabled
+        if (config.useDefaultOtp && otpStr === '1234') {
+            logger.info(`[OTP VERIFY] Default OTP bypass ('1234') matched for phone=${normalizedPhone} scope=${normalizedScope}`);
+            return { valid: true };
+        }
     }
 
     const record = await FoodOtp.findOne({
