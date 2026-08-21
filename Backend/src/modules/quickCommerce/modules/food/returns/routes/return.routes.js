@@ -1,6 +1,8 @@
 import express from 'express';
 import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
 import { requireRoles } from '../../../../core/roles/role.middleware.js';
+// Master's platform-wide ledger, shared by every vertical.
+import { idempotency } from '../../../../../../middleware/idempotency.js';
 import * as ctrl from '../controllers/return.controller.js';
 
 /**
@@ -19,7 +21,16 @@ router.get('/admin', authMiddleware, requireRoles('ADMIN'), ctrl.listReturnsAdmi
 router.patch('/admin/:returnId/decision', authMiddleware, requireRoles('ADMIN'), ctrl.decideReturnAdminController);
 router.patch('/admin/:returnId/pickup', authMiddleware, requireRoles('ADMIN'), ctrl.schedulePickupAdminController);
 router.patch('/admin/:returnId/inspect', authMiddleware, requireRoles('ADMIN'), ctrl.inspectReturnAdminController);
-router.patch('/admin/:returnId/refund', authMiddleware, requireRoles('ADMIN'), ctrl.refundReturnAdminController);
+// The only route here that moves money. refundReturn() already short-circuits when
+// refundId is set, so a replay is a no-op — the ledger adds protection against two
+// concurrent clicks racing past that check before either has written it.
+router.patch(
+    '/admin/:returnId/refund',
+    authMiddleware,
+    requireRoles('ADMIN'),
+    idempotency(),
+    ctrl.refundReturnAdminController,
+);
 
 // ── Delivery partner ───────────────────────────────────────────────────────────
 router.patch(

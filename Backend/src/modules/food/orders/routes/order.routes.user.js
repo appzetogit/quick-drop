@@ -12,12 +12,20 @@ import {
     getOrderRouteUserController,
     updateOrderInstructionsController
 } from '../controllers/order.controller.js';
+import { idempotency } from '../../../../middleware/idempotency.js';
+import { sensitiveActionRateLimiter } from '../../../../middleware/rateLimit.js';
 
 const router = express.Router();
 
-router.post('/calculate', calculateOrderController);
-router.post('/', createOrderController);
-router.post('/verify-payment', verifyPaymentController);
+// /calculate is a read, but it prices an arbitrary coupon code, which makes it a
+// coupon-code oracle worth brute-forcing. Rate limited, not made idempotent.
+router.post('/calculate', sensitiveActionRateLimiter, calculateOrderController);
+
+// The two money paths. `idempotency()` is a no-op for any client that does not send
+// an Idempotency-Key header, so every shipped Flutter and APK build keeps working
+// unchanged and gains double-submit protection only once it starts sending one.
+router.post('/', sensitiveActionRateLimiter, idempotency(), createOrderController);
+router.post('/verify-payment', sensitiveActionRateLimiter, idempotency(), verifyPaymentController);
 router.get('/', listOrdersUserController);
 router.get('/:orderId/payments', getOrderPaymentsUserController);
 router.get('/:orderId/drop-otp', getOrderDropOtpUserController);

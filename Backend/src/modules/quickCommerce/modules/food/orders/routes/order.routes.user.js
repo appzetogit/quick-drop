@@ -13,12 +13,22 @@ import {
     updateOrderInstructionsController,
     getOrderRouteUserController
 } from '../controllers/order.controller.js';
+// Both from master's middleware rather than this fork's copies. The idempotency
+// ledger is one collection shared by every vertical, so a key is unique
+// platform-wide; and this fork's own rateLimit.js has no sensitive-action limiter,
+// so importing master's avoids adding a third implementation of the same idea.
+import { idempotency } from '../../../../../../middleware/idempotency.js';
+import { sensitiveActionRateLimiter } from '../../../../../../middleware/rateLimit.js';
 
 const router = express.Router();
 
-router.post('/calculate', calculateOrderController);
-router.post('/', createOrderController);
-router.post('/verify-payment', verifyPaymentController);
+// Same treatment as the food module's order routes: /calculate prices an arbitrary
+// coupon code so it is a brute-forceable oracle and gets rate limited, and the two
+// money paths get the ledger. idempotency() is a no-op without an Idempotency-Key
+// header, so existing clients are unaffected.
+router.post('/calculate', sensitiveActionRateLimiter, calculateOrderController);
+router.post('/', sensitiveActionRateLimiter, idempotency(), createOrderController);
+router.post('/verify-payment', sensitiveActionRateLimiter, idempotency(), verifyPaymentController);
 router.delete('/:orderId/pending-payment', abandonOnlinePaymentController);
 router.get('/', listOrdersUserController);
 router.get('/:orderId/payments', getOrderPaymentsUserController);
