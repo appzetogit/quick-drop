@@ -65,7 +65,7 @@ export const printZomatoInvoice = (order, companyName, termsHtml = "") => {
     <html lang="en">
     <head>
       <meta charset="UTF-8">
-      <title>K9 Food Order: Summary and Receipt</title>
+      <title>Quick Drop Food Order: Summary and Receipt</title>
       <style>
         body {
           font-family: Arial, sans-serif;
@@ -155,7 +155,7 @@ export const printZomatoInvoice = (order, companyName, termsHtml = "") => {
     </head>
     <body>
       <div class="header">
-        K9 Food Order: Summary and Receipt
+        Quick Drop Food Order: Summary and Receipt
       </div>
 
       <div class="summary-grid">

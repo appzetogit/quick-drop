@@ -11,10 +11,10 @@ const SETTINGS_KEY = 'food_business_settings';
 
 export const normalizeCompanyName = (value) => {
   const raw = typeof value === "string" ? value.trim() : "";
-  if (!raw) return "K9 Rides";
+  if (!raw) return "Quick Drop";
   const lowerRaw = raw.toLowerCase();
-  if (lowerRaw.includes("eqosy") || lowerRaw.includes("appzeto") || lowerRaw.includes("rideon") || lowerRaw.includes("rydon")) {
-    return "K9 Rides";
+  if (lowerRaw.includes("eqosy") || lowerRaw.includes("appzeto") || lowerRaw.includes("rideon") || lowerRaw.includes("rydon") || lowerRaw.includes("k9")) {
+    return "Quick Drop";
   }
   return raw;
 };
@@ -154,7 +154,7 @@ export const getCachedSettings = () => {
 
 /**
  * Get company name from business settings with fallback
- * @returns {string} Company name or default "K9 Rides"
+ * @returns {string} Company name or default "Quick Drop"
  */
 export const getCompanyName = () => {
   const settings = getCachedSettings();
@@ -163,14 +163,14 @@ export const getCompanyName = () => {
 
 /**
  * Get company name asynchronously (loads if not cached)
- * @returns {Promise<string>} Company name or default "K9 Rides"
+ * @returns {Promise<string>} Company name or default "Quick Drop"
  */
 export const getCompanyNameAsync = async () => {
   try {
     const settings = await loadBusinessSettings();
     return normalizeCompanyName(settings?.companyName);
   } catch (error) {
-    return "K9 Rides";
+    return "Quick Drop";
   }
 };
 

@@ -151,15 +151,26 @@ const REUSED_ADMIN_BASES = ["/admin/quick-commerce"]
 export const currentAdminBase = (pathname = "") =>
   REUSED_ADMIN_BASES.find((base) => pathname.startsWith(base)) || FOOD_ADMIN_BASE
 
+export const getVerticalTitle = (base = "", customName = "") => {
+  const name = (customName || "Quick Drop").trim()
+  if (base === "/admin/quick-commerce") {
+    return name.toLowerCase().endsWith("quick") ? name : `${name} Quick`
+  }
+  if (base === "/admin/food") {
+    return name.toLowerCase().endsWith("food") ? name : `${name} Food`
+  }
+  return name
+}
+
 /**
  * What the panel calls itself per vertical. The screens are shared; the words on them
  * must not be, or the operator cannot tell which vertical they are editing -- which is
  * exactly how quick-commerce banner uploads ended up in food.
  */
 const VERTICAL_BRANDING = {
-  "/admin/food": { title: "K9 Food", labels: {} },
+  "/admin/food": { title: "Quick Drop Food", labels: {} },
   "/admin/quick-commerce": {
-    title: "K9 Quick",
+    title: "Quick Drop Quick",
     labels: {
       "FOOD MANAGEMENT": "PRODUCT MANAGEMENT",
       "RESTAURANT MANAGEMENT": "SELLER MANAGEMENT",
@@ -258,6 +269,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   }
   const [logoUrl, setLogoUrl] = useState(() => getCachedSettings()?.logo?.url || null)
   const [companyName, setCompanyName] = useState(() => getCachedSettings()?.companyName || null)
+  const displayTitle = getVerticalTitle(adminBase, companyName)
 
   // Load business settings logo
   useEffect(() => {
@@ -744,13 +756,13 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1 transition-all">
                   <img
                     src={activeLogo || logoUrl}
-                    alt={brandingFor(adminBase).title}
+                    alt={displayTitle}
                     className="h-9 w-9 object-contain"
                   />
                 </div>
                 <div className="flex flex-col">
                   <h3 className="text-[15px] font-extrabold leading-tight text-white tracking-tight">
-                    {brandingFor(adminBase).title}
+                    {displayTitle}
                   </h3>
                   <div className="mt-1 flex items-center gap-1.5">
                     <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
@@ -767,7 +779,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                   {activeLogo || logoUrl || companyName ? (
                     <img
                       src={activeLogo || logoUrl || quickSpicyLogo}
-                      alt={companyName || "Company"}
+                      alt={displayTitle}
                       className="w-10 h-10 object-contain"
                       loading="lazy"
                       onError={(e) => {
