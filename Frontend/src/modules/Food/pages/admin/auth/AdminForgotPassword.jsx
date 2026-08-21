@@ -12,14 +12,15 @@ import {
 import { Input } from "@food/components/ui/input"
 import { Label } from "@food/components/ui/label"
 import { Mail, ArrowLeft, Shield } from "lucide-react"
-import quickSpicyLogo from "@food/assets/k9-logo.jpg"
 import { adminAPI } from "@food/api"
 import { useCompanyName } from "@food/hooks/useCompanyName"
-import { loadBusinessSettings } from "@food/utils/businessSettings"
+import { loadBusinessSettings, getCachedSettings, normalizeCompanyName } from "@food/utils/businessSettings"
+import { useSettings } from "../../../../Taxi/shared/context/SettingsContext"
 
 export default function AdminForgotPassword() {
   const companyName = useCompanyName()
   const navigate = useNavigate()
+  const { activeLogo, settings: taxiSettings } = useSettings() || {}
   const [step, setStep] = useState(1) // 1: email, 2: OTP, 3: new password
   const [email, setEmail] = useState("")
   const [otp, setOtp] = useState(["", "", "", "", "", ""])
@@ -30,8 +31,16 @@ export default function AdminForgotPassword() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [resendTimer, setResendTimer] = useState(0)
-  const [logoUrl, setLogoUrl] = useState(quickSpicyLogo)
+  const [businessLogo, setBusinessLogo] = useState(() => getCachedSettings()?.logo?.url || null)
   const inputRefs = useRef(Array(6).fill(null).map(() => null))
+
+  const resolvedLogo = activeLogo ||
+    taxiSettings?.customization?.logos?.admin ||
+    taxiSettings?.logos?.admin ||
+    taxiSettings?.customization?.logos?.landing ||
+    taxiSettings?.logos?.landing ||
+    taxiSettings?.general?.logo ||
+    businessLogo;
 
   // Fetch business settings logo on mount
   useEffect(() => {
@@ -39,7 +48,7 @@ export default function AdminForgotPassword() {
       try {
         const settings = await loadBusinessSettings()
         if (settings?.logo?.url) {
-          setLogoUrl(settings.logo.url)
+          setBusinessLogo(settings.logo.url)
         }
       } catch (error) {
         // Silently fail
@@ -51,7 +60,7 @@ export default function AdminForgotPassword() {
     const handleSettingsUpdate = async () => {
       const settings = await loadBusinessSettings();
       if (settings?.logo?.url) {
-        setLogoUrl(settings.logo.url);
+        setBusinessLogo(settings.logo.url);
       }
     };
     window.addEventListener('businessSettingsUpdated', handleSettingsUpdate);
@@ -221,18 +230,19 @@ export default function AdminForgotPassword() {
         <Card className="w-full max-w-lg bg-white/90 backdrop-blur border-neutral-200 shadow-2xl">
           <CardHeader className="pb-4">
             <div className="flex w-full items-center gap-4 sm:gap-5">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-white ring-1 ring-neutral-200 overflow-hidden">
-                <img
-                  src={logoUrl || quickSpicyLogo}
-                  alt={companyName}
-                  className="h-full w-full object-cover scale-110"
-                  loading="lazy"
-                  onError={(e) => {
-                    if (e.target.src !== quickSpicyLogo) {
-                      e.target.src = quickSpicyLogo
-                    }
-                  }}
-                />
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-white ring-1 ring-neutral-200 overflow-hidden p-1.5 shadow-sm">
+                {resolvedLogo ? (
+                  <img
+                    src={resolvedLogo}
+                    alt={companyName || "Logo"}
+                    className="h-full w-full object-contain"
+                    loading="eager"
+                  />
+                ) : (
+                  <div className="text-xl font-bold text-gray-900">
+                    {(companyName || "QD").substring(0, 2).toUpperCase()}
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-1">
                 <CardTitle className="text-3xl leading-tight text-gray-900">

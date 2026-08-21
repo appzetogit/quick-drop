@@ -12,10 +12,10 @@ import {
 import { Input } from "@food/components/ui/input"
 import { Label } from "@food/components/ui/label"
 import { Mail, User, Lock, Eye, EyeOff, ArrowLeft, Shield } from "lucide-react"
-import quickSpicyLogo from "@food/assets/k9-logo.jpg"
 import { authAPI, adminAPI } from "@food/api"
 import { setAuthData } from "@food/utils/auth"
-import { loadBusinessSettings } from "@food/utils/businessSettings"
+import { loadBusinessSettings, getCachedSettings, normalizeCompanyName } from "@food/utils/businessSettings"
+import { useSettings } from "../../../../Taxi/shared/context/SettingsContext"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -23,6 +23,7 @@ const debugError = (...args) => {}
 
 export default function AdminSignup() {
   const navigate = useNavigate()
+  const { activeLogo, settings: taxiSettings } = useSettings() || {}
   const [step, setStep] = useState(1) // 1: signup form, 2: OTP verification
   const [formData, setFormData] = useState({
     name: "",
@@ -36,8 +37,17 @@ export default function AdminSignup() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [resendTimer, setResendTimer] = useState(0)
-  const [logoUrl, setLogoUrl] = useState(quickSpicyLogo)
+  const [businessLogo, setBusinessLogo] = useState(() => getCachedSettings()?.logo?.url || null)
+  const [companyName, setCompanyName] = useState(() => getCachedSettings()?.companyName || "Quick Drop")
   const inputRefs = useRef(Array(6).fill(null).map(() => null))
+
+  const resolvedLogo = activeLogo ||
+    taxiSettings?.customization?.logos?.admin ||
+    taxiSettings?.logos?.admin ||
+    taxiSettings?.customization?.logos?.landing ||
+    taxiSettings?.logos?.landing ||
+    taxiSettings?.general?.logo ||
+    businessLogo;
 
   // Fetch business settings logo on mount
   useEffect(() => {
@@ -45,10 +55,12 @@ export default function AdminSignup() {
       try {
         const settings = await loadBusinessSettings()
         if (settings?.logo?.url) {
-          setLogoUrl(settings.logo.url)
+          setBusinessLogo(settings.logo.url)
+        }
+        if (settings?.companyName) {
+          setCompanyName(normalizeCompanyName(settings.companyName))
         }
       } catch (error) {
-        // Silently fail and use default logo
         debugWarn("Failed to load business settings logo:", error)
       }
     }
@@ -56,10 +68,12 @@ export default function AdminSignup() {
 
     // Listen for business settings updates
     const handleSettingsUpdate = async () => {
-      // Force reload settings from backend
       const settings = await loadBusinessSettings();
       if (settings?.logo?.url) {
-        setLogoUrl(settings.logo.url);
+        setBusinessLogo(settings.logo.url);
+      }
+      if (settings?.companyName) {
+        setCompanyName(normalizeCompanyName(settings.companyName));
       }
     };
     window.addEventListener('businessSettingsUpdated', handleSettingsUpdate);
@@ -245,19 +259,19 @@ export default function AdminSignup() {
         <Card className="w-full max-w-lg bg-white/90 backdrop-blur border-neutral-200 shadow-2xl">
           <CardHeader className="pb-4">
             <div className="flex w-full items-center gap-4 sm:gap-5">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-white ring-1 ring-neutral-200 overflow-hidden">
-                <img
-                  src={logoUrl || quickSpicyLogo}
-                  alt="Logo"
-                  className="h-full w-full object-cover scale-110"
-                  loading="lazy"
-                  onError={(e) => {
-                    // Fallback to default logo if business logo fails to load
-                    if (e.target.src !== quickSpicyLogo) {
-                      e.target.src = quickSpicyLogo
-                    }
-                  }}
-                />
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-white ring-1 ring-neutral-200 overflow-hidden p-1.5 shadow-sm">
+                {resolvedLogo ? (
+                  <img
+                    src={resolvedLogo}
+                    alt={companyName || "Logo"}
+                    className="h-full w-full object-contain"
+                    loading="eager"
+                  />
+                ) : (
+                  <div className="text-xl font-bold text-gray-900">
+                    {(companyName || "QD").substring(0, 2).toUpperCase()}
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-1">
                 <CardTitle className="text-3xl leading-tight text-gray-900">

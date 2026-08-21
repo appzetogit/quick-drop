@@ -175,20 +175,32 @@ export const getCompanyNameAsync = async () => {
 };
 
 /**
- * Get dynamic logo with fallback to local K9 logo
+ * Get dynamic logo with fallback to configured branding logos
  */
 export const getDynamicLogo = () => {
   const settings = getCachedSettings();
-  return settings?.logo?.url || "/k9-logo.jpg";
+  return settings?.logo?.url ||
+    settings?.logos?.admin ||
+    settings?.customization?.logos?.admin ||
+    settings?.customization?.logos?.landing ||
+    settings?.logos?.landing ||
+    settings?.logos?.food ||
+    "";
 };
 
 export const getRestaurantLogo = () => {
   const settings = getCachedSettings();
-  return settings?.restaurantLogo?.url || "/k9-logo.jpg";
+  return settings?.restaurantLogo?.url ||
+    settings?.logos?.food_restaurant ||
+    settings?.customization?.logos?.food_restaurant ||
+    getDynamicLogo();
 };
 
 export const getDeliveryPartnerLogo = () => {
   const settings = getCachedSettings();
-  return settings?.deliveryPartnerLogo?.url || "/k9-logo.jpg";
+  return settings?.deliveryPartnerLogo?.url ||
+    settings?.logos?.food_delivery_partner ||
+    settings?.customization?.logos?.food_delivery_partner ||
+    getDynamicLogo();
 };
 
