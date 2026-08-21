@@ -104,10 +104,70 @@ const restaurantSchema = new mongoose.Schema(
     landmark: {
       type: String,
     },
+    /**
+     * @deprecated Restaurant vocabulary inherited from the food module this vertical
+     * was forked from. A grocery seller has departments, not cuisines. Still written
+     * by legacy onboarding screens, so it stays until those are migrated onto
+     * `storeType` + category assignment below. Do not read it in new code.
+     */
     cuisines: {
       type: [String],
       default: [],
     },
+
+    /**
+     * What kind of shop this is.
+     *
+     * Drives three things that a single "restaurant" type cannot express: which
+     * category tree the seller may list under, which licence is mandatory at
+     * onboarding (FSSAI for anything edible, a drug licence for pharmacy), and
+     * whether an order from this seller may be pooled with another on one trip —
+     * medicine and raw meat should not share a bag with vegetables.
+     */
+    storeType: {
+      type: String,
+      enum: ['grocery', 'kirana', 'supermarket', 'pharmacy', 'pet', 'electronics', 'stationery', 'general'],
+      default: 'grocery',
+      index: true,
+    },
+
+    /**
+     * The temperature bands this seller can actually hold stock in.
+     *
+     * A product's `perishability` says what it needs; this says what the shop has.
+     * Listing frozen goods from a seller with no freezer is how a customer receives
+     * thawed ice cream and the platform pays for the return — so the two are checked
+     * against each other rather than assumed to match.
+     *
+     * Ambient is always implied; the array records what is available beyond it.
+     */
+    storageCapability: {
+      type: [{ type: String, enum: ['chilled', 'frozen'] }],
+      default: [],
+    },
+
+    /**
+     * Drug licence, mandatory for storeType 'pharmacy' and meaningless otherwise.
+     *
+     * Kept alongside the FSSAI fields rather than replacing them: FSSAI is required
+     * for any business handling food, which includes a kirana store, so both licences
+     * genuinely coexist in this vertical.
+     */
+    drugLicenseNumber: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    drugLicenseExpiry: {
+      type: Date,
+      default: null,
+    },
+    drugLicenseImage: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
     openingTime: {
       type: String,
     },
@@ -279,6 +339,13 @@ const restaurantSchema = new mongoose.Schema(
     estimatedDeliveryTime: { type: String },
     /** Numeric delivery time in minutes for filtering/sorting. */
     estimatedDeliveryTimeMinutes: { type: Number, index: true },
+    /**
+     * @deprecated Restaurant vocabulary. A grocery seller promotes a product, and a
+     * product already carries `isRecommended` on the item itself — which is where a
+     * featured line belongs, because it survives price changes and stays linked to
+     * real stock. These two are a name and a loose number with neither property.
+     * Still written by legacy onboarding screens; do not read them in new code.
+     */
     featuredDish: { type: String },
     featuredPrice: { type: Number },
     offer: { type: String },
@@ -292,11 +359,24 @@ const restaurantSchema = new mongoose.Schema(
       set: normalizeRatingValue,
     },
     totalRatings: { type: Number, default: 0, min: 0 },
+    /**
+     * @deprecated Table booking. There is no dine-in at a grocery store. Retained
+     * only because existing qc_restaurants documents carry the sub-document and
+     * removing it would rewrite every row for no gain; nothing in this vertical reads
+     * it. Drop it when the collection is next migrated.
+     */
     diningSettings: {
       isEnabled: { type: Boolean, default: false },
       maxGuests: { type: Number, default: 6 },
       diningType: { type: String, default: "family-dining" },
     },
+    /**
+     * @deprecated A restaurant's menu is a small, curated, seller-authored document,
+     * so embedding it made sense. A grocery catalogue is thousands of independently
+     * priced, stocked and expiring SKUs — those live in qc_food_items keyed by
+     * sellerId, where they can be indexed, searched and stock-checked. Embedding them
+     * here would put the whole catalogue in every seller read.
+     */
     menu: {
       sections: { type: Array, default: [] },
     },

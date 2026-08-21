@@ -286,5 +286,46 @@ check('damaged and expired stock is never restocked', () => {
     }
 });
 
+console.log('\n[8] Seller storage capability');
+
+const { canSellerStock, unstockableProducts } = await import(
+    '../src/modules/quickCommerce/modules/food/shared/sellerCapability.js'
+);
+
+check('ambient goods need no special storage', () => {
+    assert.equal(canSellerStock({ storageCapability: [] }, { perishability: 'ambient' }).ok, true);
+});
+
+check('a shop with no chiller cannot list chilled goods', () => {
+    const r = canSellerStock({ storageCapability: [] }, { perishability: 'chilled' });
+    assert.equal(r.ok, false);
+    assert.equal(r.required, 'chilled');
+    assert.match(r.reason, /chilled storage/);
+});
+
+check('a freezer satisfies a chilled requirement', () => {
+    assert.equal(canSellerStock({ storageCapability: ['frozen'] }, { perishability: 'chilled' }).ok, true);
+});
+
+check('a chiller does NOT satisfy a frozen requirement', () => {
+    const r = canSellerStock(
+        { storageCapability: ['chilled'] },
+        { perishability: 'chilled', requiresFreezer: true },
+    );
+    assert.equal(r.ok, false);
+    assert.equal(r.required, 'frozen');
+});
+
+check('reducing capability surfaces what must come off the shelf', () => {
+    const seller = { storageCapability: [] };
+    const catalogue = [
+        { sku: 'RICE', perishability: 'ambient' },
+        { sku: 'MILK', perishability: 'chilled' },
+        { sku: 'PEAS', perishability: 'fresh', requiresFreezer: true },
+    ];
+    const blocked = unstockableProducts(seller, catalogue).map((p) => p.sku);
+    assert.deepEqual(blocked, ['MILK', 'PEAS']);
+});
+
 console.log(fails === 0 ? '\nAll quick-commerce return rules hold.\n' : `\n${fails} FAILED\n`);
 process.exit(fails === 0 ? 0 : 1);
