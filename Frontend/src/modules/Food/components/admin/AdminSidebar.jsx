@@ -53,6 +53,7 @@ import { cn } from "@food/utils/utils"
 import { Input } from "@food/components/ui/input"
 
 import { adminSidebarMenu } from "@food/utils/adminSidebarMenu"
+import { rulesFor, VERTICAL } from "@food/utils/verticalVocabulary"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
 import quickSpicyLogo from "@food/assets/k9-logo.jpg"
 import { useSettings } from "../../../Taxi/shared/context/SettingsContext"
@@ -166,14 +167,11 @@ const VERTICAL_BRANDING = {
     // Word-level rewrites applied to EVERY menu label, not just section headers.
     // The first branding pass only mapped the two headers, so the items under them
     // ("Food Approval", "Restaurants List") still read as the food vertical.
-    // Quick-commerce vocabulary: products and sellers, no food, no restaurants.
-    // Longest word first, so "Foods" does not get caught by the "Food" rule.
-    words: [
-      [/\bFoods\b/g, "Products"],
-      [/\bFood\b/g, "Product"],
-      [/\bRestaurants\b/g, "Sellers"],
-      [/\bRestaurant\b/g, "Seller"],
-    ],
+    //
+    // Sourced from verticalVocabulary.js rather than listed here, so the sidebar and
+    // the in-page shim cannot drift apart -- this copy had only the title-case half
+    // of the table and would have missed a lower-case label.
+    words: rulesFor(VERTICAL.QUICK_COMMERCE),
     // Food-domain concepts that make no sense for a quick-commerce vertical. They
     // operate on qc_* data so nothing leaks, but a grocery panel offering dine-in
     // management is noise. Paths are pre-rebase (as written in adminSidebarMenu).
