@@ -64,6 +64,27 @@ const foodSchema = new mongoose.Schema(
          */
         expiryDate: { type: Date, default: null, index: true },
         /**
+         * How perishable the goods are, which is what the return window is derived
+         * from — 7 days ambient, 24 hours chilled, and fresh produce returnable only
+         * as a seller-fault report within 4 hours. See returns/services/
+         * returnPolicy.service.js.
+         *
+         * Deliberately separate from expiryDate: a sealed carton of long-life milk
+         * has an expiry date months out and is still `chilled`, while a loose bunch
+         * of bananas has no printed date and is `fresh`. Shelf life and returnability
+         * are different questions.
+         *
+         * Defaults to ambient because that is what most of a grocery catalogue is,
+         * and because the existing rows predate this field — a stricter default would
+         * silently make every legacy product non-returnable.
+         */
+        perishability: {
+            type: String,
+            enum: ['ambient', 'chilled', 'fresh'],
+            default: 'ambient',
+            index: true,
+        },
+        /**
          * Printed maximum retail price, shown struck through next to `price`.
          *
          * Kept separate from `otherPrice`, which is a compare-at price against

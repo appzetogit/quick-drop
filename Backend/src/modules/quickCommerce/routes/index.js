@@ -28,6 +28,7 @@ import { getQueuesController } from '../controllers/admin.controller.js';
 import webhookRoutes from '../core/payments/routes/webhook.routes.js'; // ✅ NEW
 import searchRoutes from '../modules/food/search/routes/search.routes.js';
 import chatRoutes from '../modules/food/chat/routes/chat.routes.js';
+import returnRoutes from '../modules/food/returns/routes/return.routes.js';
 import { getCashbackSettingsPublicController } from '../modules/food/user/controllers/cashback.controller.js';
 import { config } from '../config/env.js';
 import { getRateLimitSummary } from '../middleware/rateLimit.js';
@@ -73,6 +74,9 @@ router.use('/user', authMiddleware, requireRoles('USER'), userRoutes);
 router.use('/notifications', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER'), notificationRoutes);
 router.use('/chat', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER', 'ADMIN'), chatRoutes);
 router.use('/orders', authMiddleware, requireRoles('USER'), orderUserRoutes);
+// Returns carries its own per-route role gates (customer / admin / rider on one
+// router), so it is mounted bare rather than behind a single requireRoles.
+router.use('/returns', returnRoutes);
 router.use('/payments', authMiddleware, paymentRoutes);
 router.use('/payments/webhook', webhookRoutes); // ✅ NEW: Public Webhook
 router.use('/fcm-tokens', fcmRoutes);

@@ -95,7 +95,16 @@ export async function releaseReservations(taken = []) {
   }
 }
 
-async function incrementStock(itemId, qty) {
+/**
+ * Put `qty` back on the shelf for one item.
+ *
+ * Exported for the returns flow, which restocks individual lines as they pass
+ * inspection rather than a whole order at once — restoreOrderStock() below is
+ * all-or-nothing and latched by stockRestoredAt, so it cannot serve that case.
+ * Both paths go through here so the "only revive an item that went dark by running
+ * out" rule has exactly one implementation.
+ */
+export async function incrementStock(itemId, qty) {
   const id = new mongoose.Types.ObjectId(String(itemId));
   await FoodItem.updateOne({ _id: id, stockQty: { $ne: null } }, { $inc: { stockQty: qty } });
   // Bring it back only if it went dark by running out. A seller who switched the
