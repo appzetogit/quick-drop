@@ -30,8 +30,17 @@ import spRouter from '../modules/serviceProvider/routes/index.js';
 // were identical. Its models are renamed QC* on qc_* collections so nothing shares a
 // collection with food, and its routes are mounted here rather than on /v1/food.
 import qcRouter from '../modules/quickCommerce/routes/index.js';
+// Platform module kill-switch: lets one vertical be taken out of service without
+// restarting the process the other three share.
+import platformModuleRoutes from '../core/modules/module.routes.js';
+import { requireModuleEnabled } from '../middleware/moduleEnabled.js';
+import { MODULES } from '../core/modules/moduleRegistry.js';
 
 const router = express.Router();
+
+// The kill-switch lives at the platform root, NOT under a vertical's /admin: it
+// exists to act on a misbehaving vertical, so it must not depend on one.
+router.use('/v1/platform/modules', platformModuleRoutes);
 
 router.get('/v1/health', (req, res) => {
     res.status(200).json({ status: 'UP', message: 'Server is healthy' });
@@ -58,7 +67,7 @@ router.use('/v1/food/user', authMiddleware, requireRoles('USER'), userRoutes);
 // router.use('/v1/food/user', userRoutes);
 
 router.use('/v1/food/notifications', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER'), notificationRoutes);
-router.use('/v1/food/orders', authMiddleware, requireRoles('USER'), orderUserRoutes);
+router.use('/v1/food/orders', requireModuleEnabled(MODULES.FOOD), authMiddleware, requireRoles('USER'), orderUserRoutes);
 router.use('/v1/food/payments', authMiddleware, paymentRoutes);
 router.use('/v1/payments/webhook', webhookRoutes); // ✅ NEW: Public Webhook
 router.use('/v1/petpooja/webhook', petpoojaWebhookRoutes);
@@ -75,7 +84,7 @@ router.get('/env/public', getPublicEnvController);
 router.get('/v1/admin/queues', authMiddleware, requireRoles('ADMIN'), getQueuesController);
 router.use('/v1', taxiPromotionsRouter);
 
-router.use('/v1/taxi', taxiRouter);
+router.use('/v1/taxi', requireModuleEnabled(MODULES.TAXI), taxiRouter);
 
 // ─── Cross-vertical customer feed ──────────────────────────────────────────
 // One customer's history and spend across food, taxi, quick-commerce and
@@ -88,11 +97,11 @@ router.get('/v1/me/spend', authMiddleware, getMySpendController);
 // No legacy alias block: unlike service-provider, this module's original paths were
 // /v1/food/*, which master's own food module already owns. Aliasing them would hand
 // food traffic to quick-commerce.
-router.use('/v1/qc', qcRouter);
+router.use('/v1/qc', requireModuleEnabled(MODULES.QUICK_COMMERCE), qcRouter);
 
 // ─── Service-Provider (Homster) ────────────────────────────────────────────
 // Canonical prefix.
-router.use('/v1/sp', spRouter);
+router.use('/v1/sp', requireModuleEnabled(MODULES.SERVICE_PROVIDER), spRouter);
 
 // Legacy prefixes the shipped Flutter / seller-APK builds still call. These were
 // top-level in the old standalone server.js and none of them collide with the

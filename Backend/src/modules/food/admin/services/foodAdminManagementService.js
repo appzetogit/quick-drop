@@ -1,4 +1,6 @@
 import { FoodAdmin } from '../../../../core/admin/admin.model.js';
+// Deleting or editing an admin must evict the cached copy the auth middleware serves.
+import { invalidateAdminCache } from '../middlewares/foodAdmin.middleware.js';
 import { FoodZone } from '../models/zone.model.js';
 import { listFoodPermissionCatalog } from './foodAdminAccessService.js';
 import {
@@ -254,6 +256,10 @@ export async function updateFoodAdminAccount(currentAdmin, targetId, payload) {
   }
 
   await admin.save();
+  // attachFoodAdminContext caches admin documents for 15s. Without this, a
+  // permission change or a deactivation would not reach the affected admin until the
+  // TTL lapsed -- so revoking access would appear to do nothing for a quarter minute.
+  invalidateAdminCache(targetId);
   return serializeAdminContext(admin);
 }
 
@@ -273,6 +279,10 @@ export async function deleteFoodAdminAccount(currentAdmin, targetId) {
   }
 
   await FoodAdmin.deleteOne({ _id: targetId });
+  // Without this the deleted admin's cached document keeps satisfying
+  // attachFoodAdminContext until the TTL lapses, so their session outlives the
+  // account by up to 15 seconds.
+  invalidateAdminCache(targetId);
   return { success: true };
 }
 
