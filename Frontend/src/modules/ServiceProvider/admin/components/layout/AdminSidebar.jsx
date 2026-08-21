@@ -24,7 +24,7 @@ import adminMenu from "../../config/adminMenu.json";
 import dashboardService from "../../services/dashboardService";
 import { getSettings } from "../../services/settingsService";
 import { getCachedSettings, loadBusinessSettings, normalizeCompanyName } from "@food/utils/businessSettings";
-import { useSettings } from "../../../Taxi/shared/context/SettingsContext";
+import { useSettings } from "../../../../Taxi/shared/context/SettingsContext";
 import quickSpicyLogo from "@food/assets/k9-logo.jpg";
 
 // Icon mapping for menu items
