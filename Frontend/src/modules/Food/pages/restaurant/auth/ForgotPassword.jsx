@@ -217,7 +217,6 @@ export default function RestaurantForgotPassword() {
     }
   }
 
-  const companyName = useCompanyName()
   const [keyboardInset, setKeyboardInset] = useState(0)
 
   useEffect(() => {
