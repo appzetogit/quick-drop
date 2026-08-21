@@ -19,10 +19,12 @@ import {
   FiStar,
   FiShield,
 } from "react-icons/fi";
+import { UtensilsCrossed, Truck, Wrench, ShoppingBasket, ChevronDown } from "lucide-react";
 import adminMenu from "../../config/adminMenu.json";
 import dashboardService from "../../services/dashboardService";
 import { getSettings } from "../../services/settingsService";
 import { getCachedSettings, loadBusinessSettings, normalizeCompanyName } from "@food/utils/businessSettings";
+import { useSettings } from "../../../Taxi/shared/context/SettingsContext";
 import quickSpicyLogo from "@food/assets/k9-logo.jpg";
 
 // Icon mapping for menu items
@@ -350,10 +352,10 @@ const AdminSidebar = ({ isOpen, onClose }) => {
         {/* Main Menu Item */}
         <div
           className={`
-            flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 cursor-pointer
+            flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer text-sm
             ${active
-              ? "bg-primary-600 text-white shadow-sm"
-              : "text-gray-300 hover:bg-slate-700"
+              ? "bg-white/10 text-white font-semibold border border-white/15 shadow-sm"
+              : "text-neutral-400 hover:text-white hover:bg-white/5"
             }
           `}
           onClick={() => {
@@ -364,10 +366,10 @@ const AdminSidebar = ({ isOpen, onClose }) => {
             }
           }}>
           <Icon
-            className={`text-xl flex-shrink-0 ${active ? "text-white" : "text-gray-400"
+            className={`text-lg flex-shrink-0 ${active ? "text-white" : "text-neutral-400"
               }`}
           />
-          <span className="font-semibold flex-1 text-base">{item.title}</span>
+          <span className="font-semibold flex-1 text-sm">{item.title}</span>
 
           {/* Badge Display */}
           {item.title === "Bookings" && counts.bookings > 0 && (
@@ -395,7 +397,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
             <motion.div
               animate={{ rotate: isExpanded ? 180 : 0 }}
               transition={{ duration: 0.2 }}>
-              <FiChevronDown className="text-gray-400 text-sm" />
+              <ChevronDown className="text-neutral-400 text-sm w-4 h-4" />
             </motion.div>
           )}
         </div>
@@ -409,7 +411,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.2 }}
               className="overflow-hidden">
-              <div className="ml-4 mt-1 pl-4 border-l-2 border-slate-600 space-y-1">
+              <div className="ml-4 mt-1 pl-3 border-l border-neutral-800 space-y-1">
                 {item.children.map((child, index) => {
                   const childRoute = getChildRoute(item.route, child);
                   const isChildActive =
@@ -424,10 +426,10 @@ const AdminSidebar = ({ isOpen, onClose }) => {
                         handleMenuItemClick(childRoute, item.title)
                       }
                       className={`
-                        px-3 py-2 text-sm rounded-lg transition-colors cursor-pointer flex justify-between items-center
+                        px-3 py-2 text-xs rounded-lg transition-colors cursor-pointer flex justify-between items-center
                         ${isChildActive
-                          ? "bg-primary-50 text-white font-medium"
-                          : "text-gray-400 hover:bg-slate-700"
+                          ? "bg-white/10 text-white font-semibold"
+                          : "text-neutral-400 hover:text-white hover:bg-white/5"
                         }
                       `}>
                       <span>{child}</span>
@@ -452,16 +454,19 @@ const AdminSidebar = ({ isOpen, onClose }) => {
     );
   };
 
+  const { activeLogo, settings: appSettings } = useSettings() || {};
+  const effectiveLogo = activeLogo || appSettings?.customization?.logos?.admin || appSettings?.logos?.admin || appSettings?.customization?.logos?.landing || logoUrl || quickSpicyLogo;
+
   // Sidebar content
   const sidebarContent = (
-    <div className="h-full w-full flex flex-col bg-slate-800">
+    <div className="h-full w-full flex flex-col bg-neutral-950 border-r border-neutral-800/60 overflow-hidden">
       {/* Header Section */}
-      <div className="px-4 py-4 border-b border-slate-700 bg-slate-900">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1">
+      <div className="shrink-0 px-3 py-3 border-b border-neutral-800/60 bg-neutral-900">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1 transition-all">
               <img
-                src={logoUrl || quickSpicyLogo}
+                src={effectiveLogo}
                 alt={servicesTitle}
                 className="h-9 w-9 object-contain"
                 onError={(e) => {
@@ -471,10 +476,10 @@ const AdminSidebar = ({ isOpen, onClose }) => {
                 }}
               />
             </div>
-            <div className="flex-1 min-w-0">
-              <h2 className="font-extrabold text-white text-[15px] leading-tight truncate">
+            <div className="flex flex-col min-w-0">
+              <h3 className="text-[15px] font-extrabold leading-tight text-white tracking-tight truncate">
                 {servicesTitle}
-              </h2>
+              </h3>
               <div className="mt-1 flex items-center gap-1.5">
                 <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
                 <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
@@ -487,47 +492,54 @@ const AdminSidebar = ({ isOpen, onClose }) => {
           {/* Close Button - Mobile Only */}
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0 lg:hidden"
+            className="p-1.5 hover:bg-white/5 rounded-lg transition-colors flex-shrink-0 lg:hidden text-neutral-300 hover:text-white"
             aria-label="Close sidebar">
-            <FiX className="text-xl text-gray-300" />
+            <FiX className="text-xl" />
           </button>
         </div>
-      </div>
 
-      {/* Platform module switcher.
-          This panel owns its own chrome (it is mounted outside master's AdminLayout),
-          so without this there is no way back to the Food, Taxi, or Quick commerce admin. */}
-      <div className="px-3 pt-3">
-        <div className="flex gap-1 p-1 bg-white/5 rounded-lg border border-white/10">
+        {/* Admin Panel Label */}
+        <div className="mb-3">
+          <h2 className="text-sm font-semibold text-neutral-300 uppercase tracking-wider text-left">
+            Admin Panel
+          </h2>
+        </div>
+
+        {/* Platform module switcher */}
+        <div className="flex p-1 bg-neutral-800/40 backdrop-blur-sm rounded-xl mb-1 border border-white/5 shadow-inner">
           <button
             type="button"
             onClick={() => navigate("/admin/food")}
-            className="flex-1 text-center py-1.5 text-[11px] font-bold rounded-md text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
+            <UtensilsCrossed className="w-3.5 h-3.5 text-neutral-500" />
             Food
           </button>
           <button
             type="button"
             onClick={() => navigate("/taxi/admin/dashboard")}
-            className="flex-1 text-center py-1.5 text-[11px] font-bold rounded-md text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
+            <Truck className="w-3.5 h-3.5 text-neutral-500" />
             Taxi
           </button>
           <button
             type="button"
             onClick={() => navigate("/admin/sp/dashboard")}
-            className="flex-1 text-center py-1.5 text-[11px] font-bold rounded-md bg-white text-black shadow-sm">
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300 bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)] scale-[1.02]">
+            <Wrench className="w-3.5 h-3.5 text-black" />
             Services
           </button>
           <button
             type="button"
             onClick={() => navigate("/admin/quick-commerce")}
-            className="flex-1 text-center py-1.5 text-[11px] font-bold rounded-md text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
+            <ShoppingBasket className="w-3.5 h-3.5 text-neutral-500" />
             Quick
           </button>
         </div>
       </div>
 
       {/* Navigation Menu */}
-      <nav className="flex-1 overflow-y-auto p-3 scrollbar-admin lg:pb-3">
+      <nav className="flex-1 overflow-y-auto p-3 admin-sidebar-scroll lg:pb-3 space-y-1">
         {filteredMenu.map((item) => renderMenuItem(item))}
       </nav>
     </div>
@@ -535,6 +547,26 @@ const AdminSidebar = ({ isOpen, onClose }) => {
 
   return (
     <>
+      <style>{`
+        .admin-sidebar-scroll::-webkit-scrollbar {
+          width: 5px;
+        }
+        .admin-sidebar-scroll::-webkit-scrollbar-track {
+          background: rgba(17, 24, 39, 0.4);
+        }
+        .admin-sidebar-scroll::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 4px;
+        }
+        .admin-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.3);
+        }
+        .admin-sidebar-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.15) rgba(17, 24, 39, 0.4);
+        }
+      `}</style>
+
       {/* Mobile: Overlay Backdrop */}
       <AnimatePresence>
         {isOpen && (
@@ -556,7 +588,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
             animate={{ x: 0 }}
             exit={{ x: "-100%" }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed left-0 top-0 bottom-0 w-[280px] z-[99999] lg:hidden shadow-2xl"
+            className="fixed left-0 top-0 bottom-0 w-80 z-[99999] lg:hidden shadow-2xl"
           >
             {sidebarContent}
           </motion.div>
@@ -565,8 +597,7 @@ const AdminSidebar = ({ isOpen, onClose }) => {
 
       {/* Sidebar - Desktop Fixed */}
       <div
-        className="hidden lg:flex fixed left-0 top-0 bottom-0 z-30"
-        style={{ width: '278px' }}
+        className="hidden lg:flex fixed left-0 top-0 bottom-0 z-30 w-80"
       >
         {sidebarContent}
       </div>

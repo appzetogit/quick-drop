@@ -1372,61 +1372,73 @@ const AdminLayout = () => {
     <div className="flex h-screen overflow-hidden bg-neutral-200 dark:bg-slate-950 font-sans text-gray-900 dark:text-gray-100">
       <aside
         className={cn(
-          "relative z-50 flex h-screen flex-col overflow-hidden transition-all duration-500 bg-neutral-950 border-r border-neutral-800/60",
-          isCollapsed ? 'w-20' : 'w-72',
+          "relative z-50 flex h-screen flex-col overflow-hidden transition-all duration-300 ease-in-out bg-neutral-950 border-r border-neutral-800/60",
+          isCollapsed ? 'w-20' : 'w-80',
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
         <div className="flex h-full flex-col">
-          <div className="group/sidebar-head relative mb-4 flex h-24 items-center border-b border-white/5 px-6">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1 transition-all group-hover/sidebar-head:scale-105">
-                <img src={cachedLogo || settings?.logos?.admin || settings?.logos?.landing} alt={taxiTitle} className="h-10 w-10 object-contain" />
-              </div>
+          {/* Header with Logo and Brand */}
+          <div className="shrink-0 px-3 py-3 border-b border-neutral-800/60 bg-neutral-900">
+            <div className="flex items-center justify-between mb-3">
               {!isCollapsed && (
-                <div className="flex flex-col">
-                  <h3 className="text-[15px] font-extrabold leading-tight text-white tracking-tight">
-                    {taxiTitle}
-                  </h3>
-                  <div className="mt-1 flex items-center gap-1.5">
-                    <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                      System Admin
-                    </span>
+                <div className="flex items-center gap-3.5">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1 transition-all">
+                    <img src={cachedLogo || settings?.logos?.admin || settings?.logos?.landing} alt={taxiTitle} className="h-9 w-9 object-contain" />
+                  </div>
+                  <div className="flex flex-col">
+                    <h3 className="text-[15px] font-extrabold leading-tight text-white tracking-tight">
+                      {taxiTitle}
+                    </h3>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                        System Admin
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
-            </div>
-            <button
-              type="button"
-              onClick={() => setCollapsed((current) => !current)}
-              className="absolute -right-3 top-9 z-[60] hidden h-7 w-7 items-center justify-center rounded-full border border-neutral-800 bg-neutral-900 text-neutral-300 shadow-lg ring-4 ring-neutral-950 transition-all hover:bg-white dark:bg-slate-900 hover:text-black hover:scale-110 active:scale-90 lg:flex group/collapse"
-            >
-              {isCollapsed ? (
-                <ChevronRight size={12} strokeWidth={3.5} className="transition-transform group-hover/collapse:translate-x-0.5" />
-              ) : (
-                <ChevronLeft size={12} strokeWidth={3.5} className="transition-transform group-hover/collapse:-translate-x-0.5" />
+              {isCollapsed && (
+                <div className="w-full flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center ring-1 ring-white/10">
+                    <img src={cachedLogo || settings?.logos?.admin || settings?.logos?.landing} alt={taxiTitle} className="w-8 h-8 object-contain" />
+                  </div>
+                </div>
               )}
-            </button>
-          </div>
-
-          {!isCollapsed && (
-            <div className="px-6 mb-3">
-              <h2 className="text-sm font-semibold text-neutral-300 uppercase tracking-wider text-left">
-                Admin Panel
-              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCollapsed((current) => !current)}
+                  className="text-neutral-300 hover:text-white transition-all duration-200 hover:scale-110 p-1.5 rounded-lg hover:bg-white/5"
+                  title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                >
+                  {isCollapsed ? (
+                    <ChevronRight className="w-4 h-4" />
+                  ) : (
+                    <ChevronLeft className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
             </div>
-          )}
 
-          {/* Module Switcher Tabs */}
-          {!isCollapsed && (
-            <div className="px-4 mb-4">
-              <div className="flex p-1 bg-neutral-900/60 backdrop-blur-sm rounded-xl border border-white/5 shadow-inner">
+            {/* Admin Panel Label */}
+            {!isCollapsed && (
+              <div className="mb-3">
+                <h2 className="text-sm font-semibold text-neutral-300 uppercase tracking-wider text-left">
+                  Admin Panel
+                </h2>
+              </div>
+            )}
+
+            {/* Module Switcher Tabs */}
+            {!isCollapsed && (
+              <div className="flex p-1 bg-neutral-800/40 backdrop-blur-sm rounded-xl mb-1 border border-white/5 shadow-inner">
                 <button
                   type="button"
                   onClick={() => navigate("/admin/food")}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
                     "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
                   )}
                 >
@@ -1437,18 +1449,18 @@ const AdminLayout = () => {
                   type="button"
                   onClick={() => navigate("/taxi/admin/dashboard")}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
-                    "bg-white dark:bg-slate-900 text-black dark:text-white shadow-[0_4px_12px_rgba(255,255,255,0.15)] scale-[1.02]"
+                    "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)] scale-[1.02]"
                   )}
                 >
-                  <Truck className="w-3.5 h-3.5 text-black dark:text-white" />
+                  <Truck className="w-3.5 h-3.5 text-black" />
                   Taxi
                 </button>
                 <button
                   type="button"
                   onClick={() => navigate("/admin/sp/dashboard")}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
                     "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
                   )}
                 >
@@ -1459,7 +1471,7 @@ const AdminLayout = () => {
                   type="button"
                   onClick={() => navigate("/admin/quick-commerce")}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
                     "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
                   )}
                 >
@@ -1467,8 +1479,8 @@ const AdminLayout = () => {
                   Quick
                 </button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           <nav className="no-scrollbar mt-0 flex-1 space-y-8 overflow-y-auto px-4 pb-12 scroll-smooth">
             {sidebarSections.map((section) => (

@@ -22,7 +22,7 @@ const AdminLayout = () => {
       <AdminSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col lg:ml-[278px] min-w-0 max-w-full overflow-x-hidden transition-all duration-300">
+      <div className="flex-1 flex flex-col lg:ml-80 min-w-0 max-w-full overflow-x-hidden transition-all duration-300">
         {/* Header */}
         <AdminHeader onMenuClick={() => setSidebarOpen(true)} />
 
