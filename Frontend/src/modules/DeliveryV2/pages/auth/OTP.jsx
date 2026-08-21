@@ -7,25 +7,36 @@ import { deliveryAPI } from "@food/api"
 import { setAuthData as storeAuthData } from "@food/utils/auth"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { motion, AnimatePresence } from "framer-motion"
-import logoImg from "@food/assets/k9-logo.jpg"
-import { getDeliveryPartnerLogo, loadBusinessSettings } from "@food/utils/businessSettings"
+import { getDeliveryPartnerLogo, loadBusinessSettings, getCachedSettings } from "@food/utils/businessSettings"
+import { useSettings } from "../../../Taxi/shared/context/SettingsContext"
 
 export default function DeliveryOTP() {
   const companyName = useCompanyName()
   const navigate = useNavigate()
-  const [logoUrl, setLogoUrl] = useState(() => {
+  const { activeLogo, settings: appSettings } = useSettings() || {}
+  const [businessLogo, setBusinessLogo] = useState(() => {
     try {
-      return getDeliveryPartnerLogo();
+      return getDeliveryPartnerLogo() || getCachedSettings()?.logo?.url || null;
     } catch (e) {
-      return logoImg;
+      return null;
     }
   })
 
   useEffect(() => {
-    loadBusinessSettings().then(() => {
-      setLogoUrl(getDeliveryPartnerLogo());
+    loadBusinessSettings().then((s) => {
+      const logo = getDeliveryPartnerLogo() || s?.deliveryPartnerLogo?.url || s?.logo?.url;
+      if (logo) setBusinessLogo(logo);
     }).catch(() => {});
   }, []);
+
+  const resolvedLogo = activeLogo ||
+    appSettings?.customization?.logos?.food_delivery_partner ||
+    appSettings?.customization?.logos?.delivery_partner ||
+    appSettings?.customization?.logos?.food ||
+    appSettings?.customization?.logos?.landing ||
+    appSettings?.customization?.logos?.admin ||
+    appSettings?.general?.logo ||
+    businessLogo;
 
   const [otp, setOtp] = useState(["", "", "", ""])
   const [isLoading, setIsLoading] = useState(false)
@@ -255,8 +266,26 @@ export default function DeliveryOTP() {
           transition={{ duration: 0.6 }}
           className="relative z-10 flex flex-col items-center gap-4 px-6 text-center"
         >
-          <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center border-2 border-white/25 shadow-xl mb-2 overflow-hidden">
-            <img src={logoUrl} alt={`${companyName} logo`} className="w-full h-full object-cover scale-110" />
+          <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center border-2 border-white/25 shadow-xl mb-2 overflow-hidden p-1.5">
+            {resolvedLogo ? (
+              <img
+                src={resolvedLogo}
+                alt={`${companyName} logo`}
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  if (e.target.nextElementSibling) {
+                    e.target.nextElementSibling.style.display = 'flex';
+                  }
+                }}
+              />
+            ) : null}
+            <div
+              className="w-full h-full flex items-center justify-center font-black text-xl text-slate-800"
+              style={{ display: resolvedLogo ? 'none' : 'flex' }}
+            >
+              {(companyName || "QD").substring(0, 2).toUpperCase()}
+            </div>
           </div>
           <div className="space-y-1 text-center">
             <h1 className="font-black text-2xl tracking-tight uppercase leading-none mb-1">

@@ -6,26 +6,37 @@ import { useCompanyName } from "@food/hooks/useCompanyName"
 import { motion, AnimatePresence } from "framer-motion"
 import { Loader2, AlertCircle } from "lucide-react"
 import { Button } from "@food/components/ui/button"
-import logoImg from "@food/assets/k9-logo.jpg"
-import { getDeliveryPartnerLogo, loadBusinessSettings } from "@food/utils/businessSettings"
+import { getDeliveryPartnerLogo, loadBusinessSettings, getCachedSettings } from "@food/utils/businessSettings"
+import { useSettings } from "../../../Taxi/shared/context/SettingsContext"
 
 export default function DeliverySignIn() {
   const companyName = useCompanyName()
   const navigate = useNavigate()
   const phoneInputRef = useRef(null)
-  const [logoUrl, setLogoUrl] = useState(() => {
+  const { activeLogo, settings: appSettings } = useSettings() || {}
+  const [businessLogo, setBusinessLogo] = useState(() => {
     try {
-      return getDeliveryPartnerLogo();
+      return getDeliveryPartnerLogo() || getCachedSettings()?.logo?.url || null;
     } catch (e) {
-      return logoImg;
+      return null;
     }
   })
 
   useEffect(() => {
-    loadBusinessSettings().then(() => {
-      setLogoUrl(getDeliveryPartnerLogo());
+    loadBusinessSettings().then((s) => {
+      const logo = getDeliveryPartnerLogo() || s?.deliveryPartnerLogo?.url || s?.logo?.url;
+      if (logo) setBusinessLogo(logo);
     }).catch(() => {});
   }, []);
+
+  const resolvedLogo = activeLogo ||
+    appSettings?.customization?.logos?.food_delivery_partner ||
+    appSettings?.customization?.logos?.delivery_partner ||
+    appSettings?.customization?.logos?.food ||
+    appSettings?.customization?.logos?.landing ||
+    appSettings?.customization?.logos?.admin ||
+    appSettings?.general?.logo ||
+    businessLogo;
   const [formData, setFormData] = useState({
     phone: "",
     countryCode: "+91",
@@ -122,8 +133,26 @@ export default function DeliverySignIn() {
           transition={{ duration: 0.6, ease: "easeOut" }}
           className="relative z-10 flex flex-col items-center gap-4"
         >
-          <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center shadow-xl border-4 border-white/25 overflow-hidden">
-            <img src={logoUrl} alt={`${companyName} logo`} className="w-full h-full object-cover scale-110" />
+          <div className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center shadow-xl border-4 border-white/25 overflow-hidden p-2">
+            {resolvedLogo ? (
+              <img
+                src={resolvedLogo}
+                alt={`${companyName} logo`}
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  if (e.target.nextElementSibling) {
+                    e.target.nextElementSibling.style.display = 'flex';
+                  }
+                }}
+              />
+            ) : null}
+            <div
+              className="w-full h-full flex items-center justify-center font-black text-2xl text-slate-800"
+              style={{ display: resolvedLogo ? 'none' : 'flex' }}
+            >
+              {(companyName || "QD").substring(0, 2).toUpperCase()}
+            </div>
           </div>
           <div className="text-center text-white">
             <h1 className="font-black text-3xl tracking-tighter leading-none mb-1 italic">
