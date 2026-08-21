@@ -175,18 +175,6 @@ export default function BusinessSetup() {
         region: formData.region,
       };
 
-      const files = {};
-      if (logoFile) {
-        files.logo = logoFile;
-        files.favicon = logoFile;
-      }
-      if (restaurantLogoFile) {
-        files.restaurantLogo = restaurantLogoFile;
-      }
-      if (deliveryPartnerLogoFile) {
-        files.deliveryPartnerLogo = deliveryPartnerLogoFile;
-      }
-
       const response = await adminAPI.updateBusinessSettings(dataToSend);
       const updatedSettings = response?.data?.data || response?.data;
 
