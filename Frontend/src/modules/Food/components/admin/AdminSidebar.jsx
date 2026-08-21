@@ -539,32 +539,39 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
             "flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-300 ease-out menu-item-animate text-left",
             isInSection ? "text-sm font-semibold" : "text-sm",
             isActive(item.path)
-              ? "bg-white/10 text-white border border-white/15 font-semibold"
-              : "text-neutral-300 hover:bg-white/5 hover:text-white",
+              ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] font-semibold shadow-sm"
+              : "text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-ink)]",
             isCollapsed && "justify-center px-2"
           )}
           style={{ animationDelay: `${index * 0.05}s` }}
           title={isCollapsed ? item.label : undefined}
+          // Which item is current was conveyed by colour alone, so a screen reader
+          // announced ~90 identical links. "page" is the correct token here because
+          // these are route destinations.
+          aria-current={isActive(item.path) ? "page" : undefined}
         >
-          <Icon className={cn(
-            "shrink-0 transition-all duration-300 text-left",
-            isInSection ? "w-4 h-4" : "w-4 h-4",
-            isActive(item.path) ? "text-white scale-110" : "text-neutral-300"
-          )} />
+          <Icon
+            aria-hidden="true"
+            className={cn(
+              "shrink-0 transition-all duration-300 text-left",
+              isInSection ? "w-4 h-4" : "w-4 h-4",
+              isActive(item.path) ? "text-[var(--sb-active-ink)] scale-110" : "text-[var(--sb-ink-soft)]"
+            )}
+          />
           {!isCollapsed && (
             <div className="flex-1 flex items-center justify-between overflow-hidden">
               <span className={cn("text-left truncate", isInSection ? "font-semibold" : "font-medium")}>
                 {item.label}
               </span>
               {getBadgeCount(item.label, item.path) > 0 && (
-                <span className="shrink-0 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 min-w-[18px] text-center">
+                <span className="shrink-0 bg-red-600 text-[#FFFFFF] text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 min-w-[18px] text-center">
                   {getBadgeCount(item.label, item.path) > 99 ? "99+" : getBadgeCount(item.label, item.path)}
                 </span>
               )}
             </div>
           )}
           {isCollapsed && getBadgeCount(item.label, item.path) > 0 && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-neutral-950" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-[var(--sb-surface)]" />
           )}
         </Link>
       )
@@ -582,14 +589,14 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
               onClick={() => toggleSection(sectionKey)}
               className={cn(
                 "w-full flex items-center justify-center px-2 py-2 rounded-lg transition-all duration-300 ease-out text-sm font-medium",
-                "text-white hover:bg-white/5"
+                "text-[var(--sb-ink)] hover:bg-[var(--sb-hover)]"
               )}
               title={item.label}
             >
               <div className="relative">
-                <Icon className="w-4 h-4 shrink-0 text-neutral-300 transition-transform duration-300" />
+                <Icon className="w-4 h-4 shrink-0 text-[var(--sb-ink-soft)] transition-transform duration-300" />
                 {getBadgeCount(item.label, item.path) > 0 && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-neutral-950" />
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-[var(--sb-surface)]" />
                 )}
               </div>
             </button>
@@ -603,24 +610,24 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
             onClick={() => toggleSection(sectionKey)}
             className={cn(
               "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg transition-all duration-300 ease-out text-sm font-medium text-left",
-              "text-white hover:bg-white/5"
+              "text-[var(--sb-ink)] hover:bg-[var(--sb-hover)]"
             )}
           >
             <div className="flex items-center gap-2.5 text-left flex-1 min-w-0">
-              <Icon className="w-4 h-4 shrink-0 text-neutral-300 transition-transform duration-300" />
+              <Icon className="w-4 h-4 shrink-0 text-[var(--sb-ink-soft)] transition-transform duration-300" />
               <span className="font-medium text-left truncate">{item.label}</span>
               {getBadgeCount(item.label, item.path) > 0 && (
-                <span className="shrink-0 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 min-w-[18px] text-center">
+                <span className="shrink-0 bg-red-600 text-[#FFFFFF] text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 min-w-[18px] text-center">
                   {getBadgeCount(item.label, item.path) > 99 ? "99+" : getBadgeCount(item.label, item.path)}
                 </span>
               )}
             </div>
             <div className="transition-transform duration-300 shrink-0" style={{ transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
-              <ChevronDown className="w-4 h-4 shrink-0 text-neutral-300" />
+              <ChevronDown className="w-4 h-4 shrink-0 text-[var(--sb-ink-soft)]" />
             </div>
           </button>
           {isExpanded && item.subItems && (
-            <div className="ml-5 mt-1 space-y-1 border-neutral-800/60 pl-3 submenu-animate overflow-hidden">
+            <div className="ml-5 mt-1 space-y-1 border-[var(--sb-border)] pl-3 submenu-animate overflow-hidden">
               {item.subItems.map((subItem, subIndex) => {
                 const allSubPaths = item.subItems.map(si => si.path)
                 return (
@@ -635,18 +642,26 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                     className={cn(
                       "flex items-center gap-2 px-3 py-1.5 rounded-md transition-all duration-300 ease-out text-sm font-normal text-left",
                       isActive(subItem.path, allSubPaths)
-                        ? "bg-white/10 text-white font-semibold"
-                        : "text-neutral-300 hover:bg-white/5 hover:text-white"
+                        ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] font-semibold"
+                        : "text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-ink)]"
                     )}
                     style={{ animationDelay: `${subIndex * 0.03}s` }}
+                    aria-current={isActive(subItem.path, allSubPaths) ? "page" : undefined}
                   >
-                    <span className={cn(
-                      "w-1.5 h-1.5 rounded-full shrink-0 transition-all duration-300",
-                      isActive(subItem.path, allSubPaths) ? "bg-white scale-125" : "bg-neutral-400"
-                    )}></span>
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "w-1.5 h-1.5 rounded-full shrink-0 transition-all duration-300",
+                        // Active-ink, not ink: this dot sits ON the dark active pill,
+                        // so the ink token would be a dark dot on a dark ground.
+                        isActive(subItem.path, allSubPaths)
+                          ? "bg-[var(--sb-active-ink)] scale-125"
+                          : "bg-[var(--sb-ink-faint)]"
+                      )}
+                    ></span>
                     <span className="text-left flex-1 truncate">{subItem.label}</span>
                     {getBadgeCount(subItem.label, subItem.path) > 0 && (
-                      <span className="shrink-0 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 min-w-[18px] text-center">
+                      <span className="shrink-0 bg-red-600 text-[#FFFFFF] text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 min-w-[18px] text-center">
                         {getBadgeCount(subItem.label, subItem.path) > 99 ? "99+" : getBadgeCount(subItem.label, subItem.path)}
                       </span>
                     )}
@@ -665,6 +680,38 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   return (
     <>
       <style>{`
+        /*
+         * Sidebar palette.
+         *
+         * Every colour in this component resolves through one of these, so the rail
+         * can be retuned here rather than across ~86 utility classes.
+         *
+         * Warm, not grey. The admin canvas is already light (AdminLayout uses
+         * bg-neutral-100 on bg-neutral-200) and only this rail was dark, which left
+         * the panel reading as two products bolted together. Warming the neutrals a
+         * few degrees off pure grey separates the rail from the canvas without a hard
+         * colour change, and reads as chosen rather than defaulted.
+         *
+         * The active state inverts to a dark pill: on a light ground a lightly tinted
+         * fill is easy to miss, and this panel has ~90 destinations to scan.
+         */
+        .admin-sidebar-root {
+          --sb-surface: #FAF8F5;
+          --sb-surface-raised: #FFFFFF;
+          --sb-border: #E8E2D9;
+          --sb-hover: #F1ECE4;
+
+          --sb-ink: #1A1A1A;
+          /* Warm grey-brown. ~9:1 on --sb-surface, comfortably past AA. */
+          --sb-ink-soft: #5C5247;
+          /* Section labels and inactive icons. Darkened from the obvious #8B8177,
+             which fell under 4.5:1 on this ground; this sits at ~5.1:1. */
+          --sb-ink-faint: #6E655B;
+
+          --sb-active-bg: #1A1A1A;
+          --sb-active-ink: #FFFFFF;
+        }
+
         @keyframes slideIn {
           from {
             opacity: 0;
@@ -710,31 +757,77 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
         }
         
+        /* Scrollbar. These were white-on-dark rgba literals, which on the light rail
+           would have been an invisible thumb on an invisible track. */
         .admin-sidebar-scroll::-webkit-scrollbar {
           width: 2px;
         }
         .admin-sidebar-scroll::-webkit-scrollbar-track {
-          background: rgba(17, 24, 39, 0.4);
+          background: transparent;
         }
         .admin-sidebar-scroll::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.2);
+          background: rgba(92, 82, 71, 0.25);
           border-radius: 10px;
           transition: background 0.2s ease;
         }
         .admin-sidebar-scroll::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 255, 255, 0.35);
+          background: rgba(92, 82, 71, 0.45);
         }
         .admin-sidebar-scroll:hover::-webkit-scrollbar {
           width: 6px;
         }
         .admin-sidebar-scroll {
           scrollbar-width: thin;
-          scrollbar-color: rgba(255, 255, 255, 0.25) rgba(17, 24, 39, 0.4);
+          scrollbar-color: rgba(92, 82, 71, 0.3) transparent;
+        }
+
+        /*
+         * Keyboard focus.
+         *
+         * Only the search input had a focus style, so tabbing through ~90 nav items
+         * moved an invisible cursor. focus-visible rather than focus, so a mouse
+         * click does not leave a ring behind.
+         */
+        .admin-sidebar-root a:focus-visible,
+        .admin-sidebar-root button:focus-visible {
+          outline: 2px solid var(--sb-ink);
+          outline-offset: 2px;
+          border-radius: 0.5rem;
+        }
+
+        /*
+         * Respect a reduced-motion preference.
+         *
+         * The rail runs five staggered entrance animations plus a submenu expand on
+         * every mount. For a vestibular disorder that is not decoration, it is a
+         * symptom trigger -- and an operator opens this panel dozens of times a day.
+         * The end state is identical; only the travel is removed.
+         */
+        @media (prefers-reduced-motion: reduce) {
+          .admin-sidebar-root *,
+          .admin-sidebar-root *::before,
+          .admin-sidebar-root *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+            scroll-behavior: auto !important;
+          }
+          .admin-sidebar-root .menu-item-animate,
+          .admin-sidebar-root .submenu-animate {
+            animation: none !important;
+            opacity: 1 !important;
+            max-height: none !important;
+            transform: none !important;
+          }
         }
       `}</style>
       <div
+        // admin-sidebar-root is where the palette custom properties are defined, so
+        // every var(--sb-*) below resolves from here. It also scopes the focus-ring
+        // and reduced-motion rules to this rail rather than the whole document.
         className={cn(
-          "bg-neutral-950 border-r border-neutral-800/60 h-screen fixed left-0 top-0 z-50 flex flex-col overflow-hidden",
+          "admin-sidebar-root",
+          "bg-[var(--sb-surface)] border-r border-[var(--sb-border)] h-screen fixed left-0 top-0 z-50 flex flex-col overflow-hidden",
           "transform transition-all duration-300 ease-in-out",
           "lg:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full",
@@ -742,11 +835,11 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
         )}
       >
         {/* Header with Logo and Brand */}
-        <div className="shrink-0 px-3 py-3 border-b border-neutral-800/60 bg-neutral-900 animate-[fadeIn_0.4s_ease-out]">
+        <div className="shrink-0 px-3 py-3 border-b border-[var(--sb-border)] bg-[var(--sb-surface-raised)] animate-[fadeIn_0.4s_ease-out]">
           <div className="flex items-center justify-between mb-3">
             {!isCollapsed && (
               <div className="flex items-center gap-3.5 animate-[slideIn_0.3s_ease-out]">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1 transition-all">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--sb-border)] bg-[var(--sb-hover)] p-1 transition-all">
                   <img
                     src={activeLogo || logoUrl}
                     alt={displayTitle}
@@ -754,12 +847,16 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                   />
                 </div>
                 <div className="flex flex-col">
-                  <h3 className="text-[15px] font-extrabold leading-tight text-white tracking-tight">
+                  <h3 className="text-[15px] font-extrabold leading-tight text-[var(--sb-ink)] tracking-tight">
                     {displayTitle}
                   </h3>
                   <div className="mt-1 flex items-center gap-1.5">
-                    <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                    {/* emerald-600, not 500: the lighter shade was picked to glow on
+                        a near-black rail and sits at roughly 2.3:1 on this one. The
+                        outward glow goes with it — on a light ground it reads as a
+                        smudge rather than a light source. */}
+                    <div className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-[var(--sb-ink-faint)]">
                       System Admin
                     </span>
                   </div>
@@ -768,7 +865,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
             )}
             {isCollapsed && (
               <div className="w-full flex items-center justify-center">
-                <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center shadow-lg shadow-black/20 ring-1 ring-white/10">
+                <div className="w-10 h-10 rounded-lg bg-[var(--sb-hover)] flex items-center justify-center shadow-lg shadow-[rgba(26,26,26,0.12)] ring-1 ring-[var(--sb-border)]">
                   {activeLogo || logoUrl || companyName ? (
                     <img
                       src={activeLogo || logoUrl || quickSpicyLogo}
@@ -790,7 +887,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
             <div className="flex items-center gap-2">
               <button
                 onClick={toggleCollapse}
-                className="text-neutral-300 hover:text-white transition-all duration-200 hover:scale-110 p-1.5 rounded-lg hover:bg-white/5"
+                className="text-[var(--sb-ink-soft)] hover:text-[var(--sb-ink)] transition-all duration-200 hover:scale-110 p-1.5 rounded-lg hover:bg-[var(--sb-hover)]"
                 title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               >
                 {isCollapsed ? (
@@ -801,7 +898,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
               </button>
               <button
                 onClick={onClose}
-                className="lg:hidden text-neutral-300 hover:text-white transition-all duration-200 hover:scale-110"
+                className="lg:hidden text-[var(--sb-ink-soft)] hover:text-[var(--sb-ink)] transition-all duration-200 hover:scale-110"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -811,7 +908,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
           {/* Admin Panel Label */}
           {!isCollapsed && (
             <div className="mb-3 animate-[slideIn_0.4s_ease-out_0.1s_both]">
-              <h2 className="text-sm font-semibold text-neutral-300 uppercase tracking-wider text-left">
+              <h2 className="text-sm font-semibold text-[var(--sb-ink-soft)] uppercase tracking-wider text-left">
                 Admin Panel
               </h2>
             </div>
@@ -819,7 +916,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
 
           {/* Module Switcher Tabs */}
           {!isCollapsed && (
-            <div className="flex p-1 bg-neutral-800/40 backdrop-blur-sm rounded-xl mb-4 border border-white/5 shadow-inner animate-[slideIn_0.4s_ease-out_0.15s_both]">
+            <div className="flex p-1 bg-[var(--sb-surface-raised)] backdrop-blur-sm rounded-xl mb-4 border border-[var(--sb-border)] shadow-inner animate-[slideIn_0.4s_ease-out_0.15s_both]">
               {serviceAccess.food && (
               <button
                 type="button"
@@ -827,16 +924,16 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
                   location.pathname.includes("/admin/food") || location.pathname === "/admin" || location.pathname === "/admin/"
-                    ? "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)] scale-[1.02]"
-                    : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                    ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)] scale-[1.02]"
+                    : "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                 )}
               >
                 <UtensilsCrossed
                   className={cn(
                     "w-3.5 h-3.5",
                     location.pathname.includes("/admin/food") || location.pathname === "/admin" || location.pathname === "/admin/"
-                      ? "text-black"
-                      : "text-neutral-500"
+                      ? "text-[var(--sb-active-ink)]"
+                      : "text-[var(--sb-ink-faint)]"
                   )}
                 />
                 Food
@@ -849,14 +946,14 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
                   location.pathname.startsWith("/taxi")
-                    ? "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)] scale-[1.02]"
-                    : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                    ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)] scale-[1.02]"
+                    : "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                 )}
               >
                 <Truck
                   className={cn(
                     "w-3.5 h-3.5",
-                    location.pathname.startsWith("/taxi") ? "text-black" : "text-neutral-500"
+                    location.pathname.startsWith("/taxi") ? "text-[var(--sb-active-ink)]" : "text-[var(--sb-ink-faint)]"
                   )}
                 />
                 Taxi
@@ -869,14 +966,14 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
                   location.pathname.startsWith("/admin/sp")
-                    ? "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)] scale-[1.02]"
-                    : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                    ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)] scale-[1.02]"
+                    : "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                 )}
               >
                 <Wrench
                   className={cn(
                     "w-3.5 h-3.5",
-                    location.pathname.startsWith("/admin/sp") ? "text-black" : "text-neutral-500"
+                    location.pathname.startsWith("/admin/sp") ? "text-[var(--sb-active-ink)]" : "text-[var(--sb-ink-faint)]"
                   )}
                 />
                 Services
@@ -889,14 +986,14 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
                   location.pathname.startsWith("/admin/quick-commerce")
-                    ? "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)] scale-[1.02]"
-                    : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                    ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)] scale-[1.02]"
+                    : "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                 )}
               >
                 <ShoppingBasket
                   className={cn(
                     "w-3.5 h-3.5",
-                    location.pathname.startsWith("/admin/quick-commerce") ? "text-black" : "text-neutral-500"
+                    location.pathname.startsWith("/admin/quick-commerce") ? "text-[var(--sb-active-ink)]" : "text-[var(--sb-ink-faint)]"
                   )}
                 />
                 Quick
@@ -908,21 +1005,21 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
           {/* Search Bar */}
           {!isCollapsed && (
             <div className="relative animate-[slideIn_0.4s_ease-out_0.2s_both]">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-neutral-400 w-4 h-4 z-10 transition-colors duration-200" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--sb-ink-faint)] w-4 h-4 z-10 transition-colors duration-200" />
               <Input
                 type="text"
                 placeholder="Search Menu..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className={cn(
-                  "w-full pl-9 py-2 bg-neutral-900 border border-neutral-800 rounded-lg text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40 transition-all duration-200 text-left",
+                  "w-full pl-9 py-2 bg-[var(--sb-surface-raised)] border border-[var(--sb-border)] rounded-lg text-sm text-[var(--sb-ink)] placeholder:text-[var(--sb-ink-faint)] focus:outline-none focus:ring-2 focus:ring-[var(--sb-ink)] focus:border-[var(--sb-ink)] transition-all duration-200 text-left",
                   searchQuery ? "pr-9" : "pr-3"
                 )}
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-neutral-400 hover:text-white transition-all duration-200 hover:scale-110 z-10"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink)] transition-all duration-200 hover:scale-110 z-10"
                   aria-label="Clear search"
                 >
                   <X className="w-4 h-4" />
@@ -936,8 +1033,8 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
         <nav className="admin-sidebar-scroll flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-3 space-y-2">
           {filteredMenuData.length === 0 && searchQuery.trim() ? (
             <div className="px-3 py-12 text-left animate-[fadeIn_0.4s_ease-out]">
-              <p className="text-neutral-300 text-sm font-medium text-left">No menu items found</p>
-              <p className="text-neutral-500 text-sm mt-2 text-left">Try a different search term</p>
+              <p className="text-[var(--sb-ink-soft)] text-sm font-medium text-left">No menu items found</p>
+              <p className="text-[var(--sb-ink-faint)] text-sm mt-2 text-left">Try a different search term</p>
             </div>
           ) : (
             filteredMenuData.map((item, index) => {
@@ -950,14 +1047,14 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                   <div
                     key={index}
                     className={cn(
-                      index > 0 ? "mt-4 pt-4 border-t border-neutral-800/60" : "",
+                      index > 0 ? "mt-4 pt-4 border-t border-[var(--sb-border)]" : "",
                       "animate-[fadeIn_0.4s_ease-out]"
                     )}
                     style={{ animationDelay: `${index * 0.1}s` }}
                   >
                     {!isCollapsed && (
                       <div className="px-3 py-2 mb-2">
-                        <span className="text-neutral-400 font-bold text-sm uppercase tracking-wider text-left">
+                        <span className="text-[var(--sb-ink-faint)] font-bold text-sm uppercase tracking-wider text-left">
                           {item.label}
                         </span>
                       </div>
