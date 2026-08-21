@@ -77,8 +77,12 @@ router.use('/orders', authMiddleware, requireRoles('USER'), orderUserRoutes);
 // Returns carries its own per-route role gates (customer / admin / rider on one
 // router), so it is mounted bare rather than behind a single requireRoles.
 router.use('/returns', returnRoutes);
+// The webhook MUST be mounted before '/payments'. router.use('/payments', ...) is a
+// prefix match, so mounting it first ran authMiddleware on /payments/webhook/razorpay
+// and 401'd every Razorpay callback — the provider retried, and QC payments never
+// reconciled. HMAC signature verification is the webhook's gate, not the JWT.
+router.use('/payments/webhook', webhookRoutes); // Public: signature-verified
 router.use('/payments', authMiddleware, paymentRoutes);
-router.use('/payments/webhook', webhookRoutes); // ✅ NEW: Public Webhook
 router.use('/fcm-tokens', fcmRoutes);
 router.use('/fcm-tokens', fcmRoutes);
 

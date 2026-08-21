@@ -28,6 +28,40 @@ function maskToken(token) {
     return `${trimmed.slice(0, 12)}...${trimmed.slice(-6)}`;
 }
 
+/**
+ * Load the three parties to an order: customer, restaurant, assigned rider.
+ *
+ * Both tracking handlers need it, because role is NOT authorization here — this room
+ * carries the rider's live GPS. Without an ownership check any authenticated user
+ * could subscribe to any order, and any delivery partner could push spoofed
+ * coordinates into an order they were never assigned.
+ *
+ * Returns null when the order does not exist or the id is unusable; callers treat
+ * null as "deny".
+ */
+async function loadOrderParties(orderId) {
+    try {
+        const [{ FoodOrder }, { buildOrderIdentityFilter }] = await Promise.all([
+            import('../modules/food/orders/models/order.model.js'),
+            import('../modules/food/orders/services/order.helpers.js'),
+        ]);
+        const identity = buildOrderIdentityFilter(orderId);
+        if (!identity) return null;
+        const order = await FoodOrder.findOne(identity)
+            .select('userId restaurantId dispatch.deliveryPartnerId')
+            .lean();
+        if (!order) return null;
+        return {
+            userId: String(order.userId || ''),
+            restaurantId: String(order.restaurantId || ''),
+            deliveryPartnerId: String(order.dispatch?.deliveryPartnerId || ''),
+        };
+    } catch (err) {
+        logger.warn(`Order party lookup failed for ${orderId}: ${err?.message || err}`);
+        return null;
+    }
+}
+
 const roomNames = {
     restaurant: (id) => `restaurant:${String(id)}`,
     user: (id) => `user:${String(id)}`,
@@ -179,10 +213,27 @@ export const initSocket = async (server) => {
         // ─── Live Tracking Events ───────────────────────────────────────
 
         // Users / restaurants subscribe to an order's real-time tracking room.
-        socket.on('join-tracking', (orderId) => {
+        socket.on('join-tracking', async (orderId) => {
             if (!orderId) return;
             const role = socket.user?.role;
             if (role !== 'USER' && role !== 'RESTAURANT' && role !== 'DELIVERY_PARTNER') return;
+
+            const parties = await loadOrderParties(orderId);
+            if (!parties) return;
+            // An unassigned order carries '' for its rider, and a token without a
+            // userId also stringifies to '' — without this guard those two compare
+            // equal and the check passes.
+            const me = String(userId || '');
+            if (!me) return;
+            const isParticipant =
+                (role === 'USER' && parties.userId === me) ||
+                (role === 'RESTAURANT' && parties.restaurantId === me) ||
+                (role === 'DELIVERY_PARTNER' && parties.deliveryPartnerId === me);
+            if (!isParticipant) {
+                logger.warn(`join-tracking denied: ${role}:${me} is not a participant of order ${orderId}`);
+                return;
+            }
+
             const room = roomNames.tracking(orderId);
             socket.join(room);
             logger.info(`Socket ${socket.id} (${role}:${userId}) joined tracking room ${room}`);
@@ -211,6 +262,25 @@ export const initSocket = async (server) => {
             if (now - lastTS < 2000) return;
             _lastLocationBroadcast[data.orderId] = now;
 
+            // Only the rider actually assigned to THIS order may publish its location.
+            // Throttling first means the lookup cannot be used to hammer the database.
+            // ponytail: one indexed findOne per order per 2s. Fine at current volume;
+            // if in-flight orders reach the thousands, memoise per socket with a short
+            // TTL — accepting that a reassigned rider keeps publishing for that TTL.
+            // Both sides must be non-empty: an unassigned order has '' for its rider,
+            // and a token without a userId is also '', so '' === '' would let an
+            // unidentified socket publish to any unassigned order.
+            const me = String(userId || '');
+            const parties = await loadOrderParties(data.orderId);
+            if (!me || !parties || !parties.deliveryPartnerId || parties.deliveryPartnerId !== me) {
+                logDeliverySocket('Rejected update-location for unassigned order', {
+                    socketId: socket.id,
+                    deliveryPartnerId: String(userId || ''),
+                    orderId: String(data.orderId),
+                });
+                return;
+            }
+
             const payload = {
                 orderId: String(data.orderId),
                 deliveryPartnerId: String(userId),
@@ -238,13 +308,15 @@ export const initSocket = async (server) => {
             const trackingRoom = roomNames.tracking(data.orderId);
             socket.to(trackingRoom).emit('location-update', payload);
 
-            // Also emit to the specific user room if userId is provided
-            if (data.userId) {
-                socket.to(roomNames.user(data.userId)).emit('location-update', payload);
+            // Fan out to the order's OWN customer and restaurant, taken from the order
+            // document — not from data.userId/data.restaurantId. Those were client
+            // supplied, so a rider could address any user's or restaurant's room.
+            if (parties.userId) {
+                socket.to(roomNames.user(parties.userId)).emit('location-update', payload);
             }
 
-            if (data.restaurantId) {
-                socket.to(roomNames.restaurant(data.restaurantId)).emit('location-update', payload);
+            if (parties.restaurantId) {
+                socket.to(roomNames.restaurant(parties.restaurantId)).emit('location-update', payload);
             }
 
             // ─── Scalable Persistence (BullMQ + Redis "Hot" Buffering) ───

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { safeSignatureEqual } from '../../../../utils/safeCompare.js';
 import { PoolingRoute } from '../../admin/models/PoolingRoute.js';
 import { PoolingVehicle } from '../../admin/models/PoolingVehicle.js';
 import { PoolingBooking } from '../../admin/models/PoolingBooking.js';
@@ -55,7 +56,10 @@ const razorpayRequest = async ({ method, path, body, keyId, keySecret }) => {
 
     return payload;
   } catch (error) {
-    const isMockAllowed = process.env.NODE_ENV !== 'production' || process.env.USE_DEFAULT_OTP === 'true';
+    // NODE_ENV only. Gating on USE_DEFAULT_OTP let a production server mint
+    // `mock_order_*` ids when Razorpay auth failed — which is precisely the id shape
+    // the signature bypass below accepts, so the two together were free seats.
+    const isMockAllowed = process.env.NODE_ENV !== 'production';
     const errMsg = String(error.message || '').toLowerCase();
     const isAuthFailed = errMsg.includes('authentication failed') || errMsg.includes('invalid api key') || error.statusCode === 401 || error.status === 401;
 
@@ -386,8 +390,14 @@ export const verifyPoolingBookingPayment = asyncHandler(async (req, res) => {
     .update(`${orderId}|${paymentId}`)
     .digest('hex');
 
-  const isMockAllowed = process.env.NODE_ENV !== 'production' || process.env.USE_DEFAULT_OTP === 'true';
-  const isValidSignature = expectedSignature === signature || (isMockAllowed && signature === 'mock_signature_bypass' && String(orderId || '').startsWith('mock_order_'));
+  // The mock escape hatch is gated on NODE_ENV alone. It used to also accept
+  // USE_DEFAULT_OTP=true, but that flag is an SMS-delivery switch that validateEnv
+  // explicitly permits in production via ALLOW_INSECURE_DEFAULT_OTP — so a live
+  // server could be talked into accepting 'mock_signature_bypass' and handing out
+  // free seats. Do not widen this guard.
+  const isMockAllowed = process.env.NODE_ENV !== 'production';
+  const isValidSignature = safeSignatureEqual(expectedSignature, signature)
+    || (isMockAllowed && signature === 'mock_signature_bypass' && String(orderId || '').startsWith('mock_order_'));
 
   if (!isValidSignature) {
     throw new ApiError(400, 'Invalid payment signature');

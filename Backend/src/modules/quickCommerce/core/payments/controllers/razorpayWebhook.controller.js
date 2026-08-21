@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { safeSignatureEqual } from '../../../../../utils/safeCompare.js'; // master's util: one copy, the QC fork already drifts enough
 import mongoose from 'mongoose';
 import { FoodOrder } from '../../../modules/food/orders/models/order.model.js';
 import * as foodTransactionService from '../../../modules/food/orders/services/foodTransaction.service.js';
@@ -24,7 +25,7 @@ export const handleRazorpayWebhook = async (req, res) => {
         .update(req.rawBody)
         .digest('hex');
 
-    if (expected !== signature) {
+    if (!safeSignatureEqual(expected, String(signature))) {
         logger.warn('Razorpay Webhook: Signature verification failed.');
         return res.status(400).send('Invalid signature');
     }

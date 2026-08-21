@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { safeSignatureEqual } from '../../../../utils/safeCompare.js';
 import mongoose from "mongoose";
 import QRCode from "qrcode";
 import { env } from "../../../../config/env.js";
@@ -4960,7 +4961,7 @@ export const verifyDriverWalletTopup = async (req, res) => {
       .update(`${orderId}|${paymentId}`)
       .digest("hex");
 
-    if (expectedSignature !== signature) {
+    if (!safeSignatureEqual(expectedSignature, signature)) {
       throw new ApiError(400, "Invalid payment signature");
     }
 

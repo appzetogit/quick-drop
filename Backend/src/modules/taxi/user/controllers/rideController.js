@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { safeSignatureEqual } from '../../../../utils/safeCompare.js';
 import mongoose from 'mongoose';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { mirrorTaxiPayment } from '../../services/paymentMirror.service.js';
@@ -600,7 +601,7 @@ export const verifyRazorpayRideCompletion = async (req, res) => {
       .update(`${orderId}|${paymentId}`)
       .digest('hex');
 
-    if (expectedSignature !== signature) {
+    if (!safeSignatureEqual(expectedSignature, signature)) {
       throw new ApiError(400, 'Invalid payment signature');
     }
 
@@ -937,7 +938,7 @@ export const verifyRazorpayRideTip = async (req, res) => {
       .update(`${orderId}|${paymentId}`)
       .digest('hex');
 
-    if (expectedSignature !== signature) {
+    if (!safeSignatureEqual(expectedSignature, signature)) {
       throw new ApiError(400, 'Invalid payment signature');
     }
 

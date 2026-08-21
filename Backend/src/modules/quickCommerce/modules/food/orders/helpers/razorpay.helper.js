@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { safeSignatureEqual } from '../../../../../../utils/safeCompare.js'; // master's util: one copy, the QC fork already drifts enough
 
 let Razorpay;
 try {
@@ -55,7 +56,7 @@ export function verifyPaymentSignature(orderId, paymentId, signature) {
     if (!KEY_SECRET) return false;
     const body = `${orderId}|${paymentId}`;
     const expected = crypto.createHmac('sha256', KEY_SECRET).update(body).digest('hex');
-    return expected === signature;
+    return safeSignatureEqual(expected, String(signature || ""));
 }
 
 /**

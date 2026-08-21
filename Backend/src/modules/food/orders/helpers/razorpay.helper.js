@@ -14,6 +14,24 @@ import { normalizePhoneToTenDigits } from '../../../../utils/phone.util.js';
 const KEY_ID = String(config.razorpayKeyId || process.env.RAZORPAY_KEY_ID || '').trim();
 const KEY_SECRET = String(config.razorpayKeySecret || process.env.RAZORPAY_KEY_SECRET || '').trim();
 
+/**
+ * Whether the gateway may be faked: mock orders, mock payment links, mock refunds.
+ *
+ * NODE_ENV is the ONLY thing that opens this door. Every site below used to read
+ * `config.nodeEnv !== 'production' || config.useDefaultOtp`, but useDefaultOtp is an
+ * SMS-delivery switch that validateEnv explicitly permits in production (via
+ * ALLOW_INSECURE_DEFAULT_OTP). Coupling the two meant "do not send SMS" also meant
+ * "fake the payment gateway" on a live server — verifyPaymentSignature was fixed for
+ * exactly this reason, and these three sites were missed.
+ *
+ * The refund site was the expensive one: it returned a fabricated success for any
+ * missing or `mock_` payment id, so a production refund would mark the order refunded
+ * while no money ever moved.
+ *
+ * One constant, not three copies, so the next fix cannot miss a site again.
+ */
+const MOCK_GATEWAY_ALLOWED = config.nodeEnv !== 'production';
+
 function getRazorpayErrorMessage(error) {
     return (
         error?.error?.description ||
@@ -51,8 +69,7 @@ export function createRazorpayOrder(amountPaise, currency = 'INR', receipt = '')
             logger.error(`[Razorpay] Order Creation Failed: ${errMsg}`);
             
             if (errMsg.includes('Authentication failed') || errMsg.includes('invalid api key')) {
-                const isMockAllowed = config.nodeEnv !== 'production' || config.useDefaultOtp;
-                if (isMockAllowed) {
+                if (MOCK_GATEWAY_ALLOWED) {
                     logger.warn(`[Razorpay] Generating fallback Mock Order due to Authentication failed`);
                     return {
                         id: `mock_order_${Date.now()}`,
@@ -113,8 +130,7 @@ export function createPaymentLink({ amountPaise, currency = 'INR', description, 
             logger.error(`[Razorpay] Payment Link Failed for Order ${orderId}: ${errMsg}`);
             
             if (errMsg.includes('Authentication failed') || errMsg.includes('invalid api key')) {
-                const isMockAllowed = config.nodeEnv !== 'production' || config.useDefaultOtp;
-                if (isMockAllowed) {
+                if (MOCK_GATEWAY_ALLOWED) {
                     logger.warn(`[Razorpay] Falling back to standard UPI URI due to Authentication failed`);
                     return {
                         id: `mock_plink_${Date.now()}`,
@@ -192,8 +208,7 @@ export function fetchRazorpayPaymentLink(paymentLinkId) {
  * @param {number} amount - Amount to refund (in major unit, e.g., INR 123.45)
  */
 export async function initiateRazorpayRefund(paymentId, amount) {
-    const isMockAllowed = config.nodeEnv !== 'production' || config.useDefaultOtp;
-    if (isMockAllowed && (!paymentId || String(paymentId).startsWith('mock_'))) {
+    if (MOCK_GATEWAY_ALLOWED && (!paymentId || String(paymentId).startsWith('mock_'))) {
         logger.info(`[Razorpay] Mock Refund triggered for payment ID: ${paymentId}`);
         return {
             success: true,
