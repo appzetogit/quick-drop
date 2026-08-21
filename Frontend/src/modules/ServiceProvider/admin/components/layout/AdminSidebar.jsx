@@ -22,6 +22,8 @@ import {
 import adminMenu from "../../config/adminMenu.json";
 import dashboardService from "../../services/dashboardService";
 import { getSettings } from "../../services/settingsService";
+import { getCachedSettings, loadBusinessSettings, normalizeCompanyName } from "@food/utils/businessSettings";
+import quickSpicyLogo from "@food/assets/k9-logo.jpg";
 
 // Icon mapping for menu items
 const iconMap = {
@@ -131,6 +133,38 @@ const AdminSidebar = ({ isOpen, onClose }) => {
     scraps: 0
   });
   const [isWorkerMode, setIsWorkerMode] = useState(false);
+  const [businessCompanyName, setBusinessCompanyName] = useState(() => {
+    const cached = getCachedSettings();
+    return normalizeCompanyName(cached?.companyName) || 'Quick Drop';
+  });
+  const [logoUrl, setLogoUrl] = useState(() => getCachedSettings()?.logo?.url || null);
+
+  useEffect(() => {
+    const syncName = () => {
+      const cached = getCachedSettings();
+      if (cached?.companyName) {
+        setBusinessCompanyName(normalizeCompanyName(cached.companyName));
+      }
+      if (cached?.logo?.url) {
+        setLogoUrl(cached.logo.url);
+      }
+    };
+    syncName();
+    loadBusinessSettings().then((s) => {
+      if (s?.companyName) {
+        setBusinessCompanyName(normalizeCompanyName(s.companyName));
+      }
+      if (s?.logo?.url) {
+        setLogoUrl(s.logo.url);
+      }
+    }).catch(() => {});
+    window.addEventListener('businessSettingsUpdated', syncName);
+    return () => window.removeEventListener('businessSettingsUpdated', syncName);
+  }, []);
+
+  const servicesTitle = businessCompanyName.toLowerCase().endsWith('services')
+    ? businessCompanyName
+    : `${businessCompanyName} Services`;
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -422,16 +456,31 @@ const AdminSidebar = ({ isOpen, onClose }) => {
   const sidebarContent = (
     <div className="h-full w-full flex flex-col bg-slate-800">
       {/* Header Section */}
-      <div className="px-4 py-6 border-b border-slate-700 bg-slate-900">
+      <div className="px-4 py-4 border-b border-slate-700 bg-slate-900">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1">
+              <img
+                src={logoUrl || quickSpicyLogo}
+                alt={servicesTitle}
+                className="h-9 w-9 object-contain"
+                onError={(e) => {
+                  if (e.target.src !== quickSpicyLogo) {
+                    e.target.src = quickSpicyLogo;
+                  }
+                }}
+              />
+            </div>
             <div className="flex-1 min-w-0">
-              <h2 className="font-semibold text-white text-base truncate">
-                {adminUser.name}
+              <h2 className="font-extrabold text-white text-[15px] leading-tight truncate">
+                {servicesTitle}
               </h2>
-              <p className="text-xs text-gray-400 truncate">
-                {adminUser.role === 'super_admin' ? '⭐ Super Admin' : 'Admin'}
-              </p>
+              <div className="mt-1 flex items-center gap-1.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                  {adminUser.role === 'super_admin' ? '⭐ Super Admin' : 'System Admin'}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -447,22 +496,33 @@ const AdminSidebar = ({ isOpen, onClose }) => {
 
       {/* Platform module switcher.
           This panel owns its own chrome (it is mounted outside master's AdminLayout),
-          so without this there is no way back to the Food or Taxi admin. */}
+          so without this there is no way back to the Food, Taxi, or Quick commerce admin. */}
       <div className="px-3 pt-3">
         <div className="flex gap-1 p-1 bg-white/5 rounded-lg border border-white/10">
-          <a
-            href="/admin/food"
+          <button
+            type="button"
+            onClick={() => navigate("/admin/food")}
             className="flex-1 text-center py-1.5 text-[11px] font-bold rounded-md text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
             Food
-          </a>
-          <a
-            href="/taxi/admin/dashboard"
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/taxi/admin/dashboard")}
             className="flex-1 text-center py-1.5 text-[11px] font-bold rounded-md text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
             Taxi
-          </a>
-          <span className="flex-1 text-center py-1.5 text-[11px] font-bold rounded-md bg-white text-black">
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/admin/sp/dashboard")}
+            className="flex-1 text-center py-1.5 text-[11px] font-bold rounded-md bg-white text-black shadow-sm">
             Services
-          </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/admin/quick-commerce")}
+            className="flex-1 text-center py-1.5 text-[11px] font-bold rounded-md text-gray-400 hover:text-white hover:bg-white/10 transition-colors">
+            Quick
+          </button>
         </div>
       </div>
 

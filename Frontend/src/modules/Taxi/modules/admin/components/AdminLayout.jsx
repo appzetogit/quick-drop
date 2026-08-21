@@ -46,11 +46,14 @@ import {
   Users,
   UtensilsCrossed,
   Wallet,
+  Wrench,
+  ShoppingBasket,
   Zap,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import quickSpicyLogo from "@food/assets/k9-logo.jpg";
+import { getCachedSettings, loadBusinessSettings, normalizeCompanyName } from "@food/utils/businessSettings";
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
@@ -619,7 +622,32 @@ const AdminLayout = () => {
   const notificationsMenuRef = useRef(null);
   const [adminProfile, setAdminProfile] = useState(() => readAdminProfile());
 
-  const appName = settings.general?.app_name || 'App';
+  const appName = settings.general?.app_name || 'Quick Drop';
+  const [businessCompanyName, setBusinessCompanyName] = useState(() => {
+    const cached = getCachedSettings();
+    return normalizeCompanyName(cached?.companyName) || settings.general?.app_name || 'Quick Drop';
+  });
+
+  useEffect(() => {
+    const syncName = () => {
+      const cached = getCachedSettings();
+      if (cached?.companyName) {
+        setBusinessCompanyName(normalizeCompanyName(cached.companyName));
+      }
+    };
+    syncName();
+    loadBusinessSettings().then((s) => {
+      if (s?.companyName) {
+        setBusinessCompanyName(normalizeCompanyName(s.companyName));
+      }
+    }).catch(() => {});
+    window.addEventListener('businessSettingsUpdated', syncName);
+    return () => window.removeEventListener('businessSettingsUpdated', syncName);
+  }, []);
+
+  const taxiTitle = businessCompanyName.toLowerCase().endsWith('taxi')
+    ? businessCompanyName
+    : `${businessCompanyName} Taxi`;
   useEffect(() => {
     const syncAdminProfile = () => setAdminProfile(readAdminProfile());
     window.addEventListener('storage', syncAdminProfile);
@@ -1353,12 +1381,12 @@ const AdminLayout = () => {
           <div className="group/sidebar-head relative mb-4 flex h-24 items-center border-b border-white/5 px-6">
             <div className="flex items-center gap-4">
               <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1 transition-all group-hover/sidebar-head:scale-105">
-                <img src={cachedLogo || settings?.logos?.admin || settings?.logos?.landing} alt="K9 Rides" className="h-10 w-10 object-contain" />
+                <img src={cachedLogo || settings?.logos?.admin || settings?.logos?.landing} alt={taxiTitle} className="h-10 w-10 object-contain" />
               </div>
               {!isCollapsed && (
                 <div className="flex flex-col">
                   <h3 className="text-[15px] font-extrabold leading-tight text-white tracking-tight">
-                    K9 Rides Admin
+                    {taxiTitle}
                   </h3>
                   <div className="mt-1 flex items-center gap-1.5">
                     <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
@@ -1415,6 +1443,28 @@ const AdminLayout = () => {
                 >
                   <Truck className="w-3.5 h-3.5 text-black dark:text-white" />
                   Taxi
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/admin/sp/dashboard")}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                  )}
+                >
+                  <Wrench className="w-3.5 h-3.5 text-neutral-500" />
+                  Services
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/admin/quick-commerce")}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                  )}
+                >
+                  <ShoppingBasket className="w-3.5 h-3.5 text-neutral-500" />
+                  Quick
                 </button>
               </div>
             </div>

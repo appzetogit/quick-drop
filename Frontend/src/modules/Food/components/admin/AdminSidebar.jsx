@@ -183,15 +183,8 @@ const VERTICAL_BRANDING = {
     // the in-page shim cannot drift apart -- this copy had only the title-case half
     // of the table and would have missed a lower-case label.
     words: rulesFor(VERTICAL.QUICK_COMMERCE),
-    // Food-domain concepts that make no sense for a quick-commerce vertical. They
-    // operate on qc_* data so nothing leaks, but a grocery panel offering dine-in
-    // management is noise. Paths are pre-rebase (as written in adminSidebarMenu).
-    hiddenPaths: [
-      "/admin/food/point-of-sale",
-      "/admin/food/dining-management",
-      "/admin/food/dining-list",
-    ],
-    hiddenSections: ["DINING MANAGEMENT"],
+    hiddenPaths: [],
+    hiddenSections: [],
   },
 }
 
