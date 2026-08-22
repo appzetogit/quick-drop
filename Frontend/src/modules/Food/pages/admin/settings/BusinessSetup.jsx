@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Info, Phone, Upload, X, Loader2, Globe, Settings, Car, UtensilsCrossed, Truck, Save, Trash2, Image as ImageIcon } from "lucide-react";
+import { Info, Phone, Upload, X, Loader2, Globe, Settings, Car, UtensilsCrossed, Truck, Save, Trash2, Check, Layers, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { adminAPI } from "@food/api";
 import { setCachedSettings, updateFavicon, updateTitle } from "@food/utils/businessSettings";
@@ -64,6 +64,12 @@ const MODULE_METADATA = {
   }
 };
 
+const ALL_LOGO_KEYS = Object.values(MODULE_METADATA).flatMap((m) => m.logos.map((l) => l.key));
+const MODULE_KEYS = Object.keys(MODULE_METADATA);
+// The backend caps uploads well above this; the point is to reject a 12MB camera JPEG
+// at the picker instead of after a slow round trip that ends in a generic failure.
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
+
 
 export default function BusinessSetup() {
   const { refreshSettings } = useSettings();
@@ -84,6 +90,9 @@ export default function BusinessSetup() {
   const [logoSettingsLoading, setLogoSettingsLoading] = useState(true);
   const [savingLogoSettings, setSavingLogoSettings] = useState(false);
   const [logoUploading, setLogoUploading] = useState({});
+  const [universalLogo, setUniversalLogo] = useState("");
+  const [universalTargets, setUniversalTargets] = useState(ALL_LOGO_KEYS);
+  const [universalFavicons, setUniversalFavicons] = useState(false);
 
   // Fetch business settings on mount
   useEffect(() => {
@@ -226,30 +235,39 @@ export default function BusinessSetup() {
     }));
   };
 
+  const validateImageFile = (file) => {
+    if (!(file.type === 'image/svg+xml' || file.type.startsWith('image/'))) {
+      toast.error('Invalid file format. Please upload an image or SVG file.');
+      return false;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.error(`That file is ${(file.size / 1048576).toFixed(1)} MB. Please keep logos under 2 MB.`);
+      return false;
+    }
+    return true;
+  };
+
+  const uploadImage = async (file) => {
+    const body = new FormData();
+    body.append('file', file);
+    const res = await apiClient.post('/uploads/image', body, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return res?.data?.data?.url || res?.data?.url || res?.url || '';
+  };
+
   const handleTaxiFileUpload = async (e, key, type) => {
     const file = e.target.files[0];
-    if (!file) return;
-
-    const isValidFormat = file.type === 'image/svg+xml' || file.type.startsWith('image/');
-    if (!isValidFormat) {
-      toast.error('Invalid file format. Please upload an image or SVG file.');
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', file);
+    // Clearing the input means picking the SAME file again still fires onChange --
+    // without this, removing a logo and re-selecting the identical file did nothing.
+    e.target.value = '';
+    if (!file || !validateImageFile(file)) return;
 
     const uploadKey = `${key}_${type}`;
     setLogoUploading(prev => ({ ...prev, [uploadKey]: true }));
 
     try {
-      const res = await apiClient.post('/uploads/image', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-
-      const url = res?.data?.data?.url || res?.data?.url || res?.url;
+      const url = await uploadImage(file);
       if (url) {
         handleTaxiLogoChange(key, type, url);
         toast.success(`${type === 'logo' ? 'Logo' : 'Favicon'} uploaded successfully!`);
@@ -262,6 +280,64 @@ export default function BusinessSetup() {
     } finally {
       setLogoUploading(prev => ({ ...prev, [uploadKey]: false }));
     }
+  };
+
+  const handleUniversalUpload = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file || !validateImageFile(file)) return;
+
+    setLogoUploading(prev => ({ ...prev, universal: true }));
+    try {
+      const url = await uploadImage(file);
+      if (url) {
+        setUniversalLogo(url);
+        toast.success('Logo uploaded. Pick where it should go, then Apply.');
+      } else {
+        toast.error('Upload failed. No URL returned.');
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      toast.error('Failed to upload file');
+    } finally {
+      setLogoUploading(prev => ({ ...prev, universal: false }));
+    }
+  };
+
+  const toggleUniversalTarget = (logoKey) =>
+    setUniversalTargets((prev) =>
+      prev.includes(logoKey) ? prev.filter((k) => k !== logoKey) : [...prev, logoKey]
+    );
+
+  const toggleUniversalModule = (moduleKey) => {
+    const keys = MODULE_METADATA[moduleKey].logos.map((l) => l.key);
+    const allOn = keys.every((k) => universalTargets.includes(k));
+    setUniversalTargets((prev) =>
+      allOn ? prev.filter((k) => !keys.includes(k)) : [...new Set([...prev, ...keys])]
+    );
+  };
+
+  // Stages the one logo into every ticked slot. Deliberately does NOT persist -- the
+  // per-slot uploads below behave the same way, and the existing Save button is the
+  // single publish step, so a mis-tick is undone by leaving the page.
+  const applyUniversalLogo = () => {
+    if (!universalLogo) {
+      toast.error('Upload a logo first.');
+      return;
+    }
+    if (!universalTargets.length && !universalFavicons) {
+      toast.error('Tick at least one place to apply it.');
+      return;
+    }
+    setTaxiLogos((prev) => ({
+      logos: { ...prev.logos, ...Object.fromEntries(universalTargets.map((k) => [k, universalLogo])) },
+      favicons: universalFavicons
+        ? { ...prev.favicons, ...Object.fromEntries(MODULE_KEYS.map((k) => [k, universalLogo])) }
+        : prev.favicons
+    }));
+    const bits = [`${universalTargets.length} logo slot${universalTargets.length === 1 ? '' : 's'}`];
+    if (universalFavicons) bits.push(`${MODULE_KEYS.length} favicons`);
+    toast.success(`Applied to ${bits.join(' and ')}. Press Save to publish.`);
   };
 
   const handleSaveTaxiLogos = async () => {
@@ -502,6 +578,133 @@ export default function BusinessSetup() {
             </div>
           ) : (
             <div className="space-y-6">
+              {/* One upload, many slots. Fourteen separate pickers is the slow path when
+                  every module carries the same mark; this stages one image into whichever
+                  slots are ticked. The per-module cards below still override any one slot. */}
+              <div className="border border-blue-100 rounded-xl p-4 bg-blue-50/30">
+                <div className="flex items-center gap-2.5 mb-3 pb-3 border-b border-blue-100">
+                  <div className="p-2 rounded-lg bg-blue-100 text-blue-600 shrink-0">
+                    <Layers size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-[13px] font-bold text-slate-800">Use One Logo Everywhere</h4>
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Upload once, tick where it should go, then Apply. Any single slot can still be overridden below.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="h-14 w-20 rounded-lg border border-slate-200 bg-white p-1.5 flex items-center justify-center overflow-hidden shrink-0">
+                    {universalLogo ? (
+                      <img src={universalLogo} alt="Selected logo" className="max-h-full max-w-full object-contain" />
+                    ) : (
+                      <div className="text-center">
+                        <ImageIcon className="w-4 h-4 mx-auto text-slate-300" />
+                        <span className="text-[8px] text-slate-400 block mt-0.5">No Logo</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 flex gap-1.5">
+                    <label className={`flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg border border-blue-600/20 bg-white hover:bg-blue-50 text-blue-600 text-[10px] font-semibold cursor-pointer transition-all active:scale-95 ${
+                      logoUploading.universal ? 'opacity-50 pointer-events-none' : ''
+                    }`}>
+                      {logoUploading.universal ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <Upload size={11} />
+                      )}
+                      Upload Logo
+                      <input
+                        type="file"
+                        accept="image/svg+xml,image/*"
+                        onChange={handleUniversalUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    {universalLogo && (
+                      <button
+                        type="button"
+                        onClick={() => setUniversalLogo('')}
+                        className="p-1.5 rounded-lg border border-red-100 text-red-500 hover:bg-red-50 transition-all"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-bold text-slate-600">Apply to</span>
+                  <button
+                    type="button"
+                    onClick={() => setUniversalTargets(universalTargets.length === ALL_LOGO_KEYS.length ? [] : ALL_LOGO_KEYS)}
+                    className="text-[10px] font-semibold text-blue-600 hover:underline"
+                  >
+                    {universalTargets.length === ALL_LOGO_KEYS.length ? 'Clear all' : 'Select all'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+                  {Object.entries(MODULE_METADATA).map(([moduleKey, meta]) => {
+                    const keys = meta.logos.map((l) => l.key);
+                    const allOn = keys.every((k) => universalTargets.includes(k));
+                    return (
+                      <div key={moduleKey} className="bg-white rounded-lg border border-slate-100 p-2.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleUniversalModule(moduleKey)}
+                          className="flex items-center gap-1.5 text-[10px] font-bold text-slate-700 hover:text-blue-600 transition-colors mb-1.5"
+                        >
+                          <span className={`h-3.5 w-3.5 rounded border flex items-center justify-center shrink-0 ${
+                            allOn ? 'bg-blue-600 border-blue-600' : 'border-slate-300'
+                          }`}>
+                            {allOn && <Check size={10} className="text-white" />}
+                          </span>
+                          {meta.label}
+                        </button>
+                        <div className="pl-5 space-y-1">
+                          {meta.logos.map((logoMeta) => (
+                            <label
+                              key={logoMeta.key}
+                              className="flex items-center gap-1.5 text-[10px] text-slate-500 cursor-pointer hover:text-slate-700"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={universalTargets.includes(logoMeta.key)}
+                                onChange={() => toggleUniversalTarget(logoMeta.key)}
+                                className="h-3 w-3 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              {logoMeta.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer mb-3">
+                  <input
+                    type="checkbox"
+                    checked={universalFavicons}
+                    onChange={(e) => setUniversalFavicons(e.target.checked)}
+                    className="h-3 w-3 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  Also use it as the favicon for all {MODULE_KEYS.length} modules
+                </label>
+
+                <button
+                  type="button"
+                  onClick={applyUniversalLogo}
+                  disabled={!universalLogo}
+                  className="w-full md:w-auto flex items-center justify-center gap-1.5 py-2 px-4 rounded-lg bg-blue-600 text-white text-[11px] font-semibold hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
+                >
+                  <Check size={12} />
+                  Apply to {universalTargets.length} logo slot{universalTargets.length === 1 ? '' : 's'}
+                </button>
+              </div>
+
               {Object.entries(MODULE_METADATA).map(([key, meta]) => {
                 const IconComponent = meta.icon;
                 const faviconUrl = taxiLogos.favicons[key] || '';
