@@ -264,6 +264,15 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   const [companyName, setCompanyName] = useState(() => getCachedSettings()?.companyName || null)
   const displayTitle = getVerticalTitle(adminBase, companyName)
 
+  // Business settings ship logo.url as "" until an operator uploads one, so on a fresh
+  // install both activeLogo and logoUrl are empty and the expanded rail rendered
+  // <img src="">, which paints a broken-image icon. Resolve the source once, fall back
+  // to the bundled mark, and let a dead remote URL fall back the same way.
+  const logoSrc = activeLogo || logoUrl || quickSpicyLogo
+  const handleLogoError = (e) => {
+    if (e.target.src !== quickSpicyLogo) e.target.src = quickSpicyLogo
+  }
+
   // Load business settings logo
   useEffect(() => {
     const loadLogo = async () => {
@@ -841,9 +850,10 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
               <div className="flex items-center gap-3.5 animate-[slideIn_0.3s_ease-out]">
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--sb-border)] bg-[var(--sb-hover)] p-1 transition-all">
                   <img
-                    src={activeLogo || logoUrl}
+                    src={logoSrc}
                     alt={displayTitle}
                     className="h-9 w-9 object-contain"
+                    onError={handleLogoError}
                   />
                 </div>
                 <div className="flex flex-col">
@@ -866,21 +876,13 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
             {isCollapsed && (
               <div className="w-full flex items-center justify-center">
                 <div className="w-10 h-10 rounded-lg bg-[var(--sb-hover)] flex items-center justify-center shadow-lg shadow-[rgba(26,26,26,0.12)] ring-1 ring-[var(--sb-border)]">
-                  {activeLogo || logoUrl || companyName ? (
-                    <img
-                      src={activeLogo || logoUrl || quickSpicyLogo}
-                      alt={displayTitle}
-                      className="w-10 h-10 object-contain"
-                      loading="lazy"
-                      onError={(e) => {
-                        if (e.target.src !== quickSpicyLogo) {
-                          e.target.src = quickSpicyLogo
-                        }
-                      }}
-                    />
-                  ) : (
-                    <img src={activeLogo || quickSpicyLogo} alt="Company" className="w-10 h-10 object-contain" loading="lazy" />
-                  )}
+                  <img
+                    src={logoSrc}
+                    alt={displayTitle}
+                    className="w-10 h-10 object-contain"
+                    loading="lazy"
+                    onError={handleLogoError}
+                  />
                 </div>
               </div>
             )}
