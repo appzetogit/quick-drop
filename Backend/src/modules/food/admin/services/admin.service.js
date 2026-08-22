@@ -1769,6 +1769,8 @@ export async function upsertFeeSettings(body) {
         if (body.codOrderLimit === null) $unset.codOrderLimit = 1;
         else if (body.codOrderLimit !== undefined) $set.codOrderLimit = body.codOrderLimit;
 
+        if (body.packagingCharge !== undefined) $set.packagingCharge = body.packagingCharge;
+
         if (body.isActive !== undefined) $set.isActive = body.isActive;
 
         const update = {};
@@ -1797,6 +1799,7 @@ export async function upsertFeeSettings(body) {
     if (body.platformFee !== undefined && body.platformFee !== null) payload.platformFee = body.platformFee;
     if (body.gstRate !== undefined && body.gstRate !== null) payload.gstRate = body.gstRate;
     if (body.codOrderLimit !== undefined && body.codOrderLimit !== null) payload.codOrderLimit = body.codOrderLimit;
+    if (body.packagingCharge !== undefined) payload.packagingCharge = body.packagingCharge;
 
     const created = await FoodFeeSettings.create(payload);
     return created.toObject();

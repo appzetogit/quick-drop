@@ -11,7 +11,9 @@ const orderItemSchema = new mongoose.Schema(
         quantity: { type: Number, required: true, min: 1 },
         isVeg: { type: Boolean, default: true },
         image: { type: String, default: '' },
-        notes: { type: String, default: '' }
+        notes: { type: String, default: '' },
+        /** Per-unit packaging charge at order time (RESTAURANT packaging mode). */
+        foodPackagingCharge: { type: Number, min: 0, default: 0 }
     },
     { _id: false }
 );

@@ -24,6 +24,20 @@ const foodSchema = new mongoose.Schema(
         isAvailable: { type: Boolean, default: true, index: true },
         isRecommended: { type: Boolean, default: false, index: true },
         preparationTime: { type: String, trim: true, default: '' },
+        /**
+         * Per-item order quantity limits, enforced server-side by
+         * shared/orderQuantityRules.js. `maxOrderQuantity: 0` means no item cap.
+         */
+        minOrderQuantity: { type: Number, min: 1, default: 1 },
+        maxOrderQuantity: { type: Number, min: 0, default: 0 },
+        /**
+         * Per-unit packaging charge, used only when admin runs packaging in
+         * RESTAURANT mode. See shared/packagingCharge.js.
+         */
+        packagingCharge: {
+            isEnabled: { type: Boolean, default: false },
+            amount: { type: Number, min: 0, default: 0 }
+        },
         approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved', index: true },
         rejectionReason: { type: String, trim: true, default: '' },
         requestedAt: { type: Date },

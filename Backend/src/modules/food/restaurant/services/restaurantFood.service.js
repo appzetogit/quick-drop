@@ -14,6 +14,11 @@ import {
     categoryAllowsFoodType,
     GLOBAL_CATEGORY_FILTER
 } from '../../shared/categoryWorkflow.js';
+import {
+    assertOrderQuantityRange,
+    normalizeOrderQuantityInput
+} from '../../shared/orderQuantityRules.js';
+import { normalizeItemPackagingChargeInput } from '../../shared/packagingCharge.js';
 
 const toStr = (v) => (v != null ? String(v).trim() : '');
 const APPROVED_CATEGORY_FILTER = [
@@ -197,6 +202,10 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     const preparationTime = toStr(body.preparationTime);
     const { categoryObjectId, categoryName } = await resolveCategoryForRestaurant(context, { ...body, foodType });
 
+    const quantityLimits = normalizeOrderQuantityInput(body, { label: name }) || {};
+    assertOrderQuantityRange(quantityLimits, { label: name });
+    const packagingCharge = normalizeItemPackagingChargeInput(body.packagingCharge, { label: name });
+
     const doc = await FoodItem.create({
         restaurantId,
         categoryId: categoryObjectId,
@@ -211,6 +220,8 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         isAvailable,
         isRecommended,
         preparationTime,
+        ...quantityLimits,
+        ...(packagingCharge ? { packagingCharge } : {}),
         approvalStatus: 'pending',
         requestedAt: new Date()
     });
@@ -271,6 +282,24 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
         update.isRecommended = normalizeRecommendedFlag(body.isRecommended);
     }
     if (body.preparationTime !== undefined) update.preparationTime = toStr(body.preparationTime);
+
+    const itemLabel = update.name || existing.name || 'This item';
+    const quantityLimits = normalizeOrderQuantityInput(body, { label: itemLabel });
+    if (quantityLimits) {
+        // Check the values that will actually be stored, so a partial update
+        // can't slip a max below the stored min.
+        assertOrderQuantityRange(
+            {
+                minOrderQuantity: existing.minOrderQuantity,
+                maxOrderQuantity: existing.maxOrderQuantity,
+                ...quantityLimits
+            },
+            { label: itemLabel }
+        );
+        Object.assign(update, quantityLimits);
+    }
+    const packagingCharge = normalizeItemPackagingChargeInput(body.packagingCharge, { label: itemLabel });
+    if (packagingCharge) update.packagingCharge = packagingCharge;
 
     const targetFoodType = body.foodType !== undefined ? normalizeFoodType(body.foodType) : normalizeFoodType(existing.foodType);
     if (body.foodType !== undefined) update.foodType = targetFoodType;

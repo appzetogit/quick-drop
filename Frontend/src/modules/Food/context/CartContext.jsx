@@ -1,6 +1,11 @@
 // src/context/cart-context.jsx
 import { createContext, useContext, useEffect, useMemo, useState } from "react"
 import { buildCartLineId } from "@food/utils/foodVariants"
+import {
+  clampOrderQuantity,
+  getInitialOrderQuantity,
+  isBelowMinimumOrderQuantity,
+} from "@food/utils/orderQuantity"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -267,7 +272,9 @@ export function CartProvider({ children }) {
           setTimeout(() => setLastAddEvent(null), 1500)
         }
         return safePrev.map((i) =>
-          i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+          i.id === item.id
+            ? { ...i, quantity: clampOrderQuantity(i.quantity + 1, i) }
+            : i
         )
       }
       
@@ -277,7 +284,8 @@ export function CartProvider({ children }) {
         return safePrev;
       }
       
-      const newItem = { ...item, quantity: 1 }
+      // Items with a minimum (e.g. sold per piece, min 4) start at that minimum.
+      const newItem = { ...item, quantity: getInitialOrderQuantity(item) }
       
       // Set last add event for animation if sourcePosition is provided
       if (sourcePosition) {
@@ -324,7 +332,9 @@ export function CartProvider({ children }) {
   const updateQuantity = (itemId, quantity, sourcePosition = null, productInfo = null) => {
     const safeCart = normalizeCartData(cart)
     const resolvedItemId = resolveCartEntryId(safeCart, itemId)
-    if (quantity <= 0) {
+    const cartEntry = safeCart.find((i) => i.id === resolvedItemId)
+    // Below the item's minimum there is no valid line left, so drop it.
+    if (quantity <= 0 || isBelowMinimumOrderQuantity(quantity, cartEntry)) {
       setCart((prev) => {
         const safePrev = normalizeCartData(prev)
         const itemToRemove = safePrev.find((i) => i.id === resolvedItemId)
@@ -363,7 +373,9 @@ export function CartProvider({ children }) {
         // Clear after animation completes
         setTimeout(() => setLastRemoveEvent(null), 1500)
       }
-      return safePrev.map((i) => (i.id === resolvedItemId ? { ...i, quantity } : i))
+      return safePrev.map((i) =>
+        i.id === resolvedItemId ? { ...i, quantity: clampOrderQuantity(quantity, i) } : i
+      )
     })
   }
 

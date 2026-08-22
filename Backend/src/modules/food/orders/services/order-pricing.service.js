@@ -10,8 +10,15 @@ import { FoodZone } from '../../admin/models/zone.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { haversineKm } from './order.helpers.js';
-
-const MAX_ITEM_QTY = 50;
+import {
+    assertOrderQuantity,
+    resolveOrderQuantityRules
+} from '../../shared/orderQuantityRules.js';
+import {
+    computeFoodPackagingFee,
+    normalizePackagingConfig,
+    resolveItemPackagingAmount
+} from '../../shared/packagingCharge.js';
 
 /**
  * Resolves order items against the restaurant's live menu and returns copies with
@@ -40,10 +47,8 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
       throw new ValidationError(`"${menu.name}" is currently unavailable`);
     }
 
-    const qty = Number(it?.quantity);
-    if (!Number.isInteger(qty) || qty < 1 || qty > MAX_ITEM_QTY) {
-      throw new ValidationError(`Invalid quantity for "${menu.name}" (1-${MAX_ITEM_QTY} allowed)`);
-    }
+    // Per-item min/max set by the restaurant, with the platform ceiling as fallback.
+    const qty = assertOrderQuantity(it?.quantity, resolveOrderQuantityRules(menu), menu.name);
 
     let price = Number(menu.price);
     let variantName = '';
@@ -61,6 +66,8 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
       price,
       quantity: qty,
       variantName: variantName || it?.variantName || '',
+      // Per-unit packaging charge, stamped from the DB item — never client input.
+      foodPackagingCharge: resolveItemPackagingAmount(menu),
     };
   });
 }
@@ -163,7 +170,10 @@ export async function calculateOrderPricing(userId, dto) {
     }
   };
 
-  const packagingFee = 0;
+  const { packagingFee } = computeFoodPackagingFee({
+    items,
+    config: normalizePackagingConfig(feeDoc),
+  });
   const configuredPlatformFee = Number(feeSettings.platformFee);
   const platformFee = (!Number.isFinite(configuredPlatformFee) || configuredPlatformFee < 0)
     ? 0

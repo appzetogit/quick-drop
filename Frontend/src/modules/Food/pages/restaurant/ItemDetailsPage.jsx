@@ -72,6 +72,10 @@ export default function ItemDetailsPage() {
   const [basePrice, setBasePrice] = useState("")
   const [variants, setVariants] = useState([])
   const [preparationTime, setPreparationTime] = useState("")
+  const [minOrderQuantity, setMinOrderQuantity] = useState("1")
+  const [maxOrderQuantity, setMaxOrderQuantity] = useState("0")
+  const [packagingEnabled, setPackagingEnabled] = useState(false)
+  const [packagingAmount, setPackagingAmount] = useState("")
   const [gst, setGst] = useState("5.0")
   const [isRecommended, setIsRecommended] = useState(false)
   const [isInStock, setIsInStock] = useState(true)
@@ -127,6 +131,12 @@ export default function ItemDetailsPage() {
     setVariants(itemVariants.map(createVariantDraft))
     setBasePrice(itemVariants.length === 0 ? item.price?.toString() || "" : "")
     setPreparationTime(item.preparationTime || "")
+    setMinOrderQuantity(String(item.minOrderQuantity ?? 1))
+    setMaxOrderQuantity(String(item.maxOrderQuantity ?? 0))
+    setPackagingEnabled(item.packagingCharge?.isEnabled === true)
+    setPackagingAmount(
+      item.packagingCharge?.amount ? String(item.packagingCharge.amount) : ""
+    )
     setGst(item.gst?.toString() || "5.0")
     setIsRecommended(item.isRecommended || false)
     setIsInStock(item.isAvailable !== false)
@@ -644,6 +654,17 @@ export default function ItemDetailsPage() {
         price: variant.price,
       }))
 
+      // Order limits + packaging are the same on create and update; the server
+      // is the authority, these inputs just carry what the restaurant typed.
+      const orderRulesPayload = {
+        minOrderQuantity: Number(minOrderQuantity) || 1,
+        maxOrderQuantity: Number(maxOrderQuantity) || 0,
+        packagingCharge: {
+          isEnabled: packagingEnabled,
+          amount: Number(packagingAmount) || 0,
+        },
+      }
+
       // Create/update FoodItem in DB (single call per explicit Save; no autosave spam)
       let itemId
       if (isNewItem) {
@@ -657,6 +678,7 @@ export default function ItemDetailsPage() {
           isAvailable: isInStock,
           isRecommended,
           preparationTime: preparationTime || "",
+          ...orderRulesPayload,
           categoryId: categoryId || undefined,
           categoryName,
         })
@@ -680,6 +702,7 @@ export default function ItemDetailsPage() {
           isAvailable: isInStock,
           isRecommended,
           preparationTime: preparationTime || "",
+          ...orderRulesPayload,
           categoryId: categoryId || undefined,
           categoryName,
         })
@@ -1129,6 +1152,65 @@ export default function ItemDetailsPage() {
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
                 </div>
+              </div>
+
+              {/* Order quantity limits */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Min order quantity</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    value={minOrderQuantity}
+                    onChange={(e) => setMinOrderQuantity(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-500">Smallest quantity a customer can order.</p>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Max order quantity</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="99"
+                    value={maxOrderQuantity}
+                    onChange={(e) => setMaxOrderQuantity(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="mt-1 text-[11px] text-gray-500">0 means no limit for this item.</p>
+                </div>
+              </div>
+
+              {/* Packaging charge (applies when admin runs packaging in restaurant mode) */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs text-gray-600">Packaging charge (per unit)</label>
+                  <button
+                    type="button"
+                    onClick={() => setPackagingEnabled((v) => !v)}
+                    className={`relative h-6 w-11 rounded-full transition-colors ${packagingEnabled ? "bg-blue-600" : "bg-gray-300"}`}
+                    aria-pressed={packagingEnabled}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${packagingEnabled ? "left-[22px]" : "left-0.5"}`}
+                    />
+                  </button>
+                </div>
+                {packagingEnabled && (
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={packagingAmount}
+                    onChange={(e) => setPackagingAmount(e.target.value)}
+                    placeholder="e.g. 5"
+                    className="mt-2 w-full px-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                )}
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Charged per unit and paid to you, only while admin has packaging set to restaurant mode.
+                </p>
               </div>
               {/* <div>
                 <label className="block text-xs text-gray-600 mb-1">GST</label>

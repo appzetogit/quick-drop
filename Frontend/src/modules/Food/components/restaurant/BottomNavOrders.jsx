@@ -50,7 +50,7 @@ export default function BottomNavOrders() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 w-full z-[60] select-none">
+    <div className="lg:hidden fixed bottom-0 left-0 right-0 w-full z-[60] select-none">
       <div className="flex items-center justify-around h-16 bg-gray-950 dark:bg-zinc-950 border-t border-zinc-800 shadow-[0_-8px_30px_rgba(0,0,0,0.35)] px-2 py-1">
         {tabs.map((tab) => {
           const Icon = tab.icon

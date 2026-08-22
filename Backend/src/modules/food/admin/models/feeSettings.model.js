@@ -76,6 +76,21 @@ const feeSettingsSchema = new mongoose.Schema(
         platformFee: { type: Number, min: 0 },
         gstRate: { type: Number, min: 0, max: 100 },
         codOrderLimit: { type: Number, min: 0 },
+        // Who owns the food packaging charge, and how much it is when admin owns it.
+        // RESTAURANT mode reads the per-unit charge off each menu item instead
+        // (see FoodItem.packagingCharge and shared/packagingCharge.js).
+        packagingCharge: {
+            type: new mongoose.Schema(
+                {
+                    isEnabled: { type: Boolean, default: false },
+                    mode: { type: String, enum: ['ADMIN', 'RESTAURANT'], default: 'ADMIN' },
+                    /** Flat charge added once per order in ADMIN mode. */
+                    adminChargePerOrder: { type: Number, min: 0, default: 0 }
+                },
+                { _id: false }
+            ),
+            default: () => ({})
+        },
         isActive: { type: Boolean, default: true, index: true }
     },
     { collection: 'food_fee_settings', timestamps: true }

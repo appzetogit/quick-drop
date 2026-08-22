@@ -1996,15 +1996,6 @@ export default function Inventory() {
                 )}
               </button>
 
-              {activeTab === "add-ons" && (
-                <button
-                  onClick={() => setIsAddAddonOpen((v) => !v)}
-                  className="h-12 rounded-[20px] bg-slate-950 px-4 text-sm font-semibold text-white shadow-[0_18px_32px_-24px_rgba(15,23,42,0.85)] transition-colors hover:bg-slate-800"
-                  style={{ minWidth: "128px" }}
-                >
-                  {isAddAddonOpen ? "Close" : "Add Add-on"}
-                </button>
-              )}
             </div>
 
             <div className="mt-4 flex gap-2 overflow-x-auto scrollbar-hide pb-1">
@@ -2783,16 +2774,23 @@ export default function Inventory() {
         )}
       </AnimatePresence>
 
-      {/* Floating Menu Button & Popup (hidden on Add-ons tab) */}
-      {activeTab !== "add-ons" && (
-        <div className="fixed right-4 bottom-24 z-30 flex flex-col items-end gap-2">
+      {/* Floating add button (both tabs); menu popup stays on the items tab */}
+      <div className="fixed right-4 bottom-24 lg:bottom-8 z-30 flex flex-col items-end gap-2">
           <motion.button
             whileTap={{ scale: 0.96 }}
-            onClick={() => setIsAddPopupOpen(true)}
+            onClick={() => {
+              if (activeTab === "add-ons") {
+                setIsAddAddonOpen(true)
+                window.scrollTo({ top: 0, behavior: "smooth" })
+              } else {
+                setIsAddPopupOpen(true)
+              }
+            }}
             className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_22px_40px_-24px_rgba(15,23,42,0.85)]"
           >
-            + Add item
+            {activeTab === "add-ons" ? "+ Add add-on" : "+ Add item"}
           </motion.button>
+          {activeTab !== "add-ons" && (<>
           <motion.button
             type="button"
             whileTap={{ scale: 0.96 }}
@@ -2870,8 +2868,8 @@ export default function Inventory() {
               </>
             )}
           </AnimatePresence>
+          </>)}
         </div>
-      )}
 
       {/* Bulk Upload Modal */}
       <AnimatePresence>

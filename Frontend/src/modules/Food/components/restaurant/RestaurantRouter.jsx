@@ -2,6 +2,7 @@ import { Suspense, lazy } from "react"
 import { Routes, Route } from "react-router-dom"
 import ProtectedRoute from "@food/components/ProtectedRoute"
 import Loader from "@food/components/Loader"
+import RestaurantLayout from "@food/components/restaurant/RestaurantLayout"
 
 // Lazy Loading Components
 const AllOrdersPage = lazy(() => import("@food/pages/restaurant/AllOrdersPage"))
@@ -61,10 +62,11 @@ export default function RestaurantRouter() {
         <Route path="signup" element={<Signup />} />
         <Route path="forgot-password" element={<ForgotPassword />} />
         <Route path="pending-verification" element={<VerificationPending />} />
-
-        {/* Protected Routes */}
-        <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><OrdersMain /></ProtectedRoute>} path="" />
         <Route path="onboarding" element={<RestaurantOnboarding />} />
+
+        {/* Protected Routes — wrapped in the desktop shell (sidebar at lg+) */}
+        <Route element={<RestaurantLayout />}>
+        <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><OrdersMain /></ProtectedRoute>} path="" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><RestaurantNotifications /></ProtectedRoute>} path="notifications" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><AllOrdersPage /></ProtectedRoute>} path="orders/all" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><CouponListPage /></ProtectedRoute>} path="coupon" />
@@ -101,6 +103,7 @@ export default function RestaurantRouter() {
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><UpdateBankDetails /></ProtectedRoute>} path="update-bank-details" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><DiningReservations /></ProtectedRoute>} path="reservations" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><ZoneSetup /></ProtectedRoute>} path="zone-setup" />
+        </Route>
       </Routes>
     </Suspense>
   )
