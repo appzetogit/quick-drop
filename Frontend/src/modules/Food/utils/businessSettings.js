@@ -9,14 +9,29 @@ import { publicGetOnce } from "@food/api";
 
 const SETTINGS_KEY = 'food_business_settings';
 
+const DEFAULT_COMPANY_NAME = "Quick Drop";
+
+// Names the backend seeds into a fresh settings document, or that survive from earlier
+// vendor builds. They are placeholders, not choices, so they get replaced by the default.
+//
+// This used to be a SUBSTRING test, which meant any name merely CONTAINING one of these
+// -- "K9 Rides Pvt Ltd", and every name with a stray "k9" in it -- was silently rewritten
+// to "Quick Drop". An operator would save a company name in Business Setup, watch the
+// sidebar and tab title keep showing the old brand, and reasonably conclude the save had
+// failed. Matching the whole name exactly leaves anything deliberately typed alone.
+const SEEDED_PLACEHOLDER_NAMES = new Set([
+  "k9 rides",
+  "k9rides",
+  "appzeto",
+  "eqosy",
+  "rideon",
+  "rydon",
+]);
+
 export const normalizeCompanyName = (value) => {
   const raw = typeof value === "string" ? value.trim() : "";
-  if (!raw) return "Quick Drop";
-  const lowerRaw = raw.toLowerCase();
-  if (lowerRaw.includes("eqosy") || lowerRaw.includes("appzeto") || lowerRaw.includes("rideon") || lowerRaw.includes("rydon") || lowerRaw.includes("k9")) {
-    return "Quick Drop";
-  }
-  return raw;
+  if (!raw) return DEFAULT_COMPANY_NAME;
+  return SEEDED_PLACEHOLDER_NAMES.has(raw.toLowerCase()) ? DEFAULT_COMPANY_NAME : raw;
 };
 
 // Initialize from localStorage immediately so it's available for components on mount
