@@ -7,6 +7,7 @@ import { Button } from "@food/components/ui/button"
 import { restaurantAPI } from "@food/api"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { motion, AnimatePresence } from "framer-motion"
+import loginBg from "@food/assets/loginbanner.png"
 import { getRestaurantLogo, loadBusinessSettings, getCachedSettings } from "@food/utils/businessSettings"
 import { useSettings } from "../../../../Taxi/shared/context/SettingsContext"
 
@@ -111,9 +112,16 @@ export default function RestaurantLogin() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-white dark:bg-[#0A0A0B] flex flex-col font-sans overflow-hidden">
-      {/* Top Branding Section - 40% height */}
-      <div className="relative h-[40dvh] w-full bg-[#1A1A1A] overflow-hidden flex flex-col items-center justify-center">
+    <div className="min-h-[100dvh] lg:h-screen bg-white dark:bg-[#0A0A0B] flex flex-col lg:flex-row font-sans overflow-hidden">
+      {/* Branding — a band above the form on mobile, the left half on desktop */}
+      <div className="relative h-[40dvh] w-full lg:h-full lg:w-1/2 bg-[#1A1A1A] overflow-hidden flex flex-col items-center justify-center">
+        {/* Desktop-only hero image behind the branding */}
+        <img
+          src={loginBg}
+          alt=""
+          aria-hidden="true"
+          className="hidden lg:block absolute inset-0 h-full w-full object-cover opacity-40"
+        />
         {/* Subtle Decorative Elements */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#F38F24]/5 rounded-full blur-[80px] translate-x-1/3 -translate-y-1/3"></div>
@@ -148,11 +156,16 @@ export default function RestaurantLogin() {
             </div>
           </div>
           <div className="text-center text-white">
-            <h1 className="font-black text-3xl tracking-tight leading-none mb-1">
+            <h1 className="font-black text-3xl lg:text-4xl tracking-tight leading-none mb-1">
               {companyName.toUpperCase()} <span className="italic text-white">STORE</span>
             </h1>
             <div className="h-0.5 w-10 bg-white/40 mx-auto rounded-full" />
           </div>
+
+          {/* Desktop gets room for a line of context; mobile stays compact. */}
+          <p className="hidden lg:block max-w-sm text-center text-sm text-white/70 leading-relaxed">
+            Manage your outlet, orders and menu from a single dashboard.
+          </p>
         </motion.div>
       </div>
 
@@ -161,10 +174,10 @@ export default function RestaurantLogin() {
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
         transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-        className="flex-1 bg-white dark:bg-[#0A0A0B] rounded-t-[2.5rem] -mt-12 relative z-20 shadow-[0_-20px_40px_rgba(0,0,0,0.05)] px-6 pt-10 pb-6 flex flex-col"
+        className="flex-1 lg:w-1/2 lg:flex-none bg-white dark:bg-[#0A0A0B] rounded-t-[2.5rem] lg:rounded-none -mt-12 lg:mt-0 relative z-20 shadow-[0_-20px_40px_rgba(0,0,0,0.05)] lg:shadow-none px-6 lg:px-16 pt-10 lg:pt-0 pb-6 flex flex-col lg:justify-center"
         style={{ marginBottom: keyboardInset ? `${keyboardInset}px` : 0 }}
       >
-        <div className="max-w-md mx-auto w-full flex flex-col h-full">
+        <div className="max-w-md mx-auto w-full flex flex-col h-full lg:h-auto">
           <div className="space-y-2 mb-10">
             <h2 className="text-3xl font-black text-[#1A1A1A] dark:text-white tracking-tight">
               Restaurant Portal
