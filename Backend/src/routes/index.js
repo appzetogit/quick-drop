@@ -60,6 +60,10 @@ const PATH_ALIASES = [
     ['/earning-extras', '/earning-addons'],
     ['/earning-extra-history', '/earning-addon-history'],
     ['/earning-extra-completions', '/earning-addon-completions'],
+    // "my-deals" before "deals" so the longer form is not rewritten twice.
+    ['/my-deals', '/my-offers'],
+    ['/deals', '/offers'],
+    ['/insights', '/analytics'],
 ];
 
 router.use((req, _res, next) => {

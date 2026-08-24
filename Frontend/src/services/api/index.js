@@ -466,7 +466,7 @@ export const adminAPI = {
     apiClient.get(`/food/admin/restaurants/${id}`, { contextModule: "admin" }),
   /** Get restaurant analytics for POS. */
   getRestaurantAnalytics: (id) =>
-    apiClient.get(`/food/admin/restaurants/${id}/analytics`, {
+    apiClient.get(`/food/admin/restaurants/${id}/insights`, {
       contextModule: "admin",
     }),
   /** Update restaurant basic details (admin). */
@@ -637,19 +637,19 @@ export const adminAPI = {
 
   /** Offers & Coupons (admin) */
   getAllOffers: (params = {}) =>
-    apiClient.get("/food/admin/offers", { params, contextModule: "admin" }),
+    apiClient.get("/food/admin/deals", { params, contextModule: "admin" }),
   createAdminOffer: (body) =>
-    apiClient.post("/food/admin/offers", body ?? {}, {
+    apiClient.post("/food/admin/deals", body ?? {}, {
       contextModule: "admin",
     }),
   updateAdminOfferCartVisibility: (offerId, itemId, showInCart) =>
     apiClient.patch(
-      `/food/admin/offers/${String(offerId)}/cart-visibility`,
+      `/food/admin/deals/${String(offerId)}/cart-visibility`,
       { itemId: String(itemId), showInCart: Boolean(showInCart) },
       { contextModule: "admin" },
     ),
   deleteAdminOffer: (offerId) =>
-    apiClient.delete(`/food/admin/offers/${String(offerId)}`, {
+    apiClient.delete(`/food/admin/deals/${String(offerId)}`, {
       contextModule: "admin",
     }),
 
@@ -1098,15 +1098,15 @@ export const restaurantAPI = {
     });
   },
   /** My Offers (Coupons) */
-  listMyOffers: () => apiClient.get("/food/restaurant/my-offers", { contextModule: "restaurant" }),
-  createMyOffer: (body) => apiClient.post("/food/restaurant/my-offers", body, { contextModule: "restaurant" }),
-  deleteMyOffer: (id) => apiClient.delete(`/food/restaurant/my-offers/${id}`, { contextModule: "restaurant" }),
-  updateMyOfferStatus: (id, status) => apiClient.patch(`/food/restaurant/my-offers/${id}/status`, { status }, { contextModule: "restaurant" }),
+  listMyOffers: () => apiClient.get("/food/restaurant/my-deals", { contextModule: "restaurant" }),
+  createMyOffer: (body) => apiClient.post("/food/restaurant/my-deals", body, { contextModule: "restaurant" }),
+  deleteMyOffer: (id) => apiClient.delete(`/food/restaurant/my-deals/${id}`, { contextModule: "restaurant" }),
+  updateMyOfferStatus: (id, status) => apiClient.patch(`/food/restaurant/my-deals/${id}/status`, { status }, { contextModule: "restaurant" }),
   /** Public Offers for users (global/selected restaurant) */
-  getPublicOffers: () => apiClient.get("/food/restaurant/offers"),
+  getPublicOffers: () => apiClient.get("/food/restaurant/deals"),
   /** Backward-compat helper used by Cart: returns coupons array for an item by adapting public offers */
   getCouponsByItemIdPublic: (restaurantId, _itemId) =>
-    apiClient.get("/food/restaurant/offers").then((res) => {
+    apiClient.get("/food/restaurant/deals").then((res) => {
       const list = res?.data?.data?.allOffers || res?.data?.allOffers || [];
       const now = Date.now();
       const coupons = list
@@ -1452,7 +1452,7 @@ export const restaurantAPI = {
       ...config,
     }),
   getPublicOffers: (params = {}, config = {}) =>
-    apiClient.get("/food/restaurant/offers", { params, ...config }),
+    apiClient.get("/food/restaurant/deals", { params, ...config }),
   /** Resend delivery notification (restaurant dashboard) */
   resendDeliveryNotification: (orderId) =>
     apiClient.post(`/food/restaurant/orders/${String(orderId)}/resend-notification`, {}, {

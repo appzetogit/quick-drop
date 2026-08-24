@@ -24,7 +24,7 @@ export const adminBookingService = {
   // Get booking analytics
   getAnalytics: async (filters = {}) => {
     try {
-      const response = await api.get('/admin/bookings/analytics', { params: filters });
+      const response = await api.get('/admin/bookings/insights', { params: filters });
       return response.data;
     } catch (error) {
       throw error.response?.data || { message: 'Failed to fetch analytics' };
