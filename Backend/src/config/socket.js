@@ -66,7 +66,11 @@ const roomNames = {
     restaurant: (id) => `restaurant:${String(id)}`,
     user: (id) => `user:${String(id)}`,
     delivery: (id) => `delivery:${String(id)}`,
-    tracking: (orderId) => `tracking:${String(orderId)}`
+    tracking: (orderId) => `tracking:${String(orderId)}`,
+    // Support is a shared inbox: any signed-in admin should see a customer's
+    // message, so admins share one room and it carries no id. This mirrors the
+    // quick-commerce fork, whose chat service this module's chat is ported from.
+    admin: () => 'admin:all'
 };
 
 /**
@@ -168,6 +172,9 @@ export const initSocket = async (server) => {
                     room: roomNames.delivery(userId),
                 });
             }
+            // Shared support inbox. Without this an admin's socket sits in no room
+            // at all and every support message the chat service emits to it is lost.
+            if (role === 'ADMIN') socket.join(roomNames.admin());
         }
 
         // Explicit join (used by existing restaurant client hook).
