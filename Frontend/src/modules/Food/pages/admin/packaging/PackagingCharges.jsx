@@ -26,7 +26,9 @@ export default function PackagingCharges() {
         setIsEnabled(saved?.isEnabled === true)
         setMode(saved?.mode === "RESTAURANT" ? "RESTAURANT" : "ADMIN")
         setAdminChargePerOrder(
-          saved?.adminChargePerOrder ? String(saved.adminChargePerOrder) : ""
+          saved?.adminChargePerOrder !== undefined && saved?.adminChargePerOrder !== null
+            ? String(saved.adminChargePerOrder)
+            : ""
         )
       } catch (error) {
         toast.error("Failed to load packaging settings")
@@ -50,17 +52,17 @@ export default function PackagingCharges() {
         packagingCharge: {
           isEnabled,
           mode,
-          adminChargePerOrder: Number.isFinite(charge) ? charge : 0,
+          adminChargePerOrder: isEnabled && mode === "ADMIN" ? (Number.isFinite(charge) ? charge : 0) : 0,
         },
       })
       if (response?.data?.success) {
-        toast.success("Packaging charges saved")
+        toast.success("Packaging charges saved successfully")
       } else {
-        toast.error(response?.data?.message || "Failed to save packaging charges")
+        toast.error(response?.data?.error || response?.data?.message || "Failed to save packaging charges")
       }
     } catch (error) {
       toast.error(
-        error?.response?.data?.message || "Failed to save packaging charges"
+        error?.response?.data?.error || error?.response?.data?.message || "Failed to save packaging charges"
       )
     } finally {
       setSaving(false)

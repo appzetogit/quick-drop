@@ -1735,13 +1735,16 @@ export async function upsertFeeSettings(body) {
     }
     // Single active doc pattern: keep only one active record.
     const existing = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 });
-    const nextPlatformFee = body.platformFee !== undefined ? body.platformFee : existing?.platformFee;
-    const nextGstRate = body.gstRate !== undefined ? body.gstRate : existing?.gstRate;
-    if (!Number.isFinite(Number(nextPlatformFee)) || Number(nextPlatformFee) < 0) {
-        throw new ValidationError('Platform fee is required and must be 0 or greater');
+
+    if (body.platformFee !== undefined && body.platformFee !== null) {
+        if (!Number.isFinite(Number(body.platformFee)) || Number(body.platformFee) < 0) {
+            throw new ValidationError('Platform fee is required and must be 0 or greater');
+        }
     }
-    if (!Number.isFinite(Number(nextGstRate)) || Number(nextGstRate) < 0 || Number(nextGstRate) > 100) {
-        throw new ValidationError('GST rate is required and must be between 0 and 100');
+    if (body.gstRate !== undefined && body.gstRate !== null) {
+        if (!Number.isFinite(Number(body.gstRate)) || Number(body.gstRate) < 0 || Number(body.gstRate) > 100) {
+            throw new ValidationError('GST rate is required and must be between 0 and 100');
+        }
     }
     if (existing) {
         const $set = {};
@@ -1792,12 +1795,12 @@ export async function upsertFeeSettings(body) {
             minOrderAmount: 0,
             incentivePercent: 0
         },
+        platformFee: body.platformFee !== undefined && body.platformFee !== null ? body.platformFee : 0,
+        gstRate: body.gstRate !== undefined && body.gstRate !== null ? body.gstRate : 0,
         isActive: body.isActive !== false
     };
     if (body.deliveryFee !== undefined && body.deliveryFee !== null) payload.deliveryFee = body.deliveryFee;
     if (body.freeDeliveryThreshold !== undefined && body.freeDeliveryThreshold !== null) payload.freeDeliveryThreshold = body.freeDeliveryThreshold;
-    if (body.platformFee !== undefined && body.platformFee !== null) payload.platformFee = body.platformFee;
-    if (body.gstRate !== undefined && body.gstRate !== null) payload.gstRate = body.gstRate;
     if (body.codOrderLimit !== undefined && body.codOrderLimit !== null) payload.codOrderLimit = body.codOrderLimit;
     if (body.packagingCharge !== undefined) payload.packagingCharge = body.packagingCharge;
 
