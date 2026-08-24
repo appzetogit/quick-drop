@@ -53,7 +53,7 @@ export default function Banners() {
     try {
       setLoading(true)
       setError(null)
-      const response = await api.get('/food/hero-banners', getAuthConfig())
+      const response = await api.get('/food/showcase-items', getAuthConfig())
       if (response.data?.success) {
         setBanners(response.data.data?.banners || [])
       }
@@ -169,7 +169,7 @@ export default function Banners() {
         data.append('ctaLink', `/zone/${formData.zone}`)
       }
 
-      const uploadRes = await api.post('/food/hero-banners/multiple', data, getAuthConfig())
+      const uploadRes = await api.post('/food/showcase-items/multiple', data, getAuthConfig())
       
       if (uploadRes.data?.success) {
         const results = uploadRes.data.data?.results || []
@@ -178,7 +178,7 @@ export default function Banners() {
         if (createdBanner && formData.bannerType === 'Restaurant wise' && formData.restaurant) {
           try {
             await api.patch(
-              `/food/hero-banners/${createdBanner._id}/link-restaurants`,
+              `/food/showcase-items/${createdBanner._id}/link-restaurants`,
               { restaurantIds: [formData.restaurant] },
               getAuthConfig()
             )
@@ -216,7 +216,7 @@ export default function Banners() {
   const handleToggleStatus = async (id, currentStatus) => {
     try {
       setError(null)
-      const response = await api.patch(`/food/hero-banners/${id}/status`, { isActive: !currentStatus }, getAuthConfig())
+      const response = await api.patch(`/food/showcase-items/${id}/status`, { isActive: !currentStatus }, getAuthConfig())
       if (response.data?.success) {
         setBanners(prev => prev.map(b => b._id === id ? { ...b, isActive: !currentStatus } : b))
         setSuccess(`Banner ${currentStatus ? 'deactivated' : 'activated'} successfully!`)
@@ -231,7 +231,7 @@ export default function Banners() {
     if (!window.confirm("Are you sure you want to delete this banner?")) return
     try {
       setError(null)
-      const response = await api.delete(`/food/hero-banners/${id}`, getAuthConfig())
+      const response = await api.delete(`/food/showcase-items/${id}`, getAuthConfig())
       if (response.data?.success) {
         setBanners(prev => prev.filter(b => b._id !== id))
         setSuccess("Banner deleted successfully!")

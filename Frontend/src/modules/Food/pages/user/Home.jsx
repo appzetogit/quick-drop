@@ -1045,7 +1045,7 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     setLoadingBanners(true);
-    publicGetOnce("/food/hero-banners/public")
+    publicGetOnce("/food/showcase-items/public")
       .then((response) => {
         if (cancelled) return;
         const data = response?.data?.data;

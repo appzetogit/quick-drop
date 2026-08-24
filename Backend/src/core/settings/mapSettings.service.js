@@ -50,7 +50,16 @@ export const getGoogleMapsApiKey = async () => {
 export const getMapApiSettings = async () => {
     try {
         const doc = await AdminThirdPartySetting.findOne({}).lean();
-        return doc?.map_apis || {};
+        const mapApis = doc?.map_apis || {};
+        const fromDb = clean(mapApis.google_map_key_for_web_apps);
+        const envFallback = clean(process.env.VITE_GOOGLE_MAPS_API_KEY) || clean(process.env.GOOGLE_MAPS_API_KEY);
+        return {
+            ...mapApis,
+            google_map_key_for_web_apps: fromDb,
+            source: fromDb ? 'database' : (envFallback ? 'environment' : 'none'),
+            effectiveApiKey: fromDb || envFallback || '',
+            hasEnvFallback: Boolean(envFallback)
+        };
     } catch (err) {
         logger.error(`Map settings read failed: ${err.message}`);
         return {};
@@ -62,11 +71,20 @@ export const getMapApiSettings = async () => {
  * Writes the same `map_apis` block the taxi integration-settings screen uses, so
  * both panels stay in sync, and drops the cache so /env/public serves it at once.
  */
-export const saveGoogleMapsApiKey = async (apiKey) => {
+export const saveGoogleMapsApiKey = async (apiKey, extra = {}) => {
     const value = clean(apiKey);
+    const update = {
+        'map_apis.google_map_key_for_web_apps': value
+    };
+    if (extra.distanceMatrixKey !== undefined) {
+        update['map_apis.google_map_key_for_distance_matrix'] = clean(extra.distanceMatrixKey);
+    }
+    if (extra.mapType !== undefined) {
+        update['map_apis.map_type'] = clean(extra.mapType);
+    }
     const doc = await AdminThirdPartySetting.findOneAndUpdate(
         {},
-        { $set: { 'map_apis.google_map_key_for_web_apps': value } },
+        { $set: update },
         { new: true, upsert: true }
     ).lean();
     invalidateMapSettingsCache();

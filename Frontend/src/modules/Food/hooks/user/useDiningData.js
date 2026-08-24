@@ -20,7 +20,7 @@ export const useDiningData = (location) => {
         diningAPI.getStories(),
         diningAPI.getRestaurants(location?.city ? { city: location.city } : {}),
         diningAPI.getBankOffers(),
-        api.get('/food/hero-banners/dining/public').catch(() => ({ data: { success: false } }))
+        api.get('/food/showcase-items/dining/public').catch(() => ({ data: { success: false } }))
       ]);
 
       if (cats.data?.success) setCategories(cats.data.data);

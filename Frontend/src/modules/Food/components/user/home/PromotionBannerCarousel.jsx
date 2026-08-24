@@ -19,7 +19,7 @@ const PromotionBannerCarousel = ({ zoneId: propZoneId }) => {
     }
     try {
       setLoading(true);
-      const response = await publicGetOnce(`/food/hero-banners/home-promotion/public?zoneId=${zoneId}`);
+      const response = await publicGetOnce(`/food/showcase-items/home-promotion/public?zoneId=${zoneId}`);
       if (response.data?.success && response.data?.data?.banners) {
         setBanners(response.data.data.banners);
       }

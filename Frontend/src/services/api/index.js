@@ -678,52 +678,52 @@ export const adminAPI = {
 
   /** Earning Addon Offers (admin) */
   getEarningAddons: (params = {}) =>
-    apiClient.get("/food/admin/delivery/earning-addons", {
+    apiClient.get("/food/admin/delivery/earning-extras", {
       params,
       contextModule: "admin",
     }),
   createEarningAddon: (body) =>
-    apiClient.post("/food/admin/delivery/earning-addons", body ?? {}, {
+    apiClient.post("/food/admin/delivery/earning-extras", body ?? {}, {
       contextModule: "admin",
     }),
   updateEarningAddon: (id, body) =>
     apiClient.patch(
-      `/food/admin/delivery/earning-addons/${String(id)}`,
+      `/food/admin/delivery/earning-extras/${String(id)}`,
       body ?? {},
       { contextModule: "admin" },
     ),
   deleteEarningAddon: (id) =>
-    apiClient.delete(`/food/admin/delivery/earning-addons/${String(id)}`, {
+    apiClient.delete(`/food/admin/delivery/earning-extras/${String(id)}`, {
       contextModule: "admin",
     }),
   toggleEarningAddonStatus: (id, status) =>
     apiClient.patch(
-      `/food/admin/delivery/earning-addons/${String(id)}/status`,
+      `/food/admin/delivery/earning-extras/${String(id)}/status`,
       { status: String(status) },
       { contextModule: "admin" },
     ),
 
   /** Earning Addon History (admin) */
   getEarningAddonHistory: (params = {}) =>
-    apiClient.get("/food/admin/delivery/earning-addon-history", {
+    apiClient.get("/food/admin/delivery/earning-extra-history", {
       params,
       contextModule: "admin",
     }),
   creditEarningToWallet: (historyId, notes = "") =>
     apiClient.post(
-      `/food/admin/delivery/earning-addon-history/${String(historyId)}/credit`,
+      `/food/admin/delivery/earning-extra-history/${String(historyId)}/credit`,
       { notes: String(notes || "") },
       { contextModule: "admin" },
     ),
   cancelEarningAddonHistory: (historyId, reason = "") =>
     apiClient.post(
-      `/food/admin/delivery/earning-addon-history/${String(historyId)}/cancel`,
+      `/food/admin/delivery/earning-extra-history/${String(historyId)}/cancel`,
       { reason: String(reason || "") },
       { contextModule: "admin" },
     ),
   checkEarningAddonCompletions: (deliveryPartnerId, force = false) =>
     apiClient.post(
-      "/food/admin/delivery/earning-addon-completions/check",
+      "/food/admin/delivery/earning-extra-completions/check",
       { deliveryPartnerId: String(deliveryPartnerId), force: Boolean(force) },
       { contextModule: "admin" },
     ),
@@ -2045,7 +2045,7 @@ export const deliveryAPI = {
     }),
   /** Earning Addons (Hotspots/Bonus) */
   getActiveEarningAddons: () =>
-    apiClient.get("/food/delivery/earning-addons/active", {
+    apiClient.get("/food/delivery/earning-extras/active", {
       contextModule: "delivery",
     }),
   /** GET /food/delivery/trip-history - completed/cancelled/pending trips for delivery partner */
@@ -2564,7 +2564,7 @@ export const diningAPI = {
     apiClient.get("/food/dining/categories/public", { params }),
   getRestaurants: (params = {}) =>
     apiClient.get("/food/dining/restaurants/public", { params }),
-  getHeroBanners: () => apiClient.get("/food/hero-banners/dining/public"),
+  getHeroBanners: () => apiClient.get("/food/showcase-items/dining/public"),
   getRestaurantBySlug: (slug) =>
     apiClient.get(`/food/restaurant/restaurants/${String(slug)}`),
   getOfferBanners: () => Promise.resolve({ data: { success: true, data: [] } }),

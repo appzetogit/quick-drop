@@ -49,7 +49,7 @@ export default function PromotionalBanner() {
   const fetchBanners = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await api.get("/food/hero-banners/home-promotion")
+      const response = await api.get("/food/showcase-items/home-promotion")
       if (response.data?.success) {
         setBanners(response.data.banners || [])
       }
@@ -101,7 +101,7 @@ export default function PromotionalBanner() {
 
       let res
       if (editingBanner) {
-        res = await api.patch(`/food/hero-banners/home-promotion/${editingBanner._id}`, {
+        res = await api.patch(`/food/showcase-items/home-promotion/${editingBanner._id}`, {
           title: formData.title,
           ctaLink: formData.ctaLink,
           zoneId: formData.zoneId || null,
@@ -109,7 +109,7 @@ export default function PromotionalBanner() {
           endDate: formData.endDate || null
         })
       } else {
-        res = await api.post("/food/hero-banners/home-promotion", data)
+        res = await api.post("/food/showcase-items/home-promotion", data)
       }
 
       if (res.data?.success) {
@@ -128,7 +128,7 @@ export default function PromotionalBanner() {
 
   const handleToggleStatus = async (id, currentStatus) => {
     try {
-      const res = await api.patch(`/food/hero-banners/home-promotion/${id}/status`, { isActive: !currentStatus })
+      const res = await api.patch(`/food/showcase-items/home-promotion/${id}/status`, { isActive: !currentStatus })
       if (res.data?.success) {
         setBanners(prev => prev.map(b => b._id === id ? { ...b, isActive: !currentStatus } : b))
       }
@@ -140,7 +140,7 @@ export default function PromotionalBanner() {
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure you want to delete this banner?")) return
     try {
-      const res = await api.delete(`/food/hero-banners/home-promotion/${id}`)
+      const res = await api.delete(`/food/showcase-items/home-promotion/${id}`)
       if (res.data?.success) {
         setBanners(prev => prev.filter(b => b._id !== id))
       }

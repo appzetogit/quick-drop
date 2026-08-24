@@ -38,6 +38,36 @@ import { MODULES } from '../core/modules/moduleRegistry.js';
 
 const router = express.Router();
 
+/**
+ * Ad-blocker-safe path aliases.
+ *
+ * uBlock Origin, AdBlock and friends match substrings like "banner", "addon" and
+ * "promo" in a request URL and abort the XHR with ERR_BLOCKED_BY_CLIENT. The
+ * server never sees the request, so the affected admin screens (hero banners,
+ * dining/gourmet/landing banners, add-ons) just render empty with no error --
+ * which is exactly how they were being reported as "broken".
+ *
+ * Clients call the neutral alias; this rewrites it back to the real path before
+ * routing, so every existing route keeps working unchanged and old bundles that
+ * still use the original paths are unaffected.
+ */
+const PATH_ALIASES = [
+    ['/showcase-items', '/hero-banners'],
+    ['/item-extras', '/addons'],
+    ['/earning-extras', '/earning-addons'],
+    ['/earning-extra-history', '/earning-addon-history'],
+    ['/earning-extra-completions', '/earning-addon-completions'],
+];
+
+router.use((req, _res, next) => {
+    for (const [alias, real] of PATH_ALIASES) {
+        if (req.url.includes(alias)) {
+            req.url = req.url.split(alias).join(real);
+        }
+    }
+    next();
+});
+
 // The kill-switch lives at the platform root, NOT under a vertical's /admin: it
 // exists to act on a misbehaving vertical, so it must not depend on one.
 router.use('/v1/platform/modules', platformModuleRoutes);

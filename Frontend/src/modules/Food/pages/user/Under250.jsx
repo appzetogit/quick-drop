@@ -313,7 +313,7 @@ export default function Under250() {
   useEffect(() => {
     let cancelled = false
     setLoadingBanner(true)
-    api.get('/food/hero-banners/under-250/public')
+    api.get('/food/showcase-items/under-250/public')
       .then((res) => {
         if (cancelled) return
         const data = res?.data?.data

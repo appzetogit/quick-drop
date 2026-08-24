@@ -219,7 +219,7 @@ function onRefreshFailed(module) {
  *
  * Rewriting only /food/admin (as this first did) left every other screen writing into
  * food while the operator was looking at quick-commerce. Banner uploads were the
- * visible case -- they post to /food/hero-banners/multiple, which is not under
+ * visible case -- they post to /food/showcase-items/multiple, which is not under
  * /food/admin -- but restaurants, delivery, zones and orders had the same fault.
  *
  * EXCEPT auth: /food/auth/* stays pointed at the platform so one login covers every
