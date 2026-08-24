@@ -182,6 +182,7 @@ router.post('/feedback-experience', authMiddleware, requireRestaurant, feedbackE
 
 // Public: restaurant add-ons (user app)
 router.get('/restaurants/:id/addons', cacheResponse(600, 'restaurant_addons'), getPublicRestaurantAddonsController);
+router.get('/restaurants/:id/item-extras', cacheResponse(600, 'restaurant_addons'), getPublicRestaurantAddonsController);
 
 // Foods (restaurant creates/updates items -> stored in food_items collection)
 router.post('/foods', authMiddleware, requireRestaurant, async (req, res, next) => {
@@ -199,11 +200,20 @@ router.patch('/foods/:id', authMiddleware, requireRestaurant, async (req, res, n
 router.get('/bulk-upload/template', authMiddleware, requireRestaurant, downloadBulkMenuTemplateController);
 router.post('/bulk-upload', authMiddleware, requireRestaurant, upload.single('file'), uploadBulkMenuController);
 
-// Add-ons (restaurant dashboard) - approval handled by admin
-router.get('/addons', authMiddleware, requireRestaurant, listAddonsController);
-router.post('/addons', authMiddleware, requireRestaurant, createAddonController);
-router.patch('/addons/:id', authMiddleware, requireRestaurant, updateAddonController);
-router.delete('/addons/:id', authMiddleware, requireRestaurant, deleteAddonController);
+// Add-ons (restaurant dashboard) - approval handled by admin.
+//
+// Served under BOTH /addons and /item-extras. Ad blockers (uBlock, AdBlock and
+// friends) match "addons" in a request path and kill the XHR with
+// ERR_BLOCKED_BY_CLIENT, so the dashboard silently showed an empty list for any
+// restaurant running one. Clients call /item-extras; /addons stays for older
+// builds and any integration already pointing at it.
+const addonRoutePairs = ['/addons', '/item-extras'];
+addonRoutePairs.forEach((base) => {
+    router.get(base, authMiddleware, requireRestaurant, listAddonsController);
+    router.post(base, authMiddleware, requireRestaurant, createAddonController);
+    router.patch(`${base}/:id`, authMiddleware, requireRestaurant, updateAddonController);
+    router.delete(`${base}/:id`, authMiddleware, requireRestaurant, deleteAddonController);
+});
 
 // Orders (restaurant dashboard)
 router.get('/orders', authMiddleware, requireRestaurant, orderController.listOrdersRestaurantController);

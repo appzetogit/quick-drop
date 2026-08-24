@@ -66,6 +66,7 @@ import { buildRentalTrackingSnapshot, listActiveRentalTrackingBookings } from '.
 import { sendEmail } from '../../services/mailService.js';
 import { getActivePaymentGateway, normalizePaymentSettingsPayload } from '../../services/paymentGatewayService.js';
 import { signAccessToken } from '../../services/tokenService.js';
+import { invalidateMapSettingsCache } from '../../../../core/settings/mapSettings.service.js';
 import {
   ADMIN_PERMISSIONS,
   SUPERADMIN_PERMISSION,
@@ -9190,6 +9191,9 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
     settings.map_apis = { ...settings.map_apis, ...payload };
     settings.markModified('map_apis');
     await settings.save();
+    // /api/v1/env/public serves this key to every frontend; drop its cache so the
+    // panel feels immediate instead of waiting out the TTL.
+    invalidateMapSettingsCache();
     return { settings: settings.map_apis };
   };
 

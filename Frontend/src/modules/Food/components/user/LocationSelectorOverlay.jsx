@@ -9,12 +9,13 @@ import { useProfile } from "@food/context/ProfileContext"
 import { toast } from "sonner"
 import { locationAPI, userAPI } from "@food/api"
 import { Loader } from '@googlemaps/js-api-loader'
+import { env } from "@/config/runtimeEnv";
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
 // Enable Maps if API Key is available, otherwise fallback to coordinates-only mode
-const MAPS_ENABLED = !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+const MAPS_ENABLED = !!env('VITE_GOOGLE_MAPS_API_KEY')
 
 
 // Google Maps implementation - Leaflet components removed

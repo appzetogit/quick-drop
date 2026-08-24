@@ -897,28 +897,39 @@ export const adminAPI = {
 
   /** Restaurant add-ons approval (admin) */
   getRestaurantAddons: (params = {}) =>
-    apiClient.get("/food/admin/addons", {
+    apiClient.get("/food/admin/item-extras", {
       params: params ?? {},
       contextModule: "admin",
     }),
   updateRestaurantAddon: (id, body) =>
     apiClient.patch(
-      `/food/admin/addons/${String(id)}`,
+      `/food/admin/item-extras/${String(id)}`,
       body ?? {},
       { contextModule: "admin" },
     ),
   approveRestaurantAddon: (id) =>
     apiClient.patch(
-      `/food/admin/addons/${String(id)}/approve`,
+      `/food/admin/item-extras/${String(id)}/approve`,
       {},
       { contextModule: "admin" },
     ),
   rejectRestaurantAddon: (id, reason) =>
     apiClient.patch(
-      `/food/admin/addons/${String(id)}/reject`,
+      `/food/admin/item-extras/${String(id)}/reject`,
       { reason: String(reason || "").trim() },
       { contextModule: "admin" },
     ),
+  deleteRestaurantAddon: (id) =>
+    apiClient.delete(`/food/admin/item-extras/${String(id)}`, {
+      contextModule: "admin",
+    }),
+  /** Google Maps key (admin) — served to every app via /env/public. */
+  getMapSettings: () =>
+    apiClient.get("/food/admin/map-settings", { contextModule: "admin" }),
+  updateMapSettings: (body) =>
+    apiClient.patch("/food/admin/map-settings", body ?? {}, {
+      contextModule: "admin",
+    }),
   /** Business Settings (admin) */
   getBusinessSettings: () =>
     apiClient.get(API_ENDPOINTS.ADMIN.BUSINESS_SETTINGS, {
@@ -1372,21 +1383,21 @@ export const restaurantAPI = {
   },
   /** Add-ons (restaurant) - approval handled by admin */
   getAddons: (params = {}) =>
-    apiClient.get("/food/restaurant/addons", {
+    apiClient.get("/food/restaurant/item-extras", {
       // Backend validator enforces limit <= 100
       params: { limit: 100, page: 1, ...params },
       contextModule: "restaurant",
     }),
   addAddon: (body) =>
-    apiClient.post("/food/restaurant/addons", body ?? {}, {
+    apiClient.post("/food/restaurant/item-extras", body ?? {}, {
       contextModule: "restaurant",
     }),
   updateAddon: (id, body) =>
-    apiClient.patch(`/food/restaurant/addons/${String(id)}`, body ?? {}, {
+    apiClient.patch(`/food/restaurant/item-extras/${String(id)}`, body ?? {}, {
       contextModule: "restaurant",
     }),
   deleteAddon: (id) =>
-    apiClient.delete(`/food/restaurant/addons/${String(id)}`, {
+    apiClient.delete(`/food/restaurant/item-extras/${String(id)}`, {
       contextModule: "restaurant",
     }),
   logout: (refreshToken) => {
@@ -1437,7 +1448,7 @@ export const restaurantAPI = {
     getPublicRestaurantOutletTimingsOnce(id, config),
   /** Public (user app): approved add-ons by restaurant id/slug */
   getAddonsByRestaurantId: (id, config = {}) =>
-    apiClient.get(`/food/restaurant/restaurants/${String(id)}/addons`, {
+    apiClient.get(`/food/restaurant/restaurants/${String(id)}/item-extras`, {
       ...config,
     }),
   getPublicOffers: (params = {}, config = {}) =>

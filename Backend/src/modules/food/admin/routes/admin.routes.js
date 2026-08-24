@@ -3,6 +3,7 @@ import { AuthError } from '../../../../core/auth/errors.js';
 import * as adminController from '../controllers/admin.controller.js';
 import * as foodApprovalController from '../controllers/foodApproval.controller.js';
 import * as addonsApprovalController from '../controllers/addonsApproval.controller.js';
+import { getMapSettingsController, updateMapSettingsController } from '../controllers/mapSettings.controller.js';
 import * as businessSettingsController from '../controllers/businessSettings.controller.js';
 import * as feedbackExperienceController from '../controllers/feedbackExperience.controller.js';
 import * as notificationBroadcastController from '../controllers/notificationBroadcast.controller.js';
@@ -90,10 +91,19 @@ router.patch('/categories/:id/reject', adminController.rejectCategory);
 router.patch('/categories/:id/make-global', adminController.makeCategoryGlobal);
 
 // ----- Restaurant Add-ons Approval -----
-router.get('/addons', addonsApprovalController.getRestaurantAddons);
-router.patch('/addons/:id', addonsApprovalController.updateRestaurantAddon);
-router.patch('/addons/:id/approve', addonsApprovalController.approveRestaurantAddon);
-router.patch('/addons/:id/reject', addonsApprovalController.rejectRestaurantAddon);
+// Google Maps key — consumed by every frontend via /api/v1/env/public.
+router.get('/map-settings', getMapSettingsController);
+router.patch('/map-settings', updateMapSettingsController);
+
+// Also served under /item-extras: ad blockers kill any XHR whose path contains
+// "addons" (ERR_BLOCKED_BY_CLIENT), which left the admin list silently empty.
+['/addons', '/item-extras'].forEach((base) => {
+    router.get(base, addonsApprovalController.getRestaurantAddons);
+    router.patch(`${base}/:id`, addonsApprovalController.updateRestaurantAddon);
+    router.patch(`${base}/:id/approve`, addonsApprovalController.approveRestaurantAddon);
+    router.patch(`${base}/:id/reject`, addonsApprovalController.rejectRestaurantAddon);
+    router.delete(`${base}/:id`, addonsApprovalController.deleteRestaurantAddon);
+});
 
 // ----- Foods -----
 router.get('/foods', adminController.getFoods);

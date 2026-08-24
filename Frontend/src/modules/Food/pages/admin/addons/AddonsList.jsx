@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Eye, Loader2, Search, Trash2, Pencil } from "lucide-react"
+import { Check, Eye, Loader2, Search, Trash2, Pencil, X } from "lucide-react"
 import { Switch } from "@food/components/ui/switch"
 import { adminAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
@@ -31,7 +31,22 @@ const getAddonImage = (addon) =>
   addon?.published?.images?.[0] ||
   "https://via.placeholder.com/40"
 
+const STATUS_TABS = [
+  { value: "all", label: "All" },
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+]
+
+const STATUS_BADGE = {
+  pending: "bg-amber-50 text-amber-700 border-amber-200",
+  approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  rejected: "bg-rose-50 text-rose-700 border-rose-200",
+}
+
 export default function AddonsList() {
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [refreshKey, setRefreshKey] = useState(0)
   const [searchQuery, setSearchQuery] = useState("")
   const [addons, setAddons] = useState([])
   const [loading, setLoading] = useState(true)
@@ -50,17 +65,14 @@ export default function AddonsList() {
       try {
         setLoading(true)
         const response = await adminAPI.getRestaurantAddons({
-          // only approved items should be visible in this list
-          approvalStatus: "approved",
+          // "all" omits the filter so pending submissions are visible here too.
+          approvalStatus: statusFilter === "all" ? undefined : statusFilter,
           search: searchQuery?.trim() ? searchQuery.trim() : undefined,
           limit: 200,
           page: 1,
         })
         const data = response?.data?.data?.addons || response?.data?.addons || []
-        const approvedOnly = Array.isArray(data)
-          ? data.filter((addon) => String(addon.approvalStatus || "").toLowerCase() === "approved")
-          : []
-        setAddons(approvedOnly)
+        setAddons(Array.isArray(data) ? data : [])
       } catch (error) {
         debugError("Error fetching addons:", error)
         toast.error("Failed to load restaurant add-ons")
@@ -72,7 +84,7 @@ export default function AddonsList() {
 
     const t = setTimeout(fetchAddons, 250)
     return () => clearTimeout(t)
-  }, [searchQuery])
+  }, [searchQuery, statusFilter, refreshKey])
 
   const filteredAddons = useMemo(() => {
     const result = Array.isArray(addons) ? [...addons] : []
@@ -162,6 +174,38 @@ export default function AddonsList() {
     }
   }
 
+  const handleApprove = async (addon) => {
+    const id = addon?.id || addon?._id
+    try {
+      setSubmittingAction(true)
+      await adminAPI.approveRestaurantAddon(String(id))
+      toast.success(`"${getAddonTitle(addon)}" approved`)
+      setRefreshKey((k) => k + 1)
+    } catch (error) {
+      debugError("Approve add-on failed:", error)
+      toast.error(error?.response?.data?.message || "Failed to approve add-on")
+    } finally {
+      setSubmittingAction(false)
+    }
+  }
+
+  const handleReject = async (addon) => {
+    const id = addon?.id || addon?._id
+    const reason = window.prompt(`Why is "${getAddonTitle(addon)}" being rejected?`, "")
+    if (reason === null) return
+    try {
+      setSubmittingAction(true)
+      await adminAPI.rejectRestaurantAddon(String(id), reason.trim() || "Rejected by admin")
+      toast.success(`"${getAddonTitle(addon)}" rejected`)
+      setRefreshKey((k) => k + 1)
+    } catch (error) {
+      debugError("Reject add-on failed:", error)
+      toast.error(error?.response?.data?.message || "Failed to reject add-on")
+    } finally {
+      setSubmittingAction(false)
+    }
+  }
+
   const [pendingDelete, setPendingDelete] = useState(null)
 
   const confirmDelete = async () => {
@@ -169,7 +213,7 @@ export default function AddonsList() {
     const id = pendingDelete?.id || pendingDelete?._id
     try {
       setSubmittingAction(true)
-      await adminAPI.rejectRestaurantAddon(String(id), "Deleted by admin")
+      await adminAPI.deleteRestaurantAddon(String(id))
       setAddons((prev) => (prev || []).filter((a) => String(a.id || a._id) !== String(id)))
       toast.success("Add-on deleted")
     } catch (error) {
@@ -195,6 +239,23 @@ export default function AddonsList() {
           </div>
 
           <div className="flex items-center gap-2" />
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => setStatusFilter(tab.value)}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                statusFilter === tab.value
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -234,6 +295,9 @@ export default function AddonsList() {
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Price
                 </th>
+                <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  Status
+                </th>
                 <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Action
                 </th>
@@ -242,7 +306,7 @@ export default function AddonsList() {
             <tbody className="bg-white divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={7} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-2" />
                       <p className="text-sm text-slate-500">Loading add-ons...</p>
@@ -251,7 +315,7 @@ export default function AddonsList() {
                 </tr>
               ) : filteredAddons.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={7} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <p className="text-lg font-semibold text-slate-700 mb-1">No Data Found</p>
                       <p className="text-sm text-slate-500">No add-ons match your search</p>
@@ -295,8 +359,43 @@ export default function AddonsList() {
                         ₹{Number(addon?.draft?.price ?? addon?.price ?? 0).toFixed(2)}
                       </span>
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {(() => {
+                        const status = String(addon?.approvalStatus || "pending").toLowerCase()
+                        return (
+                          <span
+                            className={`inline-block rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize ${
+                              STATUS_BADGE[status] || "bg-slate-50 text-slate-600 border-slate-200"
+                            }`}
+                            title={status === "rejected" ? addon?.rejectionReason || "" : undefined}
+                          >
+                            {status}
+                          </span>
+                        )
+                      })()}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <div className="flex items-center justify-center gap-2 flex-wrap">
+                        {String(addon?.approvalStatus || "").toLowerCase() === "pending" && (
+                          <>
+                            <button
+                              onClick={() => handleApprove(addon)}
+                              disabled={submittingAction}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                            >
+                              <Check className="w-4 h-4" />
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleReject(addon)}
+                              disabled={submittingAction}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 transition-colors"
+                            >
+                              <X className="w-4 h-4" />
+                              Reject
+                            </button>
+                          </>
+                        )}
                         <button
                           onClick={() => handleViewDetails(addon)}
                           className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition-colors"

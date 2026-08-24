@@ -15,6 +15,7 @@ import k9Logo from '@food/assets/k9-logo.jpg';
 import { subscribeOrderTracking } from '@food/realtimeTracking';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Navigation, Info, Circle } from 'lucide-react';
+import { env } from "@/config/runtimeEnv";
 
 const LIBRARIES = ['geometry', 'places'];
 
@@ -69,7 +70,7 @@ const DeliveryTrackingMap = ({
 
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+    googleMapsApiKey: env('VITE_GOOGLE_MAPS_API_KEY'),
     libraries: LIBRARIES,
   });
 

@@ -2876,6 +2876,21 @@ export async function updateRestaurantAddonAdmin(addonId, body) {
     return addon.toObject();
 }
 
+/**
+ * Soft-delete an add-on from the admin panel.
+ * Soft, not hard: approved add-ons may already be referenced by placed orders,
+ * and the list queries all filter on `isDeleted`.
+ */
+export async function deleteRestaurantAddonAdmin(addonId) {
+    if (!addonId || !mongoose.Types.ObjectId.isValid(String(addonId))) return null;
+    const _id = new mongoose.Types.ObjectId(String(addonId));
+    return FoodAddon.findOneAndUpdate(
+        { _id, isDeleted: { $ne: true } },
+        { $set: { isDeleted: true, isAvailable: false } },
+        { new: true }
+    ).lean();
+}
+
 export async function approveRestaurantAddon(addonId) {
     if (!addonId || !mongoose.Types.ObjectId.isValid(String(addonId))) return null;
     const _id = new mongoose.Types.ObjectId(String(addonId));

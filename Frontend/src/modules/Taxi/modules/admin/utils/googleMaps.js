@@ -1,6 +1,7 @@
 import { useJsApiLoader } from '@react-google-maps/api';
+import { env } from "@/config/runtimeEnv";
 
-export const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+export const GOOGLE_MAPS_API_KEY = env('VITE_GOOGLE_MAPS_API_KEY');
 
 export const HAS_VALID_GOOGLE_MAPS_KEY =
   typeof GOOGLE_MAPS_API_KEY === 'string' &&

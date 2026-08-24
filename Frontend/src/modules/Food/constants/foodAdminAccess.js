@@ -190,6 +190,7 @@ export const PATH_RESOURCE_RULES = {
   '/admin/food/delivery-cash-limit': 'delivery',
   '/admin/food/fee-settings': 'fee_settings',
   '/admin/food/packaging-charges': 'fee_settings',
+  '/admin/food/map-settings': 'settings',
   '/admin/food/cash-limit-settlement': 'delivery',
   '/admin/food/delivery-withdrawal': 'wallet',
   '/admin/food/delivery-boy-wallet': 'wallet',

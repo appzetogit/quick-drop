@@ -238,6 +238,7 @@ export const adminSidebarMenu = [
       { type: "link", label: "Broadcast Notification", path: "/admin/food/broadcast-notification", icon: "Bell" },
       { type: "link", label: "Business Setup", path: "/admin/food/business-setup", icon: "Settings" },
       { type: "link", label: "PetPooja Integration", path: "/admin/food/petpooja-settings", icon: "Package" },
+      { type: "link", label: "Google Maps Key", path: "/admin/food/map-settings", icon: "MapPin" },
     ],
   },
   {

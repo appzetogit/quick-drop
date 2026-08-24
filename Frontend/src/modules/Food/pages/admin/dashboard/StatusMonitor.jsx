@@ -4,6 +4,7 @@ import { GoogleMap, MarkerF, useJsApiLoader } from "@react-google-maps/api";
 import { adminAPI } from "@food/api";
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey";
 import { toast } from "sonner";
+import { env } from "@/config/runtimeEnv";
 
 const MAP_CONTAINER_STYLE = { width: "100%", height: "100%" };
 const DEFAULT_CENTER = { lat: 22.7196, lng: 75.8577 }; // Default fallback center
@@ -18,7 +19,7 @@ export default function StatusMonitor() {
   const [assignOrderId, setAssignOrderId] = useState("");
 
   const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
+    googleMapsApiKey: env('VITE_GOOGLE_MAPS_API_KEY') || "",
     id: "script-loader"
   });
 

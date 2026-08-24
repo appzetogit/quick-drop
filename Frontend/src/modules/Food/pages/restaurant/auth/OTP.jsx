@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import { RefreshCw, AlertCircle, ShieldCheck } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { restaurantAPI } from "@food/api"
@@ -10,6 +10,7 @@ import {
 import { checkOnboardingStatus, isRestaurantOnboardingComplete } from "@food/utils/onboardingUtils"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { motion, AnimatePresence } from "framer-motion"
+import loginBg from "@food/assets/loginbanner.png"
 import { formatDisplayPhone } from "../../../../../utils/phone.util"
 import { getRestaurantLogo, loadBusinessSettings, getCachedSettings } from "@food/utils/businessSettings"
 import { useSettings } from "../../../../Taxi/shared/context/SettingsContext"
@@ -269,9 +270,16 @@ export default function RestaurantOTP() {
   if (!authData) return null
 
   return (
-    <div className="min-h-[100dvh] bg-white dark:bg-[#0A0A0B] flex flex-col font-sans overflow-hidden">
-      {/* Top Branding Section - 35% height */}
-      <div className="relative h-[35dvh] w-full bg-[#1A1A1A] overflow-hidden flex flex-col items-center justify-center pb-8">
+    <div className="min-h-[100dvh] lg:h-screen bg-white dark:bg-[#0A0A0B] flex flex-col lg:flex-row font-sans overflow-hidden">
+      {/* Top / Left Branding Section */}
+      <div className="relative h-[35dvh] lg:h-full w-full lg:w-1/2 bg-[#1A1A1A] overflow-hidden flex flex-col items-center justify-center pb-8 lg:pb-0">
+        {/* Desktop-only hero image behind the branding */}
+        <img
+          src={loginBg}
+          alt=""
+          aria-hidden="true"
+          className="hidden lg:block absolute inset-0 h-full w-full object-cover opacity-40"
+        />
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#F38F24]/5 rounded-full blur-[80px] translate-x-1/3 -translate-y-1/3"></div>
             <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-white/5 rounded-full blur-[60px] -translate-x-1/3 translate-y-1/3"></div>
@@ -283,7 +291,7 @@ export default function RestaurantOTP() {
           transition={{ duration: 0.6 }}
           className="relative z-10 flex flex-col items-center gap-4 px-6 text-center"
         >
-          <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center border border-white/25 shadow-lg mb-2 overflow-hidden p-1.5">
+          <div className="w-16 h-16 lg:w-20 lg:h-20 bg-white rounded-2xl lg:rounded-3xl flex items-center justify-center border border-white/25 shadow-lg mb-2 overflow-hidden p-1.5 lg:p-2">
             {resolvedLogo ? (
               <img
                 src={resolvedLogo}
@@ -298,32 +306,46 @@ export default function RestaurantOTP() {
               />
             ) : null}
             <div
-              className="w-full h-full flex items-center justify-center font-black text-xl text-slate-800"
+              className="w-full h-full flex items-center justify-center font-black text-xl lg:text-2xl text-slate-800"
               style={{ display: resolvedLogo ? 'none' : 'flex' }}
             >
               {(companyName || "QD").substring(0, 2).toUpperCase()}
             </div>
           </div>
           <div className="space-y-1">
-            <h1 className="text-white font-black text-3xl tracking-tight leading-none italic">
+            <h1 className="text-white font-black text-3xl lg:text-4xl tracking-tight leading-none italic">
               SECURITY CHECK
             </h1>
-            <p className="text-white/70 text-xs font-bold uppercase tracking-[0.2em]">
+            <p className="text-white/70 text-xs lg:text-sm font-bold uppercase tracking-[0.2em]">
               Sent to {contactInfo}
             </p>
           </div>
+          <p className="hidden lg:block max-w-sm text-center text-sm text-white/70 leading-relaxed mt-2">
+            Enter the verification code sent to your registered contact to securely access your restaurant dashboard.
+          </p>
         </motion.div>
       </div>
 
-      {/* Bottom Content Section - 65% height */}
+      {/* Bottom / Right Content Section */}
       <motion.div
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
         transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-        className="flex-1 bg-white dark:bg-[#0A0A0B] rounded-t-[2.5rem] -mt-10 relative z-20 shadow-[0_-20px_40px_rgba(0,0,0,0.05)] px-6 pt-12 pb-6 flex flex-col"
+        className="flex-1 lg:w-1/2 lg:flex-none bg-white dark:bg-[#0A0A0B] rounded-t-[2.5rem] lg:rounded-none -mt-10 lg:mt-0 relative z-20 shadow-[0_-20px_40px_rgba(0,0,0,0.05)] lg:shadow-none px-6 lg:px-16 pt-12 lg:pt-0 pb-6 flex flex-col lg:justify-center overflow-y-auto"
         style={{ marginBottom: keyboardOffset > 0 ? `${keyboardOffset}px` : 0 }}
       >
-        <div className="max-w-md mx-auto w-full flex flex-col h-full">
+        <div className="max-w-md mx-auto w-full flex flex-col h-full lg:h-auto">
+          {/* Desktop-only header */}
+          <div className="hidden lg:block space-y-2 mb-8">
+            <h2 className="text-3xl font-black text-[#1A1A1A] dark:text-white tracking-tight">
+              Verify Security Code
+            </h2>
+            <p className="text-sm font-medium text-gray-500">
+              Enter the 4-digit code sent to{" "}
+              <span className="text-[#1A1A1A] dark:text-zinc-200 font-semibold">{contactInfo}</span>
+            </p>
+          </div>
+
           <AnimatePresence mode="wait">
             {!pendingMessage ? (
               <motion.div
@@ -529,8 +551,12 @@ export default function RestaurantOTP() {
 
           <footer className="mt-auto pt-10 text-center">
             <p className="text-xs text-gray-400 font-medium leading-relaxed">
-              Partner Security Network &bull; <span className="text-[#1A1A1A] font-bold">{companyName.toUpperCase()}</span>
+              Partner Security Network &bull; <span className="text-[#1A1A1A] dark:text-zinc-300 font-bold">{companyName.toUpperCase()}</span>
             </p>
+            <div className="mt-4 flex justify-center gap-4 text-xs font-bold text-[#1A1A1A] dark:text-zinc-300">
+              <Link to="/terms?role=restaurant" className="hover:underline">Terms</Link>
+              <Link to="/privacy?role=restaurant" className="hover:underline">Privacy Policy</Link>
+            </div>
           </footer>
         </div>
       </motion.div>

@@ -5,6 +5,7 @@ const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 import bikeLogo from '../../Food/assets/bikelogo.png'
+import { env } from "@/config/runtimeEnv";
 
 
 /**
@@ -66,7 +67,7 @@ export default function GoogleMapsTracking({
   onRouteInfoUpdate,
   lastUpdate
 }) {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+  const apiKey = env('VITE_GOOGLE_MAPS_API_KEY')
   const mapRef = useRef(null)
   const directionsServiceRef = useRef(null)
   const directionsRendererRef = useRef(null)
