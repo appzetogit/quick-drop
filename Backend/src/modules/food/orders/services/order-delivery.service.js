@@ -918,6 +918,15 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
   sendFoodInvoiceEmail(order, order.userId).catch(err => logger.error('Error triggering food invoice email', err));
   sendFoodInvoiceWhatsApp(order, order.userId).catch(err => logger.error('Error triggering food invoice WhatsApp', err));
 
+  // Cashback is credited on delivery, never on payment: an order that is paid for
+  // and then cancelled must not earn any. Fire-and-forget and idempotent by order
+  // id — a cashback failure must never fail the delivery the driver just completed.
+  // Inert until an admin turns cashback on; the settings document defaults to
+  // isEnabled: false.
+  import('../../user/services/cashback.service.js')
+    .then(({ awardOrderCashback }) => awardOrderCashback(String(order._id)))
+    .catch((err) => logger.warn(`Cashback award skipped for ${order._id}: ${err?.message || err}`));
+
   return sanitizeOrderForExternal(order);
 }
 

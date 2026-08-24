@@ -64,6 +64,7 @@ import * as orderController from '../../orders/controllers/order.controller.js';
 import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
 import { sendError } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
+import { listPublicFoodsController } from '../controllers/publicFoods.controller.js';
 
 import { cacheResponse, invalidateCache } from '../../../../middleware/cache.js';
 
@@ -94,6 +95,10 @@ router.get('/restaurants/:id/menu', cacheResponse(600, 'restaurant_menu'), getPu
 router.get('/restaurants/:id/reviews', getRestaurantPublicReviewsController);
 router.get('/restaurants/:id/outlet-timings', cacheResponse(600, 'restaurant_timings'), getOutletTimingsByRestaurantIdController);
 router.get('/offers', cacheResponse(300, 'offers'), listPublicOffersController);
+// Public: cross-restaurant dish feed, used by the home screen's category rails and
+// the under-250 promo. Declared before the ':id' routes above cannot swallow it —
+// '/public/foods' has two segments, so there is no collision either way.
+router.get('/public/foods', cacheResponse(300, 'public_foods'), listPublicFoodsController);
 // Public: categories list (zone-aware; returns zone categories + global)
 router.get('/categories/public', cacheResponse(600, 'categories'), listCategoriesController);
 
