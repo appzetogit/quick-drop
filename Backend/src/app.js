@@ -15,6 +15,20 @@ import { healthCheck } from './config/health.js';
 
 const app = express();
 
+// Service-Provider (Homster) came in as a CJS app whose Mongoose models reject
+// explicit nulls, so its integration added a global null-stripper. Global was too
+// wide: every other vertical uses null to mean "clear this field", and having it
+// deleted before the controller ran made those saves no-ops that still reported
+// success -- e.g. an earning add-on could never be set back to unlimited
+// redemptions. Scoped to the paths that actually needed it.
+const SP_NULL_STRIP_PREFIXES = [
+    '/api/v1/sp',
+    '/api/users', '/api/user', '/api/vendors', '/api/workers', '/api/bookings',
+    '/api/scrap', '/api/image', '/api/public'
+];
+
+const needsNullStrip = (p) => SP_NULL_STRIP_PREFIXES.some((x) => p === x || p.startsWith(`${x}/`));
+
 const stripNullsDeep = (value) => {
     if (Array.isArray(value)) {
         return value.map(stripNullsDeep);
@@ -87,12 +101,25 @@ app.use((req, _res, next) => {
     req.body = mongoSanitize(req.body);
     req.query = mongoSanitize(req.query);
     req.params = mongoSanitize(req.params);
-    req.body = stripNullsDeep(req.body);
-    req.query = stripNullsDeep(req.query);
-    req.params = stripNullsDeep(req.params);
+    if (needsNullStrip(req.path)) {
+        req.body = stripNullsDeep(req.body);
+        req.query = stripNullsDeep(req.query);
+        req.params = stripNullsDeep(req.params);
+    }
     next();
 });
-app.use(xssClean());
+
+// xss-clean HTML-escapes every string in the body. That is right for the whole API
+// except the CMS pages, whose `content` field is stored as HTML by design and
+// rendered with dangerouslySetInnerHTML. Escaping it turned an admin's saved markup
+// into visible tags, and because each save re-escaped the previous one, the damage
+// compounded on every edit. Admin-only and role-gated, so the exemption is narrow.
+const xssCleanMiddleware = xssClean();
+const CMS_HTML_PATH = /\/admin\/pages-social-media\//;
+app.use((req, res, next) => {
+    if (CMS_HTML_PATH.test(req.path)) return next();
+    return xssCleanMiddleware(req, res, next);
+});
 
 // Global rate limiting for API routes
 app.use('/api', apiRateLimiter);

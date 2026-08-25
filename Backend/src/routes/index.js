@@ -66,12 +66,20 @@ const PATH_ALIASES = [
     ['/insights', '/analytics'],
 ];
 
+// Rewrite the path only. Substituting across the whole URL also rewrote the query
+// string, so a global search for "deals" was silently answered as a search for
+// "offers" -- same for any user-supplied value containing an aliased word.
 router.use((req, _res, next) => {
+    const q = req.url.indexOf('?');
+    let path = q === -1 ? req.url : req.url.slice(0, q);
+    const search = q === -1 ? '' : req.url.slice(q);
+
     for (const [alias, real] of PATH_ALIASES) {
-        if (req.url.includes(alias)) {
-            req.url = req.url.split(alias).join(real);
+        if (path.includes(alias)) {
+            path = path.split(alias).join(real);
         }
     }
+    req.url = path + search;
     next();
 });
 
