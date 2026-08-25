@@ -598,19 +598,22 @@ const SetPrices = ({ mode }) => {
                               </div>
                            </div>
                            <div>
-                              <label className={labelClass}>Admin Commission Type From Customer <span className="text-rose-500">*</span></label>
+                              <label className={labelClass}>Platform Fee Type <span className="text-rose-500">*</span></label>
                               <div className="relative">
+                                 {/* Fixed is 0, not 2. The server's convention is 1 = percentage,
+                                     0 = fixed, so the old value of 2 matched neither branch and a
+                                     fee saved as "Fixed" could not be read back as fixed. */}
                                  <select required className={inputClass + " appearance-none cursor-pointer"} value={formData.admin_commision_type} onChange={e => setFormData(p => ({ ...p, admin_commision_type: e.target.value }))}>
                                     <option value="">Select Type</option>
                                     <option value="1">Percentage</option>
-                                    <option value="2">Fixed</option>
+                                    <option value="0">Fixed</option>
                                  </select>
                                  <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                               </div>
                            </div>
                            <div>
-                              <label className={labelClass}>Admin Commission From Customer <span className="text-rose-500">*</span></label>
-                              <input type="number" min="0" required className={inputClass} placeholder="Enter Admin Commission From Customer" value={formData.admin_commision} onChange={e => setFormData(p => ({ ...p, admin_commision: e.target.value }))} />
+                              <label className={labelClass}>Platform Fee <span className="text-rose-500">*</span></label>
+                              <input type="number" min="0" required className={inputClass} placeholder="Enter Platform Fee" value={formData.admin_commision} onChange={e => setFormData(p => ({ ...p, admin_commision: e.target.value }))} />
                            </div>
                            <div>
                               <label className={labelClass}>Admin Commission Type From Driver <span className="text-rose-500">*</span></label>

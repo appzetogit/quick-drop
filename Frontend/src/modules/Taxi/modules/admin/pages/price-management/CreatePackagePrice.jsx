@@ -445,18 +445,19 @@ const CreatePackagePrice = ({ mode = 'create' }) => {
                   </div>
 
                   <div>
-                    <label className={labelClass}>Admin Commission Type From Customer <span className="text-rose-500">*</span></label>
+                    <label className={labelClass}>Platform Fee Type <span className="text-rose-500">*</span></label>
                     <div className={selectWrapClass}>
+                      {/* Fixed is 0, not 2 -- the server reads 1 as percentage and 0 as fixed. */}
                       <select value={row.admin_commision_type} onChange={(event) => updateRow(row.id, 'admin_commision_type', event.target.value)} className={`${inputClass} appearance-none`} required>
                         <option value="1">Percentage</option>
-                        <option value="2">Fixed</option>
+                        <option value="0">Fixed</option>
                       </select>
                       <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
                     </div>
                   </div>
 
                   <div>
-                    <label className={labelClass}>Admin Commission From Customer <span className="text-rose-500">*</span></label>
+                    <label className={labelClass}>Platform Fee <span className="text-rose-500">*</span></label>
                     <input type="number" value={row.admin_commision} onChange={(event) => updateRow(row.id, 'admin_commision', event.target.value)} className={inputClass} placeholder="0" required />
                   </div>
 

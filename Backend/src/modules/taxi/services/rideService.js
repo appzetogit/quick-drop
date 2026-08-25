@@ -24,6 +24,7 @@ import { consumeUserSubscriptionRide, resolveApplicableUserSubscription } from '
 import { applyPromoToRideInTransaction } from './promoService.js';
 import { getTipSettings } from './appSettingsService.js';
 import { getBidRideSettings, getTransportRideSettings } from './transportSettingsService.js';
+import { resolvePlatformFee } from '../common/platformFee.js';
 
 const clearUserActiveRideIfPresent = async (user) => {
   if (!user?.currentRideId) {
@@ -987,7 +988,19 @@ export const createRideRecord = async ({
     if (subtotal <= 0) {
       return clientFare;
     }
-    const total = subtotal + (subtotal * serviceTaxPercent) / 100;
+    // Platform fee, shown in the admin panel as "Platform Fee" on the vehicle's
+    // set-price row (stored as admin_commision for backwards compatibility).
+    //
+    // It was previously stored and echoed to the apps but never charged: the fare
+    // was subtotal + service tax and nothing else, so whatever an admin typed here
+    // made no difference to what the customer paid. Added on top of the taxed
+    // subtotal rather than folded into it, so it is not itself taxed and a fee of
+    // 0 reproduces the previous total exactly.
+    //
+    // Type and rounding live in common/platformFee.js, which is unit-checked.
+    const platformFee = resolvePlatformFee(pricingRule, subtotal);
+
+    const total = subtotal + (subtotal * serviceTaxPercent) / 100 + platformFee;
     return Math.max(0, Math.round(total));
   })();
 
