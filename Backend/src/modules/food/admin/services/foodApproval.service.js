@@ -121,7 +121,7 @@ export async function approveFoodItem(id) {
         }
 
         try {
-            const { notifyOwnersSafely } = await import('../../../core/notifications/firebase.service.js');
+            const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated.restaurantId }],
                 {
@@ -166,7 +166,7 @@ export async function rejectFoodItem(id, reason) {
         }
 
         try {
-            const { notifyOwnersSafely } = await import('../../../core/notifications/firebase.service.js');
+            const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated.restaurantId }],
                 {
