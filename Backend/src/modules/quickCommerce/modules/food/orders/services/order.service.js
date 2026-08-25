@@ -42,6 +42,11 @@ import {
   assertRestaurantOpenForOrdering,
 } from './order-pricing.service.js';
 import { normalizeDeliveryAddress } from '../../shared/geo.utils.js';
+import {
+  assertCanAcceptOrder,
+  buildOrderPrescription,
+  reviewPrescription,
+} from '../../shared/prescriptionRules.js';
 import * as dispatchService from './order-dispatch.service.js';
 import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
@@ -626,9 +631,15 @@ export async function createOrder(userId, dto) {
         : "created";
     const acceptanceWindowSeconds = await getOrderAcceptanceWindowSeconds();
 
+    // Medicine may not be dispensed against nothing: an order with a medical seller
+    // must carry a prescription, and this refuses it at creation rather than letting
+    // it reach the seller's queue looking like any other order.
+    const prescription = buildOrderPrescription(restaurant, dto, orderAt);
+
     const order = new FoodOrder({
       userId: toObjectId(userId, 'User ID'),
       restaurantId: restaurantId,
+      prescription,
       // Server-resolved zone wins over the client's: it is the one that was
       // actually tested against the delivery address.
       zoneId: serviceableZone?._id
@@ -1750,6 +1761,35 @@ export async function listOrdersRestaurant(restaurantId, query) {
   };
 }
 
+/**
+ * Seller reviews the prescription on a medical order.
+ *
+ * Separate from the status change on purpose: approving the prescription and
+ * accepting the order are two decisions, and collapsing them would let an order be
+ * accepted without anyone having looked at what was uploaded.
+ *
+ * @param {'approved'|'rejected'} decision
+ */
+export async function reviewOrderPrescription(orderId, restaurantId, decision, reason = "") {
+  const identity = buildOrderIdentityFilter(orderId);
+  const order = await FoodOrder.findOne({
+    ...identity,
+    restaurantId: new mongoose.Types.ObjectId(restaurantId),
+  });
+  if (!order) throw new NotFoundError("Order not found");
+
+  order.prescription = reviewPrescription(order, decision, {
+    reviewerId: new mongoose.Types.ObjectId(restaurantId),
+    reason,
+  });
+  await order.save();
+
+  return {
+    orderId: String(order._id),
+    prescription: order.prescription,
+  };
+}
+
 export async function updateOrderStatusRestaurant(
   orderId,
   restaurantId,
@@ -1775,6 +1815,12 @@ export async function updateOrderStatusRestaurant(
   }
 
   const targetStatus = String(orderStatus || "").toLowerCase();
+
+  // A medical order cannot be accepted until the seller -- who is the pharmacist --
+  // has reviewed the customer's prescription. Cancelling stays available, so an
+  // order with an unreadable prescription is not stuck.
+  assertCanAcceptOrder(order, targetStatus);
+
   if (targetStatus === "preparing" || targetStatus === "confirmed") {
     const now = new Date();
     const deadline = order.acceptanceDeadlineAt ? new Date(order.acceptanceDeadlineAt) : null;

@@ -60,7 +60,11 @@ export async function loadRestaurantForOrdering(restaurantId) {
       // autoAcceptOrders is read at order creation to decide whether the order
       // waits for a seller. Left out of this projection it is always undefined,
       // so the flag silently does nothing however it is set.
-      'status restaurantName zoneId location isAcceptingOrders autoAcceptOrders outsideHoursOverride openingTime closingTime openDays deliveryTimings isActive',
+      // storeType decides whether the order needs a prescription. Omitted from this
+      // projection it is undefined, every seller reads as non-medical, and a pharmacy
+      // order goes through with nothing attached -- the same failure the comment
+      // above describes for autoAcceptOrders.
+      'status restaurantName zoneId location isAcceptingOrders autoAcceptOrders outsideHoursOverride openingTime closingTime openDays deliveryTimings isActive storeType',
     )
     .lean();
 

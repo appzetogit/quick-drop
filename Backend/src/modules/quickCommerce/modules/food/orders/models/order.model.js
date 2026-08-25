@@ -312,6 +312,31 @@ const orderSchema = new mongoose.Schema(
             type: paymentSchema,
             required: false
         },
+        /**
+         * Prescription, for orders placed with a medical store.
+         *
+         * `required` is stamped from the seller's storeType when the order is created,
+         * not read from the seller at review time: a shop that changes type later must
+         * not retroactively change what an existing order needed.
+         *
+         * The seller reviews it, because they are the pharmacist — but they cannot
+         * confirm the order until they have, which is what stops medicine going out
+         * against nothing. See shared/prescriptionRules.js.
+         */
+        prescription: {
+            required: { type: Boolean, default: false },
+            imageUrl: { type: String, trim: true, default: '' },
+            uploadedAt: { type: Date, default: null },
+            status: {
+                type: String,
+                enum: ['not_required', 'pending_review', 'approved', 'rejected'],
+                default: 'not_required',
+                index: true,
+            },
+            reviewedAt: { type: Date, default: null },
+            reviewedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
+            rejectionReason: { type: String, trim: true, default: '' },
+        },
         orderStatus: {
             type: String,
             enum: [

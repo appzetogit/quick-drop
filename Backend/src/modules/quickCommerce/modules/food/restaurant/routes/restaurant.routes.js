@@ -295,6 +295,10 @@ router.delete('/addons/:id', authMiddleware, requireRestaurant, deleteAddonContr
 router.get('/orders', authMiddleware, requireRestaurant, orderController.listOrdersRestaurantController);
 router.get('/orders/:orderId', authMiddleware, requireRestaurant, orderController.getOrderByIdRestaurantController);
 router.patch('/orders/:orderId/status', authMiddleware, requireRestaurant, orderController.updateOrderStatusRestaurantController);
+// Medical orders: the seller reviews the customer's prescription before the order
+// can be accepted. Declared next to the status route because they are the two halves
+// of the same decision for a pharmacy.
+router.patch('/orders/:orderId/prescription', authMiddleware, requireRestaurant, orderController.reviewOrderPrescriptionController);
 router.post('/orders/:orderId/resend-notification', authMiddleware, requireRestaurant, orderController.resendDeliveryNotificationRestaurantController);
 
 // Complaints (restaurant dashboard)

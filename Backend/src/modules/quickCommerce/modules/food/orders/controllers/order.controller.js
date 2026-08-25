@@ -205,6 +205,24 @@ export async function updateOrderStatusRestaurantController(req, res, next) {
     }
 }
 
+/**
+ * Seller approves or rejects the prescription on a medical order.
+ * Separate from the status change: reviewing the prescription and accepting the
+ * order are two decisions, and the order cannot be accepted until this one is made.
+ */
+export async function reviewOrderPrescriptionController(req, res, next) {
+    try {
+        const restaurantId = req.user?.userId;
+        const orderId = req.params.orderId;
+        const decision = String(req.body?.decision || '').trim().toLowerCase();
+        const reason = String(req.body?.reason || req.body?.rejectionReason || '').trim();
+        const result = await orderService.reviewOrderPrescription(orderId, restaurantId, decision, reason);
+        return sendResponse(res, 200, `Prescription ${decision}`, result);
+    } catch (err) {
+        next(err);
+    }
+}
+
 export async function listOrdersAvailableDeliveryController(req, res, next) {
     try {
         const deliveryPartnerId = req.user?.userId;
