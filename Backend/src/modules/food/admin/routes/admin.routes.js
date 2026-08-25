@@ -116,6 +116,12 @@ router.patch('/foods/:id/approve', foodApprovalController.approveFoodItemControl
 router.patch('/foods/:id/reject', foodApprovalController.rejectFoodItemController);
 router.post('/foods/bulk-approve', adminController.bulkApproveFoodItems);
 
+// ----- Global Menu Price Adjustment -----
+router.get('/price-adjustments', adminController.getPriceAdjustments);
+router.get('/price-adjustments/preview', adminController.getPriceAdjustmentPreview);
+router.post('/price-adjustments', adminController.applyPriceAdjustment);
+router.post('/price-adjustments/:id/revert', adminController.revertPriceAdjustment);
+
 
 // ----- Offers & Coupons -----
 router.get('/offers', adminController.getAllOffers);

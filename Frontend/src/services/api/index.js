@@ -509,6 +509,27 @@ export const adminAPI = {
     }),
   deleteFood: (id) =>
     apiClient.delete(`/food/admin/foods/${id}`, { contextModule: "admin" }),
+  /** Global menu price adjustment (admin) */
+  getPriceAdjustments: (params = {}) =>
+    apiClient.get("/food/admin/price-adjustments", {
+      params,
+      contextModule: "admin",
+    }),
+  getPriceAdjustmentPreview: (params = {}) =>
+    apiClient.get("/food/admin/price-adjustments/preview", {
+      params,
+      contextModule: "admin",
+    }),
+  applyPriceAdjustment: (body) =>
+    apiClient.post("/food/admin/price-adjustments", body ?? {}, {
+      contextModule: "admin",
+    }),
+  revertPriceAdjustment: (id) =>
+    apiClient.post(
+      `/food/admin/price-adjustments/${String(id)}/revert`,
+      {},
+      { contextModule: "admin" },
+    ),
   /** Food approvals (admin) - pending items created by restaurants */
   getPendingFoodApprovals: (params = {}) =>
     apiClient.get("/food/admin/foods/pending-approvals", {

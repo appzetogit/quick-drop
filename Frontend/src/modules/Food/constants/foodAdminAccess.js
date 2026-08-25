@@ -157,6 +157,7 @@ export const PATH_RESOURCE_RULES = {
   '/admin/food/food-approval': 'foods',
   '/admin/food/foods': 'foods',
   '/admin/food/addons': 'foods',
+  '/admin/food/global-pricing': 'foods',
   '/admin/food/categories': 'categories',
   
   '/admin/food/zone-setup': 'zones',

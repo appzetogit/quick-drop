@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import * as adminService from '../services/admin.service.js';
+import * as priceAdjustmentService from '../services/priceAdjustment.service.js';
 import { validateCategoryListQuery, validateCategoryRejectDto, validateCategoryUpsertDto } from '../validators/category.validator.js';
 import { validateCreateOfferDto, validateUpdateOfferCartVisibilityDto } from '../validators/offer.validator.js';
 import { validateAddDeliveryBonusDto } from '../validators/deliveryBonus.validator.js';
@@ -1511,3 +1512,40 @@ export async function bulkApproveFoodItems(req, res, next) {
     }
 }
 
+
+// ----- Global Menu Price Adjustment -----
+export async function getPriceAdjustments(req, res, next) {
+    try {
+        const data = await priceAdjustmentService.listPriceAdjustments(req.query || {});
+        res.status(200).json({ success: true, message: 'Price adjustments fetched successfully', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function getPriceAdjustmentPreview(req, res, next) {
+    try {
+        const data = await priceAdjustmentService.getPriceAdjustmentPreview(req.query || {});
+        res.status(200).json({ success: true, message: 'Price adjustment preview fetched successfully', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function applyPriceAdjustment(req, res, next) {
+    try {
+        const data = await priceAdjustmentService.applyPriceAdjustment(req.body || {}, req.user || {});
+        res.status(200).json({ success: true, message: `Updated ${data.itemsUpdated} item(s)`, data });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function revertPriceAdjustment(req, res, next) {
+    try {
+        const data = await priceAdjustmentService.revertPriceAdjustment(req.params.id, req.user || {});
+        res.status(200).json({ success: true, message: `Reverted ${data.itemsUpdated} item(s)`, data });
+    } catch (error) {
+        next(error);
+    }
+}

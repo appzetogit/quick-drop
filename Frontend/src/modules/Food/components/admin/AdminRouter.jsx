@@ -35,6 +35,7 @@ const RestaurantsBulkImport = lazy(() => import("@food/pages/admin/restaurant/Re
 const RestaurantsBulkExport = lazy(() => import("@food/pages/admin/restaurant/RestaurantsBulkExport"));
 // Food Management
 const FoodsList = lazy(() => import("@food/pages/admin/foods/FoodsList"));
+const GlobalPricing = lazy(() => import("@food/pages/admin/pricing/GlobalPricing"));
 const AddonsList = lazy(() => import("@food/pages/admin/addons/AddonsList"));
 // Promotions Management
 const BasicCampaign = lazy(() => import("@food/pages/admin/campaigns/BasicCampaign"));
@@ -197,6 +198,7 @@ const verticalAdminRoutes = (
             <Route path="foods" element={<FoodsList />} />
             <Route path="food/list" element={<FoodsList />} />
             <Route path="addons" element={<AddonsList />} />
+            <Route path="global-pricing" element={<GlobalPricing />} />
 
             {/* PROMOTIONS, CUSTOMERS, DELIVERYMEN, etc. */}
             <Route path="campaigns/basic" element={<BasicCampaign />} />
