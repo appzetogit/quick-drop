@@ -1,7 +1,24 @@
 import { useJsApiLoader } from '@react-google-maps/api';
-import { env } from "@/config/runtimeEnv";
+import { getGoogleMapsApiKeySync } from '@food/utils/googleMapsApiKey';
 
-export const GOOGLE_MAPS_API_KEY = env('VITE_GOOGLE_MAPS_API_KEY');
+/**
+ * Google Maps for the taxi admin panel.
+ *
+ * The key comes from the same place the food admin panel gets it: the runtime
+ * config at /api/v1/env/public, which serves what an admin saved under
+ * Integration settings -> Map. Both panels write the one `map_apis` block on the
+ * server, so there is a single key and a single reader.
+ *
+ * This module used to snapshot `env('VITE_GOOGLE_MAPS_API_KEY')` into a const at
+ * import time. Runtime config is fetched over the network, so that snapshot was a
+ * race: lose it and the panel froze the empty build-time value forever, and
+ * useJsApiLoader -- which calls load() once from an effect with no dependencies --
+ * never retried. index.jsx now resolves the runtime config before the first
+ * render, so reading it here is safe; going through the shared helper keeps the
+ * sanitizing identical rather than reimplemented.
+ */
+
+export const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKeySync();
 
 export const HAS_VALID_GOOGLE_MAPS_KEY =
   typeof GOOGLE_MAPS_API_KEY === 'string' &&

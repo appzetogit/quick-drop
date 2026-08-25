@@ -11,12 +11,29 @@ const NATIVE_LAST_ROUTE_KEY = 'native_last_route'
 // ─── Quick-spicy Food Module Initialization ───────────────────────────────────
 
 // Runtime config (Firebase, maps key) from the backend's admin-managed settings.
-// Fire-and-forget: import.meta.env is the fallback, so nothing blocks on this and a
-// failed fetch just keeps the build-time values. Started as early as possible so it
-// is usually resolved before anything asks for a Firebase config.
-import('./config/runtimeEnv.js')
-  .then(({ loadRuntimeEnv }) => loadRuntimeEnv())
-  .catch(() => { /* build-time env stands */ })
+//
+// Awaited before the first render, where it used to be fire-and-forget. Consumers
+// that read a value at module scope captured whatever happened to be present when
+// their module was first imported, and the Google Maps loader compounds it: it
+// calls load() once from an effect with an empty dependency list, so a key that
+// arrives later is never picked up. Losing that race did not delay the map, it
+// broke it for the rest of the page's life.
+//
+// Capped, so a slow or unreachable settings endpoint cannot hold the app back --
+// on timeout the build-time values stand, exactly as before.
+const RUNTIME_ENV_MAX_WAIT_MS = 1500
+
+const loadRuntimeConfig = async () => {
+  try {
+    const { loadRuntimeEnv } = await import('./config/runtimeEnv.js')
+    await Promise.race([
+      loadRuntimeEnv(),
+      new Promise((resolve) => setTimeout(resolve, RUNTIME_ENV_MAX_WAIT_MS))
+    ])
+  } catch {
+    /* build-time env stands */
+  }
+}
 
 // Load food module business settings (favicon, title) — non-critical
 import('./modules/Food/utils/businessSettings.js')
@@ -167,8 +184,10 @@ import { AppProviders } from './app/providers.jsx'
 const rootElement = document.getElementById('root')
 if (!rootElement) throw new Error('Root element not found')
 
-createRoot(rootElement).render(
-  <AppProviders>
-    <App />
-  </AppProviders>
-)
+loadRuntimeConfig().then(() => {
+  createRoot(rootElement).render(
+    <AppProviders>
+      <App />
+    </AppProviders>
+  )
+})
