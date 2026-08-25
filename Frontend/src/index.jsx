@@ -21,6 +21,42 @@ const NATIVE_LAST_ROUTE_KEY = 'native_last_route'
 //
 // Capped, so a slow or unreachable settings endpoint cannot hold the app back --
 // on timeout the build-time values stand, exactly as before.
+/**
+ * Recover from a chunk that no longer exists.
+ *
+ * Filenames are content-hashed, so a deploy replaces them. A tab open across a
+ * deploy still holds the previous index.html and 404s when it lazy-loads a route
+ * -- the user sees a dead screen and "Failed to fetch dynamically imported
+ * module" in the console. The build keeps old chunks around so this should be
+ * rare, but pruning them eventually brings it back, and a stale cached
+ * index.html can cause it regardless.
+ *
+ * Reloading fetches the current index.html and the correct chunk names. Guarded
+ * by a session flag so a genuinely missing chunk cannot become a reload loop:
+ * one attempt per session, then the error is left to surface normally.
+ */
+const CHUNK_RELOAD_FLAG = 'chunk_reload_attempted'
+const isStaleChunkError = (value) => {
+  const message = String(value?.message || value || '')
+  return (
+    message.includes('Failed to fetch dynamically imported module') ||
+    message.includes('error loading dynamically imported module') ||
+    message.includes('Importing a module script failed')
+  )
+}
+const recoverFromStaleChunk = (reason) => {
+  if (!isStaleChunkError(reason)) return
+  try {
+    if (sessionStorage.getItem(CHUNK_RELOAD_FLAG)) return
+    sessionStorage.setItem(CHUNK_RELOAD_FLAG, '1')
+  } catch {
+    return // private mode with no sessionStorage: never risk a loop
+  }
+  window.location.reload()
+}
+window.addEventListener('vite:preloadError', (event) => recoverFromStaleChunk(event?.payload))
+window.addEventListener('unhandledrejection', (event) => recoverFromStaleChunk(event?.reason))
+
 const RUNTIME_ENV_MAX_WAIT_MS = 1500
 
 const loadRuntimeConfig = async () => {
@@ -190,4 +226,12 @@ loadRuntimeConfig().then(() => {
       <App />
     </AppProviders>
   )
+  // The app mounted, so whatever chunk failed last time is resolved. Clearing
+  // the guard lets a future deploy recover the same way; leaving it set would
+  // spend the one attempt permanently.
+  try {
+    sessionStorage.removeItem(CHUNK_RELOAD_FLAG)
+  } catch {
+    /* no sessionStorage: nothing to clear */
+  }
 })

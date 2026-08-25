@@ -36,6 +36,23 @@ export default defineConfig({
       '@mui/x-date-pickers',
     ],
   },
+  build: {
+    /**
+     * Keep the previous build's chunks instead of wiping dist.
+     *
+     * Filenames are content-hashed, so a rebuild emits new names and deletes the
+     * old ones. Any browser still holding the previous index.html -- a tab left
+     * open across a deploy, or a page served before it -- then 404s the moment it
+     * lazy-loads a route, which is what "Failed to fetch dynamically imported
+     * module" is. Leaving the old chunks in place lets those sessions finish.
+     *
+     * index.html is still overwritten each build, so new visitors always get the
+     * current bundle. dist grows by roughly one build's worth of chunks each
+     * time; prune what is older than a couple of weeks when it matters:
+     *   find dist/assets -type f -mtime +14 -delete
+     */
+    emptyOutDir: false,
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,
