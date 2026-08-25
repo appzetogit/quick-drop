@@ -6,6 +6,7 @@ import { FoodCategory } from '../../admin/models/category.model.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
 import { formatOrderQuantityLimits } from '../../shared/orderQuantityRules.js';
 import { resolveItemPackagingAmount } from '../../shared/packagingCharge.js';
+import { isFoodAvailableNow } from '../../shared/itemAvailability.js';
 
 const buildMenuFromFoods = async (foods = []) => {
     const categoryIds = Array.from(
@@ -72,6 +73,10 @@ const buildMenuFromFoods = async (foods = []) => {
                 isEnabled: food?.packagingCharge?.isEnabled === true,
                 amount: resolveItemPackagingAmount(food)
             },
+            // Serving window, so the menu editor can show what is stored and the
+            // dashboard can mark an item as outside its hours right now.
+            availabilitySchedule: food.availabilitySchedule || null,
+            isAvailableNow: isFoodAvailableNow(food),
             createdAt: food.createdAt,
             updatedAt: food.updatedAt
         });

@@ -17,6 +17,7 @@ import {
   Loader2
 } from "lucide-react"
 import { Switch } from "@food/components/ui/switch"
+import ItemAvailabilityScheduleEditor, { buildScheduleState, isScheduleEmpty } from "@food/components/ItemAvailabilityScheduleEditor"
 // Removed getAllFoods and saveFood - now using menu API
 import api from "@food/api"
 import { restaurantAPI, uploadAPI } from "@food/api"
@@ -76,6 +77,7 @@ export default function ItemDetailsPage() {
   const [maxOrderQuantity, setMaxOrderQuantity] = useState("0")
   const [packagingEnabled, setPackagingEnabled] = useState(false)
   const [packagingAmount, setPackagingAmount] = useState("")
+  const [availabilitySchedule, setAvailabilitySchedule] = useState(() => buildScheduleState(null))
   const [gst, setGst] = useState("5.0")
   const [isRecommended, setIsRecommended] = useState(false)
   const [isInStock, setIsInStock] = useState(true)
@@ -133,6 +135,7 @@ export default function ItemDetailsPage() {
     setPreparationTime(item.preparationTime || "")
     setMinOrderQuantity(String(item.minOrderQuantity ?? 1))
     setMaxOrderQuantity(String(item.maxOrderQuantity ?? 0))
+    setAvailabilitySchedule(buildScheduleState(item.availabilitySchedule))
     setPackagingEnabled(item.packagingCharge?.isEnabled === true)
     setPackagingAmount(
       item.packagingCharge?.amount ? String(item.packagingCharge.amount) : ""
@@ -523,6 +526,12 @@ export default function ItemDetailsPage() {
       toast.error("Please enter an item name")
       return
     }
+    // The server rejects this too; catching it here keeps the restaurant from
+    // losing the rest of the form to a validation error.
+    if (isScheduleEmpty(availabilitySchedule)) {
+      toast.error("Turn on at least one day for the availability schedule, or switch it off")
+      return
+    }
 
     try {
       setUploadingImages(true)
@@ -663,6 +672,7 @@ export default function ItemDetailsPage() {
           isEnabled: packagingEnabled,
           amount: Number(packagingAmount) || 0,
         },
+        availabilitySchedule,
       }
 
       // Create/update FoodItem in DB (single call per explicit Save; no autosave spam)
@@ -1212,6 +1222,12 @@ export default function ItemDetailsPage() {
                   Charged per unit and paid to you, only while admin has packaging set to restaurant mode.
                 </p>
               </div>
+
+              {/* Serving window, e.g. breakfast only until 11:30. */}
+              <ItemAvailabilityScheduleEditor
+                value={availabilitySchedule}
+                onChange={setAvailabilitySchedule}
+              />
               {/* <div>
                 <label className="block text-xs text-gray-600 mb-1">GST</label>
                 <button

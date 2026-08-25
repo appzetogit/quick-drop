@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@food/components/ui/popover"
 import { getFoodDisplayPrice, getFoodVariants } from "@food/utils/foodVariants"
+import ItemAvailabilityScheduleEditor, { buildScheduleState, isScheduleEmpty } from "@food/components/ItemAvailabilityScheduleEditor"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -23,6 +24,7 @@ const createFoodForm = () => ({
   foodType: "Non-Veg",
   isAvailable: true,
   preparationTime: "",
+  availabilitySchedule: buildScheduleState(null),
 })
 
 const createVariantDraft = (variant = {}) => ({
@@ -138,6 +140,7 @@ export default function FoodsList() {
               approvalStatus: f.approvalStatus || "approved",
               description: f.description || "",
               preparationTime: f.preparationTime || "",
+              availabilitySchedule: f.availabilitySchedule || null,
               isAvailable: f.isAvailable !== false,
               createdAt: f.createdAt,
               updatedAt: f.updatedAt,
@@ -278,6 +281,7 @@ export default function FoodsList() {
       foodType: String(food.foodType || "Non-Veg"),
       isAvailable: food.isAvailable !== false,
       preparationTime: String(food.preparationTime || ""),
+      availabilitySchedule: buildScheduleState(food.availabilitySchedule),
     })
     setSelectedImageFile(null)
     setImagePreviewUrl(String(food.image || ""))
@@ -381,6 +385,11 @@ export default function FoodsList() {
       return
     }
 
+    if (isScheduleEmpty(foodForm.availabilitySchedule)) {
+      toast.error("Turn on at least one day for the availability schedule, or switch it off")
+      return
+    }
+
     try {
       setSubmittingFood(true)
       let imageUrl = foodForm.image.trim()
@@ -411,6 +420,7 @@ export default function FoodsList() {
         foodType: foodForm.foodType === "Veg" ? "Veg" : "Non-Veg",
         isAvailable: foodForm.isAvailable !== false,
         preparationTime: String(foodForm.preparationTime || "").trim(),
+        availabilitySchedule: foodForm.availabilitySchedule,
       }
 
       if (foodFormMode === "edit") {
@@ -900,6 +910,12 @@ export default function FoodsList() {
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
                 </div>
+              </div>
+              <div className="md:col-span-2">
+                <ItemAvailabilityScheduleEditor
+                  value={foodForm.availabilitySchedule}
+                  onChange={(next) => setFoodForm((prev) => ({ ...prev, availabilitySchedule: next }))}
+                />
               </div>
               {imagePreviewUrl ? (
                 <div className="md:col-span-2">

@@ -38,6 +38,33 @@ const foodSchema = new mongoose.Schema(
             isEnabled: { type: Boolean, default: false },
             amount: { type: Number, min: 0, default: 0 }
         },
+        /**
+         * Optional per-item availability windows, e.g. breakfast served 08:00-11:30.
+         * Disabled by default, so an item without one is always orderable.
+         * Times are wall-clock in `timezone`; see shared/itemAvailability.js.
+         */
+        availabilitySchedule: {
+            isEnabled: { type: Boolean, default: false },
+            timezone: { type: String, trim: true, default: 'Asia/Kolkata' },
+            days: {
+                type: [
+                    new mongoose.Schema(
+                        {
+                            day: {
+                                type: String,
+                                enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+                                required: true
+                            },
+                            isAvailable: { type: Boolean, default: true },
+                            startTime: { type: String, trim: true, default: '09:00' },
+                            endTime: { type: String, trim: true, default: '22:00' }
+                        },
+                        { _id: false }
+                    )
+                ],
+                default: []
+            }
+        },
         approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved', index: true },
         rejectionReason: { type: String, trim: true, default: '' },
         requestedAt: { type: Date },

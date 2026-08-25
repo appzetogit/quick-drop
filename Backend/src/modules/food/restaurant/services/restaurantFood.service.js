@@ -19,6 +19,7 @@ import {
     normalizeOrderQuantityInput
 } from '../../shared/orderQuantityRules.js';
 import { normalizeItemPackagingChargeInput } from '../../shared/packagingCharge.js';
+import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
 
 const toStr = (v) => (v != null ? String(v).trim() : '');
 const APPROVED_CATEGORY_FILTER = [
@@ -205,6 +206,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     const quantityLimits = normalizeOrderQuantityInput(body, { label: name }) || {};
     assertOrderQuantityRange(quantityLimits, { label: name });
     const packagingCharge = normalizeItemPackagingChargeInput(body.packagingCharge, { label: name });
+    const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
 
     const doc = await FoodItem.create({
         restaurantId,
@@ -222,6 +224,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         preparationTime,
         ...quantityLimits,
         ...(packagingCharge ? { packagingCharge } : {}),
+        ...(availabilitySchedule ? { availabilitySchedule } : {}),
         approvalStatus: 'pending',
         requestedAt: new Date()
     });
@@ -255,7 +258,10 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     if (!existing) return null;
 
     const providedKeys = Object.keys(body || {});
-    const operationalOnlyKeys = ['isActive', 'isAvailable', 'isRecommended'];
+    // availabilitySchedule counts as operational: when a dish is served does not
+    // change what the admin approved, and forcing re-approval would pull a live
+    // item off the menu just for a timing tweak.
+    const operationalOnlyKeys = ['isActive', 'isAvailable', 'isRecommended', 'availabilitySchedule'];
     const isOperationalOnlyUpdate =
         providedKeys.length > 0 &&
         providedKeys.every((key) => operationalOnlyKeys.includes(key));
@@ -282,6 +288,9 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
         update.isRecommended = normalizeRecommendedFlag(body.isRecommended);
     }
     if (body.preparationTime !== undefined) update.preparationTime = toStr(body.preparationTime);
+    if (body.availabilitySchedule !== undefined) {
+        update.availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
+    }
 
     const itemLabel = update.name || existing.name || 'This item';
     const quantityLimits = normalizeOrderQuantityInput(body, { label: itemLabel });

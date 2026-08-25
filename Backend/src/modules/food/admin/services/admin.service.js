@@ -10,6 +10,7 @@ import { FoodOffer } from '../models/offer.model.js';
 import { FoodOfferUsage } from '../models/offerUsage.model.js';
 import { DeliveryBonusTransaction } from '../models/deliveryBonusTransaction.model.js';
 import { FoodEarningAddon } from '../models/earningAddon.model.js';
+import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
 import { FoodDeliveryCommissionRule } from '../models/deliveryCommissionRule.model.js';
@@ -3160,6 +3161,8 @@ export async function createFood(body) {
         pureVegRestaurant: restaurant.pureVegRestaurant === true
     });
 
+    const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
+
     const doc = new FoodItem({
         restaurantId,
         categoryId,
@@ -3172,6 +3175,7 @@ export async function createFood(body) {
         foodType,
         isAvailable: body.isAvailable !== false,
         preparationTime: typeof body.preparationTime === 'string' ? body.preparationTime.trim() : '',
+        ...(availabilitySchedule ? { availabilitySchedule } : {}),
         approvalStatus: 'approved'
     });
     await doc.save();
@@ -3201,6 +3205,9 @@ export async function updateFood(id, body) {
     if (body.foodType !== undefined) doc.foodType = targetFoodType;
     if (body.isAvailable !== undefined) doc.isAvailable = body.isAvailable !== false;
     if (body.preparationTime !== undefined) doc.preparationTime = String(body.preparationTime || '').trim();
+    if (body.availabilitySchedule !== undefined) {
+        doc.availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
+    }
     if (body.categoryId !== undefined || body.categoryName !== undefined || body.category !== undefined || body.foodType !== undefined) {
         const nextCategoryName = body.categoryName !== undefined
             ? String(body.categoryName || '').trim()

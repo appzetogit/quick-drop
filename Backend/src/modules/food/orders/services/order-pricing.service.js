@@ -19,6 +19,7 @@ import {
     normalizePackagingConfig,
     resolveItemPackagingAmount
 } from '../../shared/packagingCharge.js';
+import { assertFoodAvailableNow } from '../../shared/itemAvailability.js';
 
 /**
  * Resolves order items against the restaurant's live menu and returns copies with
@@ -46,6 +47,10 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
     if (menu.isActive === false || menu.isAvailable === false || menu.approvalStatus !== 'approved') {
       throw new ValidationError(`"${menu.name}" is currently unavailable`);
     }
+
+    // Per-item serving window, e.g. breakfast only until 11:30. Checked against
+    // the restaurant's wall clock, not the server's UTC one.
+    assertFoodAvailableNow(menu);
 
     // Per-item min/max set by the restaurant, with the platform ceiling as fallback.
     const qty = assertOrderQuantity(it?.quantity, resolveOrderQuantityRules(menu), menu.name);

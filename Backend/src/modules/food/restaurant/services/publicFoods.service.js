@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
+import { describeTodaysWindow, isFoodAvailableNow } from '../../shared/itemAvailability.js';
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -63,6 +64,8 @@ export async function listPublicFoods(query = {}) {
         .limit(isSwitch99Promo ? Math.max(limit, 2000) : limit)
         .lean();
 
+    // One clock for the whole page, so two items cannot straddle a minute boundary.
+    const now = new Date();
     const foods = list
         .map((food) => {
         const restaurant = restaurantMap.get(String(food.restaurantId));
@@ -70,6 +73,11 @@ export async function listPublicFoods(query = {}) {
         return {
             id: food._id,
             _id: food._id,
+            // Serving window, resolved server-side so the app never has to reason
+            // about the restaurant's timezone. The order API enforces it again.
+            availabilitySchedule: food.availabilitySchedule || null,
+            isAvailableNow: isFoodAvailableNow(food, now),
+            availabilityWindowLabel: describeTodaysWindow(food.availabilitySchedule, now),
             restaurantId: food.restaurantId,
             restaurantName: restaurant?.restaurantName || 'Unknown Restaurant',
             categoryId: food.categoryId || null,
