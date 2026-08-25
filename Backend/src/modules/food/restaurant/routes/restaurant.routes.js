@@ -65,6 +65,12 @@ import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
 import { sendError } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
 import { listPublicFoodsController } from '../controllers/publicFoods.controller.js';
+import {
+    getMediaController,
+    uploadCoverImageController,
+    uploadGalleryImagesController,
+    deleteGalleryImageController
+} from '../controllers/restaurantMedia.controller.js';
 
 import { cacheResponse, invalidateCache } from '../../../../middleware/cache.js';
 
@@ -96,7 +102,7 @@ router.get('/restaurants/:id/reviews', getRestaurantPublicReviewsController);
 router.get('/restaurants/:id/outlet-timings', cacheResponse(600, 'restaurant_timings'), getOutletTimingsByRestaurantIdController);
 router.get('/offers', cacheResponse(300, 'offers'), listPublicOffersController);
 // Public: cross-restaurant dish feed, used by the home screen's category rails and
-// the under-250 promo. Declared before the ':id' routes above cannot swallow it —
+// the under-250 promo. Declared before the ':id' routes above cannot swallow it --
 // '/public/foods' has two segments, so there is no collision either way.
 router.get('/public/foods', cacheResponse(300, 'public_foods'), listPublicFoodsController);
 // Public: categories list (zone-aware; returns zone categories + global)
@@ -116,6 +122,12 @@ router.patch('/availability', authMiddleware, requireRestaurant, async (req, res
 }, updateRestaurantAcceptingOrdersController);
 router.patch('/profile', authMiddleware, requireRestaurant, updateRestaurantProfileController);
 router.delete('/profile/account', authMiddleware, requireRestaurant, deleteCurrentRestaurantAccountController);
+// Same handler under the name quick-commerce uses. The restaurant app serves both
+// verticals off one set of paths, rewriting only the `/food` prefix to `/qc` — an
+// invariant that holds for every other seller route, and broke here because the
+// two forks named account deletion differently. Aliasing is cheaper and safer
+// than teaching the client that one path is special.
+router.delete('/current', authMiddleware, requireRestaurant, deleteCurrentRestaurantAccountController);
 router.patch('/availability', authMiddleware, requireRestaurant, updateRestaurantAcceptingOrdersController);
 router.patch('/dining-settings', authMiddleware, requireRestaurant, updateCurrentRestaurantDiningSettingsController);
 router.get('/outlet-timings', authMiddleware, requireRestaurant, getCurrentRestaurantOutletTimingsController);
@@ -169,6 +181,19 @@ router.post(
     uploadRestaurantMenuImagesController
 );
 
+// ----- Media: main cover image + premises gallery -----
+//
+// Separate from the /profile/* image routes above, which reset the restaurant's
+// status to 'pending'. That is correct for a document that changes what was
+// approved and wrong for swapping a photo -- it takes a live restaurant offline
+// and forces re-approval. Nothing in this block touches status.
+router.get('/media', authMiddleware, requireRestaurant, getMediaController);
+router.post('/media/cover-image', authMiddleware, requireRestaurant, upload.single('file'), uploadCoverImageController);
+router.post('/media/gallery', authMiddleware, requireRestaurant, upload.array('files', 10), uploadGalleryImagesController);
+// DELETE carries the url in the body: image urls contain slashes, which no
+// single path segment can hold.
+router.delete('/media/gallery', authMiddleware, requireRestaurant, deleteGalleryImageController);
+
 // Categories (restaurant dashboard). Read-only for item creation, CRUD for Menu Categories page.
 router.get('/categories', authMiddleware, requireRestaurant, listCategoriesController);
 router.post('/categories', authMiddleware, requireRestaurant, createCategoryController);
@@ -187,7 +212,6 @@ router.post('/feedback-experience', authMiddleware, requireRestaurant, feedbackE
 
 // Public: restaurant add-ons (user app)
 router.get('/restaurants/:id/addons', cacheResponse(600, 'restaurant_addons'), getPublicRestaurantAddonsController);
-router.get('/restaurants/:id/item-extras', cacheResponse(600, 'restaurant_addons'), getPublicRestaurantAddonsController);
 
 // Foods (restaurant creates/updates items -> stored in food_items collection)
 router.post('/foods', authMiddleware, requireRestaurant, async (req, res, next) => {
@@ -205,20 +229,11 @@ router.patch('/foods/:id', authMiddleware, requireRestaurant, async (req, res, n
 router.get('/bulk-upload/template', authMiddleware, requireRestaurant, downloadBulkMenuTemplateController);
 router.post('/bulk-upload', authMiddleware, requireRestaurant, upload.single('file'), uploadBulkMenuController);
 
-// Add-ons (restaurant dashboard) - approval handled by admin.
-//
-// Served under BOTH /addons and /item-extras. Ad blockers (uBlock, AdBlock and
-// friends) match "addons" in a request path and kill the XHR with
-// ERR_BLOCKED_BY_CLIENT, so the dashboard silently showed an empty list for any
-// restaurant running one. Clients call /item-extras; /addons stays for older
-// builds and any integration already pointing at it.
-const addonRoutePairs = ['/addons', '/item-extras'];
-addonRoutePairs.forEach((base) => {
-    router.get(base, authMiddleware, requireRestaurant, listAddonsController);
-    router.post(base, authMiddleware, requireRestaurant, createAddonController);
-    router.patch(`${base}/:id`, authMiddleware, requireRestaurant, updateAddonController);
-    router.delete(`${base}/:id`, authMiddleware, requireRestaurant, deleteAddonController);
-});
+// Add-ons (restaurant dashboard) - approval handled by admin
+router.get('/addons', authMiddleware, requireRestaurant, listAddonsController);
+router.post('/addons', authMiddleware, requireRestaurant, createAddonController);
+router.patch('/addons/:id', authMiddleware, requireRestaurant, updateAddonController);
+router.delete('/addons/:id', authMiddleware, requireRestaurant, deleteAddonController);
 
 // Orders (restaurant dashboard)
 router.get('/orders', authMiddleware, requireRestaurant, orderController.listOrdersRestaurantController);

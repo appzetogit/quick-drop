@@ -210,3 +210,16 @@ export function validateOrderRatingsDto(body) {
     }
     return result.data;
 }
+
+/** The other direction: the delivery partner rating the customer after handover. */
+export function validateCustomerRatingDto(body) {
+    const schema = z.object({
+        rating: z.number().min(1).max(5),
+        comment: z.string().max(500).optional()
+    });
+    const result = schema.safeParse(body || {});
+    if (!result.success) {
+        throw new ValidationError(zodMessage(result.error));
+    }
+    return result.data;
+}

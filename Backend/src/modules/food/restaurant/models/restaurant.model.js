@@ -179,6 +179,24 @@ const restaurantSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    /**
+     * The single main cover image, set through `/restaurant/media/cover-image`.
+     *
+     * Separate from `coverImages` above, which is the legacy list written by
+     * `/profile/cover-images` — that route also resets `status` to 'pending',
+     * so it cannot be used for routine photo edits without taking a live
+     * restaurant offline.
+     */
+    coverImage: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    /** Premises photos: what the rider uses to recognise the pickup point. */
+    galleryImages: {
+      type: [String],
+      default: [],
+    },
     profileImage: {
       type: String,
     },

@@ -946,6 +946,50 @@ export async function submitOrderRatings(orderId, userId, dto) {
     });
 }
 
+/**
+ * The delivery partner rating the customer, after handover.
+ *
+ * The mirror of submitOrderRatings above, and it feeds the same aggregate
+ * machinery — a customer accumulates a rating on FoodUser exactly as a
+ * restaurant does. Deliberately allowed only once per order and only after
+ * delivery, so it cannot be used to pressure a customer mid-trip.
+ */
+export async function submitCustomerRating(orderId, deliveryPartnerId, dto) {
+  const identity = buildOrderIdentityFilter(orderId);
+  if (!identity) throw new ValidationError("Order id required");
+
+  const order = await FoodOrder.findOne(identity);
+  if (!order) throw new NotFoundError("Order not found");
+
+  if (
+    String(order.dispatch?.deliveryPartnerId || "") !== String(deliveryPartnerId)
+  ) {
+    throw new ForbiddenError("Not your order");
+  }
+  if (String(order.orderStatus) !== "delivered") {
+    throw new ValidationError("You can rate only delivered orders");
+  }
+  if (Number.isFinite(Number(order?.ratings?.customer?.rating))) {
+    throw new ValidationError("You have already rated this customer");
+  }
+
+  order.ratings = order.ratings || {};
+  order.ratings.customer = {
+    rating: dto.rating,
+    comment: dto.comment || "",
+    ratedAt: new Date(),
+  };
+
+  await applyAggregateRating(FoodUser, order.userId, dto.rating);
+  await order.save();
+
+  return {
+    orderId: order.order_id || order._id.toString(),
+    orderMongoId: order._id.toString(),
+    customerRating: order.ratings.customer,
+  };
+}
+
 export async function updateOrderInstructions(orderId, userId, instructions) {
   const identity = buildOrderIdentityFilter(orderId);
   if (!identity) throw new ValidationError("Order id required");

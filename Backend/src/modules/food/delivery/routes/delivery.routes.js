@@ -3,6 +3,11 @@ import { upload } from '../../../../middleware/upload.js';
 import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
 import { requireRoles } from '../../../../core/roles/role.middleware.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
+import {
+    listOrderEmergencyRequestsController,
+    createOrderEmergencyRequestController,
+    getOrderEmergencyRequestController
+} from '../controllers/orderEmergencyRequest.controller.js';
 import { registerDeliveryPartnerController, updateDeliveryPartnerProfileController, updateDeliveryPartnerBankDetailsController, listSupportTicketsController, createSupportTicketController, getSupportTicketByIdController, updateDeliveryPartnerDetailsController, updateDeliveryPartnerProfilePhotoBase64Controller, updateAvailabilityController, getWalletController, createWithdrawalRequestController, createCashDepositOrderController, verifyCashDepositPaymentController, getEarningsController, getTripHistoryController, getPocketDetailsController, getEmergencyHelpController, getCashLimitController, getDeliveryReferralStatsController, getActiveEarningAddonsController, deleteDeliveryPartnerAccountController } from '../controllers/delivery.controller.js';
 
 const router = express.Router();
@@ -16,6 +21,34 @@ const uploadFields = upload.fields([
 ]);
 
 router.post('/register', uploadFields, registerDeliveryPartnerController);
+
+/**
+ * Public: is this vehicle number free to register?
+ *
+ * Called from the registration form before submit, so it cannot require a token.
+ * Answers only yes/no -- it never reveals who holds the number. A 'rejected'
+ * application does not hold its vehicle number, so that rider can re-apply.
+ */
+router.get('/check-vehicle/:number', async (req, res) => {
+    try {
+        const { FoodDeliveryPartner } = await import('../models/deliveryPartner.model.js');
+        const vNum = String(req.params.number || '').trim().toUpperCase();
+        if (!vNum) {
+            return res.status(400).json({ success: false, message: 'Vehicle number is required' });
+        }
+        const existing = await FoodDeliveryPartner.findOne({
+            vehicleNumber: vNum,
+            status: { $ne: 'rejected' }
+        });
+        return res.json({
+            success: true,
+            isAvailable: !existing,
+            message: existing ? 'Vehicle number already registered' : 'Available'
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
 
 router.patch('/profile', authMiddleware, requireRoles('DELIVERY_PARTNER'), uploadFields, updateDeliveryPartnerProfileController);
 
@@ -34,6 +67,13 @@ router.get('/support-tickets', authMiddleware, requireRoles('DELIVERY_PARTNER'),
 router.post('/support-tickets', authMiddleware, requireRoles('DELIVERY_PARTNER'), createSupportTicketController);
 router.get('/support-tickets/:id', authMiddleware, requireRoles('DELIVERY_PARTNER'), getSupportTicketByIdController);
 
+// ----- Emergency reassignment -----
+// A rider who cannot finish an accepted job asks for it to be handed to someone
+// else. A rider only ever sees their own requests; acting on one is an admin job.
+router.get('/order-emergency-requests', authMiddleware, requireRoles('DELIVERY_PARTNER'), listOrderEmergencyRequestsController);
+router.post('/order-emergency-requests', authMiddleware, requireRoles('DELIVERY_PARTNER'), createOrderEmergencyRequestController);
+router.get('/order-emergency-requests/:id', authMiddleware, requireRoles('DELIVERY_PARTNER'), getOrderEmergencyRequestController);
+
 // ----- Orders -----
 router.get('/orders/current', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.getCurrentTripDeliveryController);
 router.get('/orders/available', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.listOrdersAvailableDeliveryController);
@@ -46,6 +86,8 @@ router.patch('/orders/:orderId/reached-drop', authMiddleware, requireRoles('DELI
 router.get('/orders/:orderId/route', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.getOrderRouteDeliveryController);
 router.post('/orders/:orderId/verify-drop-otp', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.verifyDropOtpDeliveryController);
 router.patch('/orders/:orderId/complete', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.completeDeliveryController);
+// The mirror of the customer's own rating: once per order, delivered orders only.
+router.patch('/orders/:orderId/rate-customer', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.rateCustomerDeliveryController);
 router.patch('/orders/:orderId/status', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.updateOrderStatusDeliveryController);
 router.post('/orders/:orderId/collect/qr', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.createCollectQrController);
 

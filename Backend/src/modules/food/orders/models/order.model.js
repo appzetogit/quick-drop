@@ -180,7 +180,9 @@ const orderEntityRatingSchema = new mongoose.Schema(
 const orderRatingsSchema = new mongoose.Schema(
     {
         restaurant: { type: orderEntityRatingSchema, default: undefined },
-        deliveryPartner: { type: orderEntityRatingSchema, default: undefined }
+        deliveryPartner: { type: orderEntityRatingSchema, default: undefined },
+        /** The CUSTOMER, rated by the delivery partner after handover. */
+        customer: { type: orderEntityRatingSchema, default: undefined }
     },
     { _id: false }
 );
