@@ -22,6 +22,8 @@ import { normalizeItemPackagingChargeInput } from '../../shared/packagingCharge.
 import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { assertPriceWithinMrp, normalizeMrpInput, normalizeOtherPriceInput } from '../../shared/mrpPricing.js';
+import { FoodAddon } from '../models/foodAddon.model.js';
+import { normalizeAddonIdsInput } from '../../shared/orderAddons.js';
 
 const toStr = (v) => (v != null ? String(v).trim() : '');
 const APPROVED_CATEGORY_FILTER = [
@@ -211,6 +213,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
     const mrpUpdate = normalizeMrpInput(body);
     const otherPriceUpdate = normalizeOtherPriceInput(body);
+    const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
     // Selling above the printed MRP is illegal; variants are checked too, since a
     // dish can be under MRP in its small size and over it in its large one.
     assertPriceWithinMrp(price, mrpUpdate?.mrp, variants);
@@ -234,6 +237,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         ...(availabilitySchedule ? { availabilitySchedule } : {}),
         ...(mrpUpdate || {}),
         ...(otherPriceUpdate || {}),
+        ...(addonUpdate || {}),
         approvalStatus: 'pending',
         requestedAt: new Date()
     });
@@ -308,6 +312,8 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     if (mrpUpdate) update.mrp = mrpUpdate.mrp;
     const otherPriceUpdate = normalizeOtherPriceInput(body);
     if (otherPriceUpdate) update.otherPrice = otherPriceUpdate.otherPrice;
+    const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
+    if (addonUpdate) update.addonIds = addonUpdate.addonIds;
     assertPriceWithinMrp(
         update.price !== undefined ? update.price : existing.price,
         mrpUpdate ? mrpUpdate.mrp : existing.mrp,

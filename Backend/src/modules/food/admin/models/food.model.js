@@ -34,6 +34,20 @@ const foodSchema = new mongoose.Schema(
          */
         otherPrice: { type: Number, min: 0, default: 0 },
         variants: { type: [foodVariantSchema], default: [] },
+        /**
+         * Which of the restaurant's add-ons may be chosen with THIS dish.
+         *
+         * Add-ons are a restaurant-wide pool, which meant every dish offered every
+         * add-on -- extra raita on a milkshake. This narrows the pool per item.
+         *
+         * An empty list means the dish takes no add-ons, not "all of them". That
+         * is the safe reading: every existing item has an empty list, so nothing
+         * silently gains options nobody chose for it.
+         */
+        addonIds: {
+            type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'FoodAddon' }],
+            default: [],
+        },
         image: { type: String, trim: true, default: '' },
         foodType: { type: String, enum: ['Veg', 'Non-Veg'], default: 'Non-Veg' },
         isActive: { type: Boolean, default: true, index: true },

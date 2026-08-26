@@ -73,6 +73,8 @@ export default function ItemDetailsPage() {
   const [basePrice, setBasePrice] = useState("")
   const [mrp, setMrp] = useState("")
   const [otherPrice, setOtherPrice] = useState("")
+  const [addonIds, setAddonIds] = useState([])
+  const [availableAddons, setAvailableAddons] = useState([])
   const [variants, setVariants] = useState([])
   const [preparationTime, setPreparationTime] = useState("")
   const [minOrderQuantity, setMinOrderQuantity] = useState("1")
@@ -136,6 +138,7 @@ export default function ItemDetailsPage() {
     setBasePrice(itemVariants.length === 0 ? item.price?.toString() || "" : "")
     setMrp(item.mrp != null ? String(item.mrp) : "")
     setOtherPrice(item.otherPrice ? String(item.otherPrice) : "")
+    setAddonIds(Array.isArray(item.addonIds) ? item.addonIds.map(String) : [])
     setPreparationTime(item.preparationTime || "")
     setMinOrderQuantity(String(item.minOrderQuantity ?? 1))
     setMaxOrderQuantity(String(item.maxOrderQuantity ?? 0))
@@ -293,6 +296,31 @@ export default function ItemDetailsPage() {
 
     fetchCategories()
   }, [category, defaultCategory, defaultCategoryId, isNewItem, selectedCategoryId])
+
+  // The restaurant's add-on pool, so this dish can opt into the ones that suit it.
+  // Failing to load leaves the picker empty rather than blocking the whole form:
+  // add-ons are optional, and the rest of the item is still editable without them.
+  useEffect(() => {
+    let cancelled = false
+    const fetchAddons = async () => {
+      try {
+        const response = await restaurantAPI.getAddons()
+        const list =
+          response?.data?.data?.addons ||
+          response?.data?.addons ||
+          response?.data?.data ||
+          []
+        if (!cancelled) setAvailableAddons(Array.isArray(list) ? list : [])
+      } catch (error) {
+        debugError('Error fetching add-ons:', error)
+        if (!cancelled) setAvailableAddons([])
+      }
+    }
+    fetchAddons()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Keep focused form fields visible above mobile keyboard
   useEffect(() => {
@@ -679,6 +707,7 @@ export default function ItemDetailsPage() {
         availabilitySchedule,
         mrp: mrp === "" ? null : Number(mrp),
         otherPrice: otherPrice === "" ? 0 : Number(otherPrice),
+        addonIds,
       }
 
       // Create/update FoodItem in DB (single call per explicit Save; no autosave spam)
@@ -1293,6 +1322,68 @@ export default function ItemDetailsPage() {
                 <p className="mt-1 text-[11px] text-gray-500">
                   Charged per unit and paid to you, only while admin has packaging set to restaurant mode.
                 </p>
+              </div>
+
+              {/* Which of the restaurant's add-ons this dish offers. An empty
+                  selection means the dish takes none, so nothing is offered by
+                  accident -- the order API refuses anything not ticked here. */}
+              <div className="rounded-lg border border-gray-200 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Add-ons for this item</p>
+                    <p className="mt-0.5 text-xs text-gray-500">
+                      Only the ones you tick can be added to this dish by a customer.
+                    </p>
+                  </div>
+                  {addonIds.length > 0 && (
+                    <span className="shrink-0 rounded-full bg-primary-orange/10 px-2 py-0.5 text-xs font-semibold text-accent-orange/90">
+                      {addonIds.length} selected
+                    </span>
+                  )}
+                </div>
+
+                {availableAddons.length === 0 ? (
+                  <p className="mt-3 text-xs text-gray-500">
+                    No add-ons yet. Create them under Add-ons, then come back to attach them here.
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {availableAddons.map((addon) => {
+                      const addonId = String(addon._id || addon.id || "")
+                      const checked = addonIds.includes(addonId)
+                      const addonName = addon.name || addon.draft?.name || addon.published?.name || "Add-on"
+                      const addonPrice = addon.price ?? addon.draft?.price ?? addon.published?.price ?? 0
+                      const pending = String(addon.approvalStatus || "").toLowerCase() === "pending"
+                      return (
+                        <label
+                          key={addonId}
+                          className="flex cursor-pointer items-center justify-between gap-3 rounded-md bg-gray-50 px-3 py-2">
+                          <span className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4"
+                              checked={checked}
+                              onChange={(e) =>
+                                setAddonIds((prev) =>
+                                  e.target.checked
+                                    ? [...prev, addonId]
+                                    : prev.filter((x) => x !== addonId),
+                                )
+                              }
+                            />
+                            <span className="text-sm text-gray-900">{addonName}</span>
+                            {pending && (
+                              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                                awaiting approval
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-xs text-gray-600">₹{addonPrice}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Serving window, e.g. breakfast only until 11:30. */}

@@ -64,6 +64,9 @@ const buildMenuFromFoods = async (foods = []) => {
             // MRP + the discount it implies, so the seller sees what the customer sees.
             ...computeMrpDiscount(getFoodDisplayPrice(food), food.mrp),
             otherPrice: Number(food.otherPrice) || 0,
+            // Which add-ons this dish offers, so the editor can show the picker
+            // pre-filled and the app can offer only the relevant ones.
+            addonIds: (food.addonIds || []).map((x) => String(x)),
             variants: serializeFoodVariants(food.variants),
             variations: serializeFoodVariants(food.variants),
             image: food.image || '',

@@ -21,6 +21,8 @@ import {
 } from '../../shared/packagingCharge.js';
 import { assertFoodAvailableNow } from '../../shared/itemAvailability.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
+import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
+import { loadSellableAddons, normalizeRequestedAddonIds, resolveLineAddons } from '../../shared/orderAddons.js';
 
 /**
  * Resolves order items against the restaurant's live menu and returns copies with
@@ -46,7 +48,14 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
   // per line -- it is the same value for every item and the map below is sync.
   const quantityCeiling = await getOrderQuantityCeiling();
 
-  return list.map((it) => {
+  // Add-ons for every line, fetched in one query and validated per line below.
+  // Loaded from the published records, so the price charged is the approved one
+  // and never whatever the client sent.
+  const requestedAddonsByLine = list.map((it) => normalizeRequestedAddonIds(it));
+  const allAddonIds = [...new Set(requestedAddonsByLine.flat())];
+  const addonsById = await loadSellableAddons(FoodAddon, restaurantId, allAddonIds);
+
+  return list.map((it, index) => {
     const menu = byId.get(String(it?.itemId || ''));
     if (!menu) throw new ValidationError('One or more items are not available at this restaurant');
     if (menu.isActive === false || menu.isAvailable === false || menu.approvalStatus !== 'approved') {
@@ -69,6 +78,9 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
       variantName = variant.name;
     }
 
+    // Add-ons the dish actually offers, priced from the published record.
+    const { addons, addonsTotal } = resolveLineAddons(menu, requestedAddonsByLine[index], addonsById);
+
     return {
       ...it,
       itemId: menu._id,
@@ -78,6 +90,9 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
       variantName: variantName || it?.variantName || '',
       // Per-unit packaging charge, stamped from the DB item — never client input.
       foodPackagingCharge: resolveItemPackagingAmount(menu),
+      // Snapshotted per unit, same as the packaging charge above.
+      addons,
+      addonsTotal,
     };
   });
 }
@@ -160,8 +175,12 @@ export async function calculateOrderPricing(userId, dto) {
   // Resolve prices from the live menu — never trust client-supplied item prices.
   const items = await resolveAuthoritativeItems(dto.restaurantId, dto.items);
   dto.items = items;
+  // Add-ons are priced per unit, so they scale with quantity exactly as the item
+  // price does. Left out of this sum they would be shown on the order and in the
+  // kitchen but never charged.
   const subtotal = items.reduce(
-    (sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
+    (sum, it) => sum
+      + ((Number(it.price) || 0) + (Number(it.addonsTotal) || 0)) * (Number(it.quantity) || 1),
     0,
   );
 

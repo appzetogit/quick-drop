@@ -95,6 +95,9 @@ export async function listPublicFoods(query = {}) {
             // such field -- MRP above is a different thing -- so it stays 0, sent
             // rather than omitted so the client reads the same shape it gets from /qc.
             otherPrice: resolveComparePrice(price, food.otherPrice),
+            // The add-ons this dish offers. The order API re-checks the list, so
+            // this is for showing the right picker, not for deciding what is allowed.
+            addonIds: (food.addonIds || []).map((x) => String(x)),
             // Both keys, exactly as the restaurant-menu payload sends them.
             //
             // These were missing entirely, so a dish with sizes arrived here

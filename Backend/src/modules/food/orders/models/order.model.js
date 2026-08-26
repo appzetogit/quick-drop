@@ -13,7 +13,28 @@ const orderItemSchema = new mongoose.Schema(
         image: { type: String, default: '' },
         notes: { type: String, default: '' },
         /** Per-unit packaging charge at order time (RESTAURANT packaging mode). */
-        foodPackagingCharge: { type: Number, min: 0, default: 0 }
+        foodPackagingCharge: { type: Number, min: 0, default: 0 },
+        /**
+         * Add-ons chosen for this line, snapshotted at order time.
+         *
+         * Name and price are copied rather than referenced: an add-on renamed or
+         * repriced next week must not change what this customer was shown and
+         * charged, and the kitchen needs the name even if the add-on is later
+         * deleted.
+         *
+         * Priced PER UNIT of the item, like foodPackagingCharge above -- two
+         * burgers with extra cheese is two lots of cheese.
+         */
+        addons: {
+            type: [new mongoose.Schema({
+                addonId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodAddon', required: true },
+                name: { type: String, required: true, trim: true },
+                price: { type: Number, required: true, min: 0 },
+            }, { _id: false })],
+            default: [],
+        },
+        /** Per-unit total of the add-ons above, stamped so pricing never re-derives it. */
+        addonsTotal: { type: Number, min: 0, default: 0 }
     },
     { _id: false }
 );

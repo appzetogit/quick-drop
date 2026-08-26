@@ -1580,12 +1580,28 @@ export default function OrdersMain() {
         yPos += 8;
 
         // Prepare table data
-        const tableData = orderToPrint.items.map((item) => [
-          item.name || "Item",
-          item.quantity || 1,
-          `₹${(item.price || 0).toFixed(2)}`,
-          `₹${((item.price || 0) * (item.quantity || 1)).toFixed(2)}`,
-        ]);
+        // Add-ons are listed under their dish rather than as separate lines, so the
+        // printed ticket reads the way the kitchen works: one dish, then what goes
+        // on it. Omitting them here would mean the paper ticket disagrees with the
+        // screen, and the paper one is what gets worked from.
+        const tableData = orderToPrint.items.flatMap((item) => {
+          const qty = item.quantity || 1;
+          const rows = [[
+            item.name || "Item",
+            qty,
+            `₹${(item.price || 0).toFixed(2)}`,
+            `₹${((item.price || 0) * qty).toFixed(2)}`,
+          ]];
+          for (const addon of item.addons || []) {
+            rows.push([
+              `   + ${addon.name}`,
+              qty,
+              `₹${(addon.price || 0).toFixed(2)}`,
+              `₹${((addon.price || 0) * qty).toFixed(2)}`,
+            ]);
+          }
+          return rows;
+        });
 
         autoTable(doc, {
           startY: yPos,
@@ -2226,9 +2242,28 @@ export default function OrdersMain() {
                                         {item.quantity} x {item.name}
                                       </p>
                                       <p className="text-xs text-gray-600 ml-2">
-                                        ₹{item.price * item.quantity}
+                                        ₹{(item.price + (item.addonsTotal || 0)) * item.quantity}
                                       </p>
                                     </div>
+                                    {/* Add-ons chosen for this line. The kitchen needs these
+                                        as prominently as the dish itself -- a burger made
+                                        without the extra cheese that was paid for comes back. */}
+                                    {Array.isArray(item.addons) && item.addons.length > 0 && (
+                                      <ul className="mt-1 space-y-0.5">
+                                        {item.addons.map((addon, addonIndex) => (
+                                          <li
+                                            key={addon.addonId || addonIndex}
+                                            className="flex items-start justify-between text-xs text-amber-800">
+                                            <span>+ {addon.name}</span>
+                                            {addon.price > 0 && (
+                                              <span className="ml-2 text-gray-500">
+                                                ₹{addon.price * item.quantity}
+                                              </span>
+                                            )}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
                                   </div>
                                 </div>
                               ),
