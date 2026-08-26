@@ -3849,6 +3849,10 @@ export async function getFoods(query) {
         description: f.description || '',
         price: getFoodDisplayPrice(f),
         otherPrice: getFoodDisplayOtherPrice(f),
+        // The admin food form is shared with the food vertical and sends mrp, so
+        // it has to come back or the field renders blank and the next save clears
+        // what the seller set.
+        mrp: f.mrp ?? null,
         variants: serializeFoodVariants(f.variants),
         variations: serializeFoodVariants(f.variants),
         image: f.image || '',

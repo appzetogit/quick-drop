@@ -3042,6 +3042,14 @@ export async function getFoods(query) {
         name: f.name,
         description: f.description || '',
         price: getFoodDisplayPrice(f),
+        // Everything the admin food form SENDS has to come back here too.
+        // These three were written by the form but not returned, so the fields
+        // rendered blank on every edit and the next save cleared whatever the
+        // restaurant had set -- a silent round-trip that destroyed data rather
+        // than merely failing to show it.
+        mrp: f.mrp ?? null,
+        otherPrice: Number(f.otherPrice) || 0,
+        availabilitySchedule: f.availabilitySchedule || null,
         variants: serializeFoodVariants(f.variants),
         variations: serializeFoodVariants(f.variants),
         image: f.image || '',
