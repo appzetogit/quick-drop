@@ -79,6 +79,13 @@ router.get('/restaurant-commissions/:id', adminController.getRestaurantCommissio
 router.patch('/restaurant-commissions/:id', adminController.updateRestaurantCommission);
 router.delete('/restaurant-commissions/:id', adminController.deleteRestaurantCommission);
 router.patch('/restaurant-commissions/:id/toggle', adminController.toggleRestaurantCommissionStatus);
+// Dated overrides of the standing rate above -- festive weeks, promotions, a
+// renegotiated month. Declared after the :id routes so "schedules" is not
+// swallowed as an id.
+router.get('/commission-schedules', adminController.listCommissionSchedules);
+router.post('/commission-schedules', adminController.createCommissionSchedule);
+router.patch('/commission-schedules/:id', adminController.updateCommissionSchedule);
+router.delete('/commission-schedules/:id', adminController.deleteCommissionSchedule);
 
 // ----- Categories -----
 router.get('/categories', adminController.getCategories);

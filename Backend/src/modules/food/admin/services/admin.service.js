@@ -12,6 +12,9 @@ import { DeliveryBonusTransaction } from '../models/deliveryBonusTransaction.mod
 import { FoodEarningAddon } from '../models/earningAddon.model.js';
 import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
 import { invalidateOrderQuantityCeilingCache } from '../../shared/orderQuantityCeiling.js';
+import { FoodCommissionSchedule } from '../models/commissionSchedule.model.js';
+import { normalizeScheduleInput } from '../../shared/commissionSchedule.js';
+import { invalidateCommissionScheduleCache } from '../../orders/services/foodTransaction.service.js';
 import { assertPriceWithinMrp, normalizeMrpInput, normalizeOtherPriceInput } from '../../shared/mrpPricing.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
@@ -1596,6 +1599,86 @@ export async function toggleRestaurantCommissionStatus(id) {
     doc.status = !Boolean(doc.status);
     await doc.save();
     return doc.toObject();
+}
+
+// ----- Scheduled commission rates (festive / promotional periods) -----
+//
+// A dated override of the standing rate above. restaurantId null means every
+// restaurant. The order path resolves these through
+// shared/commissionSchedule.js, which is where "most specific wins" lives.
+
+export async function listCommissionSchedules(query = {}) {
+    const filter = {};
+    if (query.restaurantId && mongoose.Types.ObjectId.isValid(String(query.restaurantId))) {
+        filter.restaurantId = new mongoose.Types.ObjectId(String(query.restaurantId));
+    }
+    if (query.activeOnly === 'true' || query.activeOnly === true) {
+        const now = new Date();
+        filter.status = { $ne: false };
+        filter.startsAt = { $lte: now };
+        filter.endsAt = { $gt: now };
+    }
+
+    const schedules = await FoodCommissionSchedule.find(filter)
+        .sort({ startsAt: -1 })
+        .limit(200)
+        .lean();
+
+    return { schedules };
+}
+
+export async function createCommissionSchedule(body, actor = {}) {
+    const payload = normalizeScheduleInput(body);
+    if (payload.restaurantId && !mongoose.Types.ObjectId.isValid(payload.restaurantId)) {
+        throw new ValidationError('Invalid restaurant');
+    }
+
+    const created = await FoodCommissionSchedule.create({
+        ...payload,
+        restaurantId: payload.restaurantId ? new mongoose.Types.ObjectId(payload.restaurantId) : null,
+        createdBy: actor?.userId || actor?._id || null,
+    });
+    // The order path caches active schedules for a minute; drop it so a rate
+    // created to start now is not ignored for the next sixty seconds.
+    invalidateCommissionScheduleCache();
+    return created.toObject();
+}
+
+export async function updateCommissionSchedule(id, body) {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+    const doc = await FoodCommissionSchedule.findById(id);
+    if (!doc) return null;
+
+    // Validated as the merged result, so a partial edit that moves only the end
+    // date is still checked against the stored start.
+    const merged = normalizeScheduleInput({
+        restaurantId: body.restaurantId !== undefined ? body.restaurantId : doc.restaurantId,
+        label: body.label !== undefined ? body.label : doc.label,
+        commission: body.commission !== undefined ? body.commission : doc.commission,
+        startsAt: body.startsAt !== undefined ? body.startsAt : doc.startsAt,
+        endsAt: body.endsAt !== undefined ? body.endsAt : doc.endsAt,
+        status: body.status !== undefined ? body.status : doc.status,
+        notes: body.notes !== undefined ? body.notes : doc.notes,
+    });
+
+    doc.restaurantId = merged.restaurantId ? new mongoose.Types.ObjectId(merged.restaurantId) : null;
+    doc.label = merged.label;
+    doc.commission = merged.commission;
+    doc.startsAt = merged.startsAt;
+    doc.endsAt = merged.endsAt;
+    doc.status = merged.status;
+    doc.notes = merged.notes;
+    await doc.save();
+
+    invalidateCommissionScheduleCache();
+    return doc.toObject();
+}
+
+export async function deleteCommissionSchedule(id) {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+    const deleted = await FoodCommissionSchedule.findByIdAndDelete(id).lean();
+    invalidateCommissionScheduleCache();
+    return deleted ? { id } : null;
 }
 
 // ----- Delivery Boy Commission Rule (admin) -----

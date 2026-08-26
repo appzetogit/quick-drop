@@ -1549,3 +1549,42 @@ export async function revertPriceAdjustment(req, res, next) {
         next(error);
     }
 }
+
+// ----- Scheduled commission rates -----
+export async function listCommissionSchedules(req, res, next) {
+    try {
+        const data = await adminService.listCommissionSchedules(req.query || {});
+        res.status(200).json({ success: true, message: 'Commission schedules fetched successfully', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function createCommissionSchedule(req, res, next) {
+    try {
+        const data = await adminService.createCommissionSchedule(req.body || {}, req.user || {});
+        res.status(201).json({ success: true, message: 'Commission schedule created successfully', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function updateCommissionSchedule(req, res, next) {
+    try {
+        const data = await adminService.updateCommissionSchedule(req.params.id, req.body || {});
+        if (!data) return res.status(404).json({ success: false, message: 'Commission schedule not found' });
+        res.status(200).json({ success: true, message: 'Commission schedule updated successfully', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function deleteCommissionSchedule(req, res, next) {
+    try {
+        const data = await adminService.deleteCommissionSchedule(req.params.id);
+        if (!data) return res.status(404).json({ success: false, message: 'Commission schedule not found' });
+        res.status(200).json({ success: true, message: 'Commission schedule deleted successfully', data });
+    } catch (error) {
+        next(error);
+    }
+}
