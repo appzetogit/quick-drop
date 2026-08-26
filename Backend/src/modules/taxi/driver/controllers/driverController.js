@@ -7,6 +7,7 @@ import { mirrorTaxiPayment } from '../../services/paymentMirror.service.js';
 import { ApiError } from "../../../../utils/ApiError.js";
 import { normalizePoint, toPoint } from "../../../../utils/geo.js";
 import { Driver } from "../models/Driver.js";
+import { ensureDeliveryCapability } from "../../../../core/identity/driverCapabilities.service.js";
 import { BusDriver } from "../models/BusDriver.js";
 import { DriverLoginSession } from "../models/DriverLoginSession.js";
 import { WalletTransaction } from "../models/WalletTransaction.js";
@@ -2184,6 +2185,10 @@ export const registerDriver = async (req, res) => {
     zoneId: zone?._id || null,
     location: toPoint(coordinates, "location"),
   });
+
+  // Both job streams from one registration -- see
+  // core/identity/driverCapabilities.service.js. Non-fatal.
+  await ensureDeliveryCapability(driver);
 
   const token = signAccessToken({ sub: String(driver._id), role: "driver" });
 
@@ -5922,6 +5927,10 @@ export const createOwnerFleetDriver = async (req, res) => {
     status: "pending",
     location: toPoint(coordinates, "location"),
   });
+
+  // A fleet driver takes the same jobs as any other, so they get the same
+  // capabilities. Their partner record mirrors the pending approval state.
+  await ensureDeliveryCapability(driver);
 
   res.status(201).json({
     success: true,
