@@ -17,6 +17,14 @@ const foodSchema = new mongoose.Schema(
         name: { type: String, required: true, trim: true, index: true },
         description: { type: String, trim: true, default: '' },
         price: { type: Number, required: true, min: 0 },
+        /**
+         * Printed maximum retail price, shown struck through next to `price`.
+         * Selling above it is illegal, so it is a constraint the server enforces,
+         * not a marketing number. null means "not recorded", which is what every
+         * row that predates this field is -- treating absent as 0 would make them
+         * all look like they were being sold above MRP. See shared/mrpPricing.js.
+         */
+        mrp: { type: Number, min: 0, default: null },
         variants: { type: [foodVariantSchema], default: [] },
         image: { type: String, trim: true, default: '' },
         foodType: { type: String, enum: ['Veg', 'Non-Veg'], default: 'Non-Veg' },

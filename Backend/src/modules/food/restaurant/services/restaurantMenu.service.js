@@ -8,6 +8,7 @@ import { formatOrderQuantityLimits } from '../../shared/orderQuantityRules.js';
 import { resolveItemPackagingAmount } from '../../shared/packagingCharge.js';
 import { isFoodAvailableNow } from '../../shared/itemAvailability.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
+import { computeMrpDiscount } from '../../shared/mrpPricing.js';
 
 const buildMenuFromFoods = async (foods = []) => {
     // Admin-configurable platform cap, so the limits the seller UI shows match
@@ -60,6 +61,8 @@ const buildMenuFromFoods = async (foods = []) => {
             name: food.name,
             description: food.description || '',
             price: getFoodDisplayPrice(food),
+            // MRP + the discount it implies, so the seller sees what the customer sees.
+            ...computeMrpDiscount(getFoodDisplayPrice(food), food.mrp),
             variants: serializeFoodVariants(food.variants),
             variations: serializeFoodVariants(food.variants),
             image: food.image || '',

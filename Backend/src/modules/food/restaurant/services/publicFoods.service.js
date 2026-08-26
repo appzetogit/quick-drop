@@ -3,6 +3,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
 import { describeTodaysWindow, isFoodAvailableNow } from '../../shared/itemAvailability.js';
+import { computeMrpDiscount } from '../../shared/mrpPricing.js';
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -86,9 +87,13 @@ export async function listPublicFoods(query = {}) {
             name: food.name,
             description: food.description || '',
             price,
-            // The food module's FoodItem has no compare-at price, so there is
-            // nothing to strike through. Sent as 0 rather than omitted so the
-            // client reads the same key shape it gets from /qc.
+            // Printed MRP and the discount it implies, so the app can strike
+            // through a price and show "N% OFF" without deriving the rule itself.
+            // hasDiscount is false whenever there is nothing honest to show.
+            ...computeMrpDiscount(price, food.mrp),
+            // Compare-at price against other platforms. The food module has no
+            // such field -- MRP above is a different thing -- so it stays 0, sent
+            // rather than omitted so the client reads the same shape it gets from /qc.
             otherPrice: 0,
             // Both keys, exactly as the restaurant-menu payload sends them.
             //

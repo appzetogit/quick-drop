@@ -18,6 +18,7 @@ const createFoodForm = () => ({
   categoryName: "",
   name: "",
   price: "",
+  mrp: "",
   variants: [],
   description: "",
   image: "",
@@ -135,6 +136,7 @@ export default function FoodsList() {
               categoryId: String(f.categoryId || ""),
               categoryName: f.categoryName || "",
               price: getFoodDisplayPrice(f),
+              mrp: f.mrp ?? null,
               variants: getFoodVariants(f),
               foodType: f.foodType || "Non-Veg",
               approvalStatus: f.approvalStatus || "approved",
@@ -275,6 +277,7 @@ export default function FoodsList() {
       categoryName: String(food.categoryName || ""),
       name: String(food.name || ""),
       price: String(food.price || ""),
+      mrp: food.mrp != null ? String(food.mrp) : "",
       variants: getFoodVariants(food).map(createVariantDraft),
       description: String(food.description || ""),
       image: String(food.image || ""),
@@ -410,6 +413,7 @@ export default function FoodsList() {
         categoryName: String(foodForm.categoryName || "").trim(),
         name: foodForm.name.trim(),
         price: hasVariants ? undefined : parsedPrice,
+        mrp: foodForm.mrp === "" ? null : Number(foodForm.mrp),
         variants: normalizedVariants.map((variant) => ({
           ...(variant.id && !variant.id.startsWith("variant-") ? { _id: variant.id } : {}),
           name: variant.name,
@@ -865,6 +869,19 @@ export default function FoodsList() {
                 {(foodForm.variants || []).length > 0 ? (
                   <p className="mt-1 text-xs text-slate-500">Variants are active, so customers will see the lowest variant price as the starting price.</p>
                 ) : null}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">MRP (optional)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={foodForm.mrp}
+                  onChange={(e) => setFoodForm((prev) => ({ ...prev, mrp: e.target.value }))}
+                  placeholder="Printed price"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
+                />
+                <p className="mt-1 text-xs text-slate-500">Shown struck through next to the selling price. Selling above MRP is not allowed.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Food Type</label>

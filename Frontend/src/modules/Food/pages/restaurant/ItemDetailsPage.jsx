@@ -71,6 +71,7 @@ export default function ItemDetailsPage() {
   const [itemDescription, setItemDescription] = useState("")
   const [foodType, setFoodType] = useState("Non-Veg")
   const [basePrice, setBasePrice] = useState("")
+  const [mrp, setMrp] = useState("")
   const [variants, setVariants] = useState([])
   const [preparationTime, setPreparationTime] = useState("")
   const [minOrderQuantity, setMinOrderQuantity] = useState("1")
@@ -132,6 +133,7 @@ export default function ItemDetailsPage() {
     const itemVariants = getFoodVariants(item)
     setVariants(itemVariants.map(createVariantDraft))
     setBasePrice(itemVariants.length === 0 ? item.price?.toString() || "" : "")
+    setMrp(item.mrp != null ? String(item.mrp) : "")
     setPreparationTime(item.preparationTime || "")
     setMinOrderQuantity(String(item.minOrderQuantity ?? 1))
     setMaxOrderQuantity(String(item.maxOrderQuantity ?? 0))
@@ -673,6 +675,7 @@ export default function ItemDetailsPage() {
           amount: Number(packagingAmount) || 0,
         },
         availabilitySchedule,
+        mrp: mrp === "" ? null : Number(mrp),
       }
 
       // Create/update FoodItem in DB (single call per explicit Save; no autosave spam)
@@ -1076,6 +1079,42 @@ export default function ItemDetailsPage() {
                   Customers will see the lowest variant price first.
                 </div>
               )}
+
+              {/* MRP: shown struck through beside the selling price. The server
+                  refuses a price above it, variants included. */}
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">MRP (optional)</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={mrp}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[₹\s,]/g, '').replace(/[^0-9.]/g, '')
+                    const parts = value.split('.')
+                    setMrp(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value)
+                  }}
+                  placeholder="Printed price on the pack"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                {(() => {
+                  const m = Number(mrp)
+                  const p = Number(basePrice)
+                  if (!Number.isFinite(m) || m <= 0) return null
+                  const highestVariant = variants.reduce((hi, v) => Math.max(hi, Number(v.price) || 0), 0)
+                  const selling = variants.length > 0 ? highestVariant : p
+                  if (Number.isFinite(selling) && selling > m) {
+                    return <p className="mt-1 text-xs text-red-600">Price cannot be above the MRP of {m}.</p>
+                  }
+                  if (Number.isFinite(selling) && selling > 0 && selling < m) {
+                    return (
+                      <p className="mt-1 text-xs text-green-700">
+                        Customers see {Math.floor(((m - selling) / m) * 100)}% off.
+                      </p>
+                    )
+                  }
+                  return null
+                })()}
+              </div>
 
               <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">

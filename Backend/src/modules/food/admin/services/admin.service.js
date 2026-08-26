@@ -12,6 +12,7 @@ import { DeliveryBonusTransaction } from '../models/deliveryBonusTransaction.mod
 import { FoodEarningAddon } from '../models/earningAddon.model.js';
 import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
 import { invalidateOrderQuantityCeilingCache } from '../../shared/orderQuantityCeiling.js';
+import { assertPriceWithinMrp, normalizeMrpInput } from '../../shared/mrpPricing.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
 import { FoodDeliveryCommissionRule } from '../models/deliveryCommissionRule.model.js';
@@ -3173,6 +3174,10 @@ export async function createFood(body) {
     });
 
     const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
+    const mrpUpdate = normalizeMrpInput(body);
+    // Selling above the printed MRP is illegal; variants are checked too, since a
+    // dish can be under MRP in its small size and over it in its large one.
+    assertPriceWithinMrp(price, mrpUpdate?.mrp, variants);
 
     const doc = new FoodItem({
         restaurantId,
@@ -3187,6 +3192,7 @@ export async function createFood(body) {
         isAvailable: body.isAvailable !== false,
         preparationTime: typeof body.preparationTime === 'string' ? body.preparationTime.trim() : '',
         ...(availabilitySchedule ? { availabilitySchedule } : {}),
+        ...(mrpUpdate || {}),
         approvalStatus: 'approved'
     });
     await doc.save();
@@ -3219,6 +3225,11 @@ export async function updateFood(id, body) {
     if (body.availabilitySchedule !== undefined) {
         doc.availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
     }
+    // Checked against the document as it will be saved, so a partial update that
+    // touches only the price is still measured against the stored MRP.
+    const mrpUpdate = normalizeMrpInput(body);
+    if (mrpUpdate) doc.mrp = mrpUpdate.mrp;
+    assertPriceWithinMrp(doc.price, doc.mrp, doc.variants);
     if (body.categoryId !== undefined || body.categoryName !== undefined || body.category !== undefined || body.foodType !== undefined) {
         const nextCategoryName = body.categoryName !== undefined
             ? String(body.categoryName || '').trim()
