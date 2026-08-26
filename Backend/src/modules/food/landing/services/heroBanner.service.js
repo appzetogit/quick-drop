@@ -1,5 +1,10 @@
 import { FoodHeroBanner } from '../models/heroBanner.model.js';
 import { v2 as cloudinary } from 'cloudinary';
+// Side-effect import: this module is what calls cloudinary.config(). The
+// cloudinary v2 export is a singleton, so today this file happens to be
+// configured by whatever else imported it first during boot. Importing it
+// here makes that explicit rather than a load-order accident.
+import '../../../../services/cloudinary.service.js';
 
 export const listHeroBanners = async () => {
     return FoodHeroBanner.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
@@ -47,7 +52,14 @@ export const createHeroBannersFromFiles = async (files, meta = {}) => {
 
             results.push({ success: true, banner: banner.toObject() });
         } catch (error) {
-            results.push({ success: false, error: error.message });
+            // Cloudinary rejects with a bare string or a plain object as often as
+            // with an Error, so error.message alone reports "undefined" to the admin
+            // and hides why the upload failed.
+            const reason =
+                typeof error === 'string'
+                    ? error
+                    : error?.message || error?.error?.message || 'Upload failed';
+            results.push({ success: false, error: reason });
         }
     }
 
