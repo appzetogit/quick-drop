@@ -2250,14 +2250,18 @@ export const loginDriver = async (req, res) => {
 };
 
 /**
- * Sets the driver's work mode — which job streams they accept:
- * all | taxi | delivery | quickCommerce.
+ * Sets the driver's work mode — which job streams they accept: all | taxi | delivery.
  *
- * Only capabilities the driver actually has are honored (can't select 'delivery'
- * without it). 'all' means every stream the driver is capable of, so it needs at
- * least two of them to be a meaningful choice.
+ * 'delivery' covers BOTH delivery verticals, food and quick-commerce. One toggle,
+ * because a rider turning deliveries on wants jobs rather than a choice between
+ * two apps they cannot tell apart from the street.
+ *
+ * Only capabilities the driver actually has are honored, and holding either
+ * delivery capability is enough to select it. 'all' means every stream the driver
+ * is capable of, so it needs at least two capabilities to be a real choice.
  */
-const WORK_MODES = ['all', 'taxi', 'delivery', 'quickCommerce'];
+const WORK_MODES = ['all', 'taxi', 'delivery'];
+const DELIVERY_CAPABILITIES = ['delivery', 'quickCommerce'];
 
 export const setWorkMode = async (req, res) => {
   // Matched case-insensitively but stored in the schema's casing: lowercasing
@@ -2277,13 +2281,14 @@ export const setWorkMode = async (req, res) => {
     : ['taxi'];
 
   // Guard: a driver can only pick a mode they're actually set up for.
-  const CAPABILITY_LABELS = {
-    taxi: 'taxi rides',
-    delivery: 'food deliveries',
-    quickCommerce: 'quick-commerce orders',
-  };
-  if (requested !== 'all' && !caps.includes(requested)) {
-    throw new ApiError(400, `You are not registered for ${CAPABILITY_LABELS[requested] || requested}`);
+  // Delivery is satisfied by EITHER delivery capability, since the one toggle
+  // covers both verticals -- a driver set up for grocery but not food can still
+  // turn deliveries on and will simply only be offered grocery.
+  if (requested === 'taxi' && !caps.includes('taxi')) {
+    throw new ApiError(400, 'You are not registered for taxi rides');
+  }
+  if (requested === 'delivery' && !DELIVERY_CAPABILITIES.some((c) => caps.includes(c))) {
+    throw new ApiError(400, 'You are not registered for deliveries');
   }
   if (requested === 'all' && caps.length < 2) {
     throw new ApiError(400, "You need more than one capability for 'all' mode");

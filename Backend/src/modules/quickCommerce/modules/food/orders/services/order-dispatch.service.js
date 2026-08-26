@@ -280,7 +280,14 @@ async function filterByUnifiedWorkMode(partners) {
   const freeDrivers = await Driver.find({
     _id: { $in: [...driverIdByPartner.values()] },
     activeAssignment: null,
-    workMode: { $in: ['all', 'quickCommerce'] },
+    // One "Delivery" toggle covers both delivery verticals: a driver who turns
+    // deliveries on is offered food and grocery alike, rather than having to
+    // know which app a job came from. 'quickCommerce' is still accepted so a
+    // driver who stored that mode before the toggle was collapsed keeps working.
+    workMode: { $in: ['all', 'delivery', 'quickCommerce'] },
+    // The capability is unchanged and still separate: it is what puts the driver
+    // in the grocery pool at all, and a driver can be set up for one vertical
+    // and not the other.
     serviceCapabilities: 'quickCommerce',
   })
     .select('_id')

@@ -135,8 +135,20 @@ const driverSchema = new mongoose.Schema(
       enum: ['taxi', 'delivery', 'quickCommerce'],
       default: ['taxi'],
     },
-    // The in-app toggle: which job streams the driver wants right now.
-    // 'all' accepts every stream the driver is capable of.
+    /**
+     * The in-app toggle: which job streams the driver wants right now.
+     *
+     *   all      every stream the driver is capable of
+     *   taxi     rides only
+     *   delivery BOTH delivery verticals -- food and quick-commerce
+     *
+     * One toggle covers both deliveries deliberately: a rider turning deliveries
+     * on wants jobs, not a choice between two apps they cannot tell apart from
+     * the street. The separate capabilities still decide which pools they are in.
+     *
+     * 'quickCommerce' is retained only so a driver who stored it while it was
+     * briefly selectable can still be read and saved; it is no longer offered.
+     */
     workMode: {
       type: String,
       enum: ['all', 'taxi', 'delivery', 'quickCommerce'],
