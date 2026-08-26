@@ -101,6 +101,7 @@ const _buildVendorQuery = (filters = {}) => {
 const findNearbyVendors = async (centerLocation, radiusKm = 10, filters = {}) => {
   const Vendor = require('../models/Vendor');
   const Settings = require('../models/Settings');
+  const { VENDOR_STATUS } = require('../utils/constants');
   const { getNearbyVendorsFromCache, isRedisConnected } = require('./redisService');
 
   if (!centerLocation || typeof centerLocation.lat !== 'number' || typeof centerLocation.lng !== 'number') {
@@ -119,7 +120,10 @@ const findNearbyVendors = async (centerLocation, radiusKm = 10, filters = {}) =>
     }
 
     const baseQuery = _buildVendorQuery(filters);
-    const totalApprovedVendors = await Vendor.countDocuments({ approvalStatus: 'APPROVED', isActive: true });
+    // VENDOR_STATUS.APPROVED is 'approved'. This diagnostic used a hardcoded
+    // uppercase 'APPROVED', which matches nothing, so it always logged 0 --
+    // including while the query below was successfully returning vendors.
+    const totalApprovedVendors = await Vendor.countDocuments({ approvalStatus: VENDOR_STATUS.APPROVED, isActive: true });
     console.log(`[LocationService] Total Approved/Active Vendors in DB: ${totalApprovedVendors}`);
     console.log(`[LocationService] Searching with query: ${JSON.stringify(baseQuery)}`);
 
