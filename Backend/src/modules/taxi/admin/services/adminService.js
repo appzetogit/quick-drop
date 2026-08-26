@@ -3749,13 +3749,48 @@ export const getUserById = async (id) => {
   };
 };
 
+/**
+ * Seed the default vehicle fields, once, safely.
+ *
+ * This runs on every read of the driver-needed-document endpoints, and the
+ * admin panel loads template_type=document and template_type=vehicle_field
+ * concurrently. A count-then-insertMany pair let both requests observe zero
+ * and both insert, and the loser died on the unique slug index -- a 500 on an
+ * admin screen that was only trying to list rows.
+ *
+ * Upserting keyed on the slug removes the race instead of narrowing it: the
+ * slugs are deterministic, so a concurrent duplicate is now a no-op rather
+ * than a collision. $setOnInsert is deliberate -- an admin who edited a
+ * seeded field must not have it reset on the next page load.
+ *
+ * A racing upsert can still surface E11000 from the index itself; that means
+ * the row the other request inserted is already there, which is the desired
+ * end state, so it is tolerated. Anything else still propagates.
+ */
 const ensureDefaultDriverVehicleFields = async () => {
   const count = await DriverNeededDocument.countDocuments({ template_type: 'vehicle_field' });
   if (count > 0) {
     return;
   }
 
-  await DriverNeededDocument.insertMany(buildDefaultDriverVehicleFieldConfigs(), { ordered: false });
+  try {
+    await DriverNeededDocument.bulkWrite(
+      buildDefaultDriverVehicleFieldConfigs().map((doc) => ({
+        updateOne: {
+          filter: { slug: doc.slug },
+          update: { $setOnInsert: doc },
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+  } catch (error) {
+    const codes = [error?.code, ...(error?.writeErrors || []).map((e) => e?.code ?? e?.err?.code)];
+    const onlyDuplicates = codes.filter((c) => c !== undefined).every((c) => c === 11000);
+    if (!onlyDuplicates) {
+      throw error;
+    }
+  }
 };
 
 export const listUserRequests = async (id) => {
