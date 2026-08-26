@@ -94,6 +94,22 @@ import offerImage from "@food/assets/offerimage.png";
 import api, { publicGetOnce, restaurantAPI, adminAPI, orderAPI } from "@food/api";
 import { API_BASE_URL } from "@food/api/config";
 import OptimizedImage from "@food/components/OptimizedImage";
+
+/**
+ * Is this banner a video rather than an image?
+ *
+ * Matched on the URL because that is all the banner record carries -- there is no
+ * media-type field on it. Cloudinary is special-cased: it serves video from a
+ * /video/upload/ path and the delivery URL often carries no file extension at all,
+ * so an extension check alone would render a video into an <img> and show nothing.
+ */
+const isVideoBannerUrl = (url) => {
+  const value = String(url || "").trim().toLowerCase();
+  if (!value) return false;
+  if (value.includes("/video/upload/")) return true;
+  return /.(mp4|webm|mov|m4v|ogv)(?|#|$)/.test(value);
+};
+
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability";
 import HomeHeader from "@food/components/user/home/HomeHeader";
 import QuickSection from "@food/components/user/home/QuickSection";
@@ -2645,14 +2661,33 @@ export default function Home() {
                   zIndex: currentBannerIndex === index ? 2 : 1,
                   pointerEvents: "none",
                 }}>
-                <img
-                  src={image}
-                  alt={`Hero Banner ${index + 1}`}
-                  className="h-full w-full object-cover"
-                  loading={index === currentBannerIndex ? "eager" : "lazy"}
-                  fetchPriority={index === currentBannerIndex ? "high" : "low"}
-                  draggable={false}
-                />
+                {isVideoBannerUrl(image) ? (
+                  // A hero banner may be a video, not just an image. Muted and
+                  // playsInline are what let it autoplay at all -- browsers block
+                  // autoplay with sound, and iOS otherwise takes the video
+                  // fullscreen instead of leaving it inline in the carousel.
+                  <video
+                    src={image}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    // Only the visible slide is worth fetching; the rest load
+                    // their first frame so a swipe is not a blank panel.
+                    preload={index === currentBannerIndex ? "auto" : "metadata"}
+                    className="h-full w-full object-cover"
+                    draggable={false}
+                  />
+                ) : (
+                  <img
+                    src={image}
+                    alt={`Hero Banner ${index + 1}`}
+                    className="h-full w-full object-cover"
+                    loading={index === currentBannerIndex ? "eager" : "lazy"}
+                    fetchPriority={index === currentBannerIndex ? "high" : "low"}
+                    draggable={false}
+                  />
+                )}
               </div>
             ))}
           </div>

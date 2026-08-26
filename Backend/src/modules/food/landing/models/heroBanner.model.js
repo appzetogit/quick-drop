@@ -10,6 +10,20 @@ const foodHeroBannerSchema = new mongoose.Schema(
             type: String,
             required: true
         },
+        /**
+         * Which Cloudinary resource type the asset was stored as.
+         *
+         * Needed at deletion: cloudinary.uploader.destroy() assumes 'image', so a
+         * video banner would have its database record removed while the file
+         * stayed in Cloudinary forever -- and the error is swallowed, so nothing
+         * would ever say so. Defaults to 'image' for every banner that predates
+         * video support, which is what they all are.
+         */
+        resourceType: {
+            type: String,
+            enum: ['image', 'video'],
+            default: 'image'
+        },
         title: {
             type: String
         },

@@ -16,7 +16,13 @@ export const createHeroBannersFromFiles = async (files, meta = {}) => {
         try {
             const uploadResult = await new Promise((resolve, reject) => {
                 const stream = cloudinary.uploader.upload_stream(
-                    { folder: 'food/hero-banners', resource_type: 'image' },
+                    // 'auto' rather than 'image' so a hero banner can be a video.
+                    // Cloudinary detects the type, stores a video under its own
+                    // resource type, and returns a /video/upload/ URL -- which is
+                    // what the home page keys on to render <video> instead of
+                    // <img>. Pinned to 'image' this upload simply failed, so a
+                    // video banner could not be created at all.
+                    { folder: 'food/hero-banners', resource_type: 'auto' },
                     (error, result) => {
                         if (error) return reject(error);
                         return resolve(result);
@@ -28,6 +34,9 @@ export const createHeroBannersFromFiles = async (files, meta = {}) => {
             const banner = await FoodHeroBanner.create({
                 imageUrl: uploadResult.secure_url,
                 publicId: uploadResult.public_id,
+                // Recorded at upload so deletion can target the right resource
+                // type; Cloudinary cannot infer it from the public id alone.
+                resourceType: uploadResult.resource_type === 'video' ? 'video' : 'image',
                 title: meta.title,
                 ctaText: meta.ctaText,
                 ctaLink: meta.ctaLink,
@@ -53,7 +62,9 @@ export const deleteHeroBanner = async (id) => {
 
     if (doc.publicId) {
         try {
-            await cloudinary.uploader.destroy(doc.publicId);
+            await cloudinary.uploader.destroy(doc.publicId, {
+                resource_type: doc.resourceType === 'video' ? 'video' : 'image',
+            });
         } catch {
             // ignore cloudinary deletion errors to avoid blocking deletion
         }
