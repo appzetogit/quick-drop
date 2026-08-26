@@ -81,6 +81,22 @@ const deliveryPartnerSchema = new mongoose.Schema(
             enum: ['pending', 'approved', 'rejected', 'deactivated'],
             default: 'pending'
         },
+        /**
+         * The unified TaxiDriver this partner belongs to.
+         *
+         * Quick-commerce forked from food before driver unification, so this pool
+         * had no link back to the shared identity: a driver could hold the
+         * quickCommerce capability and still never be gated by their cross-service
+         * busy-lock, which is how the same person gets handed a ride and a grocery
+         * order at once. null means not yet linked, and dispatch keeps those
+         * partners rather than dropping them.
+         */
+        driverId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'TaxiDriver',
+            default: null,
+            index: true
+        },
         rejectionReason: { type: String },
         rejectedAt: { type: Date },
         approvedAt: { type: Date },

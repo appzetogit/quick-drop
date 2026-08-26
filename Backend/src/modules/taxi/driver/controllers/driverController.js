@@ -7,7 +7,7 @@ import { mirrorTaxiPayment } from '../../services/paymentMirror.service.js';
 import { ApiError } from "../../../../utils/ApiError.js";
 import { normalizePoint, toPoint } from "../../../../utils/geo.js";
 import { Driver } from "../models/Driver.js";
-import { ensureDeliveryCapability } from "../../../../core/identity/driverCapabilities.service.js";
+import { ensureAllDriverCapabilities } from "../../../../core/identity/driverCapabilities.service.js";
 import { BusDriver } from "../models/BusDriver.js";
 import { DriverLoginSession } from "../models/DriverLoginSession.js";
 import { WalletTransaction } from "../models/WalletTransaction.js";
@@ -2188,7 +2188,7 @@ export const registerDriver = async (req, res) => {
 
   // Both job streams from one registration -- see
   // core/identity/driverCapabilities.service.js. Non-fatal.
-  await ensureDeliveryCapability(driver);
+  await ensureAllDriverCapabilities(driver);
 
   const token = signAccessToken({ sub: String(driver._id), role: "driver" });
 
@@ -2250,13 +2250,23 @@ export const loginDriver = async (req, res) => {
 };
 
 /**
- * Sets the driver's work mode — which job streams they accept: all | taxi | delivery.
- * Only capabilities the driver actually has are honored (can't select 'delivery' without it).
+ * Sets the driver's work mode — which job streams they accept:
+ * all | taxi | delivery | quickCommerce.
+ *
+ * Only capabilities the driver actually has are honored (can't select 'delivery'
+ * without it). 'all' means every stream the driver is capable of, so it needs at
+ * least two of them to be a meaningful choice.
  */
+const WORK_MODES = ['all', 'taxi', 'delivery', 'quickCommerce'];
+
 export const setWorkMode = async (req, res) => {
-  const requested = String(req.body?.workMode || '').trim().toLowerCase();
-  if (!['all', 'taxi', 'delivery'].includes(requested)) {
-    throw new ApiError(400, "workMode must be one of: all, taxi, delivery");
+  // Matched case-insensitively but stored in the schema's casing: lowercasing
+  // the input outright would turn 'quickCommerce' into 'quickcommerce', which is
+  // not in the enum, so the mode would be rejected however the client sent it.
+  const raw = String(req.body?.workMode || '').trim();
+  const requested = WORK_MODES.find((m) => m.toLowerCase() === raw.toLowerCase());
+  if (!requested) {
+    throw new ApiError(400, `workMode must be one of: ${WORK_MODES.join(', ')}`);
   }
 
   const driver = await Driver.findById(req.auth.sub);
@@ -2267,14 +2277,16 @@ export const setWorkMode = async (req, res) => {
     : ['taxi'];
 
   // Guard: a driver can only pick a mode they're actually set up for.
-  if (requested === 'taxi' && !caps.includes('taxi')) {
-    throw new ApiError(400, "You are not registered for taxi rides");
-  }
-  if (requested === 'delivery' && !caps.includes('delivery')) {
-    throw new ApiError(400, "You are not registered for deliveries");
+  const CAPABILITY_LABELS = {
+    taxi: 'taxi rides',
+    delivery: 'food deliveries',
+    quickCommerce: 'quick-commerce orders',
+  };
+  if (requested !== 'all' && !caps.includes(requested)) {
+    throw new ApiError(400, `You are not registered for ${CAPABILITY_LABELS[requested] || requested}`);
   }
   if (requested === 'all' && caps.length < 2) {
-    throw new ApiError(400, "You need both taxi and delivery capability for 'all' mode");
+    throw new ApiError(400, "You need more than one capability for 'all' mode");
   }
 
   driver.workMode = requested;
@@ -5930,7 +5942,7 @@ export const createOwnerFleetDriver = async (req, res) => {
 
   // A fleet driver takes the same jobs as any other, so they get the same
   // capabilities. Their partner record mirrors the pending approval state.
-  await ensureDeliveryCapability(driver);
+  await ensureAllDriverCapabilities(driver);
 
   res.status(201).json({
     success: true,

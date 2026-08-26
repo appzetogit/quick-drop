@@ -254,6 +254,46 @@ function orderCollectsCash(order) {
   return method === 'cash' || method === 'razorpay_qr';
 }
 
+/**
+ * Driver unification for quick-commerce.
+ *
+ * Keeps only partners whose linked unified Driver is free of the cross-service
+ * busy-lock and whose work mode accepts grocery jobs. Without this a driver
+ * already on a taxi ride or a food delivery would still be offered a QC order,
+ * because this vertical forked from food before unification existed and had no
+ * link back to the shared identity.
+ *
+ * Partners with no driverId are kept, so the pool keeps working for anyone not
+ * yet linked. No-op, and no extra query, while UNIFIED_DISPATCH_ENABLED is off.
+ */
+async function filterByUnifiedWorkMode(partners) {
+  if (!config.unifiedDispatchEnabled || !partners?.length) return partners || [];
+
+  const ids = partners.map((p) => p._id);
+  const rows = await FoodDeliveryPartner.find({ _id: { $in: ids } }).select('_id driverId').lean();
+  const driverIdByPartner = new Map(rows.filter((r) => r.driverId).map((r) => [String(r._id), r.driverId]));
+  if (driverIdByPartner.size === 0) return partners;
+
+  // Five levels: services -> orders -> food -> modules -> quickCommerce, then
+  // back down into the taxi module that owns the unified driver.
+  const { Driver } = await import('../../../../../taxi/driver/models/Driver.js');
+  const freeDrivers = await Driver.find({
+    _id: { $in: [...driverIdByPartner.values()] },
+    activeAssignment: null,
+    workMode: { $in: ['all', 'quickCommerce'] },
+    serviceCapabilities: 'quickCommerce',
+  })
+    .select('_id')
+    .lean();
+  const freeIds = new Set(freeDrivers.map((d) => String(d._id)));
+
+  return partners.filter((p) => {
+    const linked = driverIdByPartner.get(String(p._id));
+    if (!linked) return true;           // not linked yet — don't block
+    return freeIds.has(String(linked)); // linked — must be free + accepting grocery
+  });
+}
+
 async function listNearbyOnlineDeliveryPartners(
   restaurantId,
   { maxKm = 15, limit = 25 } = {},
@@ -330,9 +370,15 @@ async function listNearbyOnlineDeliveryPartners(
     return { partners: [] };
   }
 
-  const final = (config.nodeEnv === 'production')
+  const approved = (config.nodeEnv === 'production')
     ? picked.filter(p => p.status === 'approved')
     : picked;
+
+  // Applied last, on the short list, so the cross-service busy-lock costs one
+  // query over a handful of candidates rather than the whole online pool.
+  const final = await filterByUnifiedWorkMode(
+    approved.map((p) => ({ ...p, _id: p.partnerId })),
+  );
 
   return { partners: final };
 }

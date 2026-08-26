@@ -127,15 +127,19 @@ const driverSchema = new mongoose.Schema(
     },
     // ---- Unified multi-service fields (Phase 1: additive, not yet wired to dispatch) ----
     // What this driver is set up / approved to do. Onboarding or the backfill grants 'delivery'.
+    // 'delivery' is food delivery; 'quickCommerce' is the grocery vertical, which
+    // dispatches from its own pool and so is a capability of its own rather than
+    // being folded into 'delivery'. A driver can hold any combination.
     serviceCapabilities: {
       type: [String],
-      enum: ['taxi', 'delivery'],
+      enum: ['taxi', 'delivery', 'quickCommerce'],
       default: ['taxi'],
     },
     // The in-app toggle: which job streams the driver wants right now.
+    // 'all' accepts every stream the driver is capable of.
     workMode: {
       type: String,
-      enum: ['all', 'taxi', 'delivery'],
+      enum: ['all', 'taxi', 'delivery', 'quickCommerce'],
       default: 'all',
     },
     // Single busy-lock shared across BOTH dispatchers (Phase 2 wires this). null = free.
@@ -155,6 +159,15 @@ const driverSchema = new mongoose.Schema(
     legacyDeliveryPartnerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'FoodDeliveryPartner',
+      default: null,
+      index: true,
+    },
+    // The quick-commerce half. Separate from the food link above because the two
+    // verticals keep separate pools (food_delivery_partners vs
+    // qc_delivery_partners) and a driver may be set up for one and not the other.
+    legacyQcPartnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'QCDeliveryPartner',
       default: null,
       index: true,
     },

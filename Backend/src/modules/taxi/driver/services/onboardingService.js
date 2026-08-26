@@ -22,7 +22,7 @@ import { sendOtpSms } from '../../services/smsService.js';
 import { consumeOtpQuota, otpRateLimitMessage, OTP_SERVICES } from '../../../../core/otp/otpRateLimit.service.js';
 import { WalletTransaction } from '../models/WalletTransaction.js';
 import { applyDriverWalletAdjustment } from './walletService.js';
-import { ensureDeliveryCapability } from '../../../../core/identity/driverCapabilities.service.js';
+import { ensureAllDriverCapabilities } from '../../../../core/identity/driverCapabilities.service.js';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -1107,7 +1107,7 @@ export const completeDriverOnboarding = async ({ registrationId, phone, document
   // registered for deliveries", which is exactly the dead end this removes.
   //
   // Non-fatal by design: a failure here must not lose a completed registration.
-  await ensureDeliveryCapability(driver);
+  await ensureAllDriverCapabilities(driver);
 
   if (referrer?._id) {
     await Driver.updateOne({ _id: referrer._id }, { $inc: { referralCount: 1 } });

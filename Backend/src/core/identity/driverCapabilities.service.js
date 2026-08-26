@@ -115,23 +115,110 @@ export async function ensureDeliveryCapability(driver) {
 }
 
 /**
+ * Give a unified driver the quick-commerce half.
+ *
+ * Kept separate from the food half because the two verticals keep separate pools
+ * -- food_delivery_partners and qc_delivery_partners -- so being in one says
+ * nothing about the other. Same shape as ensureDeliveryCapability: create the
+ * missing record, link both ways, grant the capability, never fail the caller.
+ */
+export async function ensureQuickCommerceCapability(driver) {
+    try {
+        if (!driver?._id) return { granted: false, partnerId: null, reason: 'no driver' };
+
+        const phone = normalizePhone(driver.phone);
+        if (!phone) return { granted: false, partnerId: null, reason: 'driver has no phone' };
+
+        const { FoodDeliveryPartner: QCDeliveryPartner } = await import(
+            '../../modules/quickCommerce/modules/food/delivery/models/deliveryPartner.model.js'
+        );
+
+        let partner = await QCDeliveryPartner.findOne({ phone: { $regex: `${phone}$` } });
+
+        if (!partner) {
+            partner = await QCDeliveryPartner.create({
+                name: driver.name || driver.fullName || 'Driver',
+                phone,
+                countryCode: driver.countryCode || '+91',
+                email: driver.email || undefined,
+                vehicleType: driver.delivery?.vehicleType || '',
+                vehicleName: driver.delivery?.vehicleName || driver.vehicleName || '',
+                ...(driver.vehicleNumber ? { vehicleNumber: driver.vehicleNumber } : {}),
+                status: driver.approve === true ? 'approved' : 'pending',
+                driverId: driver._id,
+            });
+        } else if (!partner.driverId) {
+            partner.driverId = driver._id;
+            await partner.save();
+        }
+
+        const caps = Array.isArray(driver.serviceCapabilities) ? [...driver.serviceCapabilities] : [];
+        let changed = false;
+
+        if (!caps.includes('quickCommerce')) {
+            caps.push('quickCommerce');
+            driver.serviceCapabilities = caps;
+            changed = true;
+        }
+        if (String(driver.legacyQcPartnerId || '') !== String(partner._id)) {
+            driver.legacyQcPartnerId = partner._id;
+            changed = true;
+        }
+        if (changed) await driver.save();
+
+        return { granted: true, partnerId: String(partner._id) };
+    } catch (err) {
+        logger.error(`ensureQuickCommerceCapability failed for driver ${driver?._id}: ${err.message}`);
+        return { granted: false, partnerId: null, reason: err.message };
+    }
+}
+
+/**
+ * Every stream, from one registration. What the registration paths call.
+ *
+ * Each half is independent: if one fails the other still lands, and the driver
+ * ends up able to work the streams that did succeed rather than none of them.
+ */
+export async function ensureAllDriverCapabilities(driver) {
+    const delivery = await ensureDeliveryCapability(driver);
+    const quickCommerce = await ensureQuickCommerceCapability(driver);
+    return { delivery, quickCommerce };
+}
+
+/**
  * Keep the delivery half's approval in step when a driver is approved or
  * suspended on the taxi side, so one decision does not leave the person able to
  * take food orders while barred from rides.
  */
 export async function syncDeliveryApproval(driver) {
-    try {
-        if (!driver?.legacyDeliveryPartnerId) return false;
-        const { FoodDeliveryPartner } = await import('../../modules/food/delivery/models/deliveryPartner.model.js');
-        await FoodDeliveryPartner.updateOne(
-            { _id: driver.legacyDeliveryPartnerId },
-            { $set: { status: driver.approve === true ? 'approved' : 'pending' } }
-        );
-        return true;
-    } catch (err) {
-        logger.error(`syncDeliveryApproval failed for driver ${driver?._id}: ${err.message}`);
-        return false;
+    const status = driver?.approve === true ? 'approved' : 'pending';
+    let touched = false;
+
+    if (driver?.legacyDeliveryPartnerId) {
+        try {
+            const { FoodDeliveryPartner } = await import('../../modules/food/delivery/models/deliveryPartner.model.js');
+            await FoodDeliveryPartner.updateOne({ _id: driver.legacyDeliveryPartnerId }, { $set: { status } });
+            touched = true;
+        } catch (err) {
+            logger.error(`syncDeliveryApproval (food) failed for driver ${driver?._id}: ${err.message}`);
+        }
     }
+
+    // The quick-commerce half moves with the same decision. Skipping it would
+    // leave someone barred from rides and food but still taking grocery orders.
+    if (driver?.legacyQcPartnerId) {
+        try {
+            const { FoodDeliveryPartner: QCDeliveryPartner } = await import(
+                '../../modules/quickCommerce/modules/food/delivery/models/deliveryPartner.model.js'
+            );
+            await QCDeliveryPartner.updateOne({ _id: driver.legacyQcPartnerId }, { $set: { status } });
+            touched = true;
+        } catch (err) {
+            logger.error(`syncDeliveryApproval (qc) failed for driver ${driver?._id}: ${err.message}`);
+        }
+    }
+
+    return touched;
 }
 
 export const __testables = { normalizePhone };
