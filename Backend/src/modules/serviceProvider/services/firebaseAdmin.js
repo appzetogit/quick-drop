@@ -59,6 +59,55 @@ if (!admin.apps.length && serviceAccount) {
 const NotificationLog = require('../models/NotificationLog');
 
 /**
+ * The firebase-admin app to send from.
+ *
+ * The default app is created at import time from env credentials, but the admin
+ * panel stores the platform's Firebase service account in the database, and web
+ * and mobile clients register their FCM tokens against whichever project that
+ * document names. When the two disagree -- as they did -- every push is rejected
+ * with "SenderId mismatch" while both halves look individually fine.
+ *
+ * Credentials cannot be swapped on a live firebase-admin app, so a separate
+ * named app is created for the database-resolved account and cached by its
+ * client_email. If the settings document is missing or unreadable the default
+ * env-based app is used, which is the previous behaviour.
+ */
+let _dbApp = null;
+let _dbAppKey = '';
+
+async function getMessagingApp() {
+  try {
+    const { getFirebaseServiceAccount } = await import('../../../core/settings/firebaseSettings.service.js');
+    const sa = await getFirebaseServiceAccount();
+    if (!sa || !sa.client_email || !sa.private_key) return admin;
+
+    if (_dbApp && _dbAppKey === sa.client_email) return _dbApp;
+
+    const name = 'sp-fcm';
+    const existing = admin.apps.find((a) => a && a.name === name);
+    if (existing) {
+      // The stored account changed; the old app cannot be re-credentialed.
+      if (_dbAppKey && _dbAppKey !== sa.client_email) {
+        await existing.delete().catch(() => {});
+      } else {
+        _dbApp = existing;
+        _dbAppKey = sa.client_email;
+        return _dbApp;
+      }
+    }
+
+    _dbApp = admin.initializeApp({ credential: admin.credential.cert(sa) }, name);
+    _dbAppKey = sa.client_email;
+    return _dbApp;
+  } catch (err) {
+    console.warn('[FCM] Falling back to env Firebase credentials:', err.message);
+    return admin;
+  }
+}
+
+
+
+/**
  * Send push notification to multiple tokens
  * @param {string[]|Object} recipientOrTokens - Array of FCM tokens or a Mongoose Document (User/Worker/Vendor)
  * @param {Object} payload - Notification payload
@@ -213,7 +262,8 @@ async function sendPushNotification(recipientOrTokens, payload) {
     // Log intent
     console.log(`[FCM] Sending standard notification to ${uniqueTokens.length} tokens:`, payload.title);
 
-    const response = await admin.messaging().sendEachForMulticast(message);
+    const messagingApp = await getMessagingApp();
+    const response = await messagingApp.messaging().sendEachForMulticast(message);
 
     console.log(`✅ Push notification sent - Success: ${response.successCount}, Failed: ${response.failureCount}`);
 
