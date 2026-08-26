@@ -60,9 +60,30 @@ const resolveRestaurant = async (restaurantId) => {
  * negative price, which the FoodItem schema would reject on the next save and
  * which checkout would happily charge as ₹0.
  */
-const scalePriceExpr = (field, factor) => ({
-    $max: [MIN_RESULT_PRICE, { $round: [{ $multiply: [`$${field}`, factor] }, 2] }]
-});
+/**
+ * Scale one price, then hold it at the item's MRP.
+ *
+ * This runs as an aggregation pipeline update, which skips every validator the
+ * per-item save paths use -- including the one that refuses a price above the
+ * printed MRP. Without the clamp a broad increase here would quietly put items
+ * on sale above their MRP, which is illegal, and no screen would say so.
+ *
+ * Clamped rather than refused: blocking the whole run because one dish would
+ * cross its MRP would make the feature unusable on a large menu. The count of
+ * clamped items is reported back so the admin is told rather than guessing.
+ *
+ * An MRP of null or 0 means "not recorded", so those items scale freely.
+ */
+const scalePriceExpr = (field, factor) => {
+    const scaled = { $max: [MIN_RESULT_PRICE, { $round: [{ $multiply: [`$${field}`, factor] }, 2] }] };
+    return {
+        $cond: [
+            { $gt: [{ $ifNull: ['$mrp', 0] }, 0] },
+            { $min: [scaled, '$mrp'] },
+            scaled
+        ]
+    };
+};
 
 const applyFactorToMenu = async (filter, factor) => {
     const result = await FoodItem.updateMany(filter, [
@@ -77,11 +98,27 @@ const applyFactorToMenu = async (filter, factor) => {
                             $mergeObjects: [
                                 '$$variant',
                                 {
+                                    // Variants have no MRP of their own; the item's
+                                    // MRP caps every size, same as the per-item save
+                                    // path, which validates the highest variant.
                                     price: {
-                                        $max: [
-                                            MIN_RESULT_PRICE,
-                                            { $round: [{ $multiply: ['$$variant.price', factor] }, 2] }
-                                        ]
+                                        $let: {
+                                            vars: {
+                                                scaled: {
+                                                    $max: [
+                                                        MIN_RESULT_PRICE,
+                                                        { $round: [{ $multiply: ['$$variant.price', factor] }, 2] }
+                                                    ]
+                                                }
+                                            },
+                                            in: {
+                                                $cond: [
+                                                    { $gt: [{ $ifNull: ['$mrp', 0] }, 0] },
+                                                    { $min: ['$$scaled', '$mrp'] },
+                                                    '$$scaled'
+                                                ]
+                                            }
+                                        }
                                     }
                                 }
                             ]
@@ -94,6 +131,19 @@ const applyFactorToMenu = async (filter, factor) => {
     return result?.modifiedCount || 0;
 };
 
+/**
+ * How many items this factor would push above their MRP, and so be held there.
+ *
+ * Counted before the write for the preview, and again after for the message the
+ * admin sees, because "42 items updated" reads very differently from "42 items
+ * updated, 6 held at their MRP".
+ */
+const countItemsCappedByMrp = async (filter, factor) => FoodItem.countDocuments({
+    ...filter,
+    mrp: { $gt: 0 },
+    $expr: { $gt: [{ $multiply: ['$price', factor] }, '$mrp'] },
+});
+
 export async function listPriceAdjustments({ limit = 20 } = {}) {
     const capped = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
     const adjustments = await FoodPriceAdjustment.find({})
@@ -103,10 +153,19 @@ export async function listPriceAdjustments({ limit = 20 } = {}) {
     return { adjustments };
 }
 
-export async function getPriceAdjustmentPreview({ restaurantId } = {}) {
+export async function getPriceAdjustmentPreview({ restaurantId, percent } = {}) {
     const { restaurantName } = await resolveRestaurant(restaurantId);
-    const itemCount = await FoodItem.countDocuments(buildFilter(restaurantId));
-    return { itemCount, restaurantName };
+    const filter = buildFilter(restaurantId);
+    const itemCount = await FoodItem.countDocuments(filter);
+
+    // Only meaningful once a percent has been typed, and only an increase can
+    // push anything into its MRP.
+    const pct = Number(percent);
+    const itemsCappedByMrp = Number.isFinite(pct) && pct > 0
+        ? await countItemsCappedByMrp(filter, 1 + pct / 100)
+        : 0;
+
+    return { itemCount, restaurantName, itemsCappedByMrp };
 }
 
 export async function applyPriceAdjustment(body = {}, actor = {}) {
@@ -120,7 +179,12 @@ export async function applyPriceAdjustment(body = {}, actor = {}) {
 
     const { restaurantId, restaurantName } = await resolveRestaurant(body.restaurantId);
     const factor = 1 + percent / 100;
-    const itemsUpdated = await applyFactorToMenu(buildFilter(restaurantId), factor);
+    const filter = buildFilter(restaurantId);
+
+    // Counted before the write, because afterwards the prices have already been
+    // held at MRP and the comparison no longer finds them.
+    const itemsCappedByMrp = await countItemsCappedByMrp(filter, factor);
+    const itemsUpdated = await applyFactorToMenu(filter, factor);
 
     const adjustment = await FoodPriceAdjustment.create({
         percent,
@@ -128,10 +192,11 @@ export async function applyPriceAdjustment(body = {}, actor = {}) {
         restaurantId,
         restaurantName,
         itemsUpdated,
+        itemsCappedByMrp,
         ...(await resolveActor(actor))
     });
 
-    return { adjustment: adjustment.toObject(), itemsUpdated };
+    return { adjustment: adjustment.toObject(), itemsUpdated, itemsCappedByMrp };
 }
 
 export async function revertPriceAdjustment(id, actor = {}) {

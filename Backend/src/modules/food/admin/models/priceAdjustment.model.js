@@ -21,6 +21,10 @@ const priceAdjustmentSchema = new mongoose.Schema(
         restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodRestaurant', default: null },
         restaurantName: { type: String, trim: true, default: 'All restaurants' },
         itemsUpdated: { type: Number, default: 0 },
+        // How many of those were held at their MRP instead of taking the full
+        // percentage. Recorded so the history explains a run that did less than
+        // the percent suggests.
+        itemsCappedByMrp: { type: Number, default: 0 },
         /** Set when this entry is itself the undo of an earlier adjustment. */
         revertsAdjustmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodPriceAdjustment', default: null },
         isReverted: { type: Boolean, default: false },

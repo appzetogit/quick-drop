@@ -25,6 +25,7 @@ export default function GlobalPricing() {
   const [direction, setDirection] = useState("increase")
   const [percent, setPercent] = useState("10")
   const [itemCount, setItemCount] = useState(null)
+  const [cappedCount, setCappedCount] = useState(0)
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
@@ -68,19 +69,27 @@ export default function GlobalPricing() {
     let cancelled = false
     const loadPreview = async () => {
       try {
-        const response = await adminAPI.getPriceAdjustmentPreview(
-          restaurantId ? { restaurantId } : {},
-        )
-        if (!cancelled) setItemCount(response?.data?.data?.itemCount ?? null)
+        const response = await adminAPI.getPriceAdjustmentPreview({
+          ...(restaurantId ? { restaurantId } : {}),
+          // Sent so the preview can say how many would be held at their MRP.
+          percent: Number(percent) || 0,
+        })
+        if (!cancelled) {
+          setItemCount(response?.data?.data?.itemCount ?? null)
+          setCappedCount(response?.data?.data?.itemsCappedByMrp ?? 0)
+        }
       } catch {
-        if (!cancelled) setItemCount(null)
+        if (!cancelled) { setItemCount(null); setCappedCount(0) }
       }
     }
     loadPreview()
     return () => {
       cancelled = true
     }
-  }, [restaurantId])
+    // percent is a dependency because the preview now reports how many items
+    // that percentage would push into their MRP; without it the warning would
+    // stay stale as the admin types a bigger increase.
+  }, [restaurantId, percent])
 
   const scopeLabel = restaurantId
     ? restaurants.find((r) => String(r?._id || r?.id) === restaurantId)?.restaurantName ||
@@ -98,7 +107,13 @@ export default function GlobalPricing() {
         percent: signedPercent,
         ...(restaurantId ? { restaurantId } : {}),
       })
-      toast.success(response?.data?.message || "Prices updated")
+      const capped = response?.data?.data?.itemsCappedByMrp ?? 0
+      const baseMessage = response?.data?.message || "Prices updated"
+      toast.success(
+        capped > 0
+          ? baseMessage + " — " + capped + " held at their MRP."
+          : baseMessage,
+      )
       setConfirmOpen(false)
       await loadHistory()
     } catch (error) {
@@ -162,6 +177,11 @@ export default function GlobalPricing() {
           {itemCount !== null && (
             <p className="mt-1 text-xs text-slate-500">
               {itemCount} food item{itemCount === 1 ? "" : "s"} will be updated.
+              {cappedCount > 0 && (
+                <span className="mt-1 block text-amber-700">
+                  {cappedCount} of them would go above their MRP and will be held at it instead.
+                </span>
+              )}
             </p>
           )}
         </div>
