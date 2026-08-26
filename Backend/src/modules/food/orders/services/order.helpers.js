@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { config } from '../../../../config/env.js';
 import { logger } from '../../../../utils/logger.js';
 import {
+  notifyOwnersActionableAlert,
   sendNotificationToOwner,
   sendNotificationToOwners,
 } from "../../../../core/notifications/firebase.service.js";
@@ -300,16 +301,74 @@ export async function notifyRestaurantNewOrder(orderDoc) {
       io.to(rooms.restaurant(orderDoc.restaurantId)).emit("new_order", payload);
     }
 
-    await notifyOwnersSafely(
+    // Two messages, not one — see notifyOwnersActionableAlert.
+    //
+    // A single message carrying both a notification block and data is
+    // intercepted by Android's FCM client whenever the app is backgrounded or
+    // killed: it renders the plain notification itself and never wakes the
+    // app's background handler, so this used to reach the restaurant (if at
+    // all) as a bare "New order received" with no Accept/Reject buttons, no
+    // order details, and on the platform's default channel rather than the
+    // one the app actually created for orders — which Android silently
+    // demotes to low importance, i.e. no sound and no heads-up.
+    const str = (v) => (v === undefined || v === null ? "" : String(v));
+    const itemCount = Array.isArray(orderDoc.items)
+      ? orderDoc.items.reduce((sum, it) => sum + (Number(it?.quantity) || 0), 0)
+      : 0;
+    const itemsList = Array.isArray(orderDoc.items)
+      ? orderDoc.items.map((it) => `${it.quantity}x ${it.name}`).join(", ")
+      : "";
+    // deliveryAddressSchema has street/additionalDetails/city — there is no
+    // `address` or `area` field on it.
+    const addressStr = orderDoc.deliveryAddress
+      ? [
+          orderDoc.deliveryAddress.street,
+          orderDoc.deliveryAddress.additionalDetails,
+          orderDoc.deliveryAddress.city,
+        ]
+          .filter(Boolean)
+          .join(", ")
+      : "";
+    const total = orderDoc.pricing?.total ?? 0;
+
+    let bodyText = `Order #${orderDoc.order_id || orderDoc._id} is waiting for review.`;
+    if (itemsList) bodyText += `
+Items: ${itemsList}`;
+    if (total > 0) bodyText += `
+Total: ₹${total}`;
+    if (orderDoc.customerName) bodyText += `
+Customer: ${orderDoc.customerName}`;
+    if (addressStr) bodyText += `
+Address: ${addressStr}`;
+
+    await notifyOwnersActionableAlert(
       [{ ownerType: "RESTAURANT", ownerId: orderDoc.restaurantId }],
       {
         title: "New order received",
-        body: `Order #${orderDoc.order_id || orderDoc._id} is waiting for review.`,
+        body: bodyText,
+        androidTag: `order_${orderDoc._id?.toString?.() || ""}`,
+        // Must match the channel id the app itself creates
+        // (core/services/local_notification_service.dart) — an id Android has
+        // never seen is silently demoted to low importance.
+        androidChannelId: "new_order_channel_v2",
         data: {
           type: "new_order",
+          title: "New order received",
+          body: bodyText,
           orderId: orderDoc._id.toString(),
           orderMongoId: orderDoc._id?.toString?.() || "",
+          orderDisplayId: str(orderDoc.order_id || orderDoc._id),
           link: `/restaurant/orders/${orderDoc._id?.toString?.() || ""}`,
+          // Everything the notification needs to render without a follow-up
+          // API call, which matters when the device is locked or the app was
+          // killed.
+          customerName: str(orderDoc.customerName),
+          itemCount: str(itemCount),
+          itemsList: str(itemsList),
+          address: str(addressStr),
+          total: str(total),
+          paymentMethod: str(orderDoc.payment?.method),
+          acceptanceDeadlineAt: str(orderDoc.acceptanceDeadlineAt?.toISOString?.() || ""),
         },
       },
     );

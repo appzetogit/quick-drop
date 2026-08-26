@@ -239,10 +239,19 @@ const buildMessagePayload = (payload = {}, token) => {
     message.android = {
         priority: 'high',
         notification: {
-            channel_id: 'default',
+            // Caller-specified so a client that created its own channel (a
+            // dedicated new-order sound, its own importance level) actually
+            // gets it — an unrecognised channel id is silently demoted by
+            // Android to low importance, which posts with no sound and no
+            // heads-up, indistinguishable from the push never arriving.
+            channel_id: payload.androidChannelId || 'default',
             sound: 'default',
             default_vibrate_timings: true,
-            default_light_settings: true
+            default_light_settings: true,
+            // Lets the client collapse/replace a plain tray copy once its own
+            // richer local notification is showing, instead of leaving both
+            // on screen. Undefined is fine — FCM omits the key.
+            tag: payload.androidTag
         }
     };
 
@@ -543,6 +552,30 @@ export const sendNotificationToOwners = async (targets = [], payload = {}) => {
         );
     }
     return results;
+};
+
+
+/**
+ * Two pushes, not one: a plain notification-bearing message first, then a
+ * data-only message with the same payload.
+ *
+ * A single message that carries both a `notification` block and `data` is
+ * intercepted by the Android FCM client whenever the app is backgrounded or
+ * killed — it renders the plain notification itself and never wakes the
+ * client's background message handler, so Accept/Reject action buttons (which
+ * only that handler can attach) silently never appear. Sending the plain
+ * message FIRST and the data-only one SECOND means: a device that never
+ * starts the app in the background still gets an alert, and a device that
+ * does gets the richer one and cancels the plain copy — by [androidTag] — once
+ * its own is on screen. Cancelling before the plain copy has posted would
+ * cancel nothing and leave two notifications up, which is why the order here
+ * is fixed rather than parallel.
+ */
+export const notifyOwnersActionableAlert = async (targets = [], payload = {}) => {
+    const { androidTag, androidChannelId, ...rest } = payload;
+
+    await sendNotificationToOwners(targets, { ...rest, androidTag, androidChannelId });
+    return sendNotificationToOwners(targets, { ...rest, dataOnly: true });
 };
 
 export const notifyAdminsSafely = async (payload = {}) => {
