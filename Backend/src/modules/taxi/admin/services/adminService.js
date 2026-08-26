@@ -9213,6 +9213,12 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
     // on the very next page load rather than up to half a minute later.
     const { invalidateFirebaseSettingsCache } = await import('../../../../core/settings/firebaseSettings.service.js');
     invalidateFirebaseSettingsCache();
+    // The push sender caches the service account and an OAuth token minted from
+    // it. Without this, changing the Firebase project here would keep signing
+    // pushes with the previous key until the token expired an hour later, and
+    // every notification in between would be rejected as a SenderId mismatch.
+    const { invalidateFirebaseSenderCache } = await import('../../../../core/notifications/firebase.service.js');
+    invalidateFirebaseSenderCache();
     return { settings: settings.firebase };
   };
 
