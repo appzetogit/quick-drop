@@ -89,7 +89,21 @@ const notificationSchema = new mongoose.Schema(
 
 notificationSchema.index({ ownerType: 1, ownerId: 1, createdAt: -1 });
 notificationSchema.index({ ownerType: 1, ownerId: 1, isRead: 1, dismissedAt: 1 });
-notificationSchema.index({ broadcastId: 1, ownerType: 1, ownerId: 1 }, { unique: true, sparse: true });
+// Dedupes a broadcast's fan-out: one row per owner per broadcast.
+//
+// Partial, not sparse. A sparse COMPOUND index only skips a document when every
+// indexed field is missing, and ownerType/ownerId are always present -- so rows
+// with no broadcastId were still indexed, as (null, ownerType, ownerId). That
+// made the pair unique per owner, capping every owner at exactly one
+// non-broadcast notification: the second and every one after it was rejected
+// with E11000 and silently dropped by the mirror's catch.
+//
+// The filter restricts uniqueness to rows that actually belong to a broadcast,
+// which is the only place the constraint was ever meant to apply.
+notificationSchema.index(
+    { broadcastId: 1, ownerType: 1, ownerId: 1 },
+    { unique: true, partialFilterExpression: { broadcastId: { $type: 'objectId' } } }
+);
 
 export const NOTIFICATION_VERTICALS = Object.freeze(['food', 'quickCommerce', 'taxi', 'serviceProvider']);
 
