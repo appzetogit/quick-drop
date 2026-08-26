@@ -19,6 +19,7 @@ const createFoodForm = () => ({
   name: "",
   price: "",
   mrp: "",
+  otherPrice: "",
   variants: [],
   description: "",
   image: "",
@@ -137,6 +138,7 @@ export default function FoodsList() {
               categoryName: f.categoryName || "",
               price: getFoodDisplayPrice(f),
               mrp: f.mrp ?? null,
+              otherPrice: f.otherPrice ?? 0,
               variants: getFoodVariants(f),
               foodType: f.foodType || "Non-Veg",
               approvalStatus: f.approvalStatus || "approved",
@@ -278,6 +280,7 @@ export default function FoodsList() {
       name: String(food.name || ""),
       price: String(food.price || ""),
       mrp: food.mrp != null ? String(food.mrp) : "",
+      otherPrice: food.otherPrice ? String(food.otherPrice) : "",
       variants: getFoodVariants(food).map(createVariantDraft),
       description: String(food.description || ""),
       image: String(food.image || ""),
@@ -414,6 +417,7 @@ export default function FoodsList() {
         name: foodForm.name.trim(),
         price: hasVariants ? undefined : parsedPrice,
         mrp: foodForm.mrp === "" ? null : Number(foodForm.mrp),
+        otherPrice: foodForm.otherPrice === "" ? 0 : Number(foodForm.otherPrice),
         variants: normalizedVariants.map((variant) => ({
           ...(variant.id && !variant.id.startsWith("variant-") ? { _id: variant.id } : {}),
           name: variant.name,
@@ -871,6 +875,16 @@ export default function FoodsList() {
                 ) : null}
               </div>
               <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Other platform price (optional)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={foodForm.otherPrice}
+                  onChange={(e) => setFoodForm((prev) => ({ ...prev, otherPrice: e.target.value }))}
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
+                />
+                <p className="mt-1 mb-3 text-xs text-slate-500">Shown with a strikethrough next to the selling price when higher.</p>
                 <label className="block text-sm font-medium text-slate-700 mb-1">MRP (optional)</label>
                 <input
                   type="number"

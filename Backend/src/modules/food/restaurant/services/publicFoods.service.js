@@ -3,7 +3,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
 import { describeTodaysWindow, isFoodAvailableNow } from '../../shared/itemAvailability.js';
-import { computeMrpDiscount } from '../../shared/mrpPricing.js';
+import { computeMrpDiscount, resolveComparePrice } from '../../shared/mrpPricing.js';
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -94,7 +94,7 @@ export async function listPublicFoods(query = {}) {
             // Compare-at price against other platforms. The food module has no
             // such field -- MRP above is a different thing -- so it stays 0, sent
             // rather than omitted so the client reads the same shape it gets from /qc.
-            otherPrice: 0,
+            otherPrice: resolveComparePrice(price, food.otherPrice),
             // Both keys, exactly as the restaurant-menu payload sends them.
             //
             // These were missing entirely, so a dish with sizes arrived here

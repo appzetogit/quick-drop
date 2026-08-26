@@ -3,7 +3,7 @@
  * Run: node src/modules/food/shared/__checks__/mrpPricing.check.js
  */
 import assert from 'node:assert/strict';
-import { assertPriceWithinMrp, computeMrpDiscount, normalizeMrpInput } from '../mrpPricing.js';
+import { assertPriceWithinMrp, computeMrpDiscount, normalizeMrpInput, normalizeOtherPriceInput, resolveComparePrice } from '../mrpPricing.js';
 
 const throws = (fn, re) => assert.throws(fn, (e) => e.name === 'ValidationError' && (!re || re.test(e.message)));
 
@@ -66,5 +66,27 @@ assert.equal(computeMrpDiscount(80, null).mrp, null);
 
 // Money is not left with floating-point dust.
 assert.equal(computeMrpDiscount(33.33, 99.99).savings, 66.66);
+
+// --- other-platform (compare-at) price ------------------------------------
+// Deliberately NOT constrained against price: being cheaper than the rival price
+// you typed is the normal case and the whole point of showing it.
+assert.equal(normalizeOtherPriceInput({}), undefined);
+assert.deepEqual(normalizeOtherPriceInput({ otherPrice: null }), { otherPrice: 0 });
+assert.deepEqual(normalizeOtherPriceInput({ otherPrice: '' }), { otherPrice: 0 });
+assert.deepEqual(normalizeOtherPriceInput({ otherPrice: 150 }), { otherPrice: 150 });
+assert.deepEqual(normalizeOtherPriceInput({ otherPrice: '150' }), { otherPrice: 150 });
+throws(() => normalizeOtherPriceInput({ otherPrice: -1 }), /Other platform price is invalid/);
+throws(() => normalizeOtherPriceInput({ otherPrice: 'abc' }), /Other platform price is invalid/);
+// A compare-at BELOW the selling price is accepted and simply not shown.
+assert.deepEqual(normalizeOtherPriceInput({ otherPrice: 10 }), { otherPrice: 10 });
+
+// resolveComparePrice: only shown when it is higher
+assert.equal(resolveComparePrice(134, 150), 150);   // the screenshot's case
+assert.equal(resolveComparePrice(134, 134), 0);     // equal: nothing to strike
+assert.equal(resolveComparePrice(134, 100), 0);     // lower: nothing to strike
+assert.equal(resolveComparePrice(134, 0), 0);
+assert.equal(resolveComparePrice(134, null), 0);
+assert.equal(resolveComparePrice(134, undefined), 0);
+assert.equal(resolveComparePrice(134, 'abc'), 0);
 
 console.log('All MRP pricing checks passed.');

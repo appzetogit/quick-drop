@@ -72,6 +72,7 @@ export default function ItemDetailsPage() {
   const [foodType, setFoodType] = useState("Non-Veg")
   const [basePrice, setBasePrice] = useState("")
   const [mrp, setMrp] = useState("")
+  const [otherPrice, setOtherPrice] = useState("")
   const [variants, setVariants] = useState([])
   const [preparationTime, setPreparationTime] = useState("")
   const [minOrderQuantity, setMinOrderQuantity] = useState("1")
@@ -134,6 +135,7 @@ export default function ItemDetailsPage() {
     setVariants(itemVariants.map(createVariantDraft))
     setBasePrice(itemVariants.length === 0 ? item.price?.toString() || "" : "")
     setMrp(item.mrp != null ? String(item.mrp) : "")
+    setOtherPrice(item.otherPrice ? String(item.otherPrice) : "")
     setPreparationTime(item.preparationTime || "")
     setMinOrderQuantity(String(item.minOrderQuantity ?? 1))
     setMaxOrderQuantity(String(item.maxOrderQuantity ?? 0))
@@ -676,6 +678,7 @@ export default function ItemDetailsPage() {
         },
         availabilitySchedule,
         mrp: mrp === "" ? null : Number(mrp),
+        otherPrice: otherPrice === "" ? 0 : Number(otherPrice),
       }
 
       // Create/update FoodItem in DB (single call per explicit Save; no autosave spam)
@@ -1080,40 +1083,70 @@ export default function ItemDetailsPage() {
                 </div>
               )}
 
-              {/* MRP: shown struck through beside the selling price. The server
-                  refuses a price above it, variants included. */}
-              <div>
-                <label className="block text-xs text-gray-600 mb-1">MRP (optional)</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={mrp}
-                  onChange={(e) => {
-                    const value = e.target.value.replace(/[₹\s,]/g, '').replace(/[^0-9.]/g, '')
-                    const parts = value.split('.')
-                    setMrp(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value)
-                  }}
-                  placeholder="Printed price on the pack"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                {(() => {
-                  const m = Number(mrp)
-                  const p = Number(basePrice)
-                  if (!Number.isFinite(m) || m <= 0) return null
-                  const highestVariant = variants.reduce((hi, v) => Math.max(hi, Number(v.price) || 0), 0)
-                  const selling = variants.length > 0 ? highestVariant : p
-                  if (Number.isFinite(selling) && selling > m) {
-                    return <p className="mt-1 text-xs text-red-600">Price cannot be above the MRP of {m}.</p>
-                  }
-                  if (Number.isFinite(selling) && selling > 0 && selling < m) {
-                    return (
-                      <p className="mt-1 text-xs text-green-700">
-                        Customers see {Math.floor(((m - selling) / m) * 100)}% off.
-                      </p>
-                    )
-                  }
-                  return null
-                })()}
+              {/* Two prices, two different jobs:
+                    otherPrice — a rival's price, struck through when higher. Purely
+                                 presentational, so being cheaper than it is the point
+                                 and never an error.
+                    mrp        — the printed price. Selling above it is illegal, so the
+                                 server refuses it, variants included. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Other platform price (Optional)</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₹</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={otherPrice}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[₹\s,]/g, '').replace(/[^0-9.]/g, '')
+                        const parts = value.split('.')
+                        setOtherPrice(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value)
+                      }}
+                      className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Shown with a strikethrough next to your selling price when higher.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">MRP (Optional)</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₹</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={mrp}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[₹\s,]/g, '').replace(/[^0-9.]/g, '')
+                        const parts = value.split('.')
+                        setMrp(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value)
+                      }}
+                      className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  {(() => {
+                    const m = Number(mrp)
+                    if (!Number.isFinite(m) || m <= 0) {
+                      return <p className="mt-1 text-xs text-gray-500">Printed price on the pack. Selling above it is not allowed.</p>
+                    }
+                    const highestVariant = variants.reduce((hi, v) => Math.max(hi, Number(v.price) || 0), 0)
+                    const selling = variants.length > 0 ? highestVariant : Number(basePrice)
+                    if (Number.isFinite(selling) && selling > m) {
+                      return <p className="mt-1 text-xs text-red-600">Price cannot be above the MRP of {m}.</p>
+                    }
+                    if (Number.isFinite(selling) && selling > 0 && selling < m) {
+                      return (
+                        <p className="mt-1 text-xs text-green-700">
+                          Customers see {Math.floor(((m - selling) / m) * 100)}% off.
+                        </p>
+                      )
+                    }
+                    return <p className="mt-1 text-xs text-gray-500">Printed price on the pack.</p>
+                  })()}
+                </div>
               </div>
 
               <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-3">

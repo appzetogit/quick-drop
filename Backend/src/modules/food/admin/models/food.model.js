@@ -25,6 +25,14 @@ const foodSchema = new mongoose.Schema(
          * all look like they were being sold above MRP. See shared/mrpPricing.js.
          */
         mrp: { type: Number, min: 0, default: null },
+        /**
+         * Compare-at / other-platform price, struck through next to `price` when
+         * it is higher. Purely presentational, so unlike `mrp` it is NOT a
+         * constraint: a restaurant may legitimately be cheaper than the rival
+         * price they typed, and refusing that would be nonsense. Existing items
+         * stay 0, which the clients already read as "nothing to strike through".
+         */
+        otherPrice: { type: Number, min: 0, default: 0 },
         variants: { type: [foodVariantSchema], default: [] },
         image: { type: String, trim: true, default: '' },
         foodType: { type: String, enum: ['Veg', 'Non-Veg'], default: 'Non-Veg' },

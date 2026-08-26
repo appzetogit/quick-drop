@@ -36,6 +36,32 @@ export function normalizeMrpInput(body = {}) {
 }
 
 /**
+ * Normalize the compare-at / other-platform price.
+ *
+ * Deliberately not validated against `price`: being cheaper than the rival price
+ * you typed is the normal case, and the whole point of showing it. The client
+ * strikes it through only when it is higher, so a lower value simply renders
+ * nothing. 0 means "not set", matching what quick-commerce stores.
+ */
+export function normalizeOtherPriceInput(body = {}) {
+    if (body?.otherPrice === undefined) return undefined;
+    if (body.otherPrice === null || String(body.otherPrice).trim() === '') return { otherPrice: 0 };
+
+    const value = toNumber(body.otherPrice);
+    if (!Number.isFinite(value) || value < 0) throw new ValidationError('Other platform price is invalid');
+    return { otherPrice: value };
+}
+
+/** What the client should strike through, or 0 when there is nothing to show. */
+export function resolveComparePrice(price, otherPrice) {
+    const sell = toNumber(price);
+    const compare = toNumber(otherPrice);
+    if (!Number.isFinite(compare) || compare <= 0) return 0;
+    if (Number.isFinite(sell) && compare <= sell) return 0;
+    return compare;
+}
+
+/**
  * Refuse a selling price above the printed MRP.
  *
  * Checks variants too: a dish can be cheap in its small size and above MRP in

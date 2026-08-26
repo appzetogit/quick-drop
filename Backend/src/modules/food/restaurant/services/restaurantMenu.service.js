@@ -63,6 +63,7 @@ const buildMenuFromFoods = async (foods = []) => {
             price: getFoodDisplayPrice(food),
             // MRP + the discount it implies, so the seller sees what the customer sees.
             ...computeMrpDiscount(getFoodDisplayPrice(food), food.mrp),
+            otherPrice: Number(food.otherPrice) || 0,
             variants: serializeFoodVariants(food.variants),
             variations: serializeFoodVariants(food.variants),
             image: food.image || '',
