@@ -107,7 +107,7 @@ const isVideoBannerUrl = (url) => {
   const value = String(url || "").trim().toLowerCase();
   if (!value) return false;
   if (value.includes("/video/upload/")) return true;
-  return /.(mp4|webm|mov|m4v|ogv)(?|#|$)/.test(value);
+  return /\.(mp4|webm|mov|m4v|ogv)(\?|#|$)/.test(value);
 };
 
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability";
