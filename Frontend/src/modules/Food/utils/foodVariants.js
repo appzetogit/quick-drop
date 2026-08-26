@@ -39,5 +39,22 @@ export const getFoodPriceLabel = (item = {}) => {
   return hasFoodVariants(item) ? `Starting from ₹${Math.round(price)}` : `₹${Math.round(price)}`
 }
 
-export const buildCartLineId = (itemId, variantId = "") =>
-  `${String(itemId || "")}::${String(variantId || "base")}`
+/**
+ * Identity of one cart line.
+ *
+ * Add-ons are part of it: a burger with extra cheese and a plain burger are two
+ * different things to make and two different prices, so they cannot share a line
+ * or incrementing one would silently change the other. Ids are sorted so the same
+ * selection made in a different order is still the same line.
+ *
+ * The third argument is optional, so callers that predate add-ons keep producing
+ * exactly the ids they always did.
+ */
+export const buildCartLineId = (itemId, variantId = "", addonIds = []) => {
+  const base = `${String(itemId || "")}::${String(variantId || "base")}`
+  const ids = (Array.isArray(addonIds) ? addonIds : [addonIds])
+    .map((id) => String(id || "").trim())
+    .filter(Boolean)
+    .sort()
+  return ids.length ? `${base}::${ids.join("+")}` : base
+}

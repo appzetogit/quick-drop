@@ -94,10 +94,23 @@ const normalizeCartData = (rawCart) => {
       const parsedVariantPrice = Number(
         item.variantPrice ?? item.variant?.price ?? item.price,
       )
+      // Add-ons chosen for this line, snapshotted the same way the server does.
+      // Part of the line identity, so a burger with cheese and a plain one stay
+      // separate rather than one silently absorbing the other.
+      const lineAddons = Array.isArray(item.addons)
+        ? item.addons
+            .filter((a) => a && (a.addonId || a._id || a.id))
+            .map((a) => ({
+              addonId: String(a.addonId || a._id || a.id),
+              name: String(a.name || ""),
+              price: Number(a.price) || 0,
+            }))
+        : []
+      const lineAddonIds = lineAddons.map((a) => a.addonId)
       const lineItemId =
         item.lineItemId ||
         item.cartLineId ||
-        buildCartLineId(baseItemId, variantId)
+        buildCartLineId(baseItemId, variantId, lineAddonIds)
 
       return {
         ...item,
@@ -108,6 +121,10 @@ const normalizeCartData = (rawCart) => {
         variantId: variantId ? String(variantId) : "",
         variantName,
         variantPrice: Number.isFinite(parsedVariantPrice) ? parsedVariantPrice : 0,
+        addons: lineAddons,
+        addonIds: lineAddonIds,
+        // Per unit, matching how the server prices them.
+        addonsTotal: lineAddons.reduce((sum, a) => sum + a.price, 0),
         name: item.name || item.product?.name || "Item",
         quantity:
           Number.isFinite(parsedQuantity) && parsedQuantity > 0

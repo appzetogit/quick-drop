@@ -1415,7 +1415,11 @@ export default function Cart() {
         image: item.image || "",
         description: item.description || "",
         isVeg: item.isVeg !== false,
-        preparationTime: item.preparationTime
+        preparationTime: item.preparationTime,
+        // Ids only. The server prices add-ons from the published record and
+        // refuses any this dish does not offer, so anything else sent here is
+        // ignored by design.
+        addonIds: Array.isArray(item.addonIds) ? item.addonIds : []
       }))
 
       debugLog("?? Order items to send:", orderItems)

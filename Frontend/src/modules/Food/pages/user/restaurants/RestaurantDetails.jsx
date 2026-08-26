@@ -5,6 +5,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { restaurantAPI, diningAPI, orderAPI } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
 import { toast } from "sonner"
+import AddonPickerSheet from "@food/components/user/AddonPickerSheet"
 import { useLocation } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import {
@@ -100,6 +101,8 @@ function RestaurantDetailsContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [availabilityTick, setAvailabilityTick] = useState(Date.now())
   const [showMenuOptionsSheet, setShowMenuOptionsSheet] = useState(false)
+  const [addonPickerState, setAddonPickerState] = useState({ open: false, item: null, variant: null, quantity: 1 })
+  const [restaurantAddons, setRestaurantAddons] = useState([])
   const [showShareModal, setShowShareModal] = useState(false)
   const [sharePayload, setSharePayload] = useState(null)
   const [expandedAddButtons, setExpandedAddButtons] = useState(new Set())
@@ -111,8 +114,29 @@ function RestaurantDetailsContent() {
   const [loadingReviews, setLoadingReviews] = useState(true)
   const dishCardRefs = useRef({})
 
-  const getLineItemIdForDish = (item, variant = null) =>
-    buildCartLineId(item?.id || item?._id || "", variant?.id || variant?._id || "")
+  // The restaurant sellable add-ons, fetched once the restaurant is known.
+  // Failure leaves the pool empty, which makes the picker show nothing rather
+  // than blocking the dish from being added.
+  useEffect(() => {
+    const rid = restaurant?.restaurantId || restaurant?._id || restaurant?.id
+    if (!rid) return
+    let cancelled = false
+    restaurantAPI
+      .getAddonsByRestaurantId(rid)
+      .then((res) => {
+        const list = res?.data?.data?.addons || res?.data?.addons || []
+        if (!cancelled) setRestaurantAddons(Array.isArray(list) ? list : [])
+      })
+      .catch(() => {
+        if (!cancelled) setRestaurantAddons([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [restaurant])
+
+  const getLineItemIdForDish = (item, variant = null, addonIds = []) =>
+    buildCartLineId(item?.id || item?._id || "", variant?.id || variant?._id || "", addonIds)
 
   const getVariantForDish = (item, preferredVariantId = "") => {
     const variants = getFoodVariants(item)
@@ -1136,7 +1160,7 @@ function RestaurantDetailsContent() {
   }, [selectedItem])
 
   // Helper function to update item quantity in both local state and cart
-  const updateItemQuantity = (item, newQuantity, event = null, preferredVariant = null) => {
+  const updateItemQuantity = (item, newQuantity, event = null, preferredVariant = null, chosenAddons = null) => {
     // Check authentication
     if (!isModuleAuthenticated('user')) {
       toast.error("Please login to add items to cart")
@@ -1157,7 +1181,20 @@ function RestaurantDetailsContent() {
     }
 
     const resolvedVariant = preferredVariant || getDefaultFoodVariant(item)
-    const lineItemId = getLineItemIdForDish(item, resolvedVariant)
+    // A dish that offers add-ons asks once, when it first goes in. Later
+    // increments and decrements act on the line that already exists, so the
+    // customer is not re-asked every time they tap +.
+    const offersAddons = Array.isArray(item?.addonIds) && item.addonIds.length > 0
+    if (chosenAddons === null && offersAddons && newQuantity > 0) {
+      const existingLineId = getLineItemIdForDish(item, resolvedVariant, [])
+      const alreadyInCart = cart.some((c) => String(c.itemId || "") === String(item.id || item._id || ""))
+      if (!alreadyInCart) {
+        setAddonPickerState({ open: true, item, variant: resolvedVariant, quantity: newQuantity })
+        return
+      }
+    }
+    const selectedAddons = Array.isArray(chosenAddons) ? chosenAddons : []
+    const lineItemId = getLineItemIdForDish(item, resolvedVariant, selectedAddons.map((a) => a.addonId))
 
     // Update local state
     setQuantities((prev) => ({
@@ -1210,7 +1247,8 @@ function RestaurantDetailsContent() {
       description: item.description,
       originalPrice: item.originalPrice,
       isVeg: item.isVeg !== false, // Add isVeg property
-      preparationTime: item.preparationTime // Add preparationTime property
+      preparationTime: item.preparationTime, // Add preparationTime property
+      addons: selectedAddons
     }
 
     // Get source position for animation from event target
@@ -4075,6 +4113,21 @@ function RestaurantDetailsContent() {
           />,
           document.body
         )}
+
+      {/* Shown only for dishes that offer add-ons, and only on the first add.
+          Confirming re-enters updateItemQuantity with the choices, which is what
+          builds the line id and the cart item. */}
+      <AddonPickerSheet
+        open={addonPickerState.open}
+        dish={addonPickerState.item}
+        restaurantAddons={restaurantAddons}
+        onClose={() => setAddonPickerState({ open: false, item: null, variant: null, quantity: 1 })}
+        onConfirm={(chosen) => {
+          const { item, variant, quantity } = addonPickerState
+          setAddonPickerState({ open: false, item: null, variant: null, quantity: 1 })
+          if (item) updateItemQuantity(item, quantity, null, variant, chosen)
+        }}
+      />
     </AnimatedPage>
   )
 }
