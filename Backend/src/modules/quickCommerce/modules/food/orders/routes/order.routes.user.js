@@ -1,4 +1,5 @@
 import express from 'express';
+import { createPrescriptionOrderController } from '../controllers/prescriptionOrder.controller.js';
 import {
     calculateOrderController,
     createOrderController,
@@ -26,6 +27,11 @@ const router = express.Router();
 // coupon code so it is a brute-forceable oracle and gets rate limited, and the two
 // money paths get the ledger. idempotency() is a no-op without an Idempotency-Key
 // header, so existing clients are unaffected.
+// Placing an order from a photographed prescription. Deliberately not POST '/'
+// with an empty item list: that route prices and charges before it writes, and
+// neither is possible here. See shared/prescriptionOrder.js.
+router.post('/prescription', createPrescriptionOrderController);
+
 router.post('/calculate', sensitiveActionRateLimiter, calculateOrderController);
 router.post('/', sensitiveActionRateLimiter, idempotency(), createOrderController);
 router.post('/verify-payment', sensitiveActionRateLimiter, idempotency(), verifyPaymentController);

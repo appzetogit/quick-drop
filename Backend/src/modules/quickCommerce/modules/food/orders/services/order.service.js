@@ -47,6 +47,7 @@ import {
   buildOrderPrescription,
   reviewPrescription,
 } from '../../shared/prescriptionRules.js';
+import { assertPrescriptionOrderPriced } from '../../shared/prescriptionOrder.js';
 import * as dispatchService from './order-dispatch.service.js';
 import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
@@ -1820,6 +1821,11 @@ export async function updateOrderStatusRestaurant(
   // has reviewed the customer's prescription. Cancelling stays available, so an
   // order with an unreadable prescription is not stuck.
   assertCanAcceptOrder(order, targetStatus);
+
+  // ...and a prescription order may not be accepted before it has been priced,
+  // or the customer would be committed to a delivery whose cost nobody has told
+  // them. Cancelling stays available either way.
+  assertPrescriptionOrderPriced(order, targetStatus);
 
   if (targetStatus === "preparing" || targetStatus === "confirmed") {
     const now = new Date();
