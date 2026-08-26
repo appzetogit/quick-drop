@@ -25,24 +25,40 @@ const toInt = (value) => {
  * Effective limits for a stored menu item.
  * `max` is always a usable number (the ceiling when the item sets no cap).
  */
-export function resolveOrderQuantityRules(foodDoc = null) {
+/**
+ * `ceiling` is the platform-wide cap, which an admin can now set under fee
+ * settings (maxOrderQuantityCeiling). It defaults to the constant this module
+ * has always used, so a caller that does not pass one behaves exactly as before
+ * and an unset setting changes nothing.
+ */
+export const resolveCeiling = (ceiling) => {
+    const value = toInt(ceiling);
+    return Number.isFinite(value) && value > 0 ? value : ABSOLUTE_MAX_ORDER_QUANTITY;
+};
+
+export function resolveOrderQuantityRules(foodDoc = null, ceiling = ABSOLUTE_MAX_ORDER_QUANTITY) {
+    const cap = resolveCeiling(ceiling);
+
     const rawMin = toInt(foodDoc?.minOrderQuantity);
     const min = Number.isFinite(rawMin) && rawMin > 0
-        ? Math.min(rawMin, ABSOLUTE_MAX_ORDER_QUANTITY)
+        ? Math.min(rawMin, cap)
         : DEFAULT_MIN_ORDER_QUANTITY;
 
     const rawMax = toInt(foodDoc?.maxOrderQuantity);
     const hasCap = Number.isFinite(rawMax) && rawMax > 0;
     const max = hasCap
-        ? Math.min(Math.max(rawMax, min), ABSOLUTE_MAX_ORDER_QUANTITY)
-        : ABSOLUTE_MAX_ORDER_QUANTITY;
+        ? Math.min(Math.max(rawMax, min), cap)
+        : cap;
 
-    return { min, max, hasCap };
+    // Carried on the result so assertOrderQuantity can enforce the platform cap
+    // for items that set no cap of their own, without every caller having to
+    // pass the ceiling twice.
+    return { min, max, hasCap, ceiling: cap };
 }
 
 /** Stored shape to hand to clients (0 max = unlimited, so UIs can say so). */
-export function formatOrderQuantityLimits(foodDoc = null) {
-    const { min, max, hasCap } = resolveOrderQuantityRules(foodDoc);
+export function formatOrderQuantityLimits(foodDoc = null, ceiling = ABSOLUTE_MAX_ORDER_QUANTITY) {
+    const { min, max, hasCap } = resolveOrderQuantityRules(foodDoc, ceiling);
     return {
         minOrderQuantity: min,
         maxOrderQuantity: hasCap ? max : 0
@@ -80,9 +96,12 @@ export function assertOrderQuantity(quantity, rules, label = 'This item') {
             'MAX_ORDER_QUANTITY'
         );
     }
-    if (qty > ABSOLUTE_MAX_ORDER_QUANTITY) {
+    // The platform cap, which also covers items that set no cap of their own --
+    // for those, hasCap is false and the check above never fires.
+    const platformCap = resolveCeiling(rules?.ceiling);
+    if (qty > platformCap) {
         throw new ValidationError(
-            `"${label}" is limited to ${ABSOLUTE_MAX_ORDER_QUANTITY} per order`,
+            `"${label}" is limited to ${platformCap} per order`,
             'MAX_ORDER_QUANTITY'
         );
     }
@@ -93,17 +112,18 @@ export function assertOrderQuantity(quantity, rules, label = 'This item') {
  * Menu-item form input (restaurant/admin). Returns undefined for each field the
  * caller didn't send, so partial updates never reset a stored limit.
  */
-export function normalizeOrderQuantityInput(body = {}, { label = 'This item' } = {}) {
+export function normalizeOrderQuantityInput(body = {}, { label = 'This item', ceiling = ABSOLUTE_MAX_ORDER_QUANTITY } = {}) {
     const update = {};
+    const cap = resolveCeiling(ceiling);
 
     if (body.minOrderQuantity !== undefined && body.minOrderQuantity !== null && body.minOrderQuantity !== '') {
         const min = toInt(body.minOrderQuantity);
         if (!Number.isFinite(min) || min < 1) {
             throw new ValidationError(`Minimum order quantity for "${label}" must be at least 1`);
         }
-        if (min > ABSOLUTE_MAX_ORDER_QUANTITY) {
+        if (min > cap) {
             throw new ValidationError(
-                `Minimum order quantity for "${label}" cannot exceed ${ABSOLUTE_MAX_ORDER_QUANTITY}`
+                `Minimum order quantity for "${label}" cannot exceed ${cap}`
             );
         }
         update.minOrderQuantity = min;
@@ -116,9 +136,9 @@ export function normalizeOrderQuantityInput(body = {}, { label = 'This item' } =
         if (!Number.isFinite(max) || max < 0) {
             throw new ValidationError(`Maximum order quantity for "${label}" must be 0 or more`);
         }
-        if (max > ABSOLUTE_MAX_ORDER_QUANTITY) {
+        if (max > cap) {
             throw new ValidationError(
-                `Maximum order quantity for "${label}" cannot exceed ${ABSOLUTE_MAX_ORDER_QUANTITY}`
+                `Maximum order quantity for "${label}" cannot exceed ${cap}`
             );
         }
         update.maxOrderQuantity = max;

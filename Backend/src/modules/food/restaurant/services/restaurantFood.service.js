@@ -20,6 +20,7 @@ import {
 } from '../../shared/orderQuantityRules.js';
 import { normalizeItemPackagingChargeInput } from '../../shared/packagingCharge.js';
 import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
+import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 
 const toStr = (v) => (v != null ? String(v).trim() : '');
 const APPROVED_CATEGORY_FILTER = [
@@ -203,7 +204,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     const preparationTime = toStr(body.preparationTime);
     const { categoryObjectId, categoryName } = await resolveCategoryForRestaurant(context, { ...body, foodType });
 
-    const quantityLimits = normalizeOrderQuantityInput(body, { label: name }) || {};
+    const quantityLimits = normalizeOrderQuantityInput(body, { label: name, ceiling: await getOrderQuantityCeiling() }) || {};
     assertOrderQuantityRange(quantityLimits, { label: name });
     const packagingCharge = normalizeItemPackagingChargeInput(body.packagingCharge, { label: name });
     const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
@@ -293,7 +294,7 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     }
 
     const itemLabel = update.name || existing.name || 'This item';
-    const quantityLimits = normalizeOrderQuantityInput(body, { label: itemLabel });
+    const quantityLimits = normalizeOrderQuantityInput(body, { label: itemLabel, ceiling: await getOrderQuantityCeiling() });
     if (quantityLimits) {
         // Check the values that will actually be stored, so a partial update
         // can't slip a max below the stored min.

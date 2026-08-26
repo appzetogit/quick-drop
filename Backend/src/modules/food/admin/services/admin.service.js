@@ -11,6 +11,7 @@ import { FoodOfferUsage } from '../models/offerUsage.model.js';
 import { DeliveryBonusTransaction } from '../models/deliveryBonusTransaction.model.js';
 import { FoodEarningAddon } from '../models/earningAddon.model.js';
 import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
+import { invalidateOrderQuantityCeilingCache } from '../../shared/orderQuantityCeiling.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
 import { FoodDeliveryCommissionRule } from '../models/deliveryCommissionRule.model.js';
@@ -1773,6 +1774,11 @@ export async function upsertFeeSettings(body) {
         if (body.codOrderLimit === null) $unset.codOrderLimit = 1;
         else if (body.codOrderLimit !== undefined) $set.codOrderLimit = body.codOrderLimit;
 
+        // Clearing it falls back to the built-in ceiling rather than storing 0,
+        // which would make every item unorderable.
+        if (body.maxOrderQuantityCeiling === null) $unset.maxOrderQuantityCeiling = 1;
+        else if (body.maxOrderQuantityCeiling !== undefined) $set.maxOrderQuantityCeiling = body.maxOrderQuantityCeiling;
+
         if (body.packagingCharge !== undefined) $set.packagingCharge = body.packagingCharge;
 
         if (body.isActive !== undefined) $set.isActive = body.isActive;
@@ -1783,6 +1789,9 @@ export async function upsertFeeSettings(body) {
         if (!Object.keys(update).length) return existing.toObject();
 
         const updated = await FoodFeeSettings.findByIdAndUpdate(existing._id, update, { new: true }).lean();
+        // The ceiling is cached for 30s on the order path; drop it so an admin sees
+        // their change take effect immediately rather than on the next window.
+        invalidateOrderQuantityCeilingCache();
         return updated;
     }
 
@@ -1803,9 +1812,11 @@ export async function upsertFeeSettings(body) {
     if (body.deliveryFee !== undefined && body.deliveryFee !== null) payload.deliveryFee = body.deliveryFee;
     if (body.freeDeliveryThreshold !== undefined && body.freeDeliveryThreshold !== null) payload.freeDeliveryThreshold = body.freeDeliveryThreshold;
     if (body.codOrderLimit !== undefined && body.codOrderLimit !== null) payload.codOrderLimit = body.codOrderLimit;
+    if (body.maxOrderQuantityCeiling !== undefined && body.maxOrderQuantityCeiling !== null) payload.maxOrderQuantityCeiling = body.maxOrderQuantityCeiling;
     if (body.packagingCharge !== undefined) payload.packagingCharge = body.packagingCharge;
 
     const created = await FoodFeeSettings.create(payload);
+    invalidateOrderQuantityCeilingCache();
     return created.toObject();
 }
 

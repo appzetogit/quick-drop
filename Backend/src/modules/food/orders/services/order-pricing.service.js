@@ -20,6 +20,7 @@ import {
     resolveItemPackagingAmount
 } from '../../shared/packagingCharge.js';
 import { assertFoodAvailableNow } from '../../shared/itemAvailability.js';
+import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 
 /**
  * Resolves order items against the restaurant's live menu and returns copies with
@@ -41,6 +42,10 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
   const menuItems = await FoodItem.find({ _id: { $in: ids }, restaurantId }).lean();
   const byId = new Map(menuItems.map((m) => [String(m._id), m]));
 
+  // Admin-configurable platform cap, read once for the whole order rather than
+  // per line -- it is the same value for every item and the map below is sync.
+  const quantityCeiling = await getOrderQuantityCeiling();
+
   return list.map((it) => {
     const menu = byId.get(String(it?.itemId || ''));
     if (!menu) throw new ValidationError('One or more items are not available at this restaurant');
@@ -53,7 +58,7 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
     assertFoodAvailableNow(menu);
 
     // Per-item min/max set by the restaurant, with the platform ceiling as fallback.
-    const qty = assertOrderQuantity(it?.quantity, resolveOrderQuantityRules(menu), menu.name);
+    const qty = assertOrderQuantity(it?.quantity, resolveOrderQuantityRules(menu, quantityCeiling), menu.name);
 
     let price = Number(menu.price);
     let variantName = '';

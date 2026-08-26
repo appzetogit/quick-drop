@@ -25,12 +25,14 @@ const throws = (fn) => assert.throws(fn, { name: 'ValidationError' });
 assert.deepEqual(resolveOrderQuantityRules(null), {
     min: 1,
     max: ABSOLUTE_MAX_ORDER_QUANTITY,
-    hasCap: false
+    hasCap: false,
+    ceiling: ABSOLUTE_MAX_ORDER_QUANTITY
 });
 assert.deepEqual(resolveOrderQuantityRules({ minOrderQuantity: 4, maxOrderQuantity: 10 }), {
     min: 4,
     max: 10,
-    hasCap: true
+    hasCap: true,
+    ceiling: ABSOLUTE_MAX_ORDER_QUANTITY
 });
 // max below min is pulled up to min rather than producing an empty range
 assert.equal(resolveOrderQuantityRules({ minOrderQuantity: 6, maxOrderQuantity: 2 }).max, 6);

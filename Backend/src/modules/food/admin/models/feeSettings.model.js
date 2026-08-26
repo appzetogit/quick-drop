@@ -76,6 +76,17 @@ const feeSettingsSchema = new mongoose.Schema(
         platformFee: { type: Number, min: 0 },
         gstRate: { type: Number, min: 0, max: 100 },
         codOrderLimit: { type: Number, min: 0 },
+        /**
+         * Platform-wide ceiling on how many of one item may be in a single order.
+         *
+         * An item's own maxOrderQuantity still applies and is the tighter of the
+         * two; this is the cap that holds when an item sets none (0). Was a hard
+         * constant of 99 in shared/orderQuantityRules.js, which stays the default
+         * and the fallback whenever this is unset, so behaviour is unchanged until
+         * an admin sets it. Minimum of 1 -- a ceiling of 0 would make every item
+         * unorderable.
+         */
+        maxOrderQuantityCeiling: { type: Number, min: 1, max: 9999 },
         // Who owns the food packaging charge, and how much it is when admin owns it.
         // RESTAURANT mode reads the per-unit charge off each menu item instead
         // (see FoodItem.packagingCharge and shared/packagingCharge.js).

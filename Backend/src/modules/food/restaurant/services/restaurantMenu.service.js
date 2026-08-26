@@ -7,8 +7,13 @@ import { getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services
 import { formatOrderQuantityLimits } from '../../shared/orderQuantityRules.js';
 import { resolveItemPackagingAmount } from '../../shared/packagingCharge.js';
 import { isFoodAvailableNow } from '../../shared/itemAvailability.js';
+import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 
 const buildMenuFromFoods = async (foods = []) => {
+    // Admin-configurable platform cap, so the limits the seller UI shows match
+    // what checkout will actually enforce. Read once per menu, not per item.
+    const quantityCeiling = await getOrderQuantityCeiling();
+
     const categoryIds = Array.from(
         new Set(
             (foods || [])
@@ -68,7 +73,7 @@ const buildMenuFromFoods = async (foods = []) => {
             approvedAt: food.approvedAt,
             rejectedAt: food.rejectedAt,
             preparationTime: food.preparationTime || '',
-            ...formatOrderQuantityLimits(food),
+            ...formatOrderQuantityLimits(food, quantityCeiling),
             packagingCharge: {
                 isEnabled: food?.packagingCharge?.isEnabled === true,
                 amount: resolveItemPackagingAmount(food)

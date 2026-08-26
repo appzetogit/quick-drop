@@ -21,6 +21,7 @@ export default function FeeSettings() {
     platformFee: "",
     gstRate: "",
     codOrderLimit: "",
+    maxOrderQuantityCeiling: "",
   })
   const [distanceRules, setDistanceRules] = useState([])
   const [loadingFeeSettings, setLoadingFeeSettings] = useState(false)
@@ -103,6 +104,7 @@ export default function FeeSettings() {
           platformFee: saved.platformFee ?? "",
           gstRate: saved.gstRate ?? "",
           codOrderLimit: saved.codOrderLimit ?? "",
+          maxOrderQuantityCeiling: saved.maxOrderQuantityCeiling ?? "",
         })
       } else {
         setFeeSettings({
@@ -116,6 +118,7 @@ export default function FeeSettings() {
           platformFee: "",
           gstRate: "",
           codOrderLimit: "",
+          maxOrderQuantityCeiling: "",
         })
       }
     } catch {
@@ -317,6 +320,12 @@ export default function FeeSettings() {
         toast.error("COD Order Limit must be 0 or greater")
         return
       }
+      // A ceiling of 0 would make every item unorderable, so the floor is 1.
+      const maxOrderQuantityCeiling = Number(feeSettings.maxOrderQuantityCeiling)
+      if (feeSettings.maxOrderQuantityCeiling !== "" && (!Number.isFinite(maxOrderQuantityCeiling) || maxOrderQuantityCeiling < 1 || maxOrderQuantityCeiling > 9999)) {
+        toast.error("Max quantity per item must be between 1 and 9999")
+        return
+      }
 
       setSavingFeeSettings(true)
       const response = await adminAPI.createOrUpdateFeeSettings({
@@ -334,6 +343,7 @@ export default function FeeSettings() {
         platformFee,
         gstRate,
         codOrderLimit: feeSettings.codOrderLimit === "" ? null : codOrderLimit,
+        maxOrderQuantityCeiling: feeSettings.maxOrderQuantityCeiling === "" ? null : maxOrderQuantityCeiling,
         isActive: true,
       })
       if (response?.data?.success) {
@@ -703,6 +713,23 @@ export default function FeeSettings() {
                     placeholder="e.g. 299"
                   />
                   <p className="text-xs text-slate-500 mt-1">COD will be hidden for cart totals above this amount.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-700">Max Quantity Per Item</label>
+                  <input
+                    type="number"
+                    value={feeSettings.maxOrderQuantityCeiling}
+                    onChange={(e) => setFeeSettings((s) => ({ ...s, maxOrderQuantityCeiling: e.target.value }))}
+                    min="1"
+                    max="9999"
+                    step="1"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
+                    placeholder="Leave blank for 99"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Platform-wide cap on how many of one item a customer can order. An item&apos;s own
+                    limit still applies and wins when it is lower. Blank means the default of 99.
+                  </p>
                 </div>
               </div>
             </>
