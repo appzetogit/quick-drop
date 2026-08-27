@@ -6,7 +6,7 @@ import { FoodCategory } from '../../admin/models/category.model.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
 import { formatOrderQuantityLimits } from '../../shared/orderQuantityRules.js';
 import { resolveItemPackagingAmount } from '../../shared/packagingCharge.js';
-import { isFoodAvailableNow } from '../../shared/itemAvailability.js';
+import { describeTodaysWindow, isFoodAvailableNow } from '../../shared/itemAvailability.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { resolveItemDisplayPricing } from '../../shared/itemDiscountPricing.js';
 
@@ -91,6 +91,10 @@ const buildMenuFromFoods = async (foods = []) => {
             // dashboard can mark an item as outside its hours right now.
             availabilitySchedule: food.availabilitySchedule || null,
             isAvailableNow: isFoodAvailableNow(food),
+            // The hours themselves, so a dish shown as unavailable can say when it
+            // will be. Without this the customer is told no, but not when to come
+            // back. Empty for items with no schedule, which is most of them.
+            availabilityWindowLabel: describeTodaysWindow(food.availabilitySchedule),
             createdAt: food.createdAt,
             updatedAt: food.updatedAt
         });
