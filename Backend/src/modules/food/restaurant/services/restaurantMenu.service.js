@@ -9,7 +9,7 @@ import { resolveItemPackagingAmount } from '../../shared/packagingCharge.js';
 import { describeTodaysWindow, isFoodAvailableNow } from '../../shared/itemAvailability.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { resolveItemDisplayPricing } from '../../shared/itemDiscountPricing.js';
-import { computeOtherPlatformPrice, normalizeOtherPlatformSettings, resolveComparisonPrice } from '../../shared/otherPlatformPricing.js';
+import { normalizeOtherPlatformSettings, resolveComparisonPrice, resolveItemOtherPlatformPrice } from '../../shared/otherPlatformPricing.js';
 
 const buildMenuFromFoods = async (foods = []) => {
     // Admin-configurable platform cap, so the limits the seller UI shows match
@@ -75,14 +75,19 @@ const buildMenuFromFoods = async (foods = []) => {
             // the next save writes the blanks over what the restaurant set.
             ...(() => {
                 const display = resolveItemDisplayPricing({ ...food, price: getFoodDisplayPrice(food) });
-                const otherPlatformPrice = computeOtherPlatformPrice(display.price, otherPlatform);
+                // Per-item figure wins over the blanket markup; see
+                // shared/otherPlatformPricing.js for why.
+                const otherPlatformPrice = resolveItemOtherPlatformPrice(
+                    { ...food, price: display.price },
+                    otherPlatform,
+                );
                 const comparison = resolveComparisonPrice({
                     price: display.price,
                     basePrice: display.basePrice,
                     otherPlatformPrice,
                     label: otherPlatform.label,
                 });
-                return { ...display, otherPlatformPrice, ...comparison };
+                return { ...display, otherPrice: Number(food.otherPrice) || 0, otherPlatformPrice, ...comparison };
             })(),
             // Which add-ons this dish offers, so the editor can show the picker
             // pre-filled and the app can offer only the relevant ones.

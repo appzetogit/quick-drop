@@ -213,6 +213,35 @@ export async function getPriceAdjustmentPreview({ restaurantId, percent } = {}) 
     return { itemCount, restaurantName, itemsCappedByMrp };
 }
 
+/**
+ * Scale only the struck-through comparison figure.
+ *
+ * What the customer is charged is untouched: this moves the "elsewhere" price
+ * next to it, which is the whole point of adjusting that number separately.
+ *
+ * Items with no figure set are skipped rather than seeded from their price --
+ * scaling something that was never there would invent a comparison the
+ * restaurant never claimed.
+ */
+const applyFactorToComparison = async (filter, factor) => {
+    const result = await FoodItem.updateMany(
+        { ...filter, otherPrice: { $gt: 0 } },
+        [
+            {
+                $set: {
+                    otherPrice: {
+                        $max: [
+                            MIN_RESULT_PRICE,
+                            { $round: [{ $multiply: ['$otherPrice', factor] }, 2] },
+                        ],
+                    },
+                },
+            },
+        ],
+    );
+    return result?.modifiedCount || 0;
+};
+
 export async function applyPriceAdjustment(body = {}, actor = {}) {
     const percent = Number(body.percent);
     if (!Number.isFinite(percent) || percent === 0) {
@@ -226,14 +255,23 @@ export async function applyPriceAdjustment(body = {}, actor = {}) {
     const factor = 1 + percent / 100;
     const filter = buildFilter(restaurantId);
 
+    // Which number this run moves. Defaults to the comparison figure, so a
+    // mis-click cannot silently reprice a live menu -- changing what customers
+    // are charged has to be asked for.
+    const target = String(body.target || 'otherPrice') === 'price' ? 'price' : 'otherPrice';
+
     // Counted before the write, because afterwards the prices have already been
-    // held at MRP and the comparison no longer finds them.
-    const itemsCappedByMrp = await countItemsCappedByMrp(filter, factor);
-    const itemsUpdated = await applyFactorToMenu(filter, factor);
+    // held at MRP and the comparison no longer finds them. Only meaningful when
+    // selling prices are the thing being moved.
+    const itemsCappedByMrp = target === 'price' ? await countItemsCappedByMrp(filter, factor) : 0;
+    const itemsUpdated = target === 'price'
+        ? await applyFactorToMenu(filter, factor)
+        : await applyFactorToComparison(filter, factor);
 
     const adjustment = await FoodPriceAdjustment.create({
         percent,
         factor,
+        target,
         restaurantId,
         restaurantName,
         itemsUpdated,

@@ -29,14 +29,10 @@ export default function GlobalPricing() {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
-
-  // The struck-through "elsewhere" figure. Stored as a markup over our selling
-  // price rather than a number per dish, which is what makes it follow the
-  // adjustment above: raise every menu price and this rises with them.
-  const [otherEnabled, setOtherEnabled] = useState(false)
-  const [otherMarkup, setOtherMarkup] = useState("0")
-  const [otherLabel, setOtherLabel] = useState("Other platforms")
-  const [savingOther, setSavingOther] = useState(false)
+  // Which number an adjustment moves. Defaults to the comparison figure so a
+  // mis-click cannot reprice a live menu -- charging customers differently has
+  // to be chosen deliberately.
+  const [target, setTarget] = useState("otherPrice")
   const [revertingId, setRevertingId] = useState("")
   const [confirmOpen, setConfirmOpen] = useState(false)
 
@@ -81,6 +77,7 @@ export default function GlobalPricing() {
           ...(restaurantId ? { restaurantId } : {}),
           // Sent so the preview can say how many would be held at their MRP.
           percent: Number(percent) || 0,
+          target,
         })
         if (!cancelled) {
           setItemCount(response?.data?.data?.itemCount ?? null)
@@ -104,54 +101,6 @@ export default function GlobalPricing() {
       "the selected restaurant"
     : "every restaurant"
 
-  useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      try {
-        const res = await adminAPI.getFeeSettings()
-        const fee = res?.data?.data?.feeSettings || res?.data?.feeSettings || null
-        const other = fee?.otherPlatformPrice || {}
-        if (cancelled) return
-        setOtherEnabled(other.isEnabled === true)
-        setOtherMarkup(String(other.markupPercent ?? 0))
-        setOtherLabel(String(other.label || "Other platforms"))
-      } catch {
-        // Leave the defaults: the section still renders and can be saved.
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const handleSaveOther = async () => {
-    const markup = Number(otherMarkup)
-    if (otherEnabled && (!Number.isFinite(markup) || markup <= 0)) {
-      toast.error("Set a markup above 0, or switch the comparison off")
-      return
-    }
-    if (Number.isFinite(markup) && (markup < 0 || markup > 300)) {
-      toast.error("Markup must be between 0 and 300 percent")
-      return
-    }
-
-    setSavingOther(true)
-    try {
-      await adminAPI.createOrUpdateFeeSettings({
-        otherPlatformPrice: {
-          isEnabled: otherEnabled,
-          markupPercent: Number.isFinite(markup) ? markup : 0,
-          label: otherLabel.trim() || "Other platforms",
-        },
-      })
-      toast.success("Comparison price saved")
-    } catch (error) {
-      toast.error(error?.response?.data?.message || "Could not save the comparison price")
-    } finally {
-      setSavingOther(false)
-    }
-  }
 
   const handleApply = async () => {
     if (signedPercent === null) {
@@ -162,6 +111,7 @@ export default function GlobalPricing() {
       setApplying(true)
       const response = await adminAPI.applyPriceAdjustment({
         percent: signedPercent,
+        target,
         ...(restaurantId ? { restaurantId } : {}),
       })
       const capped = response?.data?.data?.itemsCappedByMrp ?? 0
@@ -243,6 +193,39 @@ export default function GlobalPricing() {
           )}
         </div>
 
+        {/* What the percentage moves. The comparison figure is the default:
+            it changes only what is struck through, never what a customer pays. */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-700 mb-1">Adjust</label>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { value: "otherPrice", label: "Other platform price", hint: "Only the struck-through figure" },
+              { value: "price", label: "Selling price", hint: "What customers are charged" },
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setTarget(option.value)}
+                className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                  target === option.value
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <span className="block font-medium">{option.label}</span>
+                <span className={`block text-xs ${target === option.value ? "text-slate-300" : "text-slate-500"}`}>
+                  {option.hint}
+                </span>
+              </button>
+            ))}
+          </div>
+          {target === "price" && (
+            <p className="mt-2 text-xs text-amber-700">
+              This changes what customers are charged, not just the comparison figure.
+            </p>
+          )}
+        </div>
+
         <div>
           <span className="block text-sm font-medium text-slate-700 mb-1">Direction</span>
           <div className="flex gap-2">
@@ -318,84 +301,6 @@ export default function GlobalPricing() {
         </button>
       </div>
 
-      {/* The struck-through comparison figure. A markup over our selling price
-          rather than a number typed per dish, so it follows the adjustment above
-          instead of going stale beside it. */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-6 mb-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-900">Other platform price</h2>
-            <p className="mt-1 text-xs text-slate-500 max-w-xl">
-              Shows a higher price struck through next to yours in the customer app. Set as a markup on
-              your selling price, so it rises and falls automatically with the adjustment above.
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={otherEnabled}
-            onClick={() => setOtherEnabled((v) => !v)}
-            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-              otherEnabled ? "bg-slate-900" : "bg-slate-300"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
-                otherEnabled ? "translate-x-[22px]" : "translate-x-0.5"
-              }`}
-            />
-          </button>
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Markup over your price</label>
-            <div className="relative">
-              <input
-                type="number"
-                min="0"
-                max="300"
-                step="1"
-                value={otherMarkup}
-                onChange={(e) => setOtherMarkup(e.target.value)}
-                disabled={!otherEnabled}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 pr-8 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-              />
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">%</span>
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Label shown to customers</label>
-            <input
-              type="text"
-              value={otherLabel}
-              onChange={(e) => setOtherLabel(e.target.value)}
-              disabled={!otherEnabled}
-              placeholder="Other platforms"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-            />
-          </div>
-        </div>
-
-        {otherEnabled && Number(otherMarkup) > 0 && (
-          <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
-            A {RUPEE}200 dish shows as{" "}
-            <span className="line-through text-slate-400">
-              {RUPEE}{Math.round(200 * (1 + Number(otherMarkup) / 100))}
-            </span>{" "}
-            <span className="font-semibold text-slate-900">{RUPEE}200</span>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={handleSaveOther}
-          disabled={savingOther}
-          className="mt-4 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white disabled:bg-slate-300"
-        >
-          {savingOther ? "Saving…" : "Save comparison price"}
-        </button>
-      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white">
         <div className="px-4 md:px-6 py-4 border-b border-slate-200">

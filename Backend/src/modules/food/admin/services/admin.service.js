@@ -16,6 +16,7 @@ import { FoodCommissionSchedule } from '../models/commissionSchedule.model.js';
 import { normalizeScheduleInput } from '../../shared/commissionSchedule.js';
 import { invalidateCommissionScheduleCache } from '../../orders/services/foodTransaction.service.js';
 import { resolveItemPricingForWrite } from '../../shared/itemDiscountPricing.js';
+import { normalizeItemOtherPriceInput } from '../../shared/otherPlatformPricing.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
 import { FoodDeliveryCommissionRule } from '../models/deliveryCommissionRule.model.js';
@@ -3135,6 +3136,7 @@ export async function getFoods(query) {
         // than merely failing to show it.
         basePrice: f.basePrice ?? getFoodDisplayPrice(f),
         discountPercent: Number(f.discountPercent) || 0,
+        otherPrice: Number(f.otherPrice) || 0,
         availabilitySchedule: f.availabilitySchedule || null,
         variants: serializeFoodVariants(f.variants),
         variations: serializeFoodVariants(f.variants),
@@ -3313,6 +3315,7 @@ export async function createFood(body) {
         price,
         basePrice,
         discountPercent,
+        ...(normalizeItemOtherPriceInput(body) || {}),
         variants,
         image: typeof body.image === 'string' ? body.image.trim() : '',
         foodType,
@@ -3345,6 +3348,10 @@ export async function updateFood(id, body) {
     if (pricingUpdate.price !== undefined) doc.price = pricingUpdate.price;
     if (pricingUpdate.basePrice !== undefined) doc.basePrice = pricingUpdate.basePrice;
     if (pricingUpdate.discountPercent !== undefined) doc.discountPercent = pricingUpdate.discountPercent;
+    // Comparison figure only. Global price adjustment moves this; it never
+    // moves what the customer is charged.
+    const otherPriceUpdate = normalizeItemOtherPriceInput(body);
+    if (otherPriceUpdate) doc.otherPrice = otherPriceUpdate.otherPrice;
     if (pricingUpdate.variants !== undefined) doc.variants = pricingUpdate.variants;
     if (body.image !== undefined) doc.image = String(body.image || '').trim();
     if (body.foodType !== undefined) doc.foodType = targetFoodType;

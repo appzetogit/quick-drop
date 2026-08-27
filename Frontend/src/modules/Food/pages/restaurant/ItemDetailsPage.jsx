@@ -75,6 +75,9 @@ export default function ItemDetailsPage() {
   const [foodType, setFoodType] = useState("Non-Veg")
   const [basePrice, setBasePrice] = useState("")
   const [discountPercent, setDiscountPercent] = useState("0")
+  // The struck-through "elsewhere" figure. Purely presentational -- customers
+  // are charged the base price less the discount, never this.
+  const [otherPrice, setOtherPrice] = useState("")
   // The rate this restaurant is actually charged, so the form can show what a
   // dish earns before it is saved rather than after the first payout.
   const [commission, setCommission] = useState(null)
@@ -148,6 +151,7 @@ export default function ItemDetailsPage() {
         : ""
     )
     setDiscountPercent(String(item.discountPercent ?? 0))
+    setOtherPrice(item.otherPrice ? String(item.otherPrice) : "")
     setAddonIds(Array.isArray(item.addonIds) ? item.addonIds.map(String) : [])
     setPreparationTime(item.preparationTime || "")
     setMinOrderQuantity(String(item.minOrderQuantity ?? 1))
@@ -811,6 +815,7 @@ export default function ItemDetailsPage() {
         },
         availabilitySchedule,
         discountPercent: Number(discountPercent) || 0,
+        otherPrice: otherPrice === "" ? 0 : Number(otherPrice),
         addonIds,
       }
 
@@ -1250,6 +1255,28 @@ export default function ItemDetailsPage() {
                   ) : (
                     <p className="mt-1 text-xs text-gray-500">Leave at 0 to sell at the base price.</p>
                   )}
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-600 mb-1">Other platform price (optional)</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">{"₹"}</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={otherPrice}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[₹\s,]/g, '').replace(/[^0-9.]/g, '')
+                        const parts = value.split('.')
+                        setOtherPrice(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value)
+                      }}
+                      placeholder="What other apps charge"
+                      className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Shown struck through beside your price. Customers are never charged this,
+                    and a global price adjustment moves only this figure.
+                  </p>
                 </div>
               </div>
 

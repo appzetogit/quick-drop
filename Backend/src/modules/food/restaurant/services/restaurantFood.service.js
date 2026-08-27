@@ -22,6 +22,7 @@ import { normalizeItemPackagingChargeInput } from '../../shared/packagingCharge.
 import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { normalizeDiscountPricingInput } from '../../shared/itemDiscountPricing.js';
+import { normalizeItemOtherPriceInput } from '../../shared/otherPlatformPricing.js';
 import { FoodAddon } from '../models/foodAddon.model.js';
 import { assertVariantAddonsOwned, normalizeAddonIdsInput } from '../../shared/orderAddons.js';
 
@@ -292,6 +293,12 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
     const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
     await assertVariantAddonsOwned(FoodAddon, restaurantId, variants);
+    // The struck-through comparison figure. Stored per item, and the only thing
+    // a global price adjustment moves -- what we charge stays where the
+    // restaurant set it.
+    let otherPriceUpdate;
+    try { otherPriceUpdate = normalizeItemOtherPriceInput(body); }
+    catch (error) { throw new ValidationError(error.message); }
 
     const doc = await FoodItem.create({
         restaurantId,
@@ -313,6 +320,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         ...(packagingCharge ? { packagingCharge } : {}),
         ...(availabilitySchedule ? { availabilitySchedule } : {}),
         ...(addonUpdate || {}),
+        ...(otherPriceUpdate || {}),
         approvalStatus: 'pending',
         requestedAt: new Date()
     });
@@ -382,6 +390,10 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
 
     const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
     if (addonUpdate) update.addonIds = addonUpdate.addonIds;
+    let otherPriceUpdate;
+    try { otherPriceUpdate = normalizeItemOtherPriceInput(body); }
+    catch (error) { throw new ValidationError(error.message); }
+    if (otherPriceUpdate) update.otherPrice = otherPriceUpdate.otherPrice;
     // Checked against the variants that will actually be stored, so a partial
     // update cannot slip in an add-on belonging to another restaurant.
     await assertVariantAddonsOwned(

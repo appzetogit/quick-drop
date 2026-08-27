@@ -73,11 +73,35 @@ export function normalizeOtherPlatformInput(body = {}) {
 }
 
 /**
- * The other-platform price for one selling price.
+ * The other-platform price for one item.
  *
- * Null when the feature is off, the markup is zero, or the price is zero --
- * every case where there is nothing meaningful to strike through. Returning
- * null rather than the price itself keeps clients from rendering "₹40 ₹40".
+ * Precedence: the figure stored on the item wins. It is what a restaurant typed
+ * for that dish, and it is what a global price adjustment moves -- so it must
+ * not be overridden by a blanket markup that would silently undo the
+ * adjustment the admin just ran.
+ *
+ * The markup below is only a fallback, for items where nobody has set a figure.
+ * Without it, switching the comparison on would appear to do nothing until
+ * every dish had been edited by hand.
+ *
+ * Null when there is nothing honest to strike through -- no stored figure, no
+ * markup, or a result at or below what we charge.
+ */
+export function resolveItemOtherPlatformPrice(item = {}, settings = {}) {
+    const price = toFiniteNumber(item?.price);
+    if (price === null || price <= 0) return null;
+
+    const stored = toFiniteNumber(item?.otherPrice);
+    if (stored !== null && stored > 0) {
+        return stored > price ? round2(stored) : null;
+    }
+
+    return computeOtherPlatformPrice(price, settings);
+}
+
+/**
+ * A markup-derived comparison, used only when an item carries no figure of its
+ * own. See resolveItemOtherPlatformPrice for precedence.
  */
 export function computeOtherPlatformPrice(price, settings = {}) {
     const selling = toFiniteNumber(price);
@@ -126,4 +150,30 @@ export function resolveComparisonPrice({ price, basePrice = null, otherPlatformP
         savings,
         savingsPercent: best.amount > 0 ? Math.round((savings / best.amount) * 100) : 0,
     };
+}
+
+
+/**
+ * The per-item comparison figure an item form submitted.
+ *
+ * Not validated against the selling price: a restaurant may legitimately type a
+ * rival's price that is currently lower than theirs, and refusing the save would
+ * be nonsense. The display layer simply strikes nothing through in that case.
+ *
+ * Returns undefined when the body does not mention it, so a partial update
+ * leaves the stored figure alone. An explicit 0 clears it.
+ */
+export function normalizeItemOtherPriceInput(body = {}) {
+    if (body?.otherPrice === undefined) return undefined;
+
+    if (body.otherPrice === null || body.otherPrice === '') {
+        return { otherPrice: 0 };
+    }
+
+    const value = toFiniteNumber(body.otherPrice);
+    if (value === null || value < 0) {
+        throw new Error('Other platform price must be a number of 0 or more');
+    }
+
+    return { otherPrice: round2(value) };
 }

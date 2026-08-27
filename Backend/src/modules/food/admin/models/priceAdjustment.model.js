@@ -17,6 +17,13 @@ const priceAdjustmentSchema = new mongoose.Schema(
         percent: { type: Number, required: true },
         /** Multiplier actually used (1 + percent/100). Stored so a revert is exact. */
         factor: { type: Number, required: true, min: 0 },
+        /**
+         * Which number the run moved: the struck-through comparison figure, or
+         * what customers are actually charged. Recorded because the history is
+         * unreadable without it -- '+20%' means very different things.
+         * Rows written before this default to 'price', which is what they did.
+         */
+        target: { type: String, enum: ['price', 'otherPrice'], default: 'price' },
         /** Null means the adjustment covered every restaurant. */
         restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodRestaurant', default: null },
         restaurantName: { type: String, trim: true, default: 'All restaurants' },

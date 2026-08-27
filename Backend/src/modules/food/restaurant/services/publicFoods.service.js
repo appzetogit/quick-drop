@@ -34,7 +34,7 @@ export async function listPublicFoods(query = {}) {
     // applied to each item's selling price at render time rather than stored, so
     // a global price adjustment moves it automatically.
     const { FoodFeeSettings } = await import('../../admin/models/feeSettings.model.js');
-    const { normalizeOtherPlatformSettings, computeOtherPlatformPrice, resolveComparisonPrice } =
+    const { normalizeOtherPlatformSettings, resolveComparisonPrice, resolveItemOtherPlatformPrice } =
         await import('../../shared/otherPlatformPricing.js');
     const feeDoc = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
     const otherPlatform = normalizeOtherPlatformSettings(feeDoc || {});
@@ -102,7 +102,12 @@ export async function listPublicFoods(query = {}) {
             // client can render it unconditionally instead of guessing.
             ...(() => {
                 const display = resolveItemDisplayPricing(food);
-                const otherPlatformPrice = computeOtherPlatformPrice(display.price, otherPlatform);
+                // Per-item figure wins over the blanket markup; see
+                // shared/otherPlatformPricing.js for why.
+                const otherPlatformPrice = resolveItemOtherPlatformPrice(
+                    { ...food, price: display.price },
+                    otherPlatform,
+                );
                 // One struck-through figure, not two: whichever is higher between
                 // the restaurant's own pre-discount price and the platform
                 // comparison. Labelled, because a struck "Rs.100" means different
@@ -113,7 +118,7 @@ export async function listPublicFoods(query = {}) {
                     otherPlatformPrice,
                     label: otherPlatform.label,
                 });
-                return { ...display, otherPlatformPrice, ...comparison };
+                return { ...display, otherPrice: Number(food.otherPrice) || 0, otherPlatformPrice, ...comparison };
             })(),
             // The add-ons this dish offers. The order API re-checks the list, so
             // this is for showing the right picker, not for deciding what is allowed.
