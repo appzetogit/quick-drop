@@ -1,6 +1,7 @@
 import { useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import {
+  Gift,
   BarChart3,
   Building2,
   ChevronLeft,
@@ -42,6 +43,7 @@ const getNavSections = (base) => [
     label: "GROWTH",
     items: [
       { label: "Coupons", path: `${base}/coupon`, icon: Tag },
+      { label: "Free item offers", path: `${base}/free-item-offers`, icon: Gift },
       { label: "Analytics", path: `${base}/analytics`, icon: BarChart3 },
       { label: "Ratings & reviews", path: `${base}/ratings-reviews`, icon: Star },
       { label: "Explore", path: `${base}/explore`, icon: Compass },
