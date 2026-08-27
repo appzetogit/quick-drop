@@ -30,6 +30,19 @@ export default function AddonPickerSheet({
     if (open) setSelected([])
   }, [open, dish?.id, variant?.id, variant?._id])
 
+  // The price of an add-on here is the price of the PAIRING: the chosen
+  // variant may set its own figure (cheese on a large is more cheese), and the
+  // server charges that figure -- so this must display it, or the customer
+  // sees one number and pays another. Falls back to the published price for
+  // pairings that set none, which is every pairing made before this existed.
+  const pairingPriceOf = (addonId) => {
+    const pair = (variant?.addons || []).find((entry) => String(entry?.addonId) === String(addonId))
+    const override = pair?.price
+    return override !== null && override !== undefined && Number.isFinite(Number(override))
+      ? Number(override)
+      : null
+  }
+
   const options = useMemo(() => {
     // Mirrors resolveAllowedAddonIds on the server: the dish's own list applies
     // to every variant, and the chosen variant adds any extras of its own.
@@ -48,13 +61,13 @@ export default function AddonPickerSheet({
         .map((addon) => ({
           addonId: String(addon._id || addon.id),
           name: addon.name || "Add-on",
-          price: Number(addon.price) || 0,
+          price: pairingPriceOf(addon._id || addon.id) ?? (Number(addon.price) || 0),
         })),
-    [options, selected],
+    [options, selected, variant],
   )
 
   const addonsTotal = chosen.reduce((sum, a) => sum + a.price, 0)
-  const basePrice = Number(dish?.price) || 0
+  const basePrice = Number(variant?.price ?? dish?.price) || 0
 
   if (!open) return null
 
@@ -128,7 +141,7 @@ export default function AddonPickerSheet({
                         </span>
                       </span>
                       <span className="shrink-0 text-sm text-gray-700">
-                        + ₹{Number(addon.price) || 0}
+                        + ₹{pairingPriceOf(addon._id || addon.id) ?? (Number(addon.price) || 0)}
                       </span>
                     </label>
                   )

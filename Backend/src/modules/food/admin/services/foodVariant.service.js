@@ -41,21 +41,51 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
                 price
             };
 
-            // Per-variant add-ons. Only carried when the caller sent the key, so a
-            // form that does not know about them leaves the stored list alone
-            // rather than clearing it.
-            if (entry?.addonIds !== undefined) {
-                const raw = Array.isArray(entry.addonIds) ? entry.addonIds : [entry.addonIds];
-                const ids = [...new Set(
-                    raw
-                        .map((v) => (v && typeof v === 'object' ? String(v._id ?? v.id ?? '') : String(v ?? '')))
-                        .map((v) => v.trim())
-                        .filter(Boolean)
-                )];
-                if (ids.some((v) => !mongoose.Types.ObjectId.isValid(v))) {
-                    throw new ValidationError(`One or more add-ons selected for "${name}" are not valid`);
+            // Per-variant add-ons, each pairing optionally carrying its own price
+            // for this size. Two accepted shapes:
+            //   addons:   [{ addonId, price }]  -- price null means "the add-on's own"
+            //   addonIds: [id, ...]             -- older callers; every price null
+            // Only carried when the caller sent one of the keys, so a form that
+            // does not know about them leaves the stored pairings alone rather
+            // than clearing them. addonIds is always rewritten from the pairings,
+            // so the two can never disagree about which add-ons are allowed.
+            if (entry?.addons !== undefined || entry?.addonIds !== undefined) {
+                const rawPairs = entry?.addons !== undefined
+                    ? (Array.isArray(entry.addons) ? entry.addons : [entry.addons])
+                    : (Array.isArray(entry.addonIds) ? entry.addonIds : [entry.addonIds])
+                        .map((v) => ({ addonId: v, price: null }));
+
+                const seen = new Set();
+                const pairs = [];
+                for (const pair of rawPairs) {
+                    const rawId = pair && typeof pair === 'object'
+                        ? (pair.addonId ?? pair._id ?? pair.id ?? '')
+                        : pair;
+                    const id = String(
+                        rawId && typeof rawId === 'object' ? (rawId._id ?? rawId.id ?? '') : (rawId ?? '')
+                    ).trim();
+                    if (!id) continue;
+                    if (!mongoose.Types.ObjectId.isValid(id)) {
+                        throw new ValidationError(`One or more add-ons selected for "${name}" are not valid`);
+                    }
+                    if (seen.has(id)) continue;
+                    seen.add(id);
+
+                    let pairPrice = null;
+                    const rawPrice = pair && typeof pair === 'object' ? pair.price : undefined;
+                    if (rawPrice !== undefined && rawPrice !== null && rawPrice !== '') {
+                        pairPrice = Number(rawPrice);
+                        if (!Number.isFinite(pairPrice) || pairPrice < 0) {
+                            throw new ValidationError(`Add-on price for "${name}" must be a number of 0 or more`);
+                        }
+                        pairPrice = Math.round(pairPrice * 100) / 100;
+                    }
+
+                    pairs.push({ addonId: new mongoose.Types.ObjectId(id), price: pairPrice });
                 }
-                variant.addonIds = ids.map((v) => new mongoose.Types.ObjectId(v));
+
+                variant.addons = pairs;
+                variant.addonIds = pairs.map((pair) => pair.addonId);
             }
 
             const variantId = entry?._id || entry?.id;
@@ -87,7 +117,11 @@ export const serializeFoodVariants = (value = []) =>
                 _id: variantId ? String(variantId) : '',
                 name,
                 price,
-                addonIds: (entry?.addonIds || []).map((v) => String(v?._id ?? v?.id ?? v)).filter(Boolean)
+                addonIds: (entry?.addonIds || []).map((v) => String(v?._id ?? v?.id ?? v)).filter(Boolean),
+                addons: (entry?.addons || []).map((pair) => ({
+                    addonId: String(pair?.addonId ?? ''),
+                    price: pair?.price ?? null,
+                })).filter((pair) => pair.addonId)
             };
         })
         .filter(Boolean);

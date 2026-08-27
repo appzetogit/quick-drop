@@ -9,7 +9,7 @@
  * Run: node src/modules/food/shared/__checks__/variantAddons.check.js
  */
 import assert from 'node:assert';
-import { resolveAllowedAddonIds, resolveLineAddons } from '../orderAddons.js';
+import { resolveAllowedAddonIds, resolveLineAddons, resolveVariantAddonPriceOverrides } from '../orderAddons.js';
 
 let failures = 0;
 const check = (label, fn) => {
@@ -112,6 +112,64 @@ check('a variant with no add-on list of its own still gets the shared ones', () 
     };
     const { addonsTotal } = resolveLineAddons(legacy, [NAPKIN], addonsById, SMALL);
     assert.equal(addonsTotal, 5);
+});
+
+// ---- per-pairing pricing ----------------------------------------------------
+// The price of an add-on is the price of a pairing: cheese on the large is more
+// cheese than on the small. These pin the precedence rules. The published price
+// of cheese in addonsById is 40, napkins 5.
+
+const PAIRED = {
+    name: 'Burger',
+    addonIds: [CHEESE],
+    variants: [
+        { _id: SMALL, name: 'Small', price: 100, addonIds: [CHEESE], addons: [{ addonId: CHEESE, price: 20 }] },
+        { _id: LARGE, name: 'Large', price: 200, addonIds: [CHEESE], addons: [{ addonId: CHEESE, price: 60 }] },
+    ],
+};
+
+check('the same add-on prices differently per variant', () => {
+    assert.equal(resolveLineAddons(PAIRED, [CHEESE], addonsById, SMALL).addonsTotal, 20);
+    assert.equal(resolveLineAddons(PAIRED, [CHEESE], addonsById, LARGE).addonsTotal, 60);
+});
+
+check('a pairing with no price falls back to the published price', () => {
+    const dish = {
+        name: 'Burger', addonIds: [],
+        variants: [{ _id: SMALL, name: 'Small', price: 100, addonIds: [CHEESE], addons: [{ addonId: CHEESE, price: null }] }],
+    };
+    assert.equal(resolveLineAddons(dish, [CHEESE], addonsById, SMALL).addonsTotal, 40);
+});
+
+check('no variant chosen means no override applies', () => {
+    const dish = {
+        name: 'Burger', addonIds: [NAPKIN],
+        variants: [{ _id: SMALL, name: 'Small', price: 100, addonIds: [NAPKIN], addons: [{ addonId: NAPKIN, price: 1 }] }],
+    };
+    assert.equal(resolveLineAddons(dish, [NAPKIN], addonsById, null).addonsTotal, 5);
+});
+
+check('a free pairing (price 0) is honoured, not treated as unset', () => {
+    // "Free cheese on the large" is a real offer; 0 must not fall back to 40.
+    const dish = {
+        name: 'Burger', addonIds: [],
+        variants: [{ _id: LARGE, name: 'Large', price: 200, addonIds: [CHEESE], addons: [{ addonId: CHEESE, price: 0 }] }],
+    };
+    assert.equal(resolveLineAddons(dish, [CHEESE], addonsById, LARGE).addonsTotal, 0);
+});
+
+check('an override on one variant never leaks to another', () => {
+    assert.equal(resolveVariantAddonPriceOverrides(PAIRED, SMALL).get(CHEESE), 20);
+    assert.equal(resolveVariantAddonPriceOverrides(PAIRED, LARGE).get(CHEESE), 60);
+});
+
+check('legacy variants with only addonIds still price from the record', () => {
+    // Every pairing made before this feature has no addons array at all.
+    const legacy = {
+        name: 'Pizza', addonIds: [],
+        variants: [{ _id: SMALL, name: 'Small', price: 100, addonIds: [CHEESE] }],
+    };
+    assert.equal(resolveLineAddons(legacy, [CHEESE], addonsById, SMALL).addonsTotal, 40);
 });
 
 console.log(failures ? `\n${failures} FAILED` : '\nall variant add-on checks passed');

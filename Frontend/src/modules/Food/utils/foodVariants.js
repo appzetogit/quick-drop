@@ -13,6 +13,16 @@ export const normalizeFoodVariants = (value) =>
         _id: id,
         name,
         price,
+        // Per-variant add-on pairings must survive normalisation, or the picker
+        // can neither offer a variant-only add-on nor show its per-size price --
+        // the customer would see the published price and be charged the pairing's.
+        addonIds: toArray(entry?.addonIds).map((v) => String(v?._id ?? v?.id ?? v)).filter(Boolean),
+        addons: toArray(entry?.addons)
+          .map((pair) => ({
+            addonId: String(pair?.addonId ?? ""),
+            price: pair?.price ?? null,
+          }))
+          .filter((pair) => pair.addonId),
       }
     })
     .filter(Boolean)

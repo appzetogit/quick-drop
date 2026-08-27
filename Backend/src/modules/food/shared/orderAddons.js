@@ -58,8 +58,13 @@ export function normalizeRequestedAddonIds(rawLine = {}) {
  * rejection at checkout.
  */
 export async function assertVariantAddonsOwned(FoodAddon, restaurantId, variants = []) {
+    // Both shapes are read even though the normaliser keeps them in sync: a
+    // caller that bypasses it must not be able to smuggle a pairing through.
     const ids = [...new Set(
-        (variants || []).flatMap((v) => (v?.addonIds || []).map((id) => String(id)))
+        (variants || []).flatMap((v) => [
+            ...(v?.addonIds || []).map((id) => String(id)),
+            ...(v?.addons || []).map((pair) => String(pair?.addonId ?? '')),
+        ]).filter(Boolean)
     )];
     if (ids.length === 0) return;
 
@@ -131,11 +136,40 @@ export function resolveAllowedAddonIds(menuItem, variantId = null) {
  * @param {string|null} variantId  the chosen variant, whose own add-ons also apply
  * @returns {{ addons: Array<{addonId: any, name: string, price: number}>, addonsTotal: number }}
  */
+/**
+ * Price overrides the chosen variant defines for its add-ons.
+ *
+ * The price of an add-on is really the price of a pairing -- extra cheese on a
+ * large burger is more cheese than on a small one -- so a variant may carry its
+ * own figure per add-on. Absent or null means the add-on's published price.
+ *
+ * Only the chosen variant's overrides apply: an item-level add-on picked with
+ * no variant, or with a variant that says nothing about it, is charged at the
+ * add-on's own price, exactly as before this existed.
+ */
+export function resolveVariantAddonPriceOverrides(menuItem, variantId = null) {
+    const overrides = new Map();
+    if (!variantId) return overrides;
+
+    const variant = (menuItem?.variants || []).find(
+        (v) => String(v?._id) === String(variantId)
+    );
+    for (const pair of variant?.addons || []) {
+        const id = String(pair?.addonId ?? '');
+        const price = Number(pair?.price);
+        if (id && pair?.price !== null && pair?.price !== undefined && Number.isFinite(price) && price >= 0) {
+            overrides.set(id, Math.round(price * 100) / 100);
+        }
+    }
+    return overrides;
+}
+
 export function resolveLineAddons(menuItem, requestedIds = [], addonsById = new Map(), variantId = null) {
     if (!requestedIds.length) return { addons: [], addonsTotal: 0 };
 
     const label = menuItem?.name || 'This item';
     const allowed = resolveAllowedAddonIds(menuItem, variantId);
+    const priceOverrides = resolveVariantAddonPriceOverrides(menuItem, variantId);
 
     const addons = requestedIds.map((id) => {
         const doc = addonsById.get(String(id));
@@ -148,10 +182,13 @@ export function resolveLineAddons(menuItem, requestedIds = [], addonsById = new 
             throw new ValidationError(`"${doc.name}" cannot be added to "${label}"`);
         }
 
+        // The pairing's price wins over the add-on's own: it is what the
+        // restaurant set for this size, and what the menu advertised.
+        const override = priceOverrides.get(String(id));
         return {
             addonId: doc._id,
             name: doc.name,
-            price: Number(doc.price) || 0,
+            price: override !== undefined ? override : (Number(doc.price) || 0),
         };
     });
 

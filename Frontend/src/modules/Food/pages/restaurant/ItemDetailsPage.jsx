@@ -56,6 +56,13 @@ const createVariantDraft = (variant = {}) => ({
   name: String(variant?.name || ""),
   price: variant?.price != null ? String(variant.price) : "",
   addonIds: Array.isArray(variant?.addonIds) ? variant.addonIds.map(String) : [],
+  // Price each pairing charges on THIS size, keyed by addon id. Empty string
+  // means "the add-on's own price" -- the server stores that as null.
+  addonPrices: Object.fromEntries(
+    (Array.isArray(variant?.addons) ? variant.addons : [])
+      .filter((pair) => pair?.addonId && pair?.price !== null && pair?.price !== undefined)
+      .map((pair) => [String(pair.addonId), String(pair.price)])
+  ),
 })
 
 export default function ItemDetailsPage() {
@@ -601,6 +608,7 @@ export default function ItemDetailsPage() {
           name: String(variant.name || "").trim(),
           price: Number(variant.price),
           addonIds: Array.isArray(variant.addonIds) ? variant.addonIds : [],
+          addonPrices: variant.addonPrices || {},
         }))
         .filter((variant) => variant.name || variant.persistedId || variant.price)
 
@@ -628,7 +636,13 @@ export default function ItemDetailsPage() {
         ...(variant.persistedId ? { _id: variant.persistedId } : {}),
         name: variant.name,
         price: variant.price,
-        addonIds: variant.addonIds || [],
+        // Priced pairings: the source of truth the server stores. A blank price
+        // means the add-on's own, sent as null.
+        addons: (variant.addonIds || []).map((addonId) => {
+          const raw = (variant.addonPrices || {})[addonId]
+          const price = raw === undefined || raw === "" ? null : Number(raw)
+          return { addonId, price: Number.isFinite(price) ? price : null }
+        }),
       }))
 
       const orderRulesPayload = {
@@ -1351,35 +1365,72 @@ export default function ItemDetailsPage() {
                                         </span>
                                       )}
                                     </label>
+                                    {/* Each selected pairing gets its own price for THIS size --
+                                        cheese on a large is more cheese than on a small. Blank
+                                        keeps the add-on's usual price. */}
                                     <div className="flex flex-wrap gap-1.5">
                                       {availableAddons.map((addon) => {
                                         const addonId = String(addon._id || addon.id || "")
                                         const isChecked = (variant.addonIds || []).includes(addonId)
                                         const addonName = addon.name || addon.draft?.name || addon.published?.name || "Add-on"
+                                        const ownPrice = addon.price ?? addon.published?.price ?? addon.draft?.price ?? 0
                                         return (
-                                          <button
+                                          <div
                                             key={addonId}
-                                            type="button"
-                                            onClick={() =>
-                                              handleVariantChange(
-                                                variant.localId,
-                                                "addonIds",
-                                                isChecked
-                                                  ? (variant.addonIds || []).filter((x) => x !== addonId)
-                                                  : [...(variant.addonIds || []), addonId]
-                                              )
-                                            }
-                                            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors border ${
+                                            className={`inline-flex items-center gap-1 rounded-lg border transition-colors ${
                                               isChecked
-                                                ? "bg-gray-900 text-white border-gray-900"
-                                                : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"
+                                                ? "bg-gray-900 border-gray-900"
+                                                : "bg-white border-gray-300 hover:bg-gray-100"
                                             }`}
                                           >
-                                            {addonName}
-                                          </button>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleVariantChange(
+                                                  variant.localId,
+                                                  "addonIds",
+                                                  isChecked
+                                                    ? (variant.addonIds || []).filter((x) => x !== addonId)
+                                                    : [...(variant.addonIds || []), addonId]
+                                                )
+                                              }
+                                              className={`px-2.5 py-1 text-xs font-medium ${
+                                                isChecked ? "text-white" : "text-gray-700"
+                                              }`}
+                                            >
+                                              {addonName}
+                                            </button>
+                                            {isChecked && (
+                                              <span className="flex items-center gap-0.5 pr-1.5">
+                                                <span className="text-[10px] text-gray-300">{"₹"}</span>
+                                                <input
+                                                  type="text"
+                                                  inputMode="decimal"
+                                                  value={(variant.addonPrices || {})[addonId] ?? ""}
+                                                  placeholder={String(ownPrice)}
+                                                  onClick={(e) => e.stopPropagation()}
+                                                  onChange={(e) => {
+                                                    const value = e.target.value.replace(/[^0-9.]/g, "")
+                                                    const parts = value.split(".")
+                                                    const cleaned = parts.length > 2 ? parts[0] + "." + parts.slice(1).join("") : value
+                                                    handleVariantChange(variant.localId, "addonPrices", {
+                                                      ...(variant.addonPrices || {}),
+                                                      [addonId]: cleaned,
+                                                    })
+                                                  }}
+                                                  className="w-12 rounded bg-gray-800 px-1 py-0.5 text-right text-[11px] font-semibold text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-white/40"
+                                                />
+                                              </span>
+                                            )}
+                                          </div>
                                         )
                                       })}
                                     </div>
+                                    {(variant.addonIds || []).length > 0 && (
+                                      <p className="mt-1 text-[10px] text-gray-500">
+                                        Price is per add-on for this size. Blank uses the add-on's usual price.
+                                      </p>
+                                    )}
                                   </div>
                                 )}
                               </div>

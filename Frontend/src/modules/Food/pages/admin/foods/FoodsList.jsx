@@ -33,6 +33,15 @@ const createVariantDraft = (variant = {}) => ({
   id: String(variant?.id || variant?._id || `variant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
   name: String(variant?.name || ""),
   price: variant?.price != null ? String(variant.price) : "",
+  // Per-variant add-on pairings. Dropped here would mean an admin editing any
+  // variant silently wipes what the restaurant paired -- the payload replaces
+  // the whole variants array on save.
+  addonIds: Array.isArray(variant?.addonIds) ? variant.addonIds.map(String) : [],
+  addonPrices: Object.fromEntries(
+    (Array.isArray(variant?.addons) ? variant.addons : [])
+      .filter((pair) => pair?.addonId && pair?.price !== null && pair?.price !== undefined)
+      .map((pair) => [String(pair.addonId), String(pair.price)])
+  ),
 })
 
 export default function FoodsList() {
@@ -330,6 +339,23 @@ export default function FoodsList() {
     }
   }, [showFoodFormModal])
 
+  // The restaurant's add-on pool, for pairing add-ons to variants. Keyed on the
+  // dish's restaurant: an admin edits dishes across restaurants, and offering
+  // restaurant A's add-ons on restaurant B's dish would be refused on save.
+  const [restaurantAddons, setRestaurantAddons] = useState([])
+  useEffect(() => {
+    const rid = String(foodForm.restaurantId || "")
+    if (!rid) { setRestaurantAddons([]); return }
+    let cancelled = false
+    adminAPI.getAddons({ restaurantId: rid, limit: 100 })
+      .then((res) => {
+        const list = res?.data?.data?.addons || res?.data?.addons || res?.data?.data || []
+        if (!cancelled) setRestaurantAddons(Array.isArray(list) ? list : [])
+      })
+      .catch(() => { if (!cancelled) setRestaurantAddons([]) })
+    return () => { cancelled = true }
+  }, [foodForm.restaurantId])
+
   const handleVariantChange = (variantId, field, value) => {
     setFoodForm((prev) => ({
       ...prev,
@@ -372,6 +398,8 @@ export default function FoodsList() {
         id: String(variant?.id || variant?._id || "").trim(),
         name: String(variant?.name || "").trim(),
         price: Number(variant?.price),
+        addonIds: Array.isArray(variant?.addonIds) ? variant.addonIds : [],
+        addonPrices: variant?.addonPrices || {},
       }))
       .filter((variant) => variant.id || variant.name || variant.price)
 
@@ -425,6 +453,13 @@ export default function FoodsList() {
           ...(variant.id && !variant.id.startsWith("variant-") ? { _id: variant.id } : {}),
           name: variant.name,
           price: variant.price,
+          // Priced pairings, same shape the restaurant panel sends. Blank price
+          // means the add-on's own, stored as null.
+          addons: (variant.addonIds || []).map((addonId) => {
+            const raw = (variant.addonPrices || {})[addonId]
+            const price = raw === undefined || raw === "" ? null : Number(raw)
+            return { addonId, price: Number.isFinite(price) ? price : null }
+          }),
         })),
         description: foodForm.description.trim(),
         image: imageUrl,
@@ -1033,6 +1068,75 @@ export default function FoodsList() {
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                           />
                         </div>
+
+                        {/* Add-ons paired to this size, each with its own price --
+                            cheese on a large is more cheese than on a small.
+                            Blank price uses the add-on's usual one. */}
+                        {restaurantAddons.length > 0 && (
+                          <div className="md:col-span-2 pt-2 border-t border-slate-200/70">
+                            <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                              Add-ons for this variant
+                              {(variant.addonIds || []).length > 0 && (
+                                <span className="ml-1 font-semibold text-slate-800">
+                                  ({(variant.addonIds || []).length})
+                                </span>
+                              )}
+                            </label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {restaurantAddons.map((addon) => {
+                                const addonId = String(addon._id || addon.id || "")
+                                const isChecked = (variant.addonIds || []).includes(addonId)
+                                const addonName = addon.name || addon.published?.name || addon.draft?.name || "Add-on"
+                                const ownPrice = addon.price ?? addon.published?.price ?? addon.draft?.price ?? 0
+                                return (
+                                  <div
+                                    key={addonId}
+                                    className={`inline-flex items-center gap-1 rounded-lg border transition-colors ${
+                                      isChecked ? "bg-slate-900 border-slate-900" : "bg-white border-slate-300 hover:bg-slate-50"
+                                    }`}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleVariantChange(
+                                          variant.id,
+                                          "addonIds",
+                                          isChecked
+                                            ? (variant.addonIds || []).filter((x) => x !== addonId)
+                                            : [...(variant.addonIds || []), addonId]
+                                        )
+                                      }
+                                      className={`px-2.5 py-1 text-xs font-medium ${isChecked ? "text-white" : "text-slate-700"}`}
+                                    >
+                                      {addonName}
+                                    </button>
+                                    {isChecked && (
+                                      <span className="flex items-center gap-0.5 pr-1.5">
+                                        <span className="text-[10px] text-slate-300">{"₹"}</span>
+                                        <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          value={(variant.addonPrices || {})[addonId] ?? ""}
+                                          placeholder={String(ownPrice)}
+                                          onChange={(e) => {
+                                            const value = e.target.value.replace(/[^0-9.]/g, "")
+                                            const parts = value.split(".")
+                                            const cleaned = parts.length > 2 ? parts[0] + "." + parts.slice(1).join("") : value
+                                            handleVariantChange(variant.id, "addonPrices", {
+                                              ...(variant.addonPrices || {}),
+                                              [addonId]: cleaned,
+                                            })
+                                          }}
+                                          className="w-12 rounded bg-slate-800 px-1 py-0.5 text-right text-[11px] font-semibold text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-white/40"
+                                        />
+                                      </span>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <button
                         type="button"

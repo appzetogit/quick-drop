@@ -17,6 +17,29 @@ const foodVariantSchema = new mongoose.Schema(
             type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'FoodAddon' }],
             default: [],
         },
+        /**
+         * The same pairings, with a price for THIS size.
+         *
+         * The price of an add-on is really the price of a pairing: extra cheese
+         * on a large burger is more cheese than on a small one, so one figure on
+         * the add-on record cannot be right for both. `price: null` means "use
+         * the add-on's own price", which is what every pairing made before this
+         * field, and the fallback whenever a restaurant does not care.
+         *
+         * addonIds above is kept in step as a plain list of the same ids --
+         * every reader that only asks "is this add-on allowed here?" keeps
+         * working unchanged, and only pricing consults this array.
+         */
+        addons: {
+            type: [new mongoose.Schema(
+                {
+                    addonId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodAddon', required: true },
+                    price: { type: Number, min: 0, default: null },
+                },
+                { _id: false }
+            )],
+            default: [],
+        },
         petpoojaVariantId: { type: String, trim: true, default: '' }
     },
     { _id: true }
