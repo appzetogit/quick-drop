@@ -53,24 +53,28 @@ export default function FreebieOffersPage() {
         setIsActive(offer?.isActive !== false)
         setTiers((offer?.tiers || []).map(toTierDraft))
 
-        // The menu comes back grouped by section; the picker wants a flat list.
-        const menu = menuRes?.data?.data?.menu || menuRes?.data?.menu || menuRes?.data?.data || []
+        // The menu comes back as { sections: [{ name, items, subsections }] }.
+        // Read those two levels explicitly rather than walking the tree for
+        // anything with a name: sections carry a name and an id too, so a walk
+        // would offer "Breads" as a dish, and picking it would store a category
+        // id that resolves to no item at checkout -- a freebie that silently
+        // never arrives.
+        const payload = menuRes?.data?.data || menuRes?.data || {}
+        const sections = Array.isArray(payload.sections) ? payload.sections : []
         const flat = []
-        const walk = (node) => {
-          if (Array.isArray(node)) return node.forEach(walk)
-          if (!node || typeof node !== "object") return
-          if (node.name && (node.price !== undefined || node._id)) flat.push(node)
-          Object.values(node).forEach((v) => {
-            if (Array.isArray(v) || (v && typeof v === "object")) walk(v)
-          })
+        for (const section of sections) {
+          for (const item of section?.items || []) flat.push(item)
+          for (const sub of section?.subsections || []) {
+            for (const item of sub?.items || []) flat.push(item)
+          }
         }
-        walk(menu)
+
         const seen = new Set()
         setItems(
           flat
             .filter((f) => {
-              const id = String(f._id || f.id || "")
-              if (!id || seen.has(id)) return false
+              const id = String(f?._id || f?.id || "")
+              if (!id || !f?.name || seen.has(id)) return false
               seen.add(id)
               return true
             })
