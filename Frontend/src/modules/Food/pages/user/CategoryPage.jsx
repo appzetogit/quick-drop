@@ -799,11 +799,14 @@ export default function CategoryPage() {
           // If the section name matches the category, include all items in it.
           if (sectionMatches || itemMatches) {
             // Calculate final price considering discounts
-            const originalPrice = item.originalPrice || item.price || 0
+            // `price` from the API is already the discounted selling price, and
+            // `basePrice` is the figure struck through beside it. Re-applying
+            // discountPercent to it would discount the same item twice -- a 50 item at
+            // 20% off would have shown as 32 rather than 40.
+            const finalSellingPrice = item.price || 0
+            const originalPrice = item.basePrice || item.strikePrice || item.originalPrice || finalSellingPrice
             const discountPercent = item.discountPercent || 0
-            const finalPrice = discountPercent > 0
-              ? Math.round(originalPrice * (1 - discountPercent / 100))
-              : originalPrice
+            const finalPrice = finalSellingPrice
 
             // Get dish image (prioritize item image, then section image)
             const dishImage = normalizeImageUrl(item.image?.url || item.image || section.image?.url || section.image)
@@ -835,11 +838,14 @@ export default function CategoryPage() {
               matchesCategoryText(itemCategoryLower, keywords)
 
             if (sectionMatches || subsectionMatches || itemMatches) {
-              const originalPrice = item?.originalPrice || item?.price || 0
+              // `price` from the API is already the discounted selling price, and
+              // `basePrice` is the figure struck through beside it. Re-applying
+              // discountPercent to it would discount the same item twice -- a 50 item at
+              // 20% off would have shown as 32 rather than 40.
+              const finalSellingPrice = item?.price || 0
+              const originalPrice = item?.basePrice || item?.strikePrice || item?.originalPrice || finalSellingPrice
               const discountPercent = item?.discountPercent || 0
-              const finalPrice = discountPercent > 0
-                ? Math.round(originalPrice * (1 - discountPercent / 100))
-                : originalPrice
+              const finalPrice = finalSellingPrice
 
               const dishImage = normalizeImageUrl(
                 item?.image?.url || item?.image || subsection?.image?.url || subsection?.image || section?.image?.url || section?.image
@@ -1026,11 +1032,14 @@ export default function CategoryPage() {
                               const firstItem = section.items[0]
                               if (!featuredDish) featuredDish = firstItem.name
                               if (!featuredPrice) {
-                                const originalPrice = firstItem.originalPrice || firstItem.price || 0
+                                // `price` from the API is already the discounted selling price, and
+                                // `basePrice` is the figure struck through beside it. Re-applying
+                                // discountPercent to it would discount the same item twice -- a 50 item at
+                                // 20% off would have shown as 32 rather than 40.
+                                const finalSellingPrice = firstItem.price || 0
+                                const originalPrice = firstItem.basePrice || firstItem.strikePrice || firstItem.originalPrice || finalSellingPrice
                                 const discountPercent = firstItem.discountPercent || 0
-                                featuredPrice = discountPercent > 0
-                                  ? Math.round(originalPrice * (1 - discountPercent / 100))
-                                  : originalPrice
+                                featuredPrice = finalSellingPrice
                               }
                               break
                             }
