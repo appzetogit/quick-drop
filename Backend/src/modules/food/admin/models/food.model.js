@@ -4,6 +4,19 @@ const foodVariantSchema = new mongoose.Schema(
     {
         name: { type: String, required: true, trim: true },
         price: { type: Number, required: true, min: 0 },
+        /**
+         * Add-ons offered only when this variant is chosen -- extra cheese on
+         * the large, but not the small.
+         *
+         * Added to the item's own list rather than replacing it, so an add-on
+         * that applies to every size is still set once on the item. An empty
+         * list therefore means 'nothing extra for this size', not 'no add-ons',
+         * which is what every existing variant is.
+         */
+        addonIds: {
+            type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'FoodAddon' }],
+            default: [],
+        },
         petpoojaVariantId: { type: String, trim: true, default: '' }
     },
     { _id: true }

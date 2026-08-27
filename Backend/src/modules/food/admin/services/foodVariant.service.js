@@ -41,6 +41,23 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
                 price
             };
 
+            // Per-variant add-ons. Only carried when the caller sent the key, so a
+            // form that does not know about them leaves the stored list alone
+            // rather than clearing it.
+            if (entry?.addonIds !== undefined) {
+                const raw = Array.isArray(entry.addonIds) ? entry.addonIds : [entry.addonIds];
+                const ids = [...new Set(
+                    raw
+                        .map((v) => (v && typeof v === 'object' ? String(v._id ?? v.id ?? '') : String(v ?? '')))
+                        .map((v) => v.trim())
+                        .filter(Boolean)
+                )];
+                if (ids.some((v) => !mongoose.Types.ObjectId.isValid(v))) {
+                    throw new ValidationError(`One or more add-ons selected for "${name}" are not valid`);
+                }
+                variant.addonIds = ids.map((v) => new mongoose.Types.ObjectId(v));
+            }
+
             const variantId = entry?._id || entry?.id;
             if (variantId && mongoose.Types.ObjectId.isValid(String(variantId))) {
                 variant._id = new mongoose.Types.ObjectId(String(variantId));
@@ -69,7 +86,8 @@ export const serializeFoodVariants = (value = []) =>
                 id: variantId ? String(variantId) : '',
                 _id: variantId ? String(variantId) : '',
                 name,
-                price
+                price,
+                addonIds: (entry?.addonIds || []).map((v) => String(v?._id ?? v?.id ?? v)).filter(Boolean)
             };
         })
         .filter(Boolean);

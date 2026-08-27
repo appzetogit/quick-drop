@@ -23,7 +23,7 @@ import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailabilit
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { normalizeDiscountPricingInput } from '../../shared/itemDiscountPricing.js';
 import { FoodAddon } from '../models/foodAddon.model.js';
-import { normalizeAddonIdsInput } from '../../shared/orderAddons.js';
+import { assertVariantAddonsOwned, normalizeAddonIdsInput } from '../../shared/orderAddons.js';
 
 const toStr = (v) => (v != null ? String(v).trim() : '');
 const APPROVED_CATEGORY_FILTER = [
@@ -291,6 +291,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     const packagingCharge = normalizeItemPackagingChargeInput(body.packagingCharge, { label: name });
     const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
     const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
+    await assertVariantAddonsOwned(FoodAddon, restaurantId, variants);
 
     const doc = await FoodItem.create({
         restaurantId,
@@ -381,6 +382,13 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
 
     const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
     if (addonUpdate) update.addonIds = addonUpdate.addonIds;
+    // Checked against the variants that will actually be stored, so a partial
+    // update cannot slip in an add-on belonging to another restaurant.
+    await assertVariantAddonsOwned(
+        FoodAddon,
+        restaurantId,
+        update.variants !== undefined ? update.variants : existing.variants
+    );
 
     const itemLabel = update.name || existing.name || 'This item';
     const quantityLimits = normalizeOrderQuantityInput(body, { label: itemLabel, ceiling: await getOrderQuantityCeiling() });

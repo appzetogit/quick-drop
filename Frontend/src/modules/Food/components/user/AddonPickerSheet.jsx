@@ -10,13 +10,15 @@ import { X } from "lucide-react"
  * common case.
  *
  * The list is the intersection of the restaurant's sellable add-ons and the ones
- * this dish opts into (`addonIds`). The server re-checks that intersection at
- * checkout and prices from its own records, so nothing here decides what is
- * allowed or what it costs -- this only decides what to offer.
+ * this dish opts into (`addonIds`), plus any attached to the chosen variant --
+ * extra cheese on the large, but not the small. The server re-checks that
+ * intersection at checkout and prices from its own records, so nothing here
+ * decides what is allowed or what it costs -- this only decides what to offer.
  */
 export default function AddonPickerSheet({
   open,
   dish,
+  variant = null,
   restaurantAddons = [],
   onClose,
   onConfirm,
@@ -26,15 +28,18 @@ export default function AddonPickerSheet({
   // Reset on each open: a previous dish's choices must not carry over.
   useEffect(() => {
     if (open) setSelected([])
-  }, [open, dish?.id])
+  }, [open, dish?.id, variant?.id, variant?._id])
 
   const options = useMemo(() => {
+    // Mirrors resolveAllowedAddonIds on the server: the dish's own list applies
+    // to every variant, and the chosen variant adds any extras of its own.
     const allowed = new Set((dish?.addonIds || []).map((id) => String(id)))
+    for (const id of variant?.addonIds || []) allowed.add(String(id))
     if (allowed.size === 0) return []
     return (restaurantAddons || []).filter((addon) =>
       allowed.has(String(addon?._id || addon?.id || "")),
     )
-  }, [dish, restaurantAddons])
+  }, [dish, variant, restaurantAddons])
 
   const chosen = useMemo(
     () =>

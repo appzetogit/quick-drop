@@ -46,6 +46,9 @@ const createVariantDraft = (variant = {}) => ({
   persistedId: String(variant?.id || variant?._id || ""),
   name: String(variant?.name || ""),
   price: variant?.price != null ? String(variant.price) : "",
+  // Add-ons offered only when this variant is chosen. The item's own list still
+  // applies to every variant, so this is for extras specific to one size.
+  addonIds: Array.isArray(variant?.addonIds) ? variant.addonIds.map(String) : [],
 })
 
 export default function ItemDetailsPage() {
@@ -756,6 +759,8 @@ export default function ItemDetailsPage() {
           persistedId: String(variant.persistedId || "").trim(),
           name: String(variant.name || "").trim(),
           price: Number(variant.price),
+          // Dropped here would silently clear a variant's add-ons on every save.
+          addonIds: Array.isArray(variant.addonIds) ? variant.addonIds : [],
         }))
         .filter((variant) => variant.name || variant.persistedId || variant.price)
 
@@ -792,6 +797,7 @@ export default function ItemDetailsPage() {
         ...(variant.persistedId ? { _id: variant.persistedId } : {}),
         name: variant.name,
         price: variant.price,
+        addonIds: variant.addonIds || [],
       }))
 
       // Order limits + packaging are the same on create and update; the server
@@ -1349,6 +1355,56 @@ export default function ItemDetailsPage() {
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-600">{"\u20B9"}</span>
                             </div>
                           </div>
+
+                          {/* Add-ons offered only when this variant is chosen --
+                              extra cheese on the large, but not the small. The
+                              item's own add-ons below still apply to every
+                              variant, so this is for extras specific to one size. */}
+                          {availableAddons.length > 0 && (
+                            <div className="md:col-span-2">
+                              <label className="block text-xs text-gray-600 mb-1">
+                                Add-ons for this variant only
+                                {(variant.addonIds || []).length > 0 && (
+                                  <span className="ml-1 text-accent-orange/90">
+                                    ({(variant.addonIds || []).length} selected)
+                                  </span>
+                                )}
+                              </label>
+                              <div className="flex flex-wrap gap-1.5">
+                                {availableAddons.map((addon) => {
+                                  const addonId = String(addon._id || addon.id || "")
+                                  const checked = (variant.addonIds || []).includes(addonId)
+                                  const addonName =
+                                    addon.name || addon.draft?.name || addon.published?.name || "Add-on"
+                                  return (
+                                    <button
+                                      key={addonId}
+                                      type="button"
+                                      onClick={() =>
+                                        handleVariantChange(
+                                          variant.localId,
+                                          "addonIds",
+                                          checked
+                                            ? (variant.addonIds || []).filter((x) => x !== addonId)
+                                            : [...(variant.addonIds || []), addonId]
+                                        )
+                                      }
+                                      className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                        checked
+                                          ? "border-primary-orange/30 bg-primary-orange/10 text-accent-orange/90"
+                                          : "border-gray-300 bg-white text-gray-600 hover:bg-gray-100"
+                                      }`}
+                                    >
+                                      {addonName}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                              <p className="mt-1 text-xs text-gray-500">
+                                Leave empty to offer only the item&apos;s own add-ons on this variant.
+                              </p>
+                            </div>
+                          )}
                         </div>
                         <button
                           type="button"

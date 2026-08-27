@@ -1184,7 +1184,11 @@ function RestaurantDetailsContent() {
     // A dish that offers add-ons asks once, when it first goes in. Later
     // increments and decrements act on the line that already exists, so the
     // customer is not re-asked every time they tap +.
-    const offersAddons = Array.isArray(item?.addonIds) && item.addonIds.length > 0
+    // Counts the chosen variant's own add-ons too, or a dish whose only add-ons
+    // live on a variant would never open the picker.
+    const offersAddons =
+      (Array.isArray(item?.addonIds) && item.addonIds.length > 0) ||
+      (Array.isArray(resolvedVariant?.addonIds) && resolvedVariant.addonIds.length > 0)
     if (chosenAddons === null && offersAddons && newQuantity > 0) {
       const existingLineId = getLineItemIdForDish(item, resolvedVariant, [])
       const alreadyInCart = cart.some((c) => String(c.itemId || "") === String(item.id || item._id || ""))
@@ -2437,6 +2441,12 @@ function RestaurantDetailsContent() {
                         // Determine veg/non-veg based on foodType
                         const isVeg = item.foodType === "Veg"
 
+                        // Outside its serving window right now. The server already refuses
+                        // these at checkout; without this the customer only found out after
+                        // building a cart.
+                        const isUnavailableNow = item.isAvailableNow === false
+                        const isBlocked = shouldShowGrayscale || isUnavailableNow
+
                         // Debug: Log preparationTime for troubleshooting
                         if (item.preparationTime) {
                           debugLog(`[FRONTEND] Item "${item.name}" preparationTime:`, item.preparationTime, 'Type:', typeof item.preparationTime)
@@ -2488,6 +2498,17 @@ function RestaurantDetailsContent() {
 
                               <div className="flex items-center gap-3 mt-1">
                                 <p className="font-semibold text-red-600 dark:text-red-500">{getFoodPriceLabel(item)}</p>
+                                {/* The dish is on the menu but outside its serving hours. Stated here,
+                                    with the hours, rather than letting the order fail at checkout. */}
+                                {isUnavailableNow && (
+                                  <span
+                                    title={item.availabilityWindowLabel || undefined}
+                                    className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-400"
+                                  >
+                                    <Clock size={11} />
+                                    Not available this time
+                                  </span>
+                                )}
                                 {/* Preparation Time - Show if available */}
                                 {item.preparationTime && String(item.preparationTime).trim() && (
                                   <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
@@ -2496,6 +2517,12 @@ function RestaurantDetailsContent() {
                                   </div>
                                 )}
                               </div>
+
+                              {isUnavailableNow && item.availabilityWindowLabel && (
+                                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 first-letter:uppercase">
+                                  {item.availabilityWindowLabel}
+                                </p>
+                              )}
 
                               {/* Description - Show if available */}
                               {item.description && (
@@ -2557,7 +2584,7 @@ function RestaurantDetailsContent() {
                                 <motion.div
                                   initial={{ opacity: 0, scale: 0.8 }}
                                   animate={{ opacity: 1, scale: 1 }}
-                                  className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-4 py-1.5 rounded-lg shadow-md flex items-center gap-1 ${shouldShowGrayscale
+                                  className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-4 py-1.5 rounded-lg shadow-md flex items-center gap-1 ${isBlocked
                                     ? 'border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
                                     : 'border-[#EB590E] text-[#EB590E] hover:bg-primary-orange/5'
                                     }`}
@@ -2565,25 +2592,25 @@ function RestaurantDetailsContent() {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      if (!shouldShowGrayscale) {
+                                      if (!isBlocked) {
                                         updateItemQuantity(item, Math.max(0, quantity - 1), e)
                                       }
                                     }}
-                                    disabled={shouldShowGrayscale}
-                                    className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#EB590E] hover:text-[#D94F0C]'}
+                                    disabled={isBlocked}
+                                    className={isBlocked ? 'text-gray-400 cursor-not-allowed' : 'text-[#EB590E] hover:text-[#D94F0C]'}
                                   >
                                     <Minus size={14} />
                                   </button>
-                                  <span className={`mx-2 text-sm ${shouldShowGrayscale ? 'text-gray-400' : ''}`}>{quantity}</span>
+                                  <span className={`mx-2 text-sm ${isBlocked ? 'text-gray-400' : ''}`}>{quantity}</span>
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      if (!shouldShowGrayscale) {
+                                      if (!isBlocked) {
                                         updateItemQuantity(item, quantity + 1, e)
                                       }
                                     }}
-                                    disabled={shouldShowGrayscale}
-                                    className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#EB590E] hover:text-[#D94F0C]'}
+                                    disabled={isBlocked}
+                                    className={isBlocked ? 'text-gray-400 cursor-not-allowed' : 'text-[#EB590E] hover:text-[#D94F0C]'}
                                   >
                                     <Plus size={14} className="stroke-[3px]" />
                                   </button>
@@ -2596,12 +2623,12 @@ function RestaurantDetailsContent() {
                                   transition={{ duration: 0.3, type: "spring", damping: 20, stiffness: 300 }}
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    if (!shouldShowGrayscale) {
+                                    if (!isBlocked) {
                                       updateItemQuantity(item, 1, e)
                                     }
                                   }}
-                                  disabled={shouldShowGrayscale}
-                                  className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-6 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-colors ${shouldShowGrayscale
+                                  disabled={isBlocked}
+                                  className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-6 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-colors ${isBlocked
                                     ? 'border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
                                     : 'border-[#EB590E] text-[#EB590E] hover:bg-primary-orange/5'
                                     }`}
@@ -2660,6 +2687,12 @@ function RestaurantDetailsContent() {
                                   // Determine veg/non-veg based on foodType
                                   const isVeg = item.foodType === "Veg"
 
+                                  // Outside its serving window right now. The server already refuses
+                                  // these at checkout; without this the customer only found out after
+                                  // building a cart.
+                                  const isUnavailableNow = item.isAvailableNow === false
+                                  const isBlocked = shouldShowGrayscale || isUnavailableNow
+
                                   // Debug: Log preparationTime for troubleshooting
                                   if (item.preparationTime) {
                                     debugLog(`[FRONTEND] Subsection item "${item.name}" preparationTime:`, item.preparationTime)
@@ -2711,6 +2744,17 @@ function RestaurantDetailsContent() {
 
                                         <div className="flex items-center gap-3 mt-1">
                                           <p className="font-semibold text-red-600 dark:text-red-500">{getFoodPriceLabel(item)}</p>
+                                          {/* The dish is on the menu but outside its serving hours. Stated here,
+                                              with the hours, rather than letting the order fail at checkout. */}
+                                          {isUnavailableNow && (
+                                            <span
+                                              title={item.availabilityWindowLabel || undefined}
+                                              className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-400"
+                                            >
+                                              <Clock size={11} />
+                                              Not available this time
+                                            </span>
+                                          )}
                                           {/* Preparation Time - Show if available */}
                                           {item.preparationTime && String(item.preparationTime).trim() && (
                                             <div className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">
@@ -2719,6 +2763,12 @@ function RestaurantDetailsContent() {
                                             </div>
                                           )}
                                         </div>
+
+                                        {isUnavailableNow && item.availabilityWindowLabel && (
+                                          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 first-letter:uppercase">
+                                            {item.availabilityWindowLabel}
+                                          </p>
+                                        )}
 
                                         {/* Description - Show if available */}
                                         {item.description && (
@@ -2780,7 +2830,7 @@ function RestaurantDetailsContent() {
                                           <motion.div
                                             initial={{ opacity: 0, scale: 0.8 }}
                                             animate={{ opacity: 1, scale: 1 }}
-                                            className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-4 py-1.5 rounded-lg shadow-md flex items-center gap-1 ${shouldShowGrayscale
+                                            className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-4 py-1.5 rounded-lg shadow-md flex items-center gap-1 ${isBlocked
                                               ? 'border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
                                               : 'border-[#EB590E] text-[#EB590E] hover:bg-primary-orange/5'
                                               }`}
@@ -2788,25 +2838,25 @@ function RestaurantDetailsContent() {
                                             <button
                                               onClick={(e) => {
                                                 e.stopPropagation()
-                                                if (!shouldShowGrayscale) {
+                                                if (!isBlocked) {
                                                   updateItemQuantity(item, Math.max(0, quantity - 1), e)
                                                 }
                                               }}
-                                              disabled={shouldShowGrayscale}
-                                              className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#EB590E] hover:text-[#D94F0C]'}
+                                              disabled={isBlocked}
+                                              className={isBlocked ? 'text-gray-400 cursor-not-allowed' : 'text-[#EB590E] hover:text-[#D94F0C]'}
                                             >
                                               <Minus size={14} />
                                             </button>
-                                            <span className={`mx-2 text-sm ${shouldShowGrayscale ? 'text-gray-400' : ''}`}>{quantity}</span>
+                                            <span className={`mx-2 text-sm ${isBlocked ? 'text-gray-400' : ''}`}>{quantity}</span>
                                             <button
                                               onClick={(e) => {
                                                 e.stopPropagation()
-                                                if (!shouldShowGrayscale) {
+                                                if (!isBlocked) {
                                                   updateItemQuantity(item, quantity + 1, e)
                                                 }
                                               }}
-                                              disabled={shouldShowGrayscale}
-                                              className={shouldShowGrayscale ? 'text-gray-400 cursor-not-allowed' : 'text-[#EB590E] hover:text-[#D94F0C]'}
+                                              disabled={isBlocked}
+                                              className={isBlocked ? 'text-gray-400 cursor-not-allowed' : 'text-[#EB590E] hover:text-[#D94F0C]'}
                                             >
                                               <Plus size={14} className="stroke-[3px]" />
                                             </button>
@@ -2819,12 +2869,12 @@ function RestaurantDetailsContent() {
                                             transition={{ duration: 0.3, type: "spring", damping: 20, stiffness: 300 }}
                                             onClick={(e) => {
                                               e.stopPropagation()
-                                              if (!shouldShowGrayscale) {
+                                              if (!isBlocked) {
                                                 updateItemQuantity(item, 1, e)
                                               }
                                             }}
-                                            disabled={shouldShowGrayscale}
-                                            className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-6 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-colors ${shouldShowGrayscale
+                                            disabled={isBlocked}
+                                            className={`absolute -bottom-2 left-1/2 -translate-x-1/2 bg-white border font-bold px-6 py-1.5 rounded-lg shadow-md flex items-center gap-1 transition-colors ${isBlocked
                                               ? 'border-gray-300 text-gray-400 cursor-not-allowed opacity-50'
                                               : 'border-[#EB590E] text-[#EB590E] hover:bg-primary-orange/5'
                                               }`}
@@ -3561,13 +3611,13 @@ function RestaurantDetailsContent() {
                   <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-4 bg-white dark:bg-[#1a1a1a]">
                     <div className="flex items-center gap-4">
                       {/* Quantity Selector */}
-                      <div className={`flex items-center gap-3 border-2 rounded-lg px-3 h-[44px] bg-white dark:bg-[#2a2a2a] ${shouldShowGrayscale
+                      <div className={`flex items-center gap-3 border-2 rounded-lg px-3 h-[44px] bg-white dark:bg-[#2a2a2a] ${isBlocked
                         ? 'border-gray-300 dark:border-gray-700 opacity-50'
                         : 'border-gray-300 dark:border-gray-700'
                         }`}>
                         <button
                           onClick={(e) => {
-                            if (!shouldShowGrayscale) {
+                            if (!isBlocked) {
                               updateItemQuantity(
                                 selectedItem,
                                 Math.max(0, getDishQuantity(selectedItem, selectedVariantId) - 1),
@@ -3576,15 +3626,15 @@ function RestaurantDetailsContent() {
                               )
                             }
                           }}
-                          disabled={getDishQuantity(selectedItem, selectedVariantId) === 0 || shouldShowGrayscale}
-                          className={`${shouldShowGrayscale
+                          disabled={getDishQuantity(selectedItem, selectedVariantId) === 0 || isBlocked}
+                          className={`${isBlocked
                             ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
                             : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed'
                             }`}
                         >
                           <Minus className="h-5 w-5" />
                         </button>
-                        <span className={`text-lg font-semibold min-w-[2rem] text-center ${shouldShowGrayscale
+                        <span className={`text-lg font-semibold min-w-[2rem] text-center ${isBlocked
                           ? 'text-gray-400 dark:text-gray-600'
                           : 'text-gray-900 dark:text-white'
                           }`}>
@@ -3592,7 +3642,7 @@ function RestaurantDetailsContent() {
                         </span>
                         <button
                           onClick={(e) => {
-                            if (!shouldShowGrayscale) {
+                            if (!isBlocked) {
                               updateItemQuantity(
                                 selectedItem,
                                 getDishQuantity(selectedItem, selectedVariantId) + 1,
@@ -3601,8 +3651,8 @@ function RestaurantDetailsContent() {
                               )
                             }
                           }}
-                          disabled={shouldShowGrayscale}
-                          className={shouldShowGrayscale
+                          disabled={isBlocked}
+                          className={isBlocked
                             ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
                             : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                           }
@@ -3613,12 +3663,12 @@ function RestaurantDetailsContent() {
 
                       {/* Add Item Button */}
                       <Button
-                        className={`flex-1 h-[44px] rounded-lg font-semibold flex items-center justify-center gap-2 ${shouldShowGrayscale
+                        className={`flex-1 h-[44px] rounded-lg font-semibold flex items-center justify-center gap-2 ${isBlocked
                           ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-50'
                           : 'bg-red-500 hover:bg-red-600 text-white'
                           }`}
                         onClick={(e) => {
-                          if (!shouldShowGrayscale) {
+                          if (!isBlocked) {
                             updateItemQuantity(
                               selectedItem,
                               getDishQuantity(selectedItem, selectedVariantId) + 1,
@@ -3628,7 +3678,7 @@ function RestaurantDetailsContent() {
                             setShowItemDetail(false)
                           }
                         }}
-                        disabled={shouldShowGrayscale}
+                        disabled={isBlocked}
                       >
                         <span>Add item</span>
                         <div className="flex items-center gap-1">
@@ -4120,6 +4170,7 @@ function RestaurantDetailsContent() {
       <AddonPickerSheet
         open={addonPickerState.open}
         dish={addonPickerState.item}
+        variant={addonPickerState.variant}
         restaurantAddons={restaurantAddons}
         onClose={() => setAddonPickerState({ open: false, item: null, variant: null, quantity: 1 })}
         onConfirm={(chosen) => {

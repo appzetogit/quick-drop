@@ -50,6 +50,30 @@ export function normalizeRequestedAddonIds(rawLine = {}) {
  * Returns undefined when the caller sent nothing, so a partial update leaves the
  * stored list alone.
  */
+/**
+ * Refuse variant add-ons that are not this restaurant's.
+ *
+ * Same rule as the item-level list: catching it here means the restaurant is
+ * told while configuring the dish, rather than a customer hitting a confusing
+ * rejection at checkout.
+ */
+export async function assertVariantAddonsOwned(FoodAddon, restaurantId, variants = []) {
+    const ids = [...new Set(
+        (variants || []).flatMap((v) => (v?.addonIds || []).map((id) => String(id)))
+    )];
+    if (ids.length === 0) return;
+
+    const owned = await FoodAddon.find({
+        _id: { $in: ids.map((v) => new mongoose.Types.ObjectId(v)) },
+        restaurantId: new mongoose.Types.ObjectId(String(restaurantId)),
+        isDeleted: { $ne: true },
+    }).select('_id').lean();
+
+    if ((owned || []).length !== ids.length) {
+        throw new ValidationError('One or more add-ons selected for a variant do not belong to this restaurant');
+    }
+}
+
 export async function normalizeAddonIdsInput(FoodAddon, restaurantId, body = {}) {
     if (body?.addonIds === undefined) return undefined;
 
@@ -75,18 +99,43 @@ export async function normalizeAddonIdsInput(FoodAddon, restaurantId, body = {})
 }
 
 /**
+ * The add-ons a line may offer, given the variant chosen.
+ *
+ * The item's own list applies to every variant -- an add-on that is valid for
+ * the whole dish is set once, not repeated per size -- and the chosen variant
+ * contributes any extras specific to it. So "extra cheese" can be attached to
+ * Large alone while "extra napkins" stays on the item.
+ *
+ * With no variant selected, only the item's list applies. That is deliberate:
+ * a variant-only add-on should not become orderable by omitting the variant.
+ */
+export function resolveAllowedAddonIds(menuItem, variantId = null) {
+    const allowed = new Set((menuItem?.addonIds || []).map((id) => String(id)));
+
+    if (variantId) {
+        const variant = (menuItem?.variants || []).find(
+            (v) => String(v?._id) === String(variantId)
+        );
+        for (const id of variant?.addonIds || []) allowed.add(String(id));
+    }
+
+    return allowed;
+}
+
+/**
  * Turn requested ids into priced, snapshotted add-ons for a line.
  *
  * @param {object} menuItem   the dish from the database (needs name, addonIds)
  * @param {string[]} requestedIds
  * @param {Map<string, object>} addonsById  published add-on docs for this restaurant
+ * @param {string|null} variantId  the chosen variant, whose own add-ons also apply
  * @returns {{ addons: Array<{addonId: any, name: string, price: number}>, addonsTotal: number }}
  */
-export function resolveLineAddons(menuItem, requestedIds = [], addonsById = new Map()) {
+export function resolveLineAddons(menuItem, requestedIds = [], addonsById = new Map(), variantId = null) {
     if (!requestedIds.length) return { addons: [], addonsTotal: 0 };
 
     const label = menuItem?.name || 'This item';
-    const allowed = new Set((menuItem?.addonIds || []).map((id) => String(id)));
+    const allowed = resolveAllowedAddonIds(menuItem, variantId);
 
     const addons = requestedIds.map((id) => {
         const doc = addonsById.get(String(id));

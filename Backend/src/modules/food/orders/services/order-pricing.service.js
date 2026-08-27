@@ -83,8 +83,16 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
       variantName = variant.name;
     }
 
-    // Add-ons the dish actually offers, priced from the published record.
-    const { addons, addonsTotal } = resolveLineAddons(menu, requestedAddonsByLine[index], addonsById);
+    // Add-ons the dish actually offers, priced from the published record. The
+    // chosen variant is passed too: an add-on may be attached to one size only,
+    // and without this a variant-only add-on would be refused on the very
+    // variant it belongs to.
+    const { addons, addonsTotal } = resolveLineAddons(
+      menu,
+      requestedAddonsByLine[index],
+      addonsById,
+      it?.variantId || null,
+    );
 
     return {
       ...it,
