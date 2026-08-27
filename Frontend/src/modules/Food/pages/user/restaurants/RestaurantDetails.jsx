@@ -2065,6 +2065,11 @@ function RestaurantDetailsContent() {
   const isRestaurantOffline = !availabilityStatus.isOpen
   const shouldShowGrayscale = isOutOfService || isRestaurantOffline
 
+  // The item-detail sheet is a separate scope from the menu cards, so it needs
+  // its own flag: the restaurant being closed, or this particular dish being
+  // outside its serving window.
+  const isSelectedItemBlocked = shouldShowGrayscale || selectedItem?.isAvailableNow === false
+
   return (
     <AnimatedPage
       id="scrollingelement"
@@ -3611,13 +3616,13 @@ function RestaurantDetailsContent() {
                   <div className="border-t border-gray-200 dark:border-gray-800 px-4 py-4 bg-white dark:bg-[#1a1a1a]">
                     <div className="flex items-center gap-4">
                       {/* Quantity Selector */}
-                      <div className={`flex items-center gap-3 border-2 rounded-lg px-3 h-[44px] bg-white dark:bg-[#2a2a2a] ${isBlocked
+                      <div className={`flex items-center gap-3 border-2 rounded-lg px-3 h-[44px] bg-white dark:bg-[#2a2a2a] ${isSelectedItemBlocked
                         ? 'border-gray-300 dark:border-gray-700 opacity-50'
                         : 'border-gray-300 dark:border-gray-700'
                         }`}>
                         <button
                           onClick={(e) => {
-                            if (!isBlocked) {
+                            if (!isSelectedItemBlocked) {
                               updateItemQuantity(
                                 selectedItem,
                                 Math.max(0, getDishQuantity(selectedItem, selectedVariantId) - 1),
@@ -3626,15 +3631,15 @@ function RestaurantDetailsContent() {
                               )
                             }
                           }}
-                          disabled={getDishQuantity(selectedItem, selectedVariantId) === 0 || isBlocked}
-                          className={`${isBlocked
+                          disabled={getDishQuantity(selectedItem, selectedVariantId) === 0 || isSelectedItemBlocked}
+                          className={`${isSelectedItemBlocked
                             ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
                             : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed'
                             }`}
                         >
                           <Minus className="h-5 w-5" />
                         </button>
-                        <span className={`text-lg font-semibold min-w-[2rem] text-center ${isBlocked
+                        <span className={`text-lg font-semibold min-w-[2rem] text-center ${isSelectedItemBlocked
                           ? 'text-gray-400 dark:text-gray-600'
                           : 'text-gray-900 dark:text-white'
                           }`}>
@@ -3642,7 +3647,7 @@ function RestaurantDetailsContent() {
                         </span>
                         <button
                           onClick={(e) => {
-                            if (!isBlocked) {
+                            if (!isSelectedItemBlocked) {
                               updateItemQuantity(
                                 selectedItem,
                                 getDishQuantity(selectedItem, selectedVariantId) + 1,
@@ -3651,8 +3656,8 @@ function RestaurantDetailsContent() {
                               )
                             }
                           }}
-                          disabled={isBlocked}
-                          className={isBlocked
+                          disabled={isSelectedItemBlocked}
+                          className={isSelectedItemBlocked
                             ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
                             : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
                           }
@@ -3663,12 +3668,12 @@ function RestaurantDetailsContent() {
 
                       {/* Add Item Button */}
                       <Button
-                        className={`flex-1 h-[44px] rounded-lg font-semibold flex items-center justify-center gap-2 ${isBlocked
+                        className={`flex-1 h-[44px] rounded-lg font-semibold flex items-center justify-center gap-2 ${isSelectedItemBlocked
                           ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-600 cursor-not-allowed opacity-50'
                           : 'bg-red-500 hover:bg-red-600 text-white'
                           }`}
                         onClick={(e) => {
-                          if (!isBlocked) {
+                          if (!isSelectedItemBlocked) {
                             updateItemQuantity(
                               selectedItem,
                               getDishQuantity(selectedItem, selectedVariantId) + 1,
@@ -3678,7 +3683,7 @@ function RestaurantDetailsContent() {
                             setShowItemDetail(false)
                           }
                         }}
-                        disabled={isBlocked}
+                        disabled={isSelectedItemBlocked}
                       >
                         <span>Add item</span>
                         <div className="flex items-center gap-1">
