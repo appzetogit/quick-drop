@@ -44,13 +44,13 @@ export default function Loader() {
           transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
         />
         
-        {/* Pulse scale K9 indicator inside */}
+        {/* Pulse-scaled brand mark inside the ring */}
         <motion.div 
           className="absolute text-[10px] font-black text-[#EB590E] tracking-wider uppercase"
           animate={{ scale: [0.95, 1.05, 0.95] }}
           transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
         >
-          K9
+          QD
         </motion.div>
       </div>
       

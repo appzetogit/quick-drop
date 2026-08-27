@@ -6,7 +6,7 @@ const ContactPage = () => {
   const navigate = useNavigate();
 
   React.useEffect(() => {
-    document.title = "Contact Us | K9 Rides";
+    document.title = "Contact Us | Quick Drop";
   }, []);
 
   return (
@@ -55,7 +55,7 @@ const ContactPage = () => {
                 <p className="text-gray-500 mb-6 leading-relaxed">
                     Prefer writing? Send us an email and our team will get back to you within 2 hours.
                 </p>
-                <p className="text-2xl font-bold text-[#FFB300]">K9 Ridesindia@gmail.com</p>
+                <p className="text-2xl font-bold text-[#FFB300]">Quick Dropindia@gmail.com</p>
             </div>
 
             <div className="bg-white p-10 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center">

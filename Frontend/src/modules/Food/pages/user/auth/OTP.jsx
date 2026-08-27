@@ -493,7 +493,7 @@ export default function OTP() {
 
           <footer className="mt-auto pt-10 text-center">
             <p className="text-[9px] text-zinc-300 dark:text-zinc-700 font-black uppercase tracking-[0.4em]">
-              K9 Rides Secure Network
+              Quick Drop Secure Network
             </p>
           </footer>
         </div>

@@ -91,7 +91,7 @@ export default function Showcase() {
                 Passenger Insurance Included
               </div>
               <p className="text-slate-400 text-sm sm:text-base leading-relaxed max-w-lg">
-                Enrolling 1 Lac+ Drivers across India. K9 Rides does more than just drive you — interactive voice controls, media playlists, and local insights directly to your ride.
+                Enrolling 1 Lac+ Drivers across India. Quick Drop does more than just drive you — interactive voice controls, media playlists, and local insights directly to your ride.
               </p>
             </div>
 
@@ -123,9 +123,9 @@ export default function Showcase() {
                 <Mail className="w-4 h-4 text-[#10b981]" />
                 k9bharatrides@gmail.com
               </a>
-              <a href="https://www.k9rides.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-[#10b981] transition-colors">
+              <a href="https://quickdropsindia.com" target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-[#10b981] transition-colors">
                 <Globe className="w-4 h-4 text-[#10b981]" />
-                www.k9rides.com
+                quickdropsindia.com
               </a>
             </div>
           </div>
@@ -161,7 +161,7 @@ export default function Showcase() {
                   >
                     <img
                       src={item.src}
-                      alt="K9 Service"
+                      alt="Quick Drop Service"
                       className="w-full h-full object-cover transition-transform duration-700 hover:scale-110"
                       loading="lazy"
                     />

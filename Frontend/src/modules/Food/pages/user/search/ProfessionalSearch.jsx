@@ -20,7 +20,10 @@ const getMediaUrl = (url) => {
   if (url.startsWith('http')) return url;
   
   // Use VITE_API_BASE_URL to derive the backend origin
-  const apiBase = import.meta.env.VITE_API_BASE_URL || "https://k9rides.onrender.com/api/v1";
+  // Falls back to same-origin, matching config/runtimeEnv.js. It used to fall
+  // back to a hosted deployment of the previous product, so a build with the
+  // variable unset would have quietly fetched images from someone else.
+  const apiBase = import.meta.env.VITE_API_BASE_URL || "";
   const origin = apiBase.split('/api/v1')[0];
   
   return `${origin}${url.startsWith('/') ? url : '/' + url}`;

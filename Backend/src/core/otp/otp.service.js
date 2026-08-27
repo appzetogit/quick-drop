@@ -37,7 +37,7 @@ const sendSmsViaIndiaHub = async (phone, otp) => {
 
         // EXACT DLT TEMPLATE provided by user:
         // "Welcome to the ##var## powered by SMSINDIAHUB. Your OTP for registration is ##var##"
-        const message = `Welcome to the K9 Rides powered by SMSINDIAHUB. Your OTP for registration is ${otp}`;
+        const message = `Welcome to the Quick Drop powered by SMSINDIAHUB. Your OTP for registration is ${otp}`;
 
         // SMS India Hub HTTP GET API — query param names are case-sensitive per SOP
         const url = new URL('http://cloud.smsindiahub.in/vendorsms/pushsms.aspx');

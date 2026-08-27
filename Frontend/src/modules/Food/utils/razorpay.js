@@ -94,7 +94,7 @@ export const initRazorpayPayment = async (options) => {
       amount: options.amount,
       currency: options.currency || 'INR',
       order_id: options.order_id,
-      name: options.name || 'K9 Rides',
+      name: options.name || 'Quick Drop',
       description: options.description || 'Order Payment',
       image: options.image || '/k9-logo.jpg',
       prefill: {

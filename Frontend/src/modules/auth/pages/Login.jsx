@@ -7,8 +7,11 @@ import apiClient, { authAPI } from "@food/api"
 import { setUnifiedAuthData, isUnifiedAuthenticated } from "@food/utils/auth"
 import { useSettings } from "../../Taxi/shared/context/SettingsContext"
 
-const K9_LOGO = "/k9-logo.png"
-const COMPANY_NAME = "K9 Rides"
+// Fallback only -- the logo an admin uploads in business settings wins. The
+// file path is unchanged because the asset itself still lives there; note that
+// renaming the file would not change the artwork inside it.
+const FALLBACK_LOGO = "/k9-logo.png"
+const COMPANY_NAME = "Quick Drop"
 
 export default function UnifiedOTPFastLogin({ viewType = "auth" }) {
   const RESEND_COOLDOWN_SECONDS = 60
@@ -95,7 +98,7 @@ export default function UnifiedOTPFastLogin({ viewType = "auth" }) {
   // }, [viewType, navigate, location])
 
   useEffect(() => {
-    document.title = "Login | K9 Rides"
+    document.title = "Login | Quick Drop"
   }, [])
 
   const normalizedPhone = () => {
@@ -396,7 +399,7 @@ export default function UnifiedOTPFastLogin({ viewType = "auth" }) {
             className="flex items-center gap-4 mb-16"
           >
             <div className="w-12 h-12 flex items-center justify-center bg-white rounded-xl shadow-lg overflow-hidden">
-              <img src={activeLogo || K9_LOGO} alt={COMPANY_NAME} className="w-full h-full object-cover" />
+              <img src={activeLogo || FALLBACK_LOGO} alt={COMPANY_NAME} className="w-full h-full object-cover" />
             </div>
             <h1 className="text-3xl font-black tracking-tight">{COMPANY_NAME}</h1>
           </motion.div>
@@ -464,9 +467,9 @@ export default function UnifiedOTPFastLogin({ viewType = "auth" }) {
               exit={{ opacity: 0, y: -10 }}
               className="w-full flex flex-col items-center"
             >
-              {/* K9 Logo */}
+              {/* Brand logo */}
               <img 
-                src={activeLogo || K9_LOGO} 
+                src={activeLogo || FALLBACK_LOGO} 
                 alt={COMPANY_NAME} 
                 className="w-[84px] h-[84px] rounded-full object-cover shadow-lg mb-6" 
               />

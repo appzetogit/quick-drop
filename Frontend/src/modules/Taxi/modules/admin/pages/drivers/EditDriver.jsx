@@ -699,7 +699,7 @@ const EditDriver = () => {
                 <input 
                   type="text" 
                   name="companyName"
-                  placeholder="e.g. K9 Travels"
+                  placeholder="e.g. Quick Drop Travels"
                   value={formData.companyName}
                   onChange={handleChange}
                   className={inputClass}

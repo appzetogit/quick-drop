@@ -1,5 +1,5 @@
 export const APP_CONFIG = {
-  NAME: 'K9 Rides',
+  NAME: 'Quick Drop',
   VERSION: '1.0.0',
 };
 

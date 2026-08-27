@@ -1,5 +1,5 @@
-export const LOCATION_STORAGE_KEY = 'K9 Rides:lastLocation';
-export const LOCATION_UPDATED_EVENT = 'K9 Rides:location-updated';
+export const LOCATION_STORAGE_KEY = 'Quick Drop:lastLocation';
+export const LOCATION_UPDATED_EVENT = 'Quick Drop:location-updated';
 
 export const DEFAULT_LOCATION_LABEL = 'Choose your location';
 export const DEFAULT_LOCATION_COORDS = [78.4867, 17.385];

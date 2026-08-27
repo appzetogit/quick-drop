@@ -4,8 +4,8 @@ import { Plus, Minus } from 'lucide-react'
 
 const defaultFaqs = [
   {
-    question: 'What services are supported by K9 Rides?',
-    answer: 'K9 Rides is an all-in-one super-app supporting Ride Hailing (Taxi & Cab Sharing), Food & Dining Delivery, secure Parcel Courier Services, pre-scheduled Airport Transfers, Hourly Vehicle Rentals, and commercial Cargo/Logistics.'
+    question: 'What services are supported by Quick Drop?',
+    answer: 'Quick Drop is an all-in-one super-app supporting Ride Hailing (Taxi & Cab Sharing), Food & Dining Delivery, secure Parcel Courier Services, pre-scheduled Airport Transfers, Hourly Vehicle Rentals, and commercial Cargo/Logistics.'
   },
   {
     question: 'How do I register as a driver partner?',
@@ -17,7 +17,7 @@ const defaultFaqs = [
   },
   {
     question: 'Is in-app payment secure?',
-    answer: 'Yes. K9 Rides utilizes secure SSL encryption and integrated payment gateways to secure credit cards, digital wallets, UPI, and bank transfers.'
+    answer: 'Yes. Quick Drop utilizes secure SSL encryption and integrated payment gateways to secure credit cards, digital wallets, UPI, and bank transfers.'
   },
   {
     question: 'Can I schedule airport transfers in advance?',

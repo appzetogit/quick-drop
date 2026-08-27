@@ -20,7 +20,7 @@ const partners = [
     type: 'restaurant', icon: Store,
     title: 'Register Your Restaurant',
     subtitle: 'Expand your kitchen footprint',
-    description: 'Partner with K9 Rides to list your menu online. Tap into thousands of local orders and leverage our reliable dispatch fleet to maximize kitchen revenue.',
+    description: 'Partner with Quick Drop to list your menu online. Tap into thousands of local orders and leverage our reliable dispatch fleet to maximize kitchen revenue.',
     benefits: ['Access to extensive customer database', 'Advanced order & dashboard analytics', 'Flexible pricing & promotional campaigns', 'Professional delivery network integration'],
     ctaText: 'Register Restaurant', ctaHref: '/food/restaurant/onboarding?step=1',
     color: '#FFB800', gradient: 'from-[#FFB800] to-[#ff5100]',
@@ -75,7 +75,7 @@ export default function Partners() {
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff5100] via-[#e11d48] via-[#1d4ed8] to-[#10b981]">
               Earn
             </span>{' '}
-            with K9 Rides
+            with Quick Drop
           </h2>
           <p className="text-slate-400 text-sm leading-relaxed max-w-lg mx-auto">
             We support localized economic growth. Whether you are an independent driver or a local culinary business, our tools are built to scale your business.

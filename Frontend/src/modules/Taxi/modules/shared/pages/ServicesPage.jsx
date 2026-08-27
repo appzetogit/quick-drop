@@ -6,7 +6,7 @@ const ServicesPage = () => {
   const navigate = useNavigate();
 
   React.useEffect(() => {
-    document.title = "Our Services | K9 Rides";
+    document.title = "Our Services | Quick Drop";
   }, []);
 
   const services = [

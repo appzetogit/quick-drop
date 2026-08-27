@@ -406,10 +406,10 @@ export default function Help() {
                       We'll respond within 24 hours
                     </p>
                     <a
-                      href="mailto:support@k9rides.com"
+                      href="mailto:support@quickdropsindia.com"
                       className="text-sm text-primary hover:underline font-medium"
                     >
-                      support@k9rides.com
+                      support@quickdropsindia.com
                     </a>
                   </div>
                 </div>

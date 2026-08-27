@@ -26,11 +26,11 @@ const ROLES = {
 
 const isDev = config.nodeEnv !== 'production';
 const DEFAULT_CREDENTIALS = {
-  adminEmail: String(process.env.DEFAULT_ADMIN_EMAIL || (isDev ? "K9 Ridesindia@gmail.com" : ""))
+  adminEmail: String(process.env.DEFAULT_ADMIN_EMAIL || (isDev ? "Quick Dropindia@gmail.com" : ""))
     .trim()
     .toLowerCase(),
   adminPassword: String(
-    process.env.DEFAULT_ADMIN_PASSWORD || (isDev ? "sahin.K9 Rides@2004#" : ""),
+    process.env.DEFAULT_ADMIN_PASSWORD || (isDev ? "sahin.Quick Drop@2004#" : ""),
   ),
   userPhone: String(process.env.DEFAULT_USER_PHONE || (isDev ? "7974161582" : "")),
   restaurantPhone: String(process.env.DEFAULT_RESTAURANT_PHONE || (isDev ? "7974161582" : "")),
@@ -277,7 +277,7 @@ export const adminLogin = async (email, password) => {
     admin = await FoodAdmin.create({
       email: DEFAULT_CREDENTIALS.adminEmail,
       password: DEFAULT_CREDENTIALS.adminPassword,
-      name: "K9 Rides Admin",
+      name: "Quick Drop Admin",
       isActive: true,
       servicesAccess: ["food", "quickCommerce", "taxi", "serviceProvider"],
       adminLevel: "platform_superadmin",
@@ -360,9 +360,9 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
   if (!restaurantDoc && isDefaultPhone(phone, DEFAULT_CREDENTIALS.restaurantPhone)) {
     // Auto-provision default restaurant account for configured default phone.
     restaurantDoc = await FoodRestaurant.create({
-      restaurantName: "K9 Rides Demo Restaurant",
-      ownerName: "K9 Rides Restaurant Owner",
-      ownerEmail: "restaurant@K9 Rides.com",
+      restaurantName: "Quick Drop Demo Restaurant",
+      ownerName: "Quick Drop Restaurant Owner",
+      ownerEmail: "restaurant@Quick Drop.com",
       ownerPhone: normalizePhone10(DEFAULT_CREDENTIALS.restaurantPhone),
       primaryContactNumber: normalizePhone10(DEFAULT_CREDENTIALS.restaurantPhone),
       city: "Bhopal",
@@ -476,7 +476,7 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
   if (!deliveryPartner && isDefaultPhone(phone, DEFAULT_CREDENTIALS.deliveryPhone)) {
     // Auto-provision default delivery account for configured default phone.
     deliveryPartner = await FoodDeliveryPartner.create({
-      name: "K9 Rides Delivery Partner",
+      name: "Quick Drop Delivery Partner",
       phone: normalizePhone10(DEFAULT_CREDENTIALS.deliveryPhone),
       city: "Bhopal",
       state: "Madhya Pradesh",

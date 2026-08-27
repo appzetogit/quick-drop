@@ -1,12 +1,12 @@
 export const createDefaultBusinessSettings = () => ({
   scope: 'default',
   general: {
-    app_name: 'K9 Rides',
+    app_name: 'Quick Drop',
     contact_phone_1: '0000000000',
     contact_phone_2: '0000000000',
     contact_booking_number: '9999999999',
-    footer_1: '2026 © K9 Rides.',
-    footer_2: 'Design & Develop by K9 Rides',
+    footer_1: '2026 © Quick Drop.',
+    footer_2: 'Design & Develop by Quick Drop',
     default_lat: '22.7196',
     default_lng: '75.8577',
     logo: '',
