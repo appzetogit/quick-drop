@@ -9,11 +9,35 @@ const require = createRequire(import.meta.url);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+/**
+ * One id per build, both baked into the bundle (__BUILD_ID__) and emitted as
+ * /version.json. A running page compares the two and reloads itself once when
+ * they diverge -- the fix for stale shells silently running old code forever,
+ * which emptyOutDir:false below otherwise makes possible.
+ */
+const buildId = String(Date.now())
+
 const foodSrc = path.resolve(__dirname, './src/modules/Food')
 const servicesApi = path.resolve(__dirname, './src/services/api')
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      name: 'emit-build-version',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'version.json',
+          source: JSON.stringify({ buildId }),
+        })
+      },
+    },
+  ],
+  define: {
+    __BUILD_ID__: JSON.stringify(buildId),
+  },
   resolve: {
     alias: {
       // More specific first so @food/api/* resolves to services (no backend)
@@ -48,8 +72,10 @@ export default defineConfig({
      *
      * index.html is still overwritten each build, so new visitors always get the
      * current bundle. dist grows by roughly one build's worth of chunks each
-     * time; prune what is older than a couple of weeks when it matters:
-     *   find dist/assets -type f -mtime +14 -delete
+     * time; scripts/prune-dist.mjs (run automatically after each build) then
+     * deletes everything the current build no longer references -- safe because
+     * a pruned old session reloads itself via version.json / chunk-error
+     * handling instead of failing.
      */
     emptyOutDir: false,
   },
@@ -59,7 +85,10 @@ export default defineConfig({
     proxy: {
       // Backend API (default 5000)
       '/api/v1': {
-        target: process.env.VITE_BACKEND_PROXY_TARGET || 'https://k9rides.onrender.com',
+        // Local backend by default; the old fallback was a hosted deployment
+        // of the previous product, so an unset env var proxied dev traffic to
+        // someone else's server.
+        target: process.env.VITE_BACKEND_PROXY_TARGET || 'http://localhost:5000',
         changeOrigin: true,
       },
     },
