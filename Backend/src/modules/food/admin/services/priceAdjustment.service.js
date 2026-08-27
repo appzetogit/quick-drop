@@ -85,11 +85,45 @@ const scalePriceExpr = (field, factor) => {
     };
 };
 
+/**
+ * Scale a menu, keeping base price and discount coherent.
+ *
+ * `price` is derived (basePrice less discountPercent), so scaling price alone
+ * would leave the two disagreeing -- the item would advertise "20% off 50" while
+ * charging something that is not 40. The base is scaled and the selling price
+ * re-derived from it, in two stages: a later stage in an aggregation-pipeline
+ * update sees what an earlier one wrote.
+ *
+ * Clamping stays on the base rather than the selling price. Since the selling
+ * price is at most the base, holding the base at the MRP keeps the whole item
+ * under it, and does so without breaking the invariant the way clamping only
+ * the derived price would.
+ *
+ * Rows predating basePrice have null there; $multiply on null yields null, which
+ * readers already treat as "base equals price", so they scale on price alone and
+ * stay correct.
+ */
 const applyFactorToMenu = async (filter, factor) => {
+    const clampToMrp = (scaledExpr) => ({
+        $cond: [
+            { $gt: [{ $ifNull: ['$mrp', 0] }, 0] },
+            { $min: [scaledExpr, '$mrp'] },
+            scaledExpr
+        ]
+    });
+    const scaled = (expr) => ({ $max: [MIN_RESULT_PRICE, { $round: [{ $multiply: [expr, factor] }, 2] }] });
+
     const result = await FoodItem.updateMany(filter, [
         {
             $set: {
-                price: scalePriceExpr('price', factor),
+                basePrice: {
+                    $cond: [
+                        { $gt: [{ $ifNull: ['$basePrice', 0] }, 0] },
+                        clampToMrp(scaled('$basePrice')),
+                        null
+                    ]
+                },
+                price: clampToMrp(scaled('$price')),
                 variants: {
                     $map: {
                         input: { $ifNull: ['$variants', []] },
@@ -101,29 +135,40 @@ const applyFactorToMenu = async (filter, factor) => {
                                     // Variants have no MRP of their own; the item's
                                     // MRP caps every size, same as the per-item save
                                     // path, which validates the highest variant.
-                                    price: {
-                                        $let: {
-                                            vars: {
-                                                scaled: {
-                                                    $max: [
-                                                        MIN_RESULT_PRICE,
-                                                        { $round: [{ $multiply: ['$$variant.price', factor] }, 2] }
-                                                    ]
-                                                }
-                                            },
-                                            in: {
-                                                $cond: [
-                                                    { $gt: [{ $ifNull: ['$mrp', 0] }, 0] },
-                                                    { $min: ['$$scaled', '$mrp'] },
-                                                    '$$scaled'
-                                                ]
-                                            }
-                                        }
-                                    }
+                                    price: clampToMrp(scaled('$$variant.price'))
                                 }
                             ]
                         }
                     }
+                }
+            }
+        },
+        {
+            // Re-derive the selling price from the scaled base, so the discount the
+            // restaurant set still holds. Only for rows that actually carry a base;
+            // the stage above already scaled price directly for the rest.
+            $set: {
+                price: {
+                    $cond: [
+                        { $gt: [{ $ifNull: ['$basePrice', 0] }, 0] },
+                        {
+                            $max: [
+                                MIN_RESULT_PRICE,
+                                {
+                                    $round: [
+                                        {
+                                            $multiply: [
+                                                '$basePrice',
+                                                { $subtract: [1, { $divide: [{ $ifNull: ['$discountPercent', 0] }, 100] }] }
+                                            ]
+                                        },
+                                        2
+                                    ]
+                                }
+                            ]
+                        },
+                        '$price'
+                    ]
                 }
             }
         }

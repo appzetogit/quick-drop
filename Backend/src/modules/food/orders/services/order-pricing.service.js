@@ -20,6 +20,7 @@ import {
     resolveItemPackagingAmount
 } from '../../shared/packagingCharge.js';
 import { assertFoodAvailableNow } from '../../shared/itemAvailability.js';
+import { computeSellingPrice } from '../../shared/itemDiscountPricing.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
 import { loadSellableAddons, normalizeRequestedAddonIds, resolveLineAddons } from '../../shared/orderAddons.js';
@@ -74,7 +75,11 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
     if (it?.variantId) {
       const variant = (menu.variants || []).find((v) => String(v._id) === String(it.variantId));
       if (!variant) throw new ValidationError(`Selected option for "${menu.name}" is not available`);
-      price = Number(variant.price);
+      // The item's discount is a single percentage that applies to whichever
+      // option is chosen, so a variant is charged from its own price less that
+      // discount. Taking variant.price raw would have billed the large size at
+      // full price while the menu advertised it as discounted.
+      price = computeSellingPrice(variant.price, menu.discountPercent) ?? Number(variant.price);
       variantName = variant.name;
     }
 

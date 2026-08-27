@@ -17,6 +17,15 @@ const foodSchema = new mongoose.Schema(
         name: { type: String, required: true, trim: true, index: true },
         description: { type: String, trim: true, default: '' },
         price: { type: Number, required: true, min: 0 },
+        /**
+         * Pre-discount sticker price; `price` stays the selling price.
+         * Mirrors the food module -- the admin item screens are shared between
+         * food and quick commerce, so both sides must accept these or a save
+         * made from the quick-commerce panel would silently drop them.
+         * See modules/food/shared/itemDiscountPricing.js.
+         */
+        basePrice: { type: Number, min: 0, default: null },
+        discountPercent: { type: Number, min: 0, max: 100, default: 0 },
         /** Compare-at / other-platform price for strikethrough UI. Existing items stay 0. */
         otherPrice: { type: Number, min: 0, default: 0 },
         variants: { type: [foodVariantSchema], default: [] },

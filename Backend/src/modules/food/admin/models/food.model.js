@@ -18,12 +18,29 @@ const foodSchema = new mongoose.Schema(
         description: { type: String, trim: true, default: '' },
         price: { type: Number, required: true, min: 0 },
         /**
+         * What the dish is worth before any discount -- the number struck
+         * through next to `price`.
+         *
+         * `price` remains the selling price and stays authoritative: order
+         * subtotals, commission and payouts all read it, so pricing an item
+         * this way does not change any of that code. Commission therefore
+         * lands on what the customer actually pays, not on this sticker.
+         *
+         * null means the row predates the field. Readers treat that as
+         * 'undiscounted, base equals price' rather than as 0, which would make
+         * every legacy item look like it was being given away.
+         * See shared/itemDiscountPricing.js.
+         */
+        basePrice: { type: Number, min: 0, default: null },
+        discountPercent: { type: Number, min: 0, max: 100, default: 0 },
+        /**
          * Printed maximum retail price, shown struck through next to `price`.
          * Selling above it is illegal, so it is a constraint the server enforces,
          * not a marketing number. null means "not recorded", which is what every
          * row that predates this field is -- treating absent as 0 would make them
-         * all look like they were being sold above MRP. See shared/mrpPricing.js.
+         * all look like they were being sold above MRP. Retired; see itemDiscountPricing.js.
          */
+        /** Retired in favour of basePrice/discountPercent; kept so existing rows are not erased. No longer written by the item forms. */
         mrp: { type: Number, min: 0, default: null },
         /**
          * Compare-at / other-platform price, struck through next to `price` when
@@ -32,6 +49,7 @@ const foodSchema = new mongoose.Schema(
          * price they typed, and refusing that would be nonsense. Existing items
          * stay 0, which the clients already read as "nothing to strike through".
          */
+        /** Retired alongside `mrp`; see above. */
         otherPrice: { type: Number, min: 0, default: 0 },
         variants: { type: [foodVariantSchema], default: [] },
         /**

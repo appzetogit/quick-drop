@@ -71,8 +71,10 @@ export default function ItemDetailsPage() {
   const [itemDescription, setItemDescription] = useState("")
   const [foodType, setFoodType] = useState("Non-Veg")
   const [basePrice, setBasePrice] = useState("")
-  const [mrp, setMrp] = useState("")
-  const [otherPrice, setOtherPrice] = useState("")
+  const [discountPercent, setDiscountPercent] = useState("0")
+  // The rate this restaurant is actually charged, so the form can show what a
+  // dish earns before it is saved rather than after the first payout.
+  const [commission, setCommission] = useState(null)
   const [addonIds, setAddonIds] = useState([])
   const [availableAddons, setAvailableAddons] = useState([])
   const [variants, setVariants] = useState([])
@@ -135,9 +137,14 @@ export default function ItemDetailsPage() {
     setFoodType(item.foodType === "Veg" ? "Veg" : "Non-Veg")
     const itemVariants = getFoodVariants(item)
     setVariants(itemVariants.map(createVariantDraft))
-    setBasePrice(itemVariants.length === 0 ? item.price?.toString() || "" : "")
-    setMrp(item.mrp != null ? String(item.mrp) : "")
-    setOtherPrice(item.otherPrice ? String(item.otherPrice) : "")
+    // Prefer the stored base price; rows predating it carry only `price`, which
+    // is the same number for an undiscounted item.
+    setBasePrice(
+      itemVariants.length === 0
+        ? String(item.basePrice ?? item.price ?? "")
+        : ""
+    )
+    setDiscountPercent(String(item.discountPercent ?? 0))
     setAddonIds(Array.isArray(item.addonIds) ? item.addonIds.map(String) : [])
     setPreparationTime(item.preparationTime || "")
     setMinOrderQuantity(String(item.minOrderQuantity ?? 1))
@@ -321,6 +328,89 @@ export default function ItemDetailsPage() {
       cancelled = true
     }
   }, [])
+
+  // The commission this restaurant is charged, for the take-home line under the
+  // price. A failure leaves it null and the preview says so rather than showing
+  // a confident wrong number -- guessing here would misstate earnings.
+  useEffect(() => {
+    let cancelled = false
+    const fetchCommission = async () => {
+      try {
+        const response = await restaurantAPI.getCommission()
+        const data = response?.data?.data || response?.data || null
+        if (!cancelled && data && data.commissionValue !== undefined) {
+          setCommission({
+            type: data.commissionType === 'flat' ? 'flat' : 'percentage',
+            value: Number(data.commissionValue) || 0,
+            label: data.commissionLabel || '',
+          })
+        }
+      } catch (error) {
+        debugError('Error fetching commission rate:', error)
+        if (!cancelled) setCommission(null)
+      }
+    }
+    fetchCommission()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const discountOutOfRange = (() => {
+    if (discountPercent === '') return false
+    const d = Number(discountPercent)
+    return !Number.isFinite(d) || d < 0 || d > 100
+  })()
+
+  /**
+   * What the customer pays and what the restaurant keeps, recomputed as they type.
+   *
+   * Mirrors the server's arithmetic in shared/itemDiscountPricing.js. It is a
+   * preview, not the authority -- the server recomputes on save -- but it has to
+   * agree with it, or the restaurant sets a price expecting one number and gets
+   * another.
+   */
+  const pricePreview = (() => {
+    const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100
+
+    const base =
+      variants.length > 0
+        ? variants.reduce((lo, v) => {
+            const value = Number(v.price)
+            return Number.isFinite(value) && value > 0 ? Math.min(lo, value) : lo
+          }, Infinity)
+        : Number(basePrice)
+
+    if (!Number.isFinite(base) || base <= 0) return null
+
+    const rawDiscount = Number(discountPercent)
+    const discount = Number.isFinite(rawDiscount) ? Math.min(Math.max(rawDiscount, 0), 100) : 0
+    const price = round2(base * (1 - discount / 100))
+    const hasDiscount = price < base && discount > 0
+
+    // Commission is charged on the selling price, matching the server: an order
+    // subtotal is built from what the customer pays.
+    const commissionAmount =
+      commission === null
+        ? 0
+        : commission.type === 'flat'
+          ? round2(Math.min(commission.value, price))
+          : round2((price * commission.value) / 100)
+
+    return {
+      price: round2(price),
+      strikePrice: hasDiscount ? round2(base) : null,
+      discountPercent: round2(discount),
+      commissionAmount,
+      takeHome: round2(price - commissionAmount),
+      commissionLabel:
+        commission === null
+          ? ''
+          : commission.type === 'flat'
+            ? `₹${commission.value}`
+            : `${commission.value}%`,
+    }
+  })()
 
   // Keep focused form fields visible above mobile keyboard
   useEffect(() => {
@@ -689,6 +779,15 @@ export default function ItemDetailsPage() {
         return
       }
 
+      // Guarded here as well as on the server: a discount outside 0-100 would be
+      // rejected on save, and the restaurant should see why before the round trip.
+      const parsedDiscount = Number(discountPercent === "" ? 0 : discountPercent)
+      if (!Number.isFinite(parsedDiscount) || parsedDiscount < 0 || parsedDiscount > 100) {
+        toast.error("Discount must be between 0 and 100")
+        setUploadingImages(false)
+        return
+      }
+
       const variantPayload = normalizedVariants.map((variant) => ({
         ...(variant.persistedId ? { _id: variant.persistedId } : {}),
         name: variant.name,
@@ -705,8 +804,7 @@ export default function ItemDetailsPage() {
           amount: Number(packagingAmount) || 0,
         },
         availabilitySchedule,
-        mrp: mrp === "" ? null : Number(mrp),
-        otherPrice: otherPrice === "" ? 0 : Number(otherPrice),
+        discountPercent: Number(discountPercent) || 0,
         addonIds,
       }
 
@@ -716,7 +814,10 @@ export default function ItemDetailsPage() {
         const createRes = await restaurantAPI.createFood({
           name: itemName.trim(),
           description: itemDescription.trim(),
-          price: hasVariants ? undefined : parsedBasePrice,
+          // The pre-discount figure. The server derives what the customer
+          // pays from this and discountPercent, and that derived value is what
+          // order totals and commission use.
+          basePrice: hasVariants ? undefined : parsedBasePrice,
           variants: variantPayload,
           image: allImageUrls.length > 0 ? allImageUrls[0] : "",
           foodType: foodType,
@@ -740,7 +841,10 @@ export default function ItemDetailsPage() {
         await restaurantAPI.updateFood(itemId, {
           name: itemName.trim(),
           description: itemDescription.trim(),
-          price: hasVariants ? undefined : parsedBasePrice,
+          // The pre-discount figure. The server derives what the customer
+          // pays from this and discountPercent, and that derived value is what
+          // order totals and commission use.
+          basePrice: hasVariants ? undefined : parsedBasePrice,
           variants: variantPayload,
           image: allImageUrls.length > 0 ? allImageUrls[0] : "",
           foodType: foodType,
@@ -1112,71 +1216,87 @@ export default function ItemDetailsPage() {
                 </div>
               )}
 
-              {/* Two prices, two different jobs:
-                    otherPrice — a rival's price, struck through when higher. Purely
-                                 presentational, so being cheaper than it is the point
-                                 and never an error.
-                    mrp        — the printed price. Selling above it is illegal, so the
-                                 server refuses it, variants included. */}
+              {/* Base price and the discount off it.
+                    The customer pays the discounted figure; the base is what gets
+                    struck through beside it. This replaced a pair of compare-at
+                    fields (a rival platform's price, and the printed MRP) that
+                    existed only to produce that strikethrough. */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">Other platform price (Optional)</label>
+                  <label className="block text-xs text-gray-600 mb-1">Discount (%)</label>
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₹</span>
                     <input
                       type="text"
                       inputMode="decimal"
-                      value={otherPrice}
+                      value={discountPercent}
                       onChange={(e) => {
-                        const value = e.target.value.replace(/[₹\s,]/g, '').replace(/[^0-9.]/g, '')
+                        const value = e.target.value.replace(/[%\s,]/g, '').replace(/[^0-9.]/g, '')
                         const parts = value.split('.')
-                        setOtherPrice(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value)
+                        setDiscountPercent(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value)
                       }}
-                      className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="0"
+                      className="w-full pl-4 pr-8 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">%</span>
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Shown with a strikethrough next to your selling price when higher.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-600 mb-1">MRP (Optional)</label>
-                  <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₹</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={mrp}
-                      onChange={(e) => {
-                        const value = e.target.value.replace(/[₹\s,]/g, '').replace(/[^0-9.]/g, '')
-                        const parts = value.split('.')
-                        setMrp(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value)
-                      }}
-                      className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  {(() => {
-                    const m = Number(mrp)
-                    if (!Number.isFinite(m) || m <= 0) {
-                      return <p className="mt-1 text-xs text-gray-500">Printed price on the pack. Selling above it is not allowed.</p>
-                    }
-                    const highestVariant = variants.reduce((hi, v) => Math.max(hi, Number(v.price) || 0), 0)
-                    const selling = variants.length > 0 ? highestVariant : Number(basePrice)
-                    if (Number.isFinite(selling) && selling > m) {
-                      return <p className="mt-1 text-xs text-red-600">Price cannot be above the MRP of {m}.</p>
-                    }
-                    if (Number.isFinite(selling) && selling > 0 && selling < m) {
-                      return (
-                        <p className="mt-1 text-xs text-green-700">
-                          Customers see {Math.floor(((m - selling) / m) * 100)}% off.
-                        </p>
-                      )
-                    }
-                    return <p className="mt-1 text-xs text-gray-500">Printed price on the pack.</p>
-                  })()}
+                  {discountOutOfRange ? (
+                    <p className="mt-1 text-xs text-red-600">Discount must be between 0 and 100.</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-gray-500">Leave at 0 to sell at the base price.</p>
+                  )}
                 </div>
               </div>
+
+              {/* What the two numbers above actually mean, in money. Shown for
+                  variants too, where the discount applies to whichever size the
+                  customer picks and this previews the cheapest one. */}
+              {pricePreview && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-xs text-gray-600">
+                      {variants.length > 0 ? 'Customer pays from' : 'Customer pays'}
+                    </span>
+                    <span className="text-lg font-semibold text-gray-900">
+                      {"₹"}{pricePreview.price}
+                    </span>
+                    {pricePreview.strikePrice !== null && (
+                      <>
+                        <span className="text-sm text-gray-500 line-through">
+                          {"₹"}{pricePreview.strikePrice}
+                        </span>
+                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                          {pricePreview.discountPercent}% OFF
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-baseline gap-2 border-t border-gray-200 pt-2">
+                    <span className="text-xs text-gray-600">You receive</span>
+                    {commission === null ? (
+                      <span className="text-sm text-gray-500">
+                        {"₹"}{pricePreview.price}{" "}
+                        <span className="text-xs">(commission unavailable)</span>
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-base font-semibold text-gray-900">
+                          {"₹"}{pricePreview.takeHome}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          after {pricePreview.commissionLabel} platform commission
+                          {" "}({"₹"}{pricePreview.commissionAmount})
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  <p className="mt-2 text-xs text-gray-500">
+                    Commission is charged on what the customer pays, not on the base price.
+                  </p>
+                </div>
+              )}
+
 
               <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-3">
                 <div className="flex items-center justify-between gap-3">

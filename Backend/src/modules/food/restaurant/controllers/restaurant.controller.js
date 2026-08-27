@@ -69,6 +69,44 @@ export const getCurrentRestaurantController = async (req, res, next) => {
     }
 };
 
+/**
+ * The commission rate that currently applies to this restaurant.
+ *
+ * Exposed so the item form can show what a dish actually earns before the
+ * restaurant saves a price, rather than making them discover it on a payout.
+ * Resolved through the same path an order uses -- including any dated override
+ * in effect right now -- so the number shown is the number that would be
+ * charged, not an approximation of it.
+ *
+ * The rate is returned rather than a computed amount: the form recalculates on
+ * every keystroke, and a round trip per character would be both slow and
+ * pointless when the arithmetic is a multiplication.
+ */
+export const getRestaurantCommissionRateController = async (req, res, next) => {
+    try {
+        const restaurantId = req.user?.userId;
+        const { getRestaurantCommissionSnapshot } = await import(
+            '../../orders/services/foodTransaction.service.js'
+        );
+
+        // A synthetic order of 100 so a percentage rate reads directly, and a
+        // flat rate comes back as its own amount either way.
+        const snapshot = await getRestaurantCommissionSnapshot({
+            restaurantId,
+            pricing: { subtotal: 100 },
+        });
+
+        return sendResponse(res, 200, 'Commission fetched successfully', {
+            commissionType: snapshot.commissionType,
+            commissionValue: snapshot.commissionValue,
+            commissionLabel: snapshot.commissionLabel || '',
+            commissionSource: snapshot.commissionSource,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const updateRestaurantProfileController = async (req, res, next) => {
     try {
         const restaurantId = req.user?.userId;

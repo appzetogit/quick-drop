@@ -3,7 +3,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
 import { describeTodaysWindow, isFoodAvailableNow } from '../../shared/itemAvailability.js';
-import { computeMrpDiscount, resolveComparePrice } from '../../shared/mrpPricing.js';
+import { resolveItemDisplayPricing } from '../../shared/itemDiscountPricing.js';
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -87,14 +87,11 @@ export async function listPublicFoods(query = {}) {
             name: food.name,
             description: food.description || '',
             price,
-            // Printed MRP and the discount it implies, so the app can strike
-            // through a price and show "N% OFF" without deriving the rule itself.
-            // hasDiscount is false whenever there is nothing honest to show.
-            ...computeMrpDiscount(price, food.mrp),
-            // Compare-at price against other platforms. The food module has no
-            // such field -- MRP above is a different thing -- so it stays 0, sent
-            // rather than omitted so the client reads the same shape it gets from /qc.
-            otherPrice: resolveComparePrice(price, food.otherPrice),
+            // Base price and the discount off it, so the app can strike through
+            // a price and show "N% OFF" without deriving the rule itself.
+            // strikePrice is null whenever there is nothing honest to show, so the
+            // client can render it unconditionally instead of guessing.
+            ...resolveItemDisplayPricing(food),
             // The add-ons this dish offers. The order API re-checks the list, so
             // this is for showing the right picker, not for deciding what is allowed.
             addonIds: (food.addonIds || []).map((x) => String(x)),

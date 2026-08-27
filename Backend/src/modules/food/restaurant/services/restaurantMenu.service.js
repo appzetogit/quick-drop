@@ -8,7 +8,7 @@ import { formatOrderQuantityLimits } from '../../shared/orderQuantityRules.js';
 import { resolveItemPackagingAmount } from '../../shared/packagingCharge.js';
 import { isFoodAvailableNow } from '../../shared/itemAvailability.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
-import { computeMrpDiscount } from '../../shared/mrpPricing.js';
+import { resolveItemDisplayPricing } from '../../shared/itemDiscountPricing.js';
 
 const buildMenuFromFoods = async (foods = []) => {
     // Admin-configurable platform cap, so the limits the seller UI shows match
@@ -62,8 +62,10 @@ const buildMenuFromFoods = async (foods = []) => {
             description: food.description || '',
             price: getFoodDisplayPrice(food),
             // MRP + the discount it implies, so the seller sees what the customer sees.
-            ...computeMrpDiscount(getFoodDisplayPrice(food), food.mrp),
-            otherPrice: Number(food.otherPrice) || 0,
+            // Base price, discount and the strike price to render. The item form
+            // sends these, so they have to come back or the fields hydrate blank and
+            // the next save writes the blanks over what the restaurant set.
+            ...resolveItemDisplayPricing({ ...food, price: getFoodDisplayPrice(food) }),
             // Which add-ons this dish offers, so the editor can show the picker
             // pre-filled and the app can offer only the relevant ones.
             addonIds: (food.addonIds || []).map((x) => String(x)),

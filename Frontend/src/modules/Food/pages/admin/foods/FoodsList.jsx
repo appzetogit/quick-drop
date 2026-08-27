@@ -18,8 +18,8 @@ const createFoodForm = () => ({
   categoryName: "",
   name: "",
   price: "",
-  mrp: "",
-  otherPrice: "",
+  basePrice: "",
+  discountPercent: "0",
   variants: [],
   description: "",
   image: "",
@@ -137,8 +137,8 @@ export default function FoodsList() {
               categoryId: String(f.categoryId || ""),
               categoryName: f.categoryName || "",
               price: getFoodDisplayPrice(f),
-              mrp: f.mrp ?? null,
-              otherPrice: f.otherPrice ?? 0,
+              basePrice: f.basePrice ?? f.price ?? 0,
+              discountPercent: f.discountPercent ?? 0,
               variants: getFoodVariants(f),
               foodType: f.foodType || "Non-Veg",
               approvalStatus: f.approvalStatus || "approved",
@@ -279,8 +279,10 @@ export default function FoodsList() {
       categoryName: String(food.categoryName || ""),
       name: String(food.name || ""),
       price: String(food.price || ""),
-      mrp: food.mrp != null ? String(food.mrp) : "",
-      otherPrice: food.otherPrice ? String(food.otherPrice) : "",
+      // Rows written before basePrice existed carry only `price`, which is the
+      // same figure for an undiscounted item.
+      basePrice: String(food.basePrice ?? food.price ?? ""),
+      discountPercent: String(food.discountPercent ?? 0),
       variants: getFoodVariants(food).map(createVariantDraft),
       description: String(food.description || ""),
       image: String(food.image || ""),
@@ -374,7 +376,7 @@ export default function FoodsList() {
       .filter((variant) => variant.id || variant.name || variant.price)
 
     const hasVariants = normalizedVariants.length > 0
-    const parsedPrice = Number(foodForm.price)
+    const parsedPrice = Number(foodForm.basePrice)
 
     if (normalizedVariants.some((variant) => !variant.name)) {
       toast.error("Each variant must have a name")
@@ -415,9 +417,8 @@ export default function FoodsList() {
         categoryId: foodForm.categoryId || undefined,
         categoryName: String(foodForm.categoryName || "").trim(),
         name: foodForm.name.trim(),
-        price: hasVariants ? undefined : parsedPrice,
-        mrp: foodForm.mrp === "" ? null : Number(foodForm.mrp),
-        otherPrice: foodForm.otherPrice === "" ? 0 : Number(foodForm.otherPrice),
+        basePrice: hasVariants ? undefined : parsedPrice,
+        discountPercent: Number(foodForm.discountPercent) || 0,
         variants: normalizedVariants.map((variant) => ({
           ...(variant.id && !variant.id.startsWith("variant-") ? { _id: variant.id } : {}),
           name: variant.name,
@@ -865,8 +866,8 @@ export default function FoodsList() {
                   type="number"
                   min="0"
                   step="0.01"
-                  value={foodForm.price}
-                  onChange={(e) => setFoodForm((prev) => ({ ...prev, price: e.target.value }))}
+                  value={foodForm.basePrice}
+                  onChange={(e) => setFoodForm((prev) => ({ ...prev, basePrice: e.target.value }))}
                   disabled={(foodForm.variants || []).length > 0}
                   className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                 />
@@ -874,28 +875,39 @@ export default function FoodsList() {
                   <p className="mt-1 text-xs text-slate-500">Variants are active, so customers will see the lowest variant price as the starting price.</p>
                 ) : null}
               </div>
+              {/* Base price and the discount off it. The customer pays the
+                  discounted figure; the base is struck through beside it. This
+                  replaced a rival-platform price and an MRP that existed only to
+                  produce that strikethrough. */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Other platform price (optional)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Discount (%)</label>
                 <input
                   type="number"
                   min="0"
+                  max="100"
                   step="0.01"
-                  value={foodForm.otherPrice}
-                  onChange={(e) => setFoodForm((prev) => ({ ...prev, otherPrice: e.target.value }))}
+                  value={foodForm.discountPercent}
+                  onChange={(e) => setFoodForm((prev) => ({ ...prev, discountPercent: e.target.value }))}
+                  placeholder="0"
                   className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
                 />
-                <p className="mt-1 mb-3 text-xs text-slate-500">Shown with a strikethrough next to the selling price when higher.</p>
-                <label className="block text-sm font-medium text-slate-700 mb-1">MRP (optional)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={foodForm.mrp}
-                  onChange={(e) => setFoodForm((prev) => ({ ...prev, mrp: e.target.value }))}
-                  placeholder="Printed price"
-                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
-                />
-                <p className="mt-1 text-xs text-slate-500">Shown struck through next to the selling price. Selling above MRP is not allowed.</p>
+                {(() => {
+                  const base = Number(foodForm.basePrice)
+                  const d = Number(foodForm.discountPercent)
+                  if (!Number.isFinite(base) || base <= 0) {
+                    return <p className="mt-1 text-xs text-slate-500">Leave at 0 to sell at the base price.</p>
+                  }
+                  if (!Number.isFinite(d) || d < 0 || d > 100) {
+                    return <p className="mt-1 text-xs text-red-600">Discount must be between 0 and 100.</p>
+                  }
+                  const selling = Math.round((base * (1 - d / 100) + Number.EPSILON) * 100) / 100
+                  return (
+                    <p className="mt-1 text-xs text-slate-600">
+                      Customer pays <span className="font-semibold">{"₹"}{selling}</span>
+                      {d > 0 ? <> (was {"₹"}{base}, {d}% off)</> : null}
+                    </p>
+                  )
+                })()}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Food Type</label>

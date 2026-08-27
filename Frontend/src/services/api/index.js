@@ -1402,6 +1402,14 @@ export const restaurantAPI = {
       contextModule: "restaurant",
     });
   },
+  /**
+   * The commission rate currently charged to this restaurant, so the item form
+   * can show what a dish earns before it is saved.
+   */
+  getCommission: () =>
+    apiClient.get("/food/restaurant/commission", {
+      contextModule: "restaurant",
+    }),
   /** Add-ons (restaurant) - approval handled by admin */
   getAddons: (params = {}) =>
     apiClient.get("/food/restaurant/item-extras", {

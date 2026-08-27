@@ -21,7 +21,7 @@ import {
 import { normalizeItemPackagingChargeInput } from '../../shared/packagingCharge.js';
 import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
-import { assertPriceWithinMrp, normalizeMrpInput, normalizeOtherPriceInput } from '../../shared/mrpPricing.js';
+import { normalizeDiscountPricingInput } from '../../shared/itemDiscountPricing.js';
 import { FoodAddon } from '../models/foodAddon.model.js';
 import { normalizeAddonIdsInput } from '../../shared/orderAddons.js';
 
@@ -43,20 +43,48 @@ const normalizeFoodType = (v) => {
 const normalizeRecommendedFlag = (value) =>
     value === true || value === 1 || String(value).trim().toLowerCase() === 'true';
 
+/**
+ * Resolve what the item costs, from base price and discount.
+ *
+ * `price` is always the selling price -- what a customer pays and what order
+ * subtotals, commission and payouts are computed from. `basePrice` is the
+ * pre-discount figure shown struck through beside it.
+ *
+ * With variants the discount is still a single item-level percentage, applied
+ * to each variant's own price at selling time (see order-pricing.service.js).
+ * The item's own price is the cheapest variant after discount, which is the
+ * "from" price a menu listing shows.
+ */
 const getCreateFoodPricing = (body = {}) => {
     const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
+
     if (variants.length > 0) {
+        const variantBase = getFoodDisplayPrice({ variants });
+        const pricing = normalizeDiscountPricingInput(
+            { basePrice: variantBase, discountPercent: body.discountPercent },
+            {},
+        ) || { basePrice: variantBase, discountPercent: 0, price: variantBase };
         return {
-            price: getFoodDisplayPrice({ variants }),
-            variants
+            price: pricing.price,
+            basePrice: pricing.basePrice,
+            discountPercent: pricing.discountPercent,
+            variants,
         };
     }
 
-    const price = Number(body.price);
-    if (!Number.isFinite(price) || price < 0) throw new ValidationError('Price is invalid');
+    let pricing;
+    try {
+        pricing = normalizeDiscountPricingInput(body, {});
+    } catch (error) {
+        throw new ValidationError(error.message);
+    }
+    if (!pricing) throw new ValidationError('Price is invalid');
+
     return {
-        price,
-        variants: []
+        price: pricing.price,
+        basePrice: pricing.basePrice,
+        discountPercent: pricing.discountPercent,
+        variants: [],
     };
 };
 
@@ -65,30 +93,81 @@ const getUpdatedFoodPricing = (existing = {}, body = {}) => {
     const existingHasVariants = hasFoodVariants(existing);
     const update = {};
 
+    // The discount is item-level, so it survives a variant edit and applies to
+    // whichever prices end up stored. Resolved against `existing` so a PATCH
+    // touching only one of base/discount keeps the other as the restaurant set it.
+    const applyPricing = (bodyPart) => {
+        try {
+            return normalizeDiscountPricingInput(bodyPart, existing);
+        } catch (error) {
+            throw new ValidationError(error.message);
+        }
+    };
+
     if (variantsTouched) {
         const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
         update.variants = variants;
 
         if (variants.length > 0) {
-            update.price = getFoodDisplayPrice({ variants });
+            // With variants the item's own price is the cheapest option after
+            // discount -- the "from" price on a listing. Each variant is
+            // discounted individually at selling time.
+            const pricing = applyPricing({
+                basePrice: getFoodDisplayPrice({ variants }),
+                discountPercent: body.discountPercent,
+            });
+            if (pricing) {
+                update.price = pricing.price;
+                update.basePrice = pricing.basePrice;
+                update.discountPercent = pricing.discountPercent;
+            } else {
+                update.price = getFoodDisplayPrice({ variants });
+            }
             return update;
         }
 
-        const nextBasePrice = body.price !== undefined ? Number(body.price) : Number(existingHasVariants ? NaN : existing.price);
-        if (!Number.isFinite(nextBasePrice) || nextBasePrice < 0) {
+        const fallbackBase = existingHasVariants ? undefined : existing.price;
+        const pricing = applyPricing({
+            basePrice: body.basePrice !== undefined ? body.basePrice
+                : body.price !== undefined ? body.price
+                : fallbackBase,
+            discountPercent: body.discountPercent,
+        });
+        if (!pricing || pricing.basePrice === null) {
             throw new ValidationError('Base price is required when variants are removed');
         }
-        update.price = nextBasePrice;
+        update.price = pricing.price;
+        update.basePrice = pricing.basePrice;
+        update.discountPercent = pricing.discountPercent;
         return update;
     }
 
-    if (body.price !== undefined) {
-        if (existingHasVariants) {
+    if (body.price !== undefined || body.basePrice !== undefined || body.discountPercent !== undefined) {
+        if (existingHasVariants && (body.price !== undefined || body.basePrice !== undefined)) {
             throw new ValidationError('Update variants instead of base price for foods with variants');
         }
-        const price = Number(body.price);
-        if (!Number.isFinite(price) || price < 0) throw new ValidationError('Price is invalid');
-        update.price = price;
+
+        if (existingHasVariants) {
+            // Only the discount changed; re-derive the "from" price from the
+            // variants already stored.
+            const pricing = applyPricing({
+                basePrice: getFoodDisplayPrice({ variants: existing.variants }),
+                discountPercent: body.discountPercent,
+            });
+            if (pricing) {
+                update.price = pricing.price;
+                update.basePrice = pricing.basePrice;
+                update.discountPercent = pricing.discountPercent;
+            }
+            return update;
+        }
+
+        const pricing = applyPricing(body);
+        if (pricing) {
+            update.price = pricing.price;
+            update.basePrice = pricing.basePrice;
+            update.discountPercent = pricing.discountPercent;
+        }
     }
 
     return update;
@@ -196,7 +275,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     if (!name) throw new ValidationError('Item name is required');
     if (name.length > 200) throw new ValidationError('Item name is too long');
 
-    const { price, variants } = getCreateFoodPricing(body);
+    const { price, basePrice, discountPercent, variants } = getCreateFoodPricing(body);
 
     const description = toStr(body.description);
     const image = toStr(body.image);
@@ -211,12 +290,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     assertOrderQuantityRange(quantityLimits, { label: name });
     const packagingCharge = normalizeItemPackagingChargeInput(body.packagingCharge, { label: name });
     const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
-    const mrpUpdate = normalizeMrpInput(body);
-    const otherPriceUpdate = normalizeOtherPriceInput(body);
     const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
-    // Selling above the printed MRP is illegal; variants are checked too, since a
-    // dish can be under MRP in its small size and over it in its large one.
-    assertPriceWithinMrp(price, mrpUpdate?.mrp, variants);
 
     const doc = await FoodItem.create({
         restaurantId,
@@ -225,6 +299,8 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         name,
         description,
         price,
+        basePrice,
+        discountPercent,
         variants,
         image,
         foodType,
@@ -235,8 +311,6 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         ...quantityLimits,
         ...(packagingCharge ? { packagingCharge } : {}),
         ...(availabilitySchedule ? { availabilitySchedule } : {}),
-        ...(mrpUpdate || {}),
-        ...(otherPriceUpdate || {}),
         ...(addonUpdate || {}),
         approvalStatus: 'pending',
         requestedAt: new Date()
@@ -305,20 +379,8 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
         update.availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
     }
 
-    // MRP, checked against the values that will actually be stored: a partial
-    // update that raises only the price must still be measured against the MRP
-    // already on record, and one that lowers only the MRP against the stored price.
-    const mrpUpdate = normalizeMrpInput(body);
-    if (mrpUpdate) update.mrp = mrpUpdate.mrp;
-    const otherPriceUpdate = normalizeOtherPriceInput(body);
-    if (otherPriceUpdate) update.otherPrice = otherPriceUpdate.otherPrice;
     const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
     if (addonUpdate) update.addonIds = addonUpdate.addonIds;
-    assertPriceWithinMrp(
-        update.price !== undefined ? update.price : existing.price,
-        mrpUpdate ? mrpUpdate.mrp : existing.mrp,
-        update.variants !== undefined ? update.variants : existing.variants
-    );
 
     const itemLabel = update.name || existing.name || 'This item';
     const quantityLimits = normalizeOrderQuantityInput(body, { label: itemLabel, ceiling: await getOrderQuantityCeiling() });

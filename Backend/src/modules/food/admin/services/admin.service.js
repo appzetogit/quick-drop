@@ -15,7 +15,7 @@ import { invalidateOrderQuantityCeilingCache } from '../../shared/orderQuantityC
 import { FoodCommissionSchedule } from '../models/commissionSchedule.model.js';
 import { normalizeScheduleInput } from '../../shared/commissionSchedule.js';
 import { invalidateCommissionScheduleCache } from '../../orders/services/foodTransaction.service.js';
-import { assertPriceWithinMrp, normalizeMrpInput, normalizeOtherPriceInput } from '../../shared/mrpPricing.js';
+import { resolveItemPricingForWrite } from '../../shared/itemDiscountPricing.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
 import { FoodDeliveryCommissionRule } from '../models/deliveryCommissionRule.model.js';
@@ -3126,12 +3126,12 @@ export async function getFoods(query) {
         description: f.description || '',
         price: getFoodDisplayPrice(f),
         // Everything the admin food form SENDS has to come back here too.
-        // These three were written by the form but not returned, so the fields
+        // These were written by the form but not returned, so the fields
         // rendered blank on every edit and the next save cleared whatever the
         // restaurant had set -- a silent round-trip that destroyed data rather
         // than merely failing to show it.
-        mrp: f.mrp ?? null,
-        otherPrice: Number(f.otherPrice) || 0,
+        basePrice: f.basePrice ?? getFoodDisplayPrice(f),
+        discountPercent: Number(f.discountPercent) || 0,
         availabilitySchedule: f.availabilitySchedule || null,
         variants: serializeFoodVariants(f.variants),
         variations: serializeFoodVariants(f.variants),
@@ -3187,18 +3187,27 @@ const resolveAdminFoodCategory = async ({ categoryId, categoryName, foodType, pu
 
 const getAdminFoodCreatePricing = (body = {}) => {
     const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
-    if (variants.length > 0) {
-        return {
-            price: getFoodDisplayPrice({ variants }),
-            variants
-        };
-    }
+    const hasVariants = variants.length > 0;
 
-    const price = Number(body.price);
-    if (!Number.isFinite(price) || price <= 0) throw new ValidationError('Price must be greater than 0');
+    let pricing;
+    try {
+        pricing = resolveItemPricingForWrite({
+            body,
+            existing: {},
+            hasVariants,
+            variantPrice: hasVariants ? getFoodDisplayPrice({ variants }) : null,
+            requirePositive: true,
+        });
+    } catch (error) {
+        throw new ValidationError(error.message);
+    }
+    if (!pricing) throw new ValidationError('Price must be greater than 0');
+
     return {
-        price,
-        variants: []
+        price: pricing.price,
+        basePrice: pricing.basePrice,
+        discountPercent: pricing.discountPercent,
+        variants,
     };
 };
 
@@ -3207,30 +3216,56 @@ const getAdminFoodUpdatedPricing = (existing = {}, body = {}) => {
     const existingHasVariants = hasFoodVariants(existing);
     const update = {};
 
+    const applyPricing = (bodyPart, opts = {}) => {
+        try {
+            return resolveItemPricingForWrite({ body: bodyPart, existing, requirePositive: true, ...opts });
+        } catch (error) {
+            throw new ValidationError(error.message);
+        }
+    };
+    const assign = (pricing) => {
+        if (!pricing) return;
+        update.price = pricing.price;
+        update.basePrice = pricing.basePrice;
+        update.discountPercent = pricing.discountPercent;
+    };
+
     if (variantsTouched) {
         const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
         update.variants = variants;
 
         if (variants.length > 0) {
-            update.price = getFoodDisplayPrice({ variants });
+            assign(applyPricing(body, { hasVariants: true, variantPrice: getFoodDisplayPrice({ variants }) }));
+            if (update.price === undefined) update.price = getFoodDisplayPrice({ variants });
             return update;
         }
 
-        const nextBasePrice = body.price !== undefined ? Number(body.price) : Number(existingHasVariants ? NaN : existing.price);
-        if (!Number.isFinite(nextBasePrice) || nextBasePrice <= 0) {
+        const fallbackBase = existingHasVariants ? undefined : existing.price;
+        const pricing = applyPricing({
+            basePrice: body.basePrice !== undefined ? body.basePrice
+                : body.price !== undefined ? body.price
+                : fallbackBase,
+            discountPercent: body.discountPercent,
+        });
+        if (!pricing) {
             throw new ValidationError('Base price must be greater than 0 when variants are removed');
         }
-        update.price = nextBasePrice;
+        assign(pricing);
         return update;
     }
 
-    if (body.price !== undefined) {
-        if (existingHasVariants) {
+    if (body.price !== undefined || body.basePrice !== undefined || body.discountPercent !== undefined) {
+        if (existingHasVariants && (body.price !== undefined || body.basePrice !== undefined)) {
             throw new ValidationError('Update variants instead of base price for foods with variants');
         }
-        const price = Number(body.price);
-        if (!Number.isFinite(price) || price <= 0) throw new ValidationError('Price must be greater than 0');
-        update.price = price;
+
+        if (existingHasVariants) {
+            // Only the discount moved; re-derive the "from" price from stored variants.
+            assign(applyPricing(body, { hasVariants: true, variantPrice: getFoodDisplayPrice({ variants: existing.variants }) }));
+            return update;
+        }
+
+        assign(applyPricing(body));
     }
 
     return update;
@@ -3253,7 +3288,7 @@ export async function createFood(body) {
     if (restaurant.pureVegRestaurant === true && foodType !== 'Veg') {
         throw new ValidationError('Pure veg restaurants can only use veg foods');
     }
-    const { price, variants } = getAdminFoodCreatePricing(body);
+    const { price, basePrice, discountPercent, variants } = getAdminFoodCreatePricing(body);
 
     let categoryName = typeof body.categoryName === 'string' ? body.categoryName.trim() : '';
     if (!categoryName && typeof body.category === 'string') categoryName = body.category.trim();
@@ -3265,11 +3300,6 @@ export async function createFood(body) {
     });
 
     const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
-    const mrpUpdate = normalizeMrpInput(body);
-    const otherPriceUpdate = normalizeOtherPriceInput(body);
-    // Selling above the printed MRP is illegal; variants are checked too, since a
-    // dish can be under MRP in its small size and over it in its large one.
-    assertPriceWithinMrp(price, mrpUpdate?.mrp, variants);
 
     const doc = new FoodItem({
         restaurantId,
@@ -3278,14 +3308,14 @@ export async function createFood(body) {
         name,
         description: typeof body.description === 'string' ? body.description.trim() : '',
         price,
+        basePrice,
+        discountPercent,
         variants,
         image: typeof body.image === 'string' ? body.image.trim() : '',
         foodType,
         isAvailable: body.isAvailable !== false,
         preparationTime: typeof body.preparationTime === 'string' ? body.preparationTime.trim() : '',
         ...(availabilitySchedule ? { availabilitySchedule } : {}),
-        ...(mrpUpdate || {}),
-        ...(otherPriceUpdate || {}),
         approvalStatus: 'approved'
     });
     await doc.save();
@@ -3310,6 +3340,8 @@ export async function updateFood(id, body) {
     }
     const pricingUpdate = getAdminFoodUpdatedPricing(doc.toObject(), body);
     if (pricingUpdate.price !== undefined) doc.price = pricingUpdate.price;
+    if (pricingUpdate.basePrice !== undefined) doc.basePrice = pricingUpdate.basePrice;
+    if (pricingUpdate.discountPercent !== undefined) doc.discountPercent = pricingUpdate.discountPercent;
     if (pricingUpdate.variants !== undefined) doc.variants = pricingUpdate.variants;
     if (body.image !== undefined) doc.image = String(body.image || '').trim();
     if (body.foodType !== undefined) doc.foodType = targetFoodType;
@@ -3318,13 +3350,7 @@ export async function updateFood(id, body) {
     if (body.availabilitySchedule !== undefined) {
         doc.availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
     }
-    // Checked against the document as it will be saved, so a partial update that
-    // touches only the price is still measured against the stored MRP.
-    const mrpUpdate = normalizeMrpInput(body);
-    if (mrpUpdate) doc.mrp = mrpUpdate.mrp;
-    const otherPriceUpdate = normalizeOtherPriceInput(body);
-    if (otherPriceUpdate) doc.otherPrice = otherPriceUpdate.otherPrice;
-    assertPriceWithinMrp(doc.price, doc.mrp, doc.variants);
+
     if (body.categoryId !== undefined || body.categoryName !== undefined || body.category !== undefined || body.foodType !== undefined) {
         const nextCategoryName = body.categoryName !== undefined
             ? String(body.categoryName || '').trim()
