@@ -114,26 +114,6 @@ function RestaurantDetailsContent() {
   const [loadingReviews, setLoadingReviews] = useState(true)
   const dishCardRefs = useRef({})
 
-  // The restaurant sellable add-ons, fetched once the restaurant is known.
-  // Failure leaves the pool empty, which makes the picker show nothing rather
-  // than blocking the dish from being added.
-  useEffect(() => {
-    const rid = restaurant?.restaurantId || restaurant?._id || restaurant?.id
-    if (!rid) return
-    let cancelled = false
-    restaurantAPI
-      .getAddonsByRestaurantId(rid)
-      .then((res) => {
-        const list = res?.data?.data?.addons || res?.data?.addons || []
-        if (!cancelled) setRestaurantAddons(Array.isArray(list) ? list : [])
-      })
-      .catch(() => {
-        if (!cancelled) setRestaurantAddons([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [restaurant])
 
   const getLineItemIdForDish = (item, variant = null, addonIds = []) =>
     buildCartLineId(item?.id || item?._id || "", variant?.id || variant?._id || "", addonIds)
@@ -193,6 +173,31 @@ function RestaurantDetailsContent() {
 
   // Restaurant data state
   const [restaurant, setRestaurant] = useState(null)
+
+  // Placed after the state it reads. It used to sit above that declaration,
+  // and the [restaurant] dependency is evaluated during render -- so the very
+  // first render threw "Cannot access before initialization" and the whole
+  // restaurant page died behind its error boundary.
+  // The restaurant sellable add-ons, fetched once the restaurant is known.
+  // Failure leaves the pool empty, which makes the picker show nothing rather
+  // than blocking the dish from being added.
+  useEffect(() => {
+    const rid = restaurant?.restaurantId || restaurant?._id || restaurant?.id
+    if (!rid) return
+    let cancelled = false
+    restaurantAPI
+      .getAddonsByRestaurantId(rid)
+      .then((res) => {
+        const list = res?.data?.data?.addons || res?.data?.addons || []
+        if (!cancelled) setRestaurantAddons(Array.isArray(list) ? list : [])
+      })
+      .catch(() => {
+        if (!cancelled) setRestaurantAddons([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [restaurant])
   const [loadingRestaurant, setLoadingRestaurant] = useState(true)
   const [restaurantError, setRestaurantError] = useState(null)
   const fetchedRestaurantRef = useRef(false) // Track if restaurant has been fetched for current slug
