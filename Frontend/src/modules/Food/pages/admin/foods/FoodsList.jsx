@@ -19,7 +19,7 @@ const createFoodForm = () => ({
   name: "",
   price: "",
   basePrice: "",
-  discountPercent: "0",
+  otherPrice: "",
   variants: [],
   description: "",
   image: "",
@@ -138,7 +138,7 @@ export default function FoodsList() {
               categoryName: f.categoryName || "",
               price: getFoodDisplayPrice(f),
               basePrice: f.basePrice ?? f.price ?? 0,
-              discountPercent: f.discountPercent ?? 0,
+              otherPrice: f.otherPrice ?? 0,
               variants: getFoodVariants(f),
               foodType: f.foodType || "Non-Veg",
               approvalStatus: f.approvalStatus || "approved",
@@ -282,7 +282,7 @@ export default function FoodsList() {
       // Rows written before basePrice existed carry only `price`, which is the
       // same figure for an undiscounted item.
       basePrice: String(food.basePrice ?? food.price ?? ""),
-      discountPercent: String(food.discountPercent ?? 0),
+      otherPrice: food.otherPrice ? String(food.otherPrice) : "",
       variants: getFoodVariants(food).map(createVariantDraft),
       description: String(food.description || ""),
       image: String(food.image || ""),
@@ -418,7 +418,9 @@ export default function FoodsList() {
         categoryName: String(foodForm.categoryName || "").trim(),
         name: foodForm.name.trim(),
         basePrice: hasVariants ? undefined : parsedPrice,
-        discountPercent: Number(foodForm.discountPercent) || 0,
+        // Base price is charged as typed; the comparison is presentational.
+        discountPercent: 0,
+        otherPrice: foodForm.otherPrice === "" ? 0 : Number(foodForm.otherPrice),
         variants: normalizedVariants.map((variant) => ({
           ...(variant.id && !variant.id.startsWith("variant-") ? { _id: variant.id } : {}),
           name: variant.name,
@@ -875,36 +877,34 @@ export default function FoodsList() {
                   <p className="mt-1 text-xs text-slate-500">Variants are active, so customers will see the lowest variant price as the starting price.</p>
                 ) : null}
               </div>
-              {/* Base price and the discount off it. The customer pays the
-                  discounted figure; the base is struck through beside it. This
-                  replaced a rival-platform price and an MRP that existed only to
-                  produce that strikethrough. */}
+              {/* Comparison figure only. Customers are charged the base price above;
+                  this is struck through beside it, and a global price adjustment
+                  moves this and nothing else. */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Discount (%)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Other platform price (optional)</label>
                 <input
                   type="number"
                   min="0"
-                  max="100"
                   step="0.01"
-                  value={foodForm.discountPercent}
-                  onChange={(e) => setFoodForm((prev) => ({ ...prev, discountPercent: e.target.value }))}
-                  placeholder="0"
+                  value={foodForm.otherPrice}
+                  onChange={(e) => setFoodForm((prev) => ({ ...prev, otherPrice: e.target.value }))}
+                  placeholder="What other apps charge"
                   className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
                 />
                 {(() => {
                   const base = Number(foodForm.basePrice)
-                  const d = Number(foodForm.discountPercent)
+                  const other = Number(foodForm.otherPrice)
                   if (!Number.isFinite(base) || base <= 0) {
-                    return <p className="mt-1 text-xs text-slate-500">Leave at 0 to sell at the base price.</p>
+                    return <p className="mt-1 text-xs text-slate-500">Shown struck through beside your price.</p>
                   }
-                  if (!Number.isFinite(d) || d < 0 || d > 100) {
-                    return <p className="mt-1 text-xs text-red-600">Discount must be between 0 and 100.</p>
+                  if (!Number.isFinite(other) || other <= base) {
+                    return <p className="mt-1 text-xs text-slate-500">Set it above your price to show a comparison.</p>
                   }
-                  const selling = Math.round((base * (1 - d / 100) + Number.EPSILON) * 100) / 100
+                  const off = Math.round(((other - base) / other) * 100)
                   return (
                     <p className="mt-1 text-xs text-slate-600">
-                      Customer pays <span className="font-semibold">{"₹"}{selling}</span>
-                      {d > 0 ? <> (was {"₹"}{base}, {d}% off)</> : null}
+                      Customers see <span className="line-through text-slate-400">{"₹"}{other}</span>{" "}
+                      <span className="font-semibold">{"₹"}{base}</span> ({off}% OFF)
                     </p>
                   )
                 })()}

@@ -74,7 +74,6 @@ export default function ItemDetailsPage() {
   const [itemDescription, setItemDescription] = useState("")
   const [foodType, setFoodType] = useState("Non-Veg")
   const [basePrice, setBasePrice] = useState("")
-  const [discountPercent, setDiscountPercent] = useState("0")
   // The struck-through "elsewhere" figure. Purely presentational -- customers
   // are charged the base price less the discount, never this.
   const [otherPrice, setOtherPrice] = useState("")
@@ -150,7 +149,6 @@ export default function ItemDetailsPage() {
         ? String(item.basePrice ?? item.price ?? "")
         : ""
     )
-    setDiscountPercent(String(item.discountPercent ?? 0))
     setOtherPrice(item.otherPrice ? String(item.otherPrice) : "")
     setAddonIds(Array.isArray(item.addonIds) ? item.addonIds.map(String) : [])
     setPreparationTime(item.preparationTime || "")
@@ -363,11 +361,6 @@ export default function ItemDetailsPage() {
     }
   }, [])
 
-  const discountOutOfRange = (() => {
-    if (discountPercent === '') return false
-    const d = Number(discountPercent)
-    return !Number.isFinite(d) || d < 0 || d > 100
-  })()
 
   /**
    * What the customer pays and what the restaurant keeps, recomputed as they type.
@@ -377,10 +370,18 @@ export default function ItemDetailsPage() {
    * agree with it, or the restaurant sets a price expecting one number and gets
    * another.
    */
+  /**
+   * What the customer will see, and what the restaurant will keep.
+   *
+   * Mirrors the server: the base price is charged as typed, and the
+   * other-platform figure is struck through beside it only when it is genuinely
+   * higher -- striking a smaller number through would advertise a saving that is
+   * not one. A preview; the server recomputes on save.
+   */
   const pricePreview = (() => {
     const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100
 
-    const base =
+    const price =
       variants.length > 0
         ? variants.reduce((lo, v) => {
             const value = Number(v.price)
@@ -388,15 +389,14 @@ export default function ItemDetailsPage() {
           }, Infinity)
         : Number(basePrice)
 
-    if (!Number.isFinite(base) || base <= 0) return null
+    if (!Number.isFinite(price) || price <= 0) return null
 
-    const rawDiscount = Number(discountPercent)
-    const discount = Number.isFinite(rawDiscount) ? Math.min(Math.max(rawDiscount, 0), 100) : 0
-    const price = round2(base * (1 - discount / 100))
-    const hasDiscount = price < base && discount > 0
+    const other = Number(otherPrice)
+    const strikePrice = Number.isFinite(other) && other > price ? round2(other) : null
+    const savings = strikePrice ? round2(strikePrice - price) : 0
 
-    // Commission is charged on the selling price, matching the server: an order
-    // subtotal is built from what the customer pays.
+    // Commission comes off what the customer pays, matching the server: the order
+    // subtotal is built from that figure, never from the comparison price.
     const commissionAmount =
       commission === null
         ? 0
@@ -406,8 +406,8 @@ export default function ItemDetailsPage() {
 
     return {
       price: round2(price),
-      strikePrice: hasDiscount ? round2(base) : null,
-      discountPercent: round2(discount),
+      strikePrice,
+      savingsPercent: strikePrice ? Math.round((savings / strikePrice) * 100) : 0,
       commissionAmount,
       takeHome: round2(price - commissionAmount),
       commissionLabel:
@@ -788,14 +788,6 @@ export default function ItemDetailsPage() {
         return
       }
 
-      // Guarded here as well as on the server: a discount outside 0-100 would be
-      // rejected on save, and the restaurant should see why before the round trip.
-      const parsedDiscount = Number(discountPercent === "" ? 0 : discountPercent)
-      if (!Number.isFinite(parsedDiscount) || parsedDiscount < 0 || parsedDiscount > 100) {
-        toast.error("Discount must be between 0 and 100")
-        setUploadingImages(false)
-        return
-      }
 
       const variantPayload = normalizedVariants.map((variant) => ({
         ...(variant.persistedId ? { _id: variant.persistedId } : {}),
@@ -814,7 +806,10 @@ export default function ItemDetailsPage() {
           amount: Number(packagingAmount) || 0,
         },
         availabilitySchedule,
-        discountPercent: Number(discountPercent) || 0,
+        // No discount on this form: what is typed as the base price is what the
+        // customer is charged. Sent explicitly so an item still carrying an old
+        // discount is brought back in line with what the form shows.
+        discountPercent: 0,
         otherPrice: otherPrice === "" ? 0 : Number(otherPrice),
         addonIds,
       }
@@ -1234,29 +1229,6 @@ export default function ItemDetailsPage() {
                     existed only to produce that strikethrough. */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">Discount (%)</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={discountPercent}
-                      onChange={(e) => {
-                        const value = e.target.value.replace(/[%\s,]/g, '').replace(/[^0-9.]/g, '')
-                        const parts = value.split('.')
-                        setDiscountPercent(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value)
-                      }}
-                      placeholder="0"
-                      className="w-full pl-4 pr-8 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">%</span>
-                  </div>
-                  {discountOutOfRange ? (
-                    <p className="mt-1 text-xs text-red-600">Discount must be between 0 and 100.</p>
-                  ) : (
-                    <p className="mt-1 text-xs text-gray-500">Leave at 0 to sell at the base price.</p>
-                  )}
-                </div>
-                <div>
                   <label className="block text-xs text-gray-600 mb-1">Other platform price (optional)</label>
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">{"₹"}</span>
@@ -1283,33 +1255,48 @@ export default function ItemDetailsPage() {
               {/* What the two numbers above actually mean, in money. Shown for
                   variants too, where the discount applies to whichever size the
                   customer picks and this previews the cheapest one. */}
+              {/* How this dish will look in the customer app. Rendered the way they
+                  will see it rather than described -- "struck through" is easier to
+                  check with your eyes than to reason about. */}
               {pricePreview && (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-xs text-gray-600">
-                      {variants.length > 0 ? 'Customer pays from' : 'Customer pays'}
-                    </span>
-                    <span className="text-lg font-semibold text-gray-900">
-                      {"₹"}{pricePreview.price}
-                    </span>
-                    {pricePreview.strikePrice !== null && (
-                      <>
-                        <span className="text-sm text-gray-500 line-through">
+                  <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    How customers will see it
+                  </p>
+
+                  <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+                    <p className="text-sm font-semibold text-gray-900">{itemName?.trim() || "This dish"}</p>
+                    <div className="mt-1 flex flex-wrap items-baseline gap-2">
+                      {pricePreview.strikePrice !== null && (
+                        <span className="text-sm text-gray-400 line-through">
                           {"₹"}{pricePreview.strikePrice}
                         </span>
+                      )}
+                      <span className="text-base font-semibold text-red-600">
+                        {variants.length > 0 ? "Starting from " : ""}{"₹"}{pricePreview.price}
+                      </span>
+                      {pricePreview.strikePrice !== null && (
                         <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                          {pricePreview.discountPercent}% OFF
+                          {pricePreview.savingsPercent}% OFF
                         </span>
-                      </>
+                      )}
+                    </div>
+                    {pricePreview.strikePrice !== null && (
+                      <p className="mt-1 text-[11px] uppercase tracking-wide text-gray-400">Other platforms</p>
                     )}
                   </div>
 
-                  <div className="mt-2 flex flex-wrap items-baseline gap-2 border-t border-gray-200 pt-2">
+                  {pricePreview.strikePrice === null && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      Add an other platform price above to show a struck-through comparison.
+                    </p>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap items-baseline gap-2 border-t border-gray-200 pt-2">
                     <span className="text-xs text-gray-600">You receive</span>
                     {commission === null ? (
                       <span className="text-sm text-gray-500">
-                        {"₹"}{pricePreview.price}{" "}
-                        <span className="text-xs">(commission unavailable)</span>
+                        {"₹"}{pricePreview.price} <span className="text-xs">(commission unavailable)</span>
                       </span>
                     ) : (
                       <>
@@ -1317,15 +1304,14 @@ export default function ItemDetailsPage() {
                           {"₹"}{pricePreview.takeHome}
                         </span>
                         <span className="text-xs text-gray-500">
-                          after {pricePreview.commissionLabel} platform commission
-                          {" "}({"₹"}{pricePreview.commissionAmount})
+                          after {pricePreview.commissionLabel} commission ({"₹"}{pricePreview.commissionAmount})
                         </span>
                       </>
                     )}
                   </div>
 
                   <p className="mt-2 text-xs text-gray-500">
-                    Commission is charged on what the customer pays, not on the base price.
+                    Customers are charged your base price. The other platform price is shown for comparison only.
                   </p>
                 </div>
               )}
