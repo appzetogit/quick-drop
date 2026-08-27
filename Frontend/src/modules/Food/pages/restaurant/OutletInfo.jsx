@@ -341,116 +341,118 @@ export default function OutletInfo() {
 
   return (
     <>
-      <div className="min-h-screen bg-white overflow-x-hidden">
+      <div className="min-h-screen bg-neutral-50/60 pb-28 text-gray-900">
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1">
-              <button onClick={goBack} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-                <ArrowLeft className="w-6 h-6 text-gray-900" />
+        <div className="bg-white/95 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button onClick={goBack} className="p-2 -ml-2 hover:bg-gray-100 rounded-xl text-gray-600 hover:text-gray-900 transition-colors">
+                <ArrowLeft className="w-5 h-5" />
               </button>
-              <h1 className="text-lg font-bold text-gray-900">Outlet info</h1>
+              <div>
+                <h1 className="text-base sm:text-lg font-bold text-gray-900">Outlet Profile & Credentials</h1>
+                <p className="text-xs text-gray-500 hidden sm:block">Public profile images, branding banner and address</p>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-900 font-normal">
-                Restaurant id: {loading ? "Loading..." : (restaurantMongoId && restaurantMongoId.length >= 5 ? restaurantMongoId.slice(-5) : (restaurantId || "N/A"))}
+            <div className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-xl border border-gray-200">
+              <span className="text-xs text-gray-700 font-bold">
+                ID: {loading ? "..." : (restaurantMongoId && restaurantMongoId.length >= 5 ? restaurantMongoId.slice(-5) : (restaurantId || "N/A"))}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Main Image Section */}
-        <div className="relative w-full h-[200px] overflow-visible">
-          <img src={mainImage} alt="Restaurant banner" className="w-full h-full object-cover" />
-          
-          <button
-            onClick={() => handleImageClick('cover', menuImageInputRef, "Add Cover Image", true)}
-            disabled={uploadingImage}
-            className="absolute bottom-4 right-4 bg-black/90 hover:bg-black px-3.5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-medium text-white transition-colors shadow-lg z-20 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{uploadingImage && imageType === 'menu' ? `Uploading ${uploadingCount}...` : 'Add image'}</span>
-          </button>
-          <input
-            ref={menuImageInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => handleCoverImageAdd(Array.from(e.target.files || []))}
-          />
-          
-          {/* Cover Images Gallery */}
-          {coverImages.length > 0 && (
-            <div className="absolute bottom-16 right-4 flex gap-2.5 z-10">
-              {coverImages.slice(0, 4).map((img, index) => (
-                <div
-                  key={index}
-                  className={`relative w-14 h-14 rounded-xl border-2 overflow-hidden bg-gray-200 shadow-md transition-all ${
-                    mainImage === img.url ? "border-black scale-105" : "border-white"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setMainImage(img.url)}
-                    className="w-full h-full"
-                  >
-                    <img src={img.url} alt={`Cover ${index + 1}`} className="w-full h-full object-cover" />
-                  </button>
-                  <button
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCoverImageDelete(index); }}
-                    disabled={uploadingImage}
-                    className="absolute top-1 right-1 bg-red-500/95 hover:bg-red-600 p-1 rounded-full transition-colors z-10"
-                  >
-                    <Trash2 className="w-3 h-3 text-white" />
-                  </button>
-                </div>
-              ))}
-              {coverImages.length > 4 && (
-                <div className="w-14 h-14 rounded-xl border-2 border-white bg-black/70 flex items-center justify-center shadow-md">
-                  <span className="text-white text-sm font-bold">+{coverImages.length - 4}</span>
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+          {/* Main Image Section Card */}
+          <div className="bg-white rounded-3xl overflow-hidden border border-gray-200 shadow-sm relative">
+            <div className="relative w-full h-56 sm:h-72 overflow-hidden bg-gray-900">
+              <img src={mainImage} alt="Restaurant banner" className="w-full h-full object-cover opacity-90" />
+              
+              <button
+                onClick={() => handleImageClick('cover', menuImageInputRef, "Add Cover Image", true)}
+                disabled={uploadingImage}
+                className="absolute bottom-4 right-4 bg-gray-900/90 hover:bg-black px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold text-white transition-all shadow-lg z-20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{uploadingImage && imageType === 'menu' ? `Uploading ${uploadingCount}...` : 'Add Cover Photo'}</span>
+              </button>
+              <input
+                ref={menuImageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => handleCoverImageAdd(Array.from(e.target.files || []))}
+              />
+              
+              {/* Cover Images Gallery */}
+              {coverImages.length > 0 && (
+                <div className="absolute bottom-16 right-4 flex gap-2.5 z-10">
+                  {coverImages.slice(0, 4).map((img, index) => (
+                    <div
+                      key={index}
+                      className={`relative w-12 h-12 rounded-xl border-2 overflow-hidden bg-gray-200 shadow-md transition-all ${
+                        mainImage === img.url ? "border-white scale-105" : "border-white/60"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setMainImage(img.url)}
+                        className="w-full h-full"
+                      >
+                        <img src={img.url} alt={`Cover ${index + 1}`} className="w-full h-full object-cover" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCoverImageDelete(index); }}
+                        disabled={uploadingImage}
+                        className="absolute top-0.5 right-0.5 bg-red-500/95 hover:bg-red-600 p-0.5 rounded-full transition-colors z-10"
+                      >
+                        <Trash2 className="w-2.5 h-2.5 text-white" />
+                      </button>
+                    </div>
+                  ))}
+                  {coverImages.length > 4 && (
+                    <div className="w-12 h-12 rounded-xl border-2 border-white bg-black/70 flex items-center justify-center shadow-md">
+                      <span className="text-white text-xs font-bold">+{coverImages.length - 4}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
 
-          {/* Thumbnail Section */}
-          <div className="absolute bottom-0 left-4 -mb-[45px] flex flex-col gap-2 shrink-0 z-10">
-            <div className="relative w-[70px] h-[70px] rounded overflow-hidden">
-              <img src={thumbnailImage} alt="Restaurant thumbnail" className="w-full h-full rounded-xl object-cover" />
-            </div>
-            <button
-              onClick={() => handleImageClick('profile', profileImageInputRef, "Update Profile Photo")}
-              disabled={uploadingImage}
-              className="text-blue-600 text-sm font-semibold hover:text-blue-700 transition-colors text-left"
-            >
-              {uploadingImage && imageType === 'profile' ? 'Uploading...' : 'Edit photo'}
-            </button>
-            <input
-              ref={profileImageInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => handleProfileImageReplace(e.target.files?.[0])}
-            />
-          </div>
-        </div>
-
-        {/* Info Section */}
-        <div className="px-4 pt-[50px] pb-4 bg-white">
-          <div className="flex items-start gap-4">
-            <div className="flex flex-col gap-2">
-              <button onClick={() => navigate("/restaurant/ratings-reviews")} className="flex items-center gap-2 text-left w-full">
-                <div className="bg-green-700 px-2.5 py-1.5 rounded flex items-center gap-1 shrink-0">
-                  <span className="text-white text-sm font-bold">{restaurantData?.rating?.toFixed(1) || "0.0"}</span>
-                  <Star className="w-3.5 h-3.5 text-white fill-white" />
+            {/* Profile Avatar Bar */}
+            <div className="p-6 pt-4 flex items-end justify-between gap-4 border-b border-gray-100">
+              <div className="flex items-center gap-4">
+                <div className="relative w-20 h-20 -mt-10 rounded-2xl overflow-hidden border-4 border-white shadow-lg bg-gray-100 flex-shrink-0">
+                  <img src={thumbnailImage} alt="Restaurant thumbnail" className="w-full h-full object-cover" />
                 </div>
-                <span className="text-gray-800 text-sm font-normal">{restaurantData?.totalRatings || 0} DELIVERY REVIEWS</span>
-                <ChevronRight className="w-4 h-4 text-gray-400 shrink-0 ml-auto" />
+                <div>
+                  <button
+                    onClick={() => handleImageClick('profile', profileImageInputRef, "Update Profile Photo")}
+                    disabled={uploadingImage}
+                    className="text-xs font-bold text-gray-900 hover:underline transition-colors"
+                  >
+                    {uploadingImage && imageType === 'profile' ? 'Uploading...' : 'Change Logo / Profile Picture'}
+                  </button>
+                  <input
+                    ref={profileImageInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => handleProfileImageReplace(e.target.files?.[0])}
+                  />
+                </div>
+              </div>
+
+              <button onClick={() => navigate("/food/restaurant/ratings-reviews")} className="flex items-center gap-2">
+                <div className="bg-emerald-600 px-3 py-1 rounded-xl flex items-center gap-1">
+                  <span className="text-white text-xs font-bold">{restaurantData?.rating?.toFixed(1) || "0.0"}</span>
+                  <Star className="w-3 h-3 text-white fill-white" />
+                </div>
+                <span className="text-gray-500 text-xs font-bold hidden sm:inline">{restaurantData?.totalRatings || 0} Ratings</span>
               </button>
             </div>
           </div>
-        </div>
 
         <div className="px-4 py-4"><h2 className="text-base font-bold text-gray-900 text-center">Restaurant Information</h2></div>
 
@@ -467,6 +469,7 @@ export default function OutletInfo() {
           {/* ... other info cards ... */}
         </div>
       </div>
+    </div>
 
       <Dialog open={showEditNameDialog} onOpenChange={setShowEditNameDialog}>
         <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-xl w-[90%]">

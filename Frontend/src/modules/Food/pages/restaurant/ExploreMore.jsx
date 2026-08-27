@@ -791,7 +791,7 @@ export default function ExploreMore() {
 
   const helpItems = [
     { id: 1, label: "Support", icon: LifeBuoy, route: "/restaurant/help-centre/support" },
-    { id: 2, label: "Share your feedback", icon: Edit, route: "/restaurant/Share-Feedback" },
+    { id: 2, label: "Share your feedback", icon: Edit, route: "/restaurant/share-feedback" },
   ]
 
   const accountingItems = [
@@ -847,7 +847,7 @@ export default function ExploreMore() {
       >
         {title}
       </motion.h2>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 sm:gap-4">
         {items.map((item, index) => {
           const IconComponent = item.icon
           return (
@@ -912,7 +912,7 @@ export default function ExploreMore() {
         duration: 0.2,
         ease: [0.25, 0.1, 0.25, 1]
       }}
-      className="min-h-screen bg-[#F8F9FA] overflow-x-hidden pb-24 font-sans"
+      className="min-h-screen bg-[#F8F9FA] overflow-x-hidden pb-28 font-sans"
     >
       {/* Header */}
       <motion.div
@@ -922,18 +922,21 @@ export default function ExploreMore() {
           duration: 0.25,
           ease: [0.25, 0.1, 0.25, 1]
         }}
-        className="bg-white/80 backdrop-blur-xl px-4 py-3 sticky top-0 z-50 border-b border-black/5"
+        className="bg-white/95 backdrop-blur-xl px-4 sm:px-6 py-3.5 sticky top-0 z-40 border-b border-black/5 shadow-sm"
       >
-        <div className="flex items-center justify-between">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3 flex-1">
             <button
               onClick={() => navigate("/food/restaurant")}
-              className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+              className="p-2 -ml-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-700 hover:text-gray-900"
               aria-label="Go back"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-700" />
+              <ArrowLeft className="w-5 h-5" />
             </button>
-            <h1 className="text-[19px] font-extrabold tracking-tight text-gray-900">Explore</h1>
+            <div>
+              <h1 className="text-base sm:text-lg font-extrabold tracking-tight text-gray-900">Explore & Manage Hub</h1>
+              <p className="text-xs text-gray-500 hidden sm:block">Quick access to all outlet management utilities and partner settings</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -945,17 +948,17 @@ export default function ExploreMore() {
             </button>
             <button
               onClick={() => setProfileOpen(true)}
-              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors relative overflow-hidden"
+              className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full transition-colors relative overflow-hidden text-gray-700"
               aria-label="Profile"
             >
-              <UserRound className="w-5 h-5 text-gray-700" />
+              <UserRound className="w-5 h-5" />
             </button>
           </div>
         </div>
       </motion.div>
 
       {/* Main Content */}
-      <div className="px-4 py-6 max-w-lg mx-auto">
+      <div className="px-4 sm:px-6 py-6 max-w-5xl mx-auto">
         {/* Restaurant Information Card */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -1234,47 +1237,47 @@ export default function ExploreMore() {
       {/* Profile Popup */}
       <AnimatePresence>
         {profileOpen && (
-          <>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
             {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-black/50 z-50"
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
               onClick={() => setProfileOpen(false)}
             />
 
             {/* Popup Sheet */}
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
               transition={{
                 type: "spring",
                 damping: 30,
                 stiffness: 300
               }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-0 shadow-2xl z-50 max-h-[90vh] overflow-y-auto"
+              className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl z-50 max-h-[88vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
-                <h2 className="text-lg font-bold text-gray-900">My profile</h2>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+                <h2 className="text-base font-bold text-gray-900">User Profile Details</h2>
                 <button
                   onClick={() => setProfileOpen(false)}
-                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-700 transition-colors"
                   aria-label="Close"
                 >
-                  <X className="w-5 h-5 text-gray-900" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
               {/* User Information Section */}
-              <div className="px-6 py-6">
-                <div className="w-full flex items-start gap-4 text-left p-2 -m-2 rounded-xl">
+              <div className="px-6 py-5">
+                <div className="w-full flex items-start gap-4 text-left">
                   {/* Avatar */}
-                  <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center shrink-0 overflow-hidden ring-2 ring-white">
+                  <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden ring-2 ring-gray-200">
                     {userData.profileImage?.url ? (
                       <img
                         src={userData.profileImage.url}
@@ -1294,16 +1297,16 @@ export default function ExploreMore() {
                       </h3>
                     </div>
                     {userData.phone && (
-                      <p className="text-sm text-gray-600 mb-1">
+                      <p className="text-xs text-gray-600 mb-0.5">
                         {userData.phone}
                       </p>
                     )}
                     {userData.email && (
-                      <p className="text-sm text-gray-600 mb-1">
+                      <p className="text-xs text-gray-600 mb-0.5">
                         {userData.email}
                       </p>
                     )}
-                    <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mt-2 bg-blue-50 w-fit px-2 py-0.5 rounded">
+                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mt-1.5 bg-blue-50 w-fit px-2 py-0.5 rounded-md border border-blue-100">
                       {userData.role}
                     </p>
                   </div>
@@ -1311,29 +1314,29 @@ export default function ExploreMore() {
               </div>
 
               {/* Logout Buttons */}
-              <div className="px-6 pb-6 space-y-3">
+              <div className="px-6 pb-6 space-y-2.5">
                 {/* Logout Button */}
                 <button
                   onClick={handleLogout}
                   disabled={isLoggingOut}
-                  className="w-full bg-red-600 hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition-colors"
+                  className="w-full bg-gray-900 hover:bg-black disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors shadow-sm"
                 >
-                  {isLoggingOut ? "Logging out..." : "Logout"}
+                  {isLoggingOut ? "Logging out..." : "Log Out of Session"}
                 </button>
 
                 {/* Logout from all devices Button */}
                 <button
                   onClick={handleLogoutAllDevices}
                   disabled={isLoggingOut}
-                  className="w-full bg-white border-2 border-red-600 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed font-semibold py-3 px-4 rounded-lg transition-colors"
+                  className="w-full bg-white border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed font-bold py-2.5 px-4 rounded-xl text-xs transition-colors"
                 >
-                  {isLoggingOut ? "Logging out..." : "Logout from all devices"}
+                  {isLoggingOut ? "Logging out..." : "Logout All Devices"}
                 </button>
 
                 {/* Delete Account Button */}
                 <button
                   onClick={() => setDeleteModalOpen(true)}
-                  className="w-full flex items-center justify-center gap-2 text-red-500 hover:text-red-700 font-bold py-3 text-sm transition-all hover:bg-red-50 rounded-lg mt-1"
+                  className="w-full flex items-center justify-center gap-2 text-red-500 hover:text-red-700 font-bold py-2.5 text-xs transition-all hover:bg-red-50 rounded-xl"
                 >
                   <Trash2 className="w-4 h-4" />
                   <span>Delete Account</span>
@@ -1341,47 +1344,33 @@ export default function ExploreMore() {
               </div>
 
               {/* Footer Links */}
-              <div className="px-6 py-4 border-t border-gray-200">
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+              <div className="px-6 py-3.5 border-t border-gray-100 bg-gray-50 text-center">
+                <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
                   <a
                     href="#"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
+                    className="hover:text-gray-700 transition-colors"
                     onClick={(e) => {
                       e.preventDefault()
-                      // Navigate to terms of service
                       debugLog("Terms of Service clicked")
                     }}
                   >
                     Terms of Service
                   </a>
-                  <span className="text-gray-400">|</span>
+                  <span className="text-gray-300">•</span>
                   <a
                     href="#"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
+                    className="hover:text-gray-700 transition-colors"
                     onClick={(e) => {
                       e.preventDefault()
-                      // Navigate to privacy policy
                       debugLog("Privacy Policy clicked")
                     }}
                   >
                     Privacy Policy
                   </a>
-                  <span className="text-gray-400">|</span>
-                  <a
-                    href="#"
-                    className="hover:text-gray-700 transition-colors border-b border-dotted border-gray-400"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      // Navigate to code of conduct
-                      debugLog("Code of Conduct clicked")
-                    }}
-                  >
-                    Code of Conduct
-                  </a>
                 </div>
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
 
@@ -1396,130 +1385,130 @@ export default function ExploreMore() {
       {/* Schedule Off Reason Selection Popup */}
       <AnimatePresence>
         {scheduleOffOpen && (
-          <>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
             {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-black/50 z-50"
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
               onClick={() => setScheduleOffOpen(false)}
             />
 
             {/* Popup Sheet */}
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
               transition={{
                 type: "spring",
                 damping: 30,
                 stiffness: 300
               }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 max-h-[90vh] overflow-y-auto"
+              className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl z-50 max-h-[85vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
-                <h2 className="text-lg font-bold text-gray-900">Select reason</h2>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+                <h2 className="text-base font-bold text-gray-900">Select Closure Reason</h2>
                 <button
                   onClick={() => setScheduleOffOpen(false)}
-                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-700 transition-colors"
                   aria-label="Close"
                 >
-                  <X className="w-5 h-5 text-gray-900" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Reason Options */}
-              <div className="px-6 py-4">
+              <div className="px-6 py-4 space-y-1">
                 {scheduleOffReasons.map((reason, index) => (
                   <button
                     key={index}
                     onClick={() => handleReasonSelect(reason)}
-                    className="w-full text-left py-4 px-4 rounded-lg hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0"
+                    className="w-full text-left py-3 px-4 rounded-xl hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0"
                   >
-                    <span className="text-base text-gray-900">{reason}</span>
+                    <span className="text-xs font-bold text-gray-900">{reason}</span>
                   </button>
                 ))}
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
 
       {/* Date and Time Picker Popup */}
       <AnimatePresence>
         {dateTimePickerOpen && (
-          <>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
             {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-black/50 z-50"
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
               onClick={() => setDateTimePickerOpen(false)}
             />
 
             {/* Popup Sheet */}
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
               transition={{
                 type: "spring",
                 damping: 30,
                 stiffness: 300
               }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 max-h-[90vh] overflow-y-auto"
+              className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl z-50 max-h-[90vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
-                <h2 className="text-lg font-bold text-gray-900">Schedule off</h2>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+                <h2 className="text-base font-bold text-gray-900">Schedule Outlet Closure</h2>
                 <button
                   onClick={() => setDateTimePickerOpen(false)}
-                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                  className="p-1.5 hover:bg-gray-100 rounded-xl text-gray-400 hover:text-gray-700 transition-colors"
                   aria-label="Close"
                 >
-                  <X className="w-5 h-5 text-gray-900" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Content */}
-              <div className="px-6 py-6 space-y-6">
+              <div className="px-6 py-5 space-y-4">
                 {/* Selected Reason */}
                 {selectedReason && (
-                  <div className="pb-4 border-b border-gray-200">
-                    <p className="text-sm text-gray-500 mb-1">Reason</p>
-                    <p className="text-base font-medium text-gray-900">{selectedReason}</p>
+                  <div className="pb-3 border-b border-gray-100">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Reason</p>
+                    <p className="text-sm font-bold text-gray-900 mt-0.5">{selectedReason}</p>
                   </div>
                 )}
 
                 {/* Date Selection */}
                 <div>
-                  <p className="text-sm font-medium text-gray-700 mb-3">Select dates</p>
-                  <div className="space-y-3">
+                  <p className="text-xs font-bold text-gray-700 mb-2">Select Duration</p>
+                  <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <label className="text-sm text-gray-600 mb-1 block">Start date</label>
+                      <label className="text-[11px] text-gray-400 font-medium mb-1 block">Start Date</label>
                       <button
                         onClick={() => setShowCalendar(true)}
-                        className="w-full flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                        className="w-full flex items-center justify-between px-3.5 py-2.5 border border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 text-xs font-bold text-gray-900 transition-colors"
                       >
-                        <span className="text-gray-900">{formatDate(startDate)}</span>
-                        <Calendar className="w-5 h-5 text-gray-500" />
+                        <span>{formatDate(startDate)}</span>
+                        <Calendar className="w-4 h-4 text-gray-400" />
                       </button>
                     </div>
                     <div>
-                      <label className="text-sm text-gray-600 mb-1 block">End date</label>
+                      <label className="text-[11px] text-gray-400 font-medium mb-1 block">End Date</label>
                       <button
                         onClick={() => setShowCalendar(true)}
-                        className="w-full flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                        className="w-full flex items-center justify-between px-3.5 py-2.5 border border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 text-xs font-bold text-gray-900 transition-colors"
                       >
-                        <span className="text-gray-900">{formatDate(endDate)}</span>
-                        <Calendar className="w-5 h-5 text-gray-500" />
+                        <span>{formatDate(endDate)}</span>
+                        <Calendar className="w-4 h-4 text-gray-400" />
                       </button>
                     </div>
                   </div>
@@ -1527,26 +1516,26 @@ export default function ExploreMore() {
 
                 {/* Time Selection */}
                 <div>
-                  <p className="text-sm font-medium text-gray-700 mb-3">Select times</p>
-                  <div className="space-y-3">
+                  <p className="text-xs font-bold text-gray-700 mb-2">Select Time Window</p>
+                  <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <label className="text-sm text-gray-600 mb-1 block">Start time</label>
+                      <label className="text-[11px] text-gray-400 font-medium mb-1 block">Start Time</label>
                       <button
                         onClick={() => setShowStartTimePicker(true)}
-                        className="w-full flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                        className="w-full flex items-center justify-between px-3.5 py-2.5 border border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 text-xs font-bold text-gray-900 transition-colors"
                       >
-                        <span className="text-gray-900">{formatTime(startTime)}</span>
-                        <Clock className="w-5 h-5 text-gray-500" />
+                        <span>{formatTime(startTime)}</span>
+                        <Clock className="w-4 h-4 text-gray-400" />
                       </button>
                     </div>
                     <div>
-                      <label className="text-sm text-gray-600 mb-1 block">End time</label>
+                      <label className="text-[11px] text-gray-400 font-medium mb-1 block">End Time</label>
                       <button
                         onClick={() => setShowEndTimePicker(true)}
-                        className="w-full flex items-center justify-between px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                        className="w-full flex items-center justify-between px-3.5 py-2.5 border border-gray-300 rounded-xl bg-gray-50 hover:bg-gray-100 text-xs font-bold text-gray-900 transition-colors"
                       >
-                        <span className="text-gray-900">{formatTime(endTime)}</span>
-                        <Clock className="w-5 h-5 text-gray-500" />
+                        <span>{formatTime(endTime)}</span>
+                        <Clock className="w-4 h-4 text-gray-400" />
                       </button>
                     </div>
                   </div>
@@ -1555,13 +1544,13 @@ export default function ExploreMore() {
                 {/* Submit Button */}
                 <button
                   onClick={handleSubmitScheduleOff}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors mt-4"
+                  className="w-full bg-gray-900 hover:bg-black text-white font-bold py-3 px-4 rounded-xl text-xs transition-colors mt-2 shadow-sm"
                 >
-                  Submit
+                  Confirm Schedule Off
                 </button>
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
 

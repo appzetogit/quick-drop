@@ -577,36 +577,39 @@ export default function DaySlots() {
   }
 
   return (
-    <div className="min-h-screen bg-white overflow-x-hidden flex flex-col">
+    <div className="min-h-screen bg-neutral-50/60 overflow-x-hidden flex flex-col pb-28 text-gray-900">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate("/restaurant/outlet-timings")}
-            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Go back"
-          >
-            <ArrowLeft className="w-6 h-6 text-gray-900" />
-          </button>
-          <div className="flex-1">
-            <h1 className="text-xl font-bold text-gray-900">{dayName}</h1>
-            <p className="text-sm text-gray-500">{companyName} delivery</p>
+      <div className="bg-white/95 backdrop-blur-md border-b border-gray-200 sticky top-0 z-40 shadow-sm">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate("/restaurant/outlet-timings")}
+              className="p-2 -ml-2 hover:bg-gray-100 rounded-xl text-gray-600 hover:text-gray-900 transition-colors"
+              aria-label="Go back"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-base sm:text-lg font-bold text-gray-900">{dayName} Slots Configuration</h1>
+              <p className="text-xs text-gray-500 hidden sm:block">{companyName} delivery schedule</p>
+            </div>
           </div>
+          <button
+            onClick={handleSave}
+            className="hidden sm:inline-flex items-center justify-center bg-gray-900 hover:bg-black text-white px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
+          >
+            Save Slots
+          </button>
         </div>
       </div>
-        
-        <div className="bg-gray-50 p-2">
-          <p className="text-sm text-gray-700">
-            Add or modify your restaurant timings here. You can create maximum up to 3 time slots in a day.
-          </p>
+
+      <div className="max-w-4xl mx-auto w-full flex-1 px-4 sm:px-6 py-6 space-y-5">
+        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-xs font-medium text-blue-900">
+          Configure active order fulfillment time windows. You can configure up to 3 individual meal periods (e.g. Lunch and Dinner).
         </div>
 
-      {/* Main Content - Scrollable */}
-      <div className="flex-1 overflow-y-auto">  
-        {/* Instructional Text */}
-
         {/* Time Slots */}
-        <div className="space-y-6 divide-gray-400">
+        <div className="space-y-4">
           {dayData.slots.map((slot, index) => {
             const duration = calculateSlotDuration(slot.start, slot.end, slot.startPeriod, slot.endPeriod)
             return (
@@ -615,7 +618,7 @@ export default function DaySlots() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: index * 0.1 }}
-                className="bg-white rounded-0 p-4 space-y-3 mb-0 border-b border-gray-200"
+                className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm space-y-4"
               >
                 {/* Slot Header */}
                 <div className="flex items-center justify-between">

@@ -553,28 +553,29 @@ export default function FinanceDetailsPage() {
       {/* Download Popup */}
       <AnimatePresence>
         {showDownloadPopup && (
-          <>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowDownloadPopup(false)}
-              className="fixed inset-0 bg-black/50 z-50"
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
             />
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 p-6"
+              className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl z-50 p-6"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-gray-900">Download Report</h2>
                 <button
                   onClick={() => setShowDownloadPopup(false)}
-                  className="p-1 rounded-full hover:bg-gray-100"
+                  className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700"
                 >
-                  <X className="w-5 h-5 text-gray-600" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
               <p className="text-sm text-gray-600 mb-4">
@@ -582,40 +583,41 @@ export default function FinanceDetailsPage() {
               </p>
               <button
                 onClick={() => setShowDownloadPopup(false)}
-                className="w-full py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
+                className="w-full py-2.5 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-colors text-sm"
               >
                 Close
               </button>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
 
       {/* Email Popup */}
       <AnimatePresence>
         {showEmailPopup && (
-          <>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowEmailPopup(false)}
-              className="fixed inset-0 bg-black/50 z-50"
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
             />
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 p-6"
+              className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl z-50 p-6"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-gray-900">Email Report</h2>
                 <button
                   onClick={() => setShowEmailPopup(false)}
-                  className="p-1 rounded-full hover:bg-gray-100"
+                  className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700"
                 >
-                  <X className="w-5 h-5 text-gray-600" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
               <p className="text-sm text-gray-600 mb-4">
@@ -623,12 +625,12 @@ export default function FinanceDetailsPage() {
               </p>
               <button
                 onClick={() => setShowEmailPopup(false)}
-                className="w-full py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
+                className="w-full py-2.5 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-colors text-sm"
               >
                 Close
               </button>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
     </div>

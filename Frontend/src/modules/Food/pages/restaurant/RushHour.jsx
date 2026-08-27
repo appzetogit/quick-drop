@@ -50,81 +50,102 @@ export default function RushHour() {
   ]
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-neutral-50/60 flex flex-col pb-28 text-gray-900">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={goBack}
-            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-            aria-label="Go back"
+      <div className="bg-white/95 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={goBack}
+              className="p-2 -ml-2 hover:bg-gray-100 rounded-xl text-gray-600 hover:text-gray-900 transition-colors"
+              aria-label="Go back"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-base sm:text-lg font-bold text-gray-900">Kitchen Rush Hour Mode</h1>
+              <p className="text-xs text-gray-500 hidden sm:block">Extend preparation time estimates when order volume spikes</p>
+            </div>
+          </div>
+          <button
+            onClick={handleConfirm}
+            className="hidden sm:inline-flex items-center justify-center bg-gray-900 hover:bg-black text-white px-5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
           >
-            <ArrowLeft className="w-6 h-6 text-gray-900" />
+            Confirm Mode
           </button>
-          <h1 className="text-lg font-bold text-gray-900">Rush in kitchen</h1>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
+      <div className="max-w-3xl mx-auto w-full flex-1 px-4 sm:px-6 py-6 space-y-6">
         {/* Informational Banner */}
-        <div className="bg-blue-50 rounded-lg p-4 mb-6 flex items-start gap-4">
-          <div className="w-14 h-14 rounded-full bg-black flex items-center justify-center shrink-0">
-            <Zap className="w-7 h-7 text-white" strokeWidth={2.5} fill="white" />
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-5 flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center shrink-0 text-white shadow-md shadow-amber-500/20">
+            <Zap className="w-6 h-6" strokeWidth={2.5} fill="white" />
           </div>
-          <p className="text-sm text-gray-900 leading-relaxed flex-1 pt-1">
-            Inform us when your kitchen is in rush and you need more time to manage orders
-          </p>
+          <div>
+            <h2 className="text-sm font-bold text-gray-900">High Order Rush Alert</h2>
+            <p className="text-xs text-gray-600 leading-relaxed mt-1">
+              Temporarily extends customer-facing preparation times by 10-15 minutes so your kitchen team can pace orders without missing SLA metrics.
+            </p>
+          </div>
         </div>
 
         {/* How this helps you Section */}
-        <div className="mb-8">
-          <h2 className="text-base font-bold text-gray-900 mb-4">How this helps you</h2>
-          <div className="space-y-3">
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Benefits of Rush Mode</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
-              "Get more time to prepare food",
-              "Show correct delivery time to customers",
-              "Avoid crowding of riders at your restaurant"
+              { title: "More Prep Buffer", desc: "Prevents rider rush before food is packed" },
+              { title: "Accurate ETAs", desc: "Customer app displays realistic arrival times" },
+              { title: "Clean Handover", desc: "Avoids crowding of riders at your pick-up counter" }
             ].map((benefit, index) => (
-              <div key={index} className="flex items-center gap-3">
-                <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
-                  <span className="text-xs font-semibold text-gray-700">{index + 1}</span>
-                </div>
-                <p className="text-sm text-gray-900">{benefit}</p>
+              <div key={index} className="p-4 rounded-xl bg-gray-50 border border-gray-100 flex flex-col justify-between">
+                <span className="w-6 h-6 rounded-full bg-gray-900 text-white text-xs font-bold flex items-center justify-center mb-2">
+                  {index + 1}
+                </span>
+                <p className="text-xs font-bold text-gray-900">{benefit.title}</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">{benefit.desc}</p>
               </div>
             ))}
           </div>
         </div>
 
         {/* Time Selection Section */}
-        <div className="mb-6">
-          <h2 className="text-base font-bold text-gray-900 mb-4">
-            Increase food preparation time for the next
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+            Extend Food Preparation Time For Next
           </h2>
-          <RadioGroup value={selectedTime} onValueChange={setSelectedTime} className="space-y-4">
-            {timeOptions.map((option) => (
-              <div key={option.value} className="flex items-center gap-3">
-                <RadioGroupItem value={option.value} id={option.value} className="h-5 w-5" />
-                <Label 
-                  htmlFor={option.value} 
-                  className="text-sm text-gray-900 font-normal cursor-pointer flex-1"
+          <RadioGroup value={selectedTime} onValueChange={setSelectedTime} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {timeOptions.map((option) => {
+              const isSelected = selectedTime === option.value
+              return (
+                <label
+                  key={option.value}
+                  htmlFor={option.value}
+                  className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
+                    isSelected ? "bg-gray-50 border-gray-900 shadow-sm ring-1 ring-gray-900" : "bg-white border-gray-200 hover:bg-gray-50"
+                  }`}
                 >
-                  {option.label}
-                </Label>
-              </div>
-            ))}
+                  <RadioGroupItem value={option.value} id={option.value} className="h-4 w-4" />
+                  <span className="text-xs font-bold text-gray-900 flex-1">
+                    {option.label}
+                  </span>
+                </label>
+              )
+            })}
           </RadioGroup>
         </div>
-      </div>
 
-      {/* Confirm Button */}
-      <div className="px-4 pb-6 pt-4 bg-white border-t border-gray-200">
-        <button
-          onClick={handleConfirm}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
-        >
-          Confirm
-        </button>
+        {/* Mobile Confirm Button */}
+        <div className="sm:hidden pt-2">
+          <button
+            onClick={handleConfirm}
+            className="w-full bg-gray-900 hover:bg-black text-white font-bold py-3.5 px-4 rounded-xl text-sm transition-colors shadow-md"
+          >
+            Confirm Rush Hour
+          </button>
+        </div>
       </div>
     </div>
   )

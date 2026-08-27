@@ -72,54 +72,54 @@ function PeriodPickerSheet({ open, onClose, tabs, activeTab, onChange, periodTyp
   return (
     <AnimatePresence>
       {open && (
-        <>
+        <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-0 sm:p-4">
           {/* Backdrop */}
           <motion.div
             key="backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 z-[200]"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200]"
             onClick={onClose}
           />
 
-          {/* Sheet */}
+          {/* Modal Dialog */}
           <motion.div
             key="sheet"
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
+            initial={{ y: "100%", opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: "100%", opacity: 0 }}
             transition={{ type: "spring", damping: 32, stiffness: 280 }}
-            className="fixed bottom-0 left-0 right-0 z-[201] bg-white rounded-t-3xl shadow-2xl"
-            style={{ maxHeight: "72vh", display: "flex", flexDirection: "column" }}
+            className="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl z-[201] flex flex-col max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
-            {/* Handle */}
-            <div className="flex justify-center pt-3 pb-1">
+            {/* Handle - mobile only */}
+            <div className="sm:hidden flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 bg-gray-200 rounded-full" />
             </div>
 
             {/* Title */}
-            <div className="px-5 pb-3 pt-1 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-[15px] font-bold text-gray-900">{typeLabel}</h3>
-              <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-gray-100 transition-colors">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900">{typeLabel}</h3>
+              <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-700">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
             {/* Scrollable list */}
-            <div ref={listRef} className="overflow-y-auto flex-1 px-4 py-3 space-y-1">
+            <div ref={listRef} className="overflow-y-auto flex-1 px-4 py-3 space-y-1.5">
               {tabs.map((tab) => {
                 const isActive = tab.id === activeTab
                 return (
                   <button
                     key={tab.id}
                     onClick={() => { onChange(tab.id); onClose() }}
-                    className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl transition-all text-left border ${
+                    className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all text-left border ${
                       isActive
-                        ? "bg-[#ff6d00] text-white border-[#ff6d00]"
-                        : "bg-gray-50 text-gray-700 border-gray-100 hover:border-gray-300 hover:bg-gray-100"
+                        ? "bg-[#ff6d00] text-white border-[#ff6d00] shadow-sm"
+                        : "bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-300 hover:bg-gray-100"
                     }`}
                   >
                     <div>
@@ -143,11 +143,8 @@ function PeriodPickerSheet({ open, onClose, tabs, activeTab, onChange, periodTyp
                 )
               })}
             </div>
-
-            {/* Bottom safe area */}
-            <div className="h-5" />
           </motion.div>
-        </>
+        </div>
       )}
     </AnimatePresence>
   )
@@ -394,26 +391,28 @@ export default function Analytics() {
   ]
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] flex flex-col font-sans pb-20">
+    <div className="min-h-screen bg-[#F8F9FA] flex flex-col font-sans pb-28 text-gray-900">
       <style>{`.no-scrollbar{-ms-overflow-style:none;scrollbar-width:none}.no-scrollbar::-webkit-scrollbar{display:none}`}</style>
 
       {/* Header */}
-      <div className="sticky top-0 z-20 bg-white px-4 py-3.5 flex items-center justify-between border-b border-gray-100 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button onClick={goBack} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors" aria-label="Back">
-            <ArrowLeft className="w-5 h-5 text-gray-900" />
-          </button>
-          <div>
-            <h1 className="text-[17px] font-bold text-gray-900">Outlet Analytics</h1>
-            <p className="text-[11px] text-gray-500 font-medium">Performance metrics & order insights</p>
+      <div className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={goBack} className="p-2 -ml-2 rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors" aria-label="Back">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-base sm:text-lg font-bold text-gray-900">Outlet Analytics</h1>
+              <p className="text-xs text-gray-500 hidden sm:block">Performance metrics & order insights</p>
+            </div>
           </div>
+          <span className={`text-[10px] font-bold px-3 py-1 rounded-full border ${isDemo ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+            {isDemo ? "Demo Data" : "● Live Analytics"}
+          </span>
         </div>
-        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${isDemo ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-green-50 text-green-700 border-green-200"}`}>
-          {isDemo ? "Demo Data" : "● Live"}
-        </span>
       </div>
 
-      <div className="px-4 pt-4 space-y-4">
+      <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 py-6 space-y-6">
 
         {/* ── PERIOD SELECTOR ─────────────────────────────────────────────── */}
         <div className="bg-white px-4 py-3.5 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-3">

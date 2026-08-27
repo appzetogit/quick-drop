@@ -1864,10 +1864,10 @@ export default function OrdersMain() {
       </div>
 
       {/* Top Filter Bar - Sticky below navbar */}
-      <div className="sticky top-[56px] z-40 bg-white/80 backdrop-blur-md border-b border-gray-100/50">
+      <div className="sticky top-[56px] z-40 bg-white/90 backdrop-blur-md border-b border-gray-100/70 shadow-sm">
         <div
           ref={filterBarRef}
-          className="flex gap-2.5 overflow-x-auto scrollbar-hide px-4 py-3"
+          className="max-w-6xl mx-auto flex gap-2.5 overflow-x-auto scrollbar-hide px-4 sm:px-6 py-3"
           style={{
             scrollbarWidth: "none",
             msOverflowStyle: "none",
@@ -1917,7 +1917,7 @@ export default function OrdersMain() {
       {/* Content Area - Scrollable */}
       <div
         ref={contentRef}
-        className="flex-1 overflow-y-auto px-4 pb-24 content-scroll"
+        className="max-w-6xl mx-auto w-full flex-1 overflow-y-auto px-4 sm:px-6 pb-28 content-scroll"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}

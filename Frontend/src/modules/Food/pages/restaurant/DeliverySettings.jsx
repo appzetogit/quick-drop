@@ -202,42 +202,41 @@ export default function DeliverySettings() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="min-h-screen bg-neutral-50/60 flex flex-col pb-28 text-gray-900">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50">
-        <div className="flex items-center gap-3">
+      <div className="bg-white/95 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3.5 flex items-center gap-3">
           <button 
             onClick={goBack}
-            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 -ml-2 hover:bg-gray-100 rounded-xl text-gray-600 hover:text-gray-900 transition-colors"
             aria-label="Go back"
           >
-            <ArrowLeft className="w-6 h-6 text-gray-900" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="flex-1">
-            <h1 className="text-lg font-bold text-gray-900">Delivery Settings</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Manage your delivery status</p>
+          <div>
+            <h1 className="text-base sm:text-lg font-bold text-gray-900">Delivery Status Settings</h1>
+            <p className="text-xs text-gray-500 hidden sm:block">Control live order intake and delivery dispatch state</p>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
+      <div className="max-w-3xl mx-auto w-full flex-1 px-4 sm:px-6 py-6 space-y-4">
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          <Card className="bg-white border-gray-200 shadow-sm">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-gray-100 rounded-lg">
-                  <Truck className="w-5 h-5 text-gray-900" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-gray-900">Delivery Status</h2>
-                  <p className="text-sm text-gray-500">Control when you receive delivery orders</p>
-                </div>
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5">
+            <div className="flex items-center gap-3 pb-3 border-b border-gray-100">
+              <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
+                <Truck className="w-5 h-5" />
               </div>
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Live Delivery Accepting State</h2>
+                <p className="text-xs text-gray-500">Toggle whether your kitchen is open to incoming online delivery orders</p>
+              </div>
+            </div>
 
               <div className="flex items-center justify-between">
                 <div className="flex-1">
@@ -285,8 +284,7 @@ export default function DeliverySettings() {
                   className="ml-4 data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-gray-300"
                 />
               </div>
-            </CardContent>
-          </Card>
+            </div>
         </motion.div>
 
         {/* Info Card */}
@@ -294,15 +292,11 @@ export default function DeliverySettings() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.1 }}
-          className="mt-4"
+          className="bg-blue-50/80 border border-blue-200 rounded-2xl p-5"
         >
-          <Card className="bg-blue-50 border-blue-200 shadow-sm">
-            <CardContent className="p-4">
-              <p className="text-sm text-gray-700">
-                <strong>Note:</strong> When delivery is turned off, customers won't be able to place delivery orders from your restaurant. You can turn it back on anytime.
-              </p>
-            </CardContent>
-          </Card>
+          <p className="text-xs text-blue-900 leading-relaxed">
+            <strong>Note:</strong> When delivery is turned off, customers won't be able to place delivery orders from your restaurant. You can turn it back on anytime.
+          </p>
         </motion.div>
       </div>
 

@@ -127,280 +127,280 @@ export default function PhoneNumbersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="min-h-screen bg-neutral-50/60 pb-28 text-gray-900">
       {/* Header */}
-      <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
-        <div className="px-4 py-3 flex items-center gap-3">
+      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-200 shadow-sm">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3.5 flex items-center gap-3">
           <button
             onClick={goBack}
-            className="p-1 rounded-full hover:bg-gray-100"
+            className="p-2 -ml-2 rounded-xl hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-colors"
+            aria-label="Go back"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-700" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-xl font-bold text-gray-900">Important contacts</h1>
+          <div>
+            <h1 className="text-base sm:text-lg font-bold text-gray-900">Important Contacts</h1>
+            <p className="text-xs text-gray-500 hidden sm:block">Customer support lines and automated order alert phone numbers</p>
+          </div>
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-5">
         {/* Order reminder numbers */}
-        <div className="bg-white rounded-lg p-4 mb-4">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
-              <Users className="w-5 h-5 text-gray-700" />
+        <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4">
+          <div className="flex items-center gap-3 pb-3 border-b border-gray-100">
+            <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-primary-orange">
+              <Users className="w-5 h-5" />
             </div>
-            <div className="flex-1">
-              <h2 className="text-base font-bold text-gray-900">Order reminder numbers</h2>
-              <p className="text-xs text-gray-600 mt-1">
-                Should always be available for Quick Drop Store to reach out for live order support and order reminders.
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Order Reminder Numbers</h2>
+              <p className="text-xs text-gray-500">
+                Primary phones contacted by automated calls for new order placement and operational support.
               </p>
             </div>
           </div>
 
-          <div className="mt-4 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
             {/* Order reminder number #1 */}
-            <div className="flex items-center justify-between py-2">
-              <div className="flex-1">
-                <p className="text-sm text-gray-700 mb-1">Order reminder number #1</p>
-                <p className="text-base font-semibold text-gray-900">{getDisplayNumber("orderReminder1")}</p>
+            <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Reminder Line #1</p>
+                <p className="text-base font-bold text-gray-900 mt-1">{getDisplayNumber("orderReminder1")}</p>
               </div>
               <button
                 onClick={() => handleEditClick("orderReminder1")}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 hover:bg-white rounded-lg text-gray-600 hover:text-gray-900 border border-transparent hover:border-gray-200 transition-colors"
+                title="Edit number"
               >
-                <Edit className="w-4 h-4 text-blue-600" />
+                <Edit className="w-4 h-4" />
               </button>
             </div>
 
             {/* Order reminder number #2 */}
-            <div className="flex items-center justify-between py-2 border-t border-gray-100">
-              <div className="flex-1">
-                <p className="text-sm text-gray-700 mb-1">Order reminder number #2</p>
-                <p className="text-base font-semibold text-gray-900">{getDisplayNumber("orderReminder2")}</p>
+            <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Reminder Line #2</p>
+                <p className="text-base font-bold text-gray-900 mt-1">{getDisplayNumber("orderReminder2")}</p>
               </div>
               <button
                 onClick={() => handleEditClick("orderReminder2")}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 hover:bg-white rounded-lg text-gray-600 hover:text-gray-900 border border-transparent hover:border-gray-200 transition-colors"
+                title="Edit number"
               >
-                <Edit className="w-4 h-4 text-blue-600" />
+                <Edit className="w-4 h-4" />
               </button>
             </div>
           </div>
         </div>
 
         {/* Restaurant page number */}
-        <div className="bg-white rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
-              <Phone className="w-5 h-5 text-gray-700" />
+        <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4">
+          <div className="flex items-center gap-3 pb-3 border-b border-gray-100">
+            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
+              <Phone className="w-5 h-5" />
             </div>
-            <div className="flex-1">
-              <h2 className="text-base font-bold text-gray-900">Restaurant page number</h2>
-              <p className="text-xs text-gray-600 mt-1">
-                Number for Quick Drop customers to call your restaurant.
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Customer Helpline Number</h2>
+              <p className="text-xs text-gray-500">
+                Public telephone number displayed on the app for customers to contact your outlet.
               </p>
             </div>
           </div>
 
-          <div className="mt-4">
-            <div className="flex items-center justify-between py-2">
-              <div className="flex-1">
-                <p className="text-base font-semibold text-gray-900">{getDisplayNumber("restaurantPage")}</p>
-              </div>
-              <button
-                onClick={() => handleEditClick("restaurantPage")}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <Edit className="w-4 h-4 text-blue-600" />
-              </button>
+          <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Public Phone</p>
+              <p className="text-base font-bold text-gray-900 mt-1">{getDisplayNumber("restaurantPage")}</p>
             </div>
+            <button
+              onClick={() => handleEditClick("restaurantPage")}
+              className="p-2 hover:bg-white rounded-lg text-gray-600 hover:text-gray-900 border border-transparent hover:border-gray-200 transition-colors"
+              title="Edit number"
+            >
+              <Edit className="w-4 h-4" />
+            </button>
           </div>
         </div>
-
-        {/* Staff management removed */}
       </div>
 
       {/* Edit Phone Number Popup */}
       <AnimatePresence>
         {editingNumber && (
-          <>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={handleCancelEdit}
-              className="fixed inset-0 bg-black/50 z-50"
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
             />
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 max-h-[70vh] flex flex-col"
+              className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl z-50 max-h-[85vh] flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200">
-                <h2 className="text-lg font-bold text-gray-900">Edit phone number</h2>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                <h2 className="text-base font-bold text-gray-900">Edit Phone Number</h2>
                 <button
                   onClick={handleCancelEdit}
-                  className="p-1 rounded-full hover:bg-gray-100"
+                  className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700"
                 >
-                  <X className="w-5 h-5 text-gray-600" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto px-4 py-4">
-                <div className="space-y-4">
-                  {/* Country Code Selector */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
-                      Country code
-                    </label>
-                    <button
-                      onClick={() => setIsCountryCodeOpen(true)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg text-left flex items-center justify-between bg-white hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">
-                          {countryCodes.find(c => c.code === countryCode)?.flag || "🇮🇳"}
-                        </span>
-                        <span className="text-sm text-gray-900">{countryCode}</span>
-                      </div>
-                      <ChevronDown className="w-5 h-5 text-gray-500" />
-                    </button>
-                  </div>
+              <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+                {/* Country Code Selector */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Country Dialing Code
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsCountryCodeOpen(true)}
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-left flex items-center justify-between bg-white hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">
+                        {countryCodes.find(c => c.code === countryCode)?.flag || "🇮🇳"}
+                      </span>
+                      <span className="text-sm font-semibold text-gray-900">{countryCode}</span>
+                    </div>
+                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                  </button>
+                </div>
 
-                  {/* Phone Number Input */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
-                      Phone number
-                    </label>
-                    <input
-                      type="tel"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
-                      placeholder="Enter phone number"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
+                {/* Phone Number Input */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Enter phone number"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  />
                 </div>
               </div>
-              <div className="px-4 py-4 border-t border-gray-200 flex gap-3">
+              <div className="px-5 py-4 border-t border-gray-100 flex gap-3">
                 <button
                   onClick={handleCancelEdit}
-                  className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-sm font-semibold text-gray-900 bg-white hover:bg-gray-50 transition-colors"
+                  className="flex-1 py-2.5 px-4 border border-gray-300 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveEdit}
                   disabled={!phoneNumber.trim()}
-                  className={`flex-1 py-3 px-4 rounded-lg text-sm font-semibold transition-colors ${
+                  className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-colors ${
                     phoneNumber.trim()
-                      ? "bg-black text-white hover:bg-gray-800"
-                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      ? "bg-gray-900 text-white hover:bg-black"
+                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
                   }`}
                 >
-                  Save
+                  Save & Verify
                 </button>
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
 
       {/* Country Code Selection Popup */}
       <AnimatePresence>
         {isCountryCodeOpen && (
-          <>
+          <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsCountryCodeOpen(false)}
-              className="fixed inset-0 bg-black/50 z-[60]"
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60]"
             />
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-[60] max-h-[60vh] flex flex-col"
+              className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl z-[60] max-h-[70vh] flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200">
-                <h2 className="text-lg font-bold text-gray-900">Select country code</h2>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                <h2 className="text-base font-bold text-gray-900">Select Country Code</h2>
                 <button
                   onClick={() => setIsCountryCodeOpen(false)}
-                  className="p-1 rounded-full hover:bg-gray-100"
+                  className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700"
                 >
-                  <X className="w-5 h-5 text-gray-600" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto px-4 py-4">
-                <div className="space-y-2">
-                  {countryCodes.map((country) => (
-                    <button
-                      key={country.code}
-                      onClick={() => {
-                        setCountryCode(country.code)
-                        setIsCountryCodeOpen(false)
-                      }}
-                      className={`w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center gap-3 ${
-                        countryCode === country.code
-                          ? "bg-gray-900 text-white"
-                          : "bg-gray-50 text-gray-900 hover:bg-gray-100"
-                      }`}
-                    >
-                      <span className="text-xl">{country.flag}</span>
-                      <span className="flex-1">{country.country}</span>
-                      <span className={countryCode === country.code ? "text-white" : "text-gray-600"}>
-                        {country.code}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
+                {countryCodes.map((country) => (
+                  <button
+                    key={country.code}
+                    onClick={() => {
+                      setCountryCode(country.code)
+                      setIsCountryCodeOpen(false)
+                    }}
+                    className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold transition-colors flex items-center gap-3 ${
+                      countryCode === country.code
+                        ? "bg-gray-900 text-white"
+                        : "bg-gray-50 text-gray-900 hover:bg-gray-100"
+                    }`}
+                  >
+                    <span className="text-lg">{country.flag}</span>
+                    <span className="flex-1">{country.country}</span>
+                    <span className={countryCode === country.code ? "text-white" : "text-gray-500"}>
+                      {country.code}
+                    </span>
+                  </button>
+                ))}
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
 
       {/* OTP Verification Popup */}
       <AnimatePresence>
         {showOtpPopup && (
-          <>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={handleCancelOtp}
-              className="fixed inset-0 bg-black/50 z-50"
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
             />
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-50 max-h-[70vh] flex flex-col"
+              className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl z-50 max-h-[80vh] flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200">
-                <h2 className="text-lg font-bold text-gray-900">Verify OTP</h2>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                <h2 className="text-base font-bold text-gray-900">Verify OTP</h2>
                 <button
                   onClick={handleCancelOtp}
-                  className="p-1 rounded-full hover:bg-gray-100"
+                  className="p-1 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700"
                 >
-                  <X className="w-5 h-5 text-gray-600" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto px-4 py-6">
-                <div className="space-y-6">
+              <div className="flex-1 overflow-y-auto px-5 py-6">
+                <div className="space-y-5">
                   <div className="text-center">
-                    <p className="text-sm text-gray-600 mb-2">
-                      We've sent a 6-digit OTP to
+                    <p className="text-xs text-gray-500 mb-1">
+                      We've sent a 6-digit verification code to
                     </p>
-                    <p className="text-base font-semibold text-gray-900">
+                    <p className="text-sm font-bold text-gray-900">
                       {pendingPhoneData ? `${pendingPhoneData.countryCode}-${pendingPhoneData.phoneNumber}` : ""}
                     </p>
                   </div>
@@ -417,7 +417,7 @@ export default function PhoneNumbersPage() {
                         value={digit}
                         onChange={(e) => handleOtpChange(index, e.target.value)}
                         onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                        className="w-12 h-12 text-center text-lg font-semibold border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-11 h-12 text-center text-lg font-bold border-2 border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
                         autoFocus={index === 0}
                       />
                     ))}
@@ -426,34 +426,34 @@ export default function PhoneNumbersPage() {
                   <div className="text-center">
                     <button
                       onClick={handleResendOtp}
-                      className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                      className="text-xs text-blue-600 hover:underline font-semibold"
                     >
-                      Resend OTP
+                      Resend Code
                     </button>
                   </div>
                 </div>
               </div>
-              <div className="px-4 py-4 border-t border-gray-200 flex gap-3">
+              <div className="px-5 py-4 border-t border-gray-100 flex gap-3">
                 <button
                   onClick={handleCancelOtp}
-                  className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-sm font-semibold text-gray-900 bg-white hover:bg-gray-50 transition-colors"
+                  className="flex-1 py-2.5 px-4 border border-gray-300 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleVerifyOtp}
                   disabled={otp.join("").length !== 6}
-                  className={`flex-1 py-3 px-4 rounded-lg text-sm font-semibold transition-colors ${
+                  className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-colors ${
                     otp.join("").length === 6
-                      ? "bg-black text-white hover:bg-gray-800"
-                      : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      ? "bg-gray-900 text-white hover:bg-black"
+                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
                   }`}
                 >
-                  Verify
+                  Verify & Confirm
                 </button>
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
     </div>

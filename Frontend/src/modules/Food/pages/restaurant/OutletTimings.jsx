@@ -188,40 +188,38 @@ export default function OutletTimings() {
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <div className="min-h-screen bg-white overflow-x-hidden">
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate("/food/restaurant/explore")}
-              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-              aria-label="Go back"
-            >
-              <ArrowLeft className="w-6 h-6 text-gray-900" />
-            </button>
-            <h1 className="text-lg font-bold text-gray-900">Outlet timings</h1>
+        <div className="bg-white/95 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate("/food/restaurant/explore")}
+                className="p-2 -ml-2 hover:bg-gray-100 rounded-xl text-gray-600 hover:text-gray-900 transition-colors"
+                aria-label="Go back"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-base sm:text-lg font-bold text-gray-900">Outlet Operating Hours</h1>
+                <p className="text-xs text-gray-500 hidden sm:block">Set open/close schedules and customer ordering windows</p>
+              </div>
+            </div>
+            {/* Save Button in Header */}
+            {hasUnsavedChanges && (
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="px-5 py-2 bg-gray-900 hover:bg-black disabled:opacity-60 text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-2 shadow-sm"
+              >
+                {isSaving ? (
+                  <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Saving...</>
+                ) : "Save Timings"}
+              </button>
+            )}
           </div>
-          {/* Save Button in Header */}
-          {hasUnsavedChanges && (
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="px-4 py-2 bg-gray-900 hover:bg-gray-800 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-2"
-            >
-              {isSaving ? (
-                <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Saving...</>
-              ) : "Save"}
-            </button>
-          )}
         </div>
 
         {/* Main Content */}
-        <div className="px-4 py-6">
-          {/* Quick Drop delivery Section Header */}
-          <div className="mb-6">
-            <div className="text-center mb-2">
-              <h2 className="text-base font-semibold text-blue-600">{companyName} delivery</h2>
-            </div>
-            <div className="h-0.5 bg-blue-600"></div>
-          </div>
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 pb-28">
 
           {/* Day-wise Accordion */}
           <div className="space-y-2">

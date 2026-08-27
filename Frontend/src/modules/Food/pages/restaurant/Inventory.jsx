@@ -1798,8 +1798,8 @@ export default function Inventory() {
       </div>
 
       {/* Tabs */}
-      <div className="bg-[#f3f5f8] px-4 pt-4 pb-4">
-        <div ref={tabBarRef} className="grid grid-cols-2 gap-3">
+      <div className="bg-[#f3f5f8] px-4 sm:px-6 pt-4 pb-4">
+        <div ref={tabBarRef} className="max-w-6xl mx-auto grid grid-cols-2 gap-3">
           <motion.button
             onClick={() => setActiveTab("all-items")}
             className={`relative overflow-hidden rounded-[24px] border px-5 py-4 text-sm font-semibold whitespace-nowrap ${
@@ -1873,7 +1873,7 @@ export default function Inventory() {
       {/* Main Content */}
       <div
         ref={contentContainerRef}
-        className="flex-1 overflow-y-auto px-4 pb-32"
+        className="max-w-6xl mx-auto w-full flex-1 overflow-y-auto px-4 sm:px-6 pb-32"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}

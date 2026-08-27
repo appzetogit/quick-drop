@@ -111,52 +111,51 @@ export default function RatingsReviews() {
   }
 
   return (
-    <div className="min-h-screen bg-white overflow-x-hidden">
+    <div className="min-h-screen bg-neutral-50/60 pb-28 text-gray-900">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50">
-        <div className="flex items-center gap-3">
+      <div className="bg-white/95 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3.5 flex items-center gap-3">
           <button
             onClick={goBack}
-            className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-2 -ml-2 hover:bg-gray-100 rounded-xl text-gray-600 hover:text-gray-900 transition-colors"
             aria-label="Go back"
           >
-            <ArrowLeft className="w-6 h-6 text-gray-900" />
+            <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-lg font-bold text-gray-900">Ratings, reviews</h1>
-        </div>
-      </div>
-
-      {/* Top Banner Section */}
-      <div className="relative w-full">
-        <img 
-          src={restaurantReviewBanner}
-          alt="Ratings and reviews banner"
-          className="w-full h-auto object-cover"
-        />
-      </div>
-
-      {/* Your Restaurant's Rating Section */}
-      <div className="px-4 py-4 bg-white">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-base font-semibold text-gray-900">Your restaurant's rating</h2>
-          <div className="bg-green-600 px-3 py-1.5 rounded-lg flex items-center gap-1">
-            <span className="text-white text-sm font-bold">4.0</span>
-            <Star className="w-4 h-4 text-white fill-white" />
+          <div>
+            <h1 className="text-base sm:text-lg font-bold text-gray-900">Ratings & Customer Reviews FAQ</h1>
+            <p className="text-xs text-gray-500 hidden sm:block">Customer satisfaction metrics and score calculation policies</p>
           </div>
         </div>
-        <button
-          onClick={() => navigate("/restaurant/feedback?tab=reviews")}
-          className="flex items-center gap-1 text-blue-600 text-sm font-normal hover:text-blue-700 transition-colors"
-        >
-          <span>View order ratings</span>
-          <ChevronRight className="w-4 h-4" />
-        </button>
       </div>
 
-      {/* Select Your Concern Section */}
-      <div className="px-4 py-4">
-        <div className="border  border-gray-100 rounded-lg p-4">
-          <h3 className="text-base font-bold  text-gray-900 mb-4">Select your concern</h3>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        {/* Your Restaurant's Rating Section */}
+        <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-500 text-white flex flex-col items-center justify-center font-black shadow-md shadow-emerald-500/20">
+              <span className="text-xl leading-none">4.0</span>
+              <div className="flex text-amber-300 text-[10px] mt-0.5">
+                <Star className="w-3 h-3 fill-white" />
+              </div>
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Overall Outlet Rating</h2>
+              <p className="text-xs text-gray-500">Aggregated customer review benchmark</p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate("/food/restaurant/feedback?tab=reviews")}
+            className="inline-flex items-center justify-center gap-1.5 bg-gray-900 hover:bg-black text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm"
+          >
+            <span>View All Customer Reviews</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Select Your Concern Section */}
+        <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm space-y-4">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Frequently Asked Questions</h3>
           
           <div className="space-y-0">
             {accordionItems.map((item, index) => {

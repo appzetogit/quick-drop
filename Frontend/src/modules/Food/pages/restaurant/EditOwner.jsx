@@ -287,165 +287,187 @@ export default function EditOwner() {
 
   return (
     <>
-      <div className="min-h-screen bg-white overflow-x-hidden">
+      <div className="min-h-screen bg-neutral-50/60 pb-28 text-gray-900">
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50">
-          <div className="flex items-center gap-3">
+        <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-200">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={goBack}
+                className="p-2 -ml-2 rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                aria-label="Go back"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900">Contact Details</h1>
+                <p className="text-xs text-gray-500 hidden sm:block">Manage restaurant owner and manager profile information</p>
+              </div>
+            </div>
+
             <button
-              onClick={goBack}
-              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-              aria-label="Go back"
+              onClick={handleSave}
+              disabled={!hasChanges || loading || saving}
+              className="hidden sm:inline-flex items-center justify-center px-5 py-2 rounded-xl text-sm font-semibold transition-colors bg-gray-900 hover:bg-black text-white disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
             >
-              <ArrowLeft className="w-6 h-6 text-gray-900" />
+              {saving ? "Saving..." : "Save Changes"}
             </button>
-            <h1 className="text-lg font-bold text-gray-900">Contact details</h1>
           </div>
         </div>
 
         {/* Content */}
-        <div className="px-4 py-6 space-y-6">
-          {/* Profile Photo Section */}
-          <div className="flex flex-col items-center gap-3">
-            <div className="relative">
-              <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center overflow-hidden">
-                {loading ? (
-                  <User className="w-12 h-12 text-gray-500" />
-                ) : formData.photo ? (
-                  <OptimizedImage
-                    src={formData.photo}
-                    alt="Owner profile"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <User className="w-12 h-12 text-gray-500" />
-                )}
-              </div>
-            </div>
-            <button
-              onClick={handlePhotoClick}
-              disabled={loading || saving}
-              className="text-blue-600 text-sm font-normal hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Edit photo
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handlePhotoChange}
-              disabled={loading || saving}
-            />
-          </div>
-
-          {/* Editable Fields */}
-          <div className="space-y-4">
-            {/* Name Field */}
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Name</label>
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-6">
+            {/* Profile Photo Section */}
+            <div className="flex flex-col items-center gap-3 pb-6 border-b border-gray-100">
               <div className="relative">
-                <Input
-                  type="text"
-                  value={loading ? "Loading..." : formData.name}
-                  onChange={(e) => handleInputChange("name", e.target.value)}
-                  placeholder="Enter name"
-                  className="w-full pr-10"
-                  disabled={loading || saving}
-                />
-                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
+                <div className="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-200 shadow-inner">
+                  {loading ? (
+                    <User className="w-12 h-12 text-gray-400" />
+                  ) : formData.photo ? (
+                    <OptimizedImage
+                      src={formData.photo}
+                      alt="Owner profile"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-12 h-12 text-gray-400" />
+                  )}
+                </div>
               </div>
-            </div>
-
-            {/* Phone Number Field */}
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Phone number</label>
-              <Input
-                type="tel"
-                value={loading ? "Loading..." : formData.phone}
-                placeholder="Enter phone number"
-                className="w-full focus-visible:border-black focus-visible:ring-0"
-                readOnly
+              <button
+                onClick={handlePhotoClick}
+                disabled={loading || saving}
+                className="text-gray-900 text-xs font-semibold hover:underline transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Change Photo
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoChange}
                 disabled={loading || saving}
               />
             </div>
 
-            {/* Email Field */}
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Email</label>
-              <div className="relative">
+            {/* Editable Fields */}
+            <div className="space-y-4">
+              {/* Name Field */}
+              <div>
+                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Owner / Contact Name</label>
+                <div className="relative">
+                  <Input
+                    type="text"
+                    value={loading ? "Loading..." : formData.name}
+                    onChange={(e) => handleInputChange("name", e.target.value)}
+                    placeholder="Enter name"
+                    className="w-full pr-10 rounded-xl"
+                    disabled={loading || saving}
+                  />
+                  <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Phone Number Field */}
+              <div>
+                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Registered Phone Number</label>
                 <Input
-                  type="email"
-                  value={loading ? "Loading..." : formData.email}
-                  onChange={(e) => handleInputChange("email", e.target.value)}
-                  placeholder="Enter email address"
-                  className="w-full pr-10 focus-visible:border-black focus-visible:ring-0"
+                  type="tel"
+                  value={loading ? "Loading..." : formData.phone}
+                  placeholder="Enter phone number"
+                  className="w-full bg-gray-50 rounded-xl cursor-not-allowed"
+                  readOnly
                   disabled={loading || saving}
                 />
-                <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-600" />
+                <p className="text-[11px] text-gray-400 mt-1">Phone number is managed via outlet verification and cannot be changed directly.</p>
+              </div>
+
+              {/* Email Field */}
+              <div>
+                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Email Address</label>
+                <div className="relative">
+                  <Input
+                    type="email"
+                    value={loading ? "Loading..." : formData.email}
+                    onChange={(e) => handleInputChange("email", e.target.value)}
+                    placeholder="Enter email address"
+                    className="w-full pr-10 rounded-xl"
+                    disabled={loading || saving}
+                  />
+                  <Edit className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Delete Account Section */}
-          <div className="pt-4">
-            <button
-              onClick={() => setShowDeleteDialog(true)}
-              className="flex items-center gap-2 text-red-600 hover:text-red-700 transition-colors"
-            >
-              <Trash2 className="w-5 h-5" />
-              <span className="text-sm font-normal">Delete your Quick Drop Store account</span>
-            </button>
+            {/* Delete Account Section */}
+            <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-red-600">Delete Restaurant Account</p>
+                <p className="text-xs text-gray-500">Permanently remove this store and all linked records</p>
+              </div>
+              <button
+                onClick={() => setShowDeleteDialog(true)}
+                className="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold transition-colors flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete</span>
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Delete Account Confirmation Dialog */}
         <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <DialogContent className="sm:max-w-md p-4 w-[90%]">
+          <DialogContent className="sm:max-w-md p-6 w-[90%] rounded-2xl">
             <DialogHeader className="text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
                 <span className="text-2xl leading-none text-red-600">!</span>
               </div>
-              <DialogTitle className="text-base font-semibold text-gray-900 text-center">
+              <DialogTitle className="text-base font-bold text-gray-900 text-center">
                 You are about to delete your Quick Drop Store account
               </DialogTitle>
-              <DialogHeader className="mt-2 text-sm text-gray-600">
+              <DialogDescription className="mt-2 text-xs text-gray-600 leading-relaxed text-center">
                 All information associated with your account will be deleted, and you will lose access to your restaurant permanently.
-                This information cannot be recovered once the account is deleted. Are you sure you want to proceed?
-              </DialogHeader>
+                This information cannot be recovered once deleted. Are you sure you want to proceed?
+              </DialogDescription>
             </DialogHeader>
-            <DialogFooter className="flex flex-col gap-2 sm:flex-col">
-              <Button
-                onClick={handleDeleteAccount}
-                disabled={isDeleting}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isDeleting ? "Deleting..." : "Confirm"}
-              </Button>
+            <DialogFooter className="flex flex-col sm:flex-row gap-2 mt-4">
               <Button
                 variant="outline"
                 onClick={() => setShowDeleteDialog(false)}
                 disabled={isDeleting}
-                className="w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full sm:flex-1 rounded-xl"
               >
                 Cancel
+              </Button>
+              <Button
+                onClick={handleDeleteAccount}
+                disabled={isDeleting}
+                className="w-full sm:flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl disabled:opacity-50"
+              >
+                {isDeleting ? "Deleting..." : "Confirm Delete"}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* Save Button - Fixed at bottom */}
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-4 z-40">
-          <Button
-            onClick={handleSave}
-            disabled={!hasChanges || loading || saving}
-            className={`w-full py-3 ${
-              hasChanges && !loading && !saving
-                ? "bg-black hover:bg-gray-900 text-white" 
-                : "bg-gray-200 text-gray-500 cursor-not-allowed"
-            } transition-colors`}
-          >
-            {saving ? "Saving..." : "Save"}
-          </Button>
+        {/* Save Button - Responsive Sticky Footer */}
+        <div className="fixed lg:sticky bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 px-4 py-3.5 z-30 shadow-lg lg:shadow-none">
+          <div className="max-w-3xl mx-auto flex justify-end">
+            <Button
+              onClick={handleSave}
+              disabled={!hasChanges || loading || saving}
+              className={`w-full sm:w-auto px-8 py-2.5 rounded-xl font-bold ${
+                hasChanges && !loading && !saving
+                  ? "bg-gray-900 hover:bg-black text-white" 
+                  : "bg-gray-200 text-gray-500 cursor-not-allowed"
+              } transition-colors`}
+            >
+              {saving ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
         </div>
       </div>
 

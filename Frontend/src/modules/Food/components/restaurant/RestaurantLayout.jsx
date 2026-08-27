@@ -82,8 +82,8 @@ export default function RestaurantLayout() {
           collapsed ? "lg:ml-20" : "lg:ml-72"
         }`}
       >
-        {/* Mobile-first pages sit in a readable column instead of stretching. */}
-        <div className="mx-auto w-full lg:max-w-5xl lg:px-6 lg:py-6">
+        {/* Desktop pages sit in an elegant spacious container */}
+        <div className="mx-auto w-full lg:max-w-7xl lg:px-6 lg:py-6">
           <Outlet />
         </div>
       </div>

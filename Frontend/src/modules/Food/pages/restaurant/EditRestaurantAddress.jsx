@@ -210,73 +210,96 @@ export default function EditRestaurantAddress() {
   const simplifiedAddress = getSimplifiedAddress(address)
 
   return (
-    <div className="h-screen bg-white overflow-hidden flex flex-col">
+    <div className="min-h-screen bg-neutral-50/60 pb-20 text-gray-900">
       {/* Sticky Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50 flex items-center gap-3 shrink-0">
-        <button
-          onClick={goBack}
-          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
-          aria-label="Go back"
-        >
-          <ArrowLeft className="w-6 h-6 text-gray-900" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1">
-            <h1 className="text-base font-bold text-gray-900 truncate">{restaurantName}</h1>
-            <ChevronDown className="w-4 h-4 text-gray-900 shrink-0" />
+      <div className="bg-white/95 backdrop-blur-md border-b border-gray-200 sticky top-0 z-30">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={goBack}
+              className="p-2 -ml-2 hover:bg-gray-100 rounded-xl text-gray-600 hover:text-gray-900 transition-colors"
+              aria-label="Go back"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{restaurantName || "Restaurant Address"}</h1>
+              <p className="text-xs text-gray-500 truncate">{simplifiedAddress}</p>
+            </div>
           </div>
-          <p className="text-xs text-gray-600 truncate">{simplifiedAddress}</p>
+
+          <button
+            type="button"
+            onClick={handleUpdateClick}
+            className="hidden sm:inline-flex items-center justify-center px-6 py-2 rounded-xl text-sm font-semibold bg-gray-900 hover:bg-black text-white transition-all shadow-sm"
+          >
+            Update Address
+          </button>
         </div>
       </div>
 
-      {/* Map Section - Takes remaining space */}
-      <div className="relative flex-1 min-h-0 overflow-hidden">
-        {/* Google Maps Embed */}
-        <iframe
-          src={`https://www.google.com/maps?q=${lat},${lng}&hl=en&z=15&output=embed`}
-          width="100%"
-          height="100%"
-          style={{ border: 0 }}
-          allowFullScreen
-          loading="lazy"
-          referrerPolicy="no-referrer-when-downgrade"
-          className="absolute inset-0"
-        />
-        
-        {/* Custom Marker Tooltip Overlay */}
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
-          {/* Tooltip */}
-          <div className="bg-black text-white px-3 py-2 rounded-lg mb-2 whitespace-nowrap shadow-lg">
-            <p className="text-xs font-semibold">Your outlet location</p>
-            <p className="text-[10px] text-gray-300">Orders will be picked up from here</p>
-          </div>
-          {/* Marker Pin */}
-          <div className="w-6 h-6 bg-black rounded-full border-2 border-white shadow-lg mx-auto"></div>
-        </div>
+      {/* Main Content */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Map Preview Card */}
+          <div className="lg:col-span-7 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Map Location</h2>
+              <button
+                onClick={handleViewOnMap}
+                className="text-xs font-semibold text-blue-600 hover:underline"
+              >
+                Open in Google Maps
+              </button>
+            </div>
 
-        {/* Address Details Section - Overlays map at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl z-20 px-4 pt-6">
-          <h2 className="text-xl font-bold text-gray-900 text-center mb-3">Outlet address</h2>
-          
-          {/* Informational Banner */}
-          <div className="bg-blue-100 rounded-lg px-4 py-3 mb-4">
-            <p className="text-sm text-gray-900">
-              Customers and Quick Drop Partner delivery partners will use this to locate your outlet.
-            </p>
-          </div>
-
-          {/* Current Address Display */}
-          <div className="mb-4">
-            <p className="text-base text-gray-900">{address}</p>
+            <div className="relative h-80 sm:h-96 w-full bg-gray-100">
+              <iframe
+                src={`https://www.google.com/maps?q=${lat},${lng}&hl=en&z=15&output=embed`}
+                width="100%"
+                height="100%"
+                style={{ border: 0 }}
+                allowFullScreen
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                className="w-full h-full"
+              />
+              
+              {/* Custom Marker Tooltip Overlay */}
+              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10">
+                <div className="bg-gray-900 text-white px-3 py-1.5 rounded-lg mb-2 whitespace-nowrap shadow-xl text-center">
+                  <p className="text-xs font-bold">Outlet Location</p>
+                  <p className="text-[10px] text-gray-300">Pickups dispatched here</p>
+                </div>
+                <div className="w-5 h-5 bg-gray-900 rounded-full border-2 border-white shadow-lg mx-auto"></div>
+              </div>
+            </div>
           </div>
 
-          {/* Update Button */}
-          <div className="pb-4">
+          {/* Address Details Card */}
+          <div className="lg:col-span-5 bg-white rounded-2xl border border-gray-200 p-5 sm:p-6 shadow-sm space-y-5">
+            <div>
+              <h2 className="text-base font-bold text-gray-900">Current Outlet Address</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Physical pickup location displayed to customers and delivery partners.</p>
+            </div>
+
+            {/* Informational Banner */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800 leading-relaxed">
+              Customers and Quick Drop delivery riders will use this exact address and GPS pin to navigate to your outlet.
+            </div>
+
+            {/* Current Address Display */}
+            <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Registered Address</p>
+              <p className="text-sm font-medium text-gray-900 leading-relaxed">{address || "No address recorded"}</p>
+            </div>
+
+            {/* Update Button */}
             <button
               onClick={handleUpdateClick}
-              className="w-full bg-black text-white font-semibold py-4 text-base rounded-lg"
+              className="w-full bg-gray-900 hover:bg-black text-white font-bold py-3 text-sm rounded-xl transition-all shadow-md hover:shadow-lg"
             >
-              Update
+              Update Address & Pin
             </button>
           </div>
         </div>
@@ -286,26 +309,30 @@ export default function EditRestaurantAddress() {
       <BottomPopup
         isOpen={showSelectOptionDialog}
         onClose={() => setShowSelectOptionDialog(false)}
-        title="Select an option"
+        title="Select an Option"
         maxHeight="auto"
       >
-        <div className=" space-y-0">
+        <div className="space-y-3 pt-2">
           {/* Option 1: Update outlet address */}
           <button
             onClick={() => setSelectedOption("update_address")}
-            className="w-full flex items-start justify-between py-4 border-b border-dashed border-gray-300"
+            className={`w-full flex items-start justify-between p-4 rounded-xl border text-left transition-all ${
+              selectedOption === "update_address"
+                ? "bg-gray-50 border-gray-900 shadow-sm"
+                : "bg-white border-gray-200 hover:bg-gray-50"
+            }`}
           >
-            <div className="flex-1 text-left">
-              <p className="text-base font-semibold text-gray-900 mb-1">
+            <div className="flex-1 pr-3">
+              <p className="text-sm font-bold text-gray-900 mb-1">
                 Update outlet address (FSSAI required)
               </p>
-              <p className="text-sm text-gray-500">{address}</p>
+              <p className="text-xs text-gray-500 line-clamp-2">{address}</p>
             </div>
-            <div className="ml-4 shrink-0">
+            <div className="mt-0.5 shrink-0">
               <div
                 className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                   selectedOption === "update_address"
-                    ? "border-black bg-black"
+                    ? "border-gray-900 bg-gray-900"
                     : "border-gray-300"
                 }`}
               >
@@ -319,21 +346,25 @@ export default function EditRestaurantAddress() {
           {/* Option 2: Minor correction */}
           <button
             onClick={() => setSelectedOption("minor_correction")}
-            className="w-full flex items-start justify-between py-4"
+            className={`w-full flex items-start justify-between p-4 rounded-xl border text-left transition-all ${
+              selectedOption === "minor_correction"
+                ? "bg-gray-50 border-gray-900 shadow-sm"
+                : "bg-white border-gray-200 hover:bg-gray-50"
+            }`}
           >
-            <div className="flex-1 text-left">
-              <p className="text-base font-semibold text-gray-900 mb-1">
+            <div className="flex-1 pr-3">
+              <p className="text-sm font-bold text-gray-900 mb-1">
                 Make a minor correction to the location pin
               </p>
-              <p className="text-sm text-gray-500">
-                If location pin on the map is slightly misplaced
+              <p className="text-xs text-gray-500">
+                Adjust if the pin on the map is slightly misplaced
               </p>
             </div>
-            <div className="ml-4 shrink-0">
+            <div className="mt-0.5 shrink-0">
               <div
                 className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                   selectedOption === "minor_correction"
-                    ? "border-black bg-black"
+                    ? "border-gray-900 bg-gray-900"
                     : "border-gray-300"
                 }`}
               >
@@ -347,7 +378,7 @@ export default function EditRestaurantAddress() {
           {/* Proceed Button */}
           <button
             onClick={handleProceedUpdate}
-            className="w-full bg-black text-white font-semibold py-4 rounded-lg mt-6"
+            className="w-full bg-gray-900 hover:bg-black text-white font-bold py-3.5 rounded-xl text-sm transition-colors mt-4"
           >
             Proceed to update
           </button>

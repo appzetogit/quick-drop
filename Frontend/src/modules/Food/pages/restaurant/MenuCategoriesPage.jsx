@@ -226,49 +226,72 @@ export default function MenuCategoriesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24">
-      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="px-4 py-3 flex items-center gap-3">
-          <button onClick={goBack} className="rounded-full p-1 hover:bg-slate-100">
-            <ArrowLeft className="h-5 w-5 text-slate-700" />
-          </button>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Menu Categories</h1>
-            <p className="text-xs text-slate-500">Create categories, track approvals, and resubmit edits safely.</p>
+    <div className="min-h-screen bg-slate-50/60 pb-24 text-slate-900">
+      {/* Header */}
+      <div className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur-md">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button onClick={goBack} className="rounded-xl p-2 text-slate-600 hover:bg-slate-100 transition-colors" aria-label="Go back">
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div>
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900">Menu Categories</h1>
+              <p className="text-xs text-slate-500 hidden sm:block">Create categories, track approvals, and resubmit edits safely.</p>
+            </div>
           </div>
+
+          <button
+            onClick={openCreateModal}
+            className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-black transition-colors shadow-sm"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Add Category</span>
+          </button>
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="text-sm font-semibold text-slate-900">How this works</p>
-          <p className="mt-2 text-sm text-slate-600">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        {/* Info Card */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-bold text-slate-900">Category Approval Workflow</p>
+          <p className="mt-1.5 text-xs sm:text-sm text-slate-600 leading-relaxed">
             New categories stay pending until admin approval. Editing an approved category sends it back for review.
-            Only approved categories can be used for food uploads.
+            Only approved categories can be attached to food items.
           </p>
         </div>
 
+        {/* Mobile Add Category Button */}
         <button
           onClick={openCreateModal}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white"
+          className="sm:hidden flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3.5 font-semibold text-white shadow-sm"
         >
           <Plus className="h-5 w-5" />
           Add Category
         </button>
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-7 w-7 animate-spin text-slate-500" />
           </div>
         ) : ownCategories.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-            <p className="text-lg font-semibold text-slate-900">No restaurant categories yet</p>
-            <p className="mt-2 text-sm text-slate-500">
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
+            <div className="mx-auto w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
+              <Plus className="w-6 h-6" />
+            </div>
+            <p className="text-base font-bold text-slate-900">No restaurant categories yet</p>
+            <p className="mt-1.5 text-xs sm:text-sm text-slate-500 max-w-sm mx-auto">
               Start with a category and choose whether it should accept veg, non-veg, or both kinds of dishes.
             </p>
+            <button
+              onClick={openCreateModal}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-black transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Create First Category</span>
+            </button>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {ownCategories.map((category) => {
               const status = category?.approvalStatus || "pending"
               const isEditable = category?.canEdit
@@ -278,57 +301,59 @@ export default function MenuCategoriesPage() {
                 <motion.div
                   key={category._id || category.id}
                   layout
-                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-slate-300 transition-all flex flex-col justify-between"
                 >
-                  <div className="flex gap-3">
-                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-slate-100">
-                      {category?.image ? (
-                        <img src={category.image} alt={category.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-lg font-bold text-slate-500">
-                          {String(category?.name || "C").slice(0, 1).toUpperCase()}
+                  <div>
+                    <div className="flex gap-3.5">
+                      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-slate-100 border border-slate-100">
+                        {category?.image ? (
+                          <img src={category.image} alt={category.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-lg font-bold text-slate-500">
+                            {String(category?.name || "C").slice(0, 1).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${approvalBadgeClass(status)}`}>
+                            {status === "approved" ? <BadgeCheck className="mr-1 h-3 w-3" /> : <Clock3 className="mr-1 h-3 w-3" />}
+                            {status}
+                          </span>
+                          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${scopePillClass(category?.foodTypeScope)}`}>
+                            {category?.foodTypeScope || "Both"}
+                          </span>
+                          {isGlobal && (
+                            <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-700">
+                              <Globe className="mr-1 h-3 w-3" />
+                              Global
+                            </span>
+                          )}
                         </div>
-                      )}
+                        <h3 className="text-base font-bold text-slate-900 truncate">{category.name}</h3>
+                      </div>
                     </div>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-semibold text-slate-900">{category.name}</h3>
-                        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${approvalBadgeClass(status)}`}>
-                          {status === "approved" ? <BadgeCheck className="mr-1 h-3.5 w-3.5" /> : <Clock3 className="mr-1 h-3.5 w-3.5" />}
-                          {status.charAt(0).toUpperCase() + status.slice(1)}
-                        </span>
-                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${scopePillClass(category?.foodTypeScope)}`}>
-                          {category?.foodTypeScope || "Both"}
-                        </span>
-                        {isGlobal && (
-                          <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700">
-                            <Globe className="mr-1 h-3.5 w-3.5" />
-                            Global
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mt-2 space-y-1 text-sm text-slate-500">
-                        <p>{category?.itemCount || 0} item(s) linked</p>
-                        {isGlobal ? (
-                          <p>Admin controls this category now, so you can use it but not rename or delete it.</p>
-                        ) : status === "approved" ? (
-                          <p>Editing this category will send it back for admin approval.</p>
-                        ) : (
-                          <p>Foods can be added only after approval.</p>
-                        )}
-                        {status === "rejected" && category?.rejectionReason && (
-                          <p className="text-rose-600">Reason: {category.rejectionReason}</p>
-                        )}
-                      </div>
+                    <div className="mt-3.5 pt-3 border-t border-slate-100 space-y-1 text-xs text-slate-500">
+                      <p className="font-semibold text-slate-700">{category?.itemCount || 0} item(s) linked</p>
+                      {isGlobal ? (
+                        <p>Admin controls this category now, so you can use it but not rename or delete it.</p>
+                      ) : status === "approved" ? (
+                        <p>Editing this category will send it back for admin approval.</p>
+                      ) : (
+                        <p>Foods can be added only after approval.</p>
+                      )}
+                      {status === "rejected" && category?.rejectionReason && (
+                        <p className="text-rose-600 font-medium">Reason: {category.rejectionReason}</p>
+                      )}
                     </div>
                   </div>
 
-                  <div className="mt-4 flex items-center gap-2">
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                     <button
                       onClick={() => handleToggleActive(category)}
-                      className="rounded-xl bg-slate-100 p-2 text-slate-700 disabled:opacity-50"
+                      className="rounded-xl bg-slate-100 hover:bg-slate-200 p-2 text-slate-700 disabled:opacity-50 transition-colors"
                       disabled={!isEditable}
                       title={category?.isActive !== false ? "Deactivate" : "Activate"}
                     >
@@ -336,15 +361,17 @@ export default function MenuCategoriesPage() {
                     </button>
                     <button
                       onClick={() => openEditModal(category)}
-                      className="rounded-xl bg-blue-50 p-2 text-blue-700 disabled:opacity-50"
+                      className="rounded-xl bg-blue-50 hover:bg-blue-100 p-2 text-blue-700 disabled:opacity-50 transition-colors"
                       disabled={!isEditable}
+                      title="Edit Category"
                     >
                       <Edit2 className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteCategory(category)}
-                      className="rounded-xl bg-rose-50 p-2 text-rose-700 disabled:opacity-50"
+                      className="rounded-xl bg-rose-50 hover:bg-rose-100 p-2 text-rose-700 disabled:opacity-50 transition-colors"
                       disabled={!category?.canDelete}
+                      title="Delete Category"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -356,23 +383,26 @@ export default function MenuCategoriesPage() {
         )}
       </div>
 
+      {/* Centered Modal on PC, Bottom Sheet on Mobile */}
       <AnimatePresence>
         {showModal && (
-          <>
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={resetModal}
-              className="fixed inset-0 z-50 bg-black/50"
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm"
             />
             <motion.div
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              className="fixed bottom-0 left-0 right-0 z-50 max-h-[90vh] overflow-y-auto rounded-t-3xl bg-white p-4 shadow-2xl"
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 28, stiffness: 300 }}
+              className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl z-50 max-h-[90vh] overflow-y-auto p-5 sm:p-6 mx-auto"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-5 flex items-center justify-between pb-3 border-b border-slate-100">
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">
                     {editingCategory ? "Edit Category" : "Create Category"}
@@ -383,29 +413,29 @@ export default function MenuCategoriesPage() {
                       : "Choose the diet scope carefully before sending it for approval."}
                   </p>
                 </div>
-                <button onClick={resetModal}>
-                  <X className="h-5 w-5 text-slate-600" />
+                <button onClick={resetModal} className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors">
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Category Name</label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">Category Name <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                     placeholder="Enter category name"
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-900"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Diet Scope</label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">Diet Scope</label>
                   <select
                     value={formData.foodTypeScope}
                     onChange={(e) => setFormData((prev) => ({ ...prev, foodTypeScope: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-900"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
                   >
                     <option value="Veg">Veg</option>
                     <option value="Non-Veg">Non-Veg</option>
@@ -414,31 +444,31 @@ export default function MenuCategoriesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Optional Type Label</label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">Optional Type Label</label>
                   <input
                     type="text"
                     value={formData.type}
                     onChange={(e) => setFormData((prev) => ({ ...prev, type: e.target.value }))}
                     placeholder="Examples: Starters, Desserts, Drinks"
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-900"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
                   />
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 pt-1">
                   {(imagePreview || formData.image) && (
                     <img
                       src={imagePreview || formData.image}
                       alt="Category preview"
-                      className="h-16 w-16 rounded-2xl object-cover"
+                      className="h-14 w-14 rounded-xl object-cover border border-slate-200"
                     />
                   )}
                   <button
                     type="button"
                     onClick={handleImageClick}
-                    className="flex items-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700"
+                    className="flex items-center gap-2 rounded-xl border border-slate-300 hover:bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-700 transition-colors"
                   >
                     <Upload className="h-4 w-4" />
-                    Upload Image
+                    <span>Upload Image</span>
                   </button>
                   <input
                     ref={fileInputRef}
@@ -449,30 +479,38 @@ export default function MenuCategoriesPage() {
                   />
                 </div>
 
-                <label className="flex items-center gap-2 text-sm text-slate-700">
+                <label className="flex items-center gap-2 text-xs font-medium text-slate-700 pt-1 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={formData.isActive}
                     onChange={() => setFormData((prev) => ({ ...prev, isActive: !prev.isActive }))}
+                    className="rounded text-slate-900 focus:ring-slate-900 w-4 h-4"
                   />
-                  Keep category active
+                  <span>Keep category active</span>
                 </label>
               </div>
 
-              <div className="mt-6 flex gap-3">
-                <button onClick={resetModal} className="flex-1 rounded-xl border border-slate-300 py-3 font-medium text-slate-700">
+              <div className="mt-6 flex gap-3 pt-3 border-t border-slate-100">
+                <button onClick={resetModal} className="flex-1 rounded-xl border border-slate-300 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveCategory}
                   disabled={uploadingImage}
-                  className="flex-1 rounded-xl bg-slate-900 py-3 font-medium text-white disabled:opacity-60"
+                  className="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
                 >
-                  {uploadingImage ? "Uploading..." : editingCategory ? "Save & Resubmit" : "Create"}
+                  {uploadingImage ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Uploading...</span>
+                    </>
+                  ) : (
+                    editingCategory ? "Save & Resubmit" : "Create"
+                  )}
                 </button>
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
 

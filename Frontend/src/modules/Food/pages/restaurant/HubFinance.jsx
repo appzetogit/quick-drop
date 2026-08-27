@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useRef, useEffect } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import { Bell, Menu, ChevronDown, Calendar, Download, FileText, Wallet, X } from "lucide-react"
@@ -729,20 +729,19 @@ export default function HubFinance() {
   }, [showDownloadMenu])
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
-      {/* ... (Existing Navbar) */}
-
-      <div className="sticky bg-white top-0 z-40 px-4 py-3 border-b border-gray-200">
-        <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-gray-100 flex flex-col pb-28">
+      {/* Header */}
+      <div className="sticky bg-white/95 backdrop-blur-md top-0 z-40 border-b border-gray-200 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
           <div className="flex-1 min-w-0 flex items-start gap-2">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1">
-                <p className="text-lg font-bold text-gray-900 truncate">
+                <p className="text-base sm:text-lg font-bold text-gray-900 truncate">
                   {restaurantData?.name || financeData?.restaurant?.name || "Restaurant"}
                 </p>
                 <ChevronDown className="w-4 h-4 text-gray-600 flex-shrink-0" />
               </div>
-              <p className="text-xs text-gray-600 mt-0.5">
+              <p className="text-xs text-gray-500 mt-0.5 truncate">
                 {(() => {
                   const restaurantId = restaurantData?.restaurantId || financeData?.restaurant?.restaurantId
                   const address = restaurantData?.address || financeData?.restaurant?.address || ''
@@ -755,54 +754,56 @@ export default function HubFinance() {
                     const shortAddress = address.length > 40 ? address.substring(0, 40) + '...' : address
                     parts.push(shortAddress)
                   }
-                  return parts.length > 0 ? parts.join(' â€¢ ') : 'Loading...'
+                  return parts.length > 0 ? parts.join(' • ') : 'Loading...'
                 })()}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1 ml-2">
+          <div className="flex items-center gap-1.5 ml-2">
             <button
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-700"
               onClick={() => navigate("/restaurant/withdrawal-history")}
               title="Withdrawal History"
             >
-              <Wallet className="w-5 h-5 text-gray-700" />
+              <Wallet className="w-5 h-5" />
             </button>
             <button
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-700"
               onClick={() => navigate("/restaurant/notifications")}
+              title="Notifications"
             >
-              <Bell className="w-5 h-5 text-gray-700" />
+              <Bell className="w-5 h-5" />
             </button>
             <button
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              className="lg:hidden p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-700"
               onClick={() => navigate("/restaurant/explore")}
+              title="More menu"
             >
-              <Menu className="w-5 h-5 text-gray-700" />
+              <Menu className="w-5 h-5" />
             </button>
           </div>
         </div>
       </div>
 
       {/* Primary Navigation Tabs */}
-      <div className="px-4 py-3">
-        <div className="flex gap-2">
+      <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 pt-4">
+        <div className="flex gap-2 max-w-sm">
           <button
             onClick={() => setActiveTab("payouts")}
-            className={`flex-1 py-3 px-4 rounded-full font-medium text-sm transition-colors ${
+            className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm transition-all ${
               activeTab === "payouts"
-                ? "bg-black text-white"
-                : "bg-white text-gray-600 border border-gray-300"
+                ? "bg-gray-900 text-white shadow-sm"
+                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
             }`}
           >
-            Payouts
+            Payouts & Earnings
           </button>
           <button
             onClick={() => setActiveTab("invoices")}
-            className={`flex-1 py-3 px-4 rounded-full font-medium text-sm transition-colors ${
+            className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm transition-all ${
               activeTab === "invoices"
-                ? "bg-black text-white"
-                : "bg-white text-gray-600 border border-gray-300"
+                ? "bg-gray-900 text-white shadow-sm"
+                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
             }`}
           >
             Invoices & Taxes
@@ -811,7 +812,7 @@ export default function HubFinance() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 pt-6 pb-28">
+      <div className="max-w-6xl mx-auto w-full flex-1 px-4 sm:px-6 pt-4 pb-12">
         {activeTab === "payouts" && (
           <div className="space-y-6">
             {/* Current cycle */}
