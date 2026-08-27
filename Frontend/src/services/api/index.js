@@ -498,6 +498,24 @@ export const adminAPI = {
     apiClient.patch(`/food/admin/restaurants/${id}/menu`, body ?? {}, {
       contextModule: "admin",
     }),
+  /**
+   * A restaurant's spend-threshold reward ladder. Same document the restaurant's
+   * own panel edits, so both sides always show the offer actually being applied.
+   */
+  /**
+   * Add-ons, for picking one as a free-item reward.
+   *
+   * Served from /item-extras rather than /addons: ad blockers kill any XHR whose
+   * path contains "addons", which leaves the list silently empty.
+   */
+  getAddons: (params = {}) =>
+    apiClient.get("/food/admin/item-extras", { params, contextModule: "admin" }),
+  getRestaurantFreebieOffer: (id) =>
+    apiClient.get(`/food/admin/restaurants/${id}/freebie-offer`, { contextModule: "admin" }),
+  updateRestaurantFreebieOffer: (id, body) =>
+    apiClient.put(`/food/admin/restaurants/${id}/freebie-offer`, body ?? {}, {
+      contextModule: "admin",
+    }),
   /** Foods (admin) - separate collection */
   getFoods: (params = {}) =>
     apiClient.get("/food/admin/foods", { params, contextModule: "admin" }),
@@ -1410,6 +1428,15 @@ export const restaurantAPI = {
     apiClient.get("/food/restaurant/commission", {
       contextModule: "restaurant",
     }),
+  /**
+   * The restaurant's "spend this much, get this free" ladder. The admin panel
+   * edits the same document, so both sides always show the offer that is
+   * actually being applied.
+   */
+  getFreebieOffer: () =>
+    apiClient.get("/food/restaurant/freebie-offer", { contextModule: "restaurant" }),
+  updateFreebieOffer: (body) =>
+    apiClient.put("/food/restaurant/freebie-offer", body ?? {}, { contextModule: "restaurant" }),
   /** Add-ons (restaurant) - approval handled by admin */
   getAddons: (params = {}) =>
     apiClient.get("/food/restaurant/item-extras", {

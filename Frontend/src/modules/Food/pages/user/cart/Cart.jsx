@@ -958,6 +958,12 @@ export default function Cart() {
   const subtotal = pricing?.subtotal ?? cart.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 1), 0)
   const deliveryFee = Number(pricing?.deliveryFee ?? 0)
   const platformFee = Number(pricing?.platformFee ?? 0)
+
+  // The spend-threshold reward, straight from the pricing the server just
+  // computed. Deriving it here from the cart instead would let the cart and
+  // the order disagree about what was earned.
+  const freebieEarned = pricing?.freebie?.earned || null
+  const freebieNext = pricing?.freebie?.next || null
   const surgeAmount = Number(pricing?.surgeAmount || 0)
   const gstCharges = Number(pricing?.tax ?? 0)
   const discount = pricing?.discount ?? (appliedCoupon ? Math.min(appliedCoupon.discount, subtotal * 0.5) : 0)
@@ -2465,6 +2471,33 @@ export default function Cart() {
                   </div>
                 )}
               </div>
+              {/* Spend-threshold reward. Two states, never both: something already
+                  earned, or how much more would earn the next one. The amounts come
+                  from the server's own resolution, so the number shown here is the
+                  number the order will apply. */}
+              {(freebieEarned || freebieNext) && (
+                <div className="rounded-2xl border border-[#EB590E]/20 bg-[#EB590E]/5 px-4 md:px-6 py-4">
+                  {freebieEarned ? (
+                    <p className="text-sm font-semibold text-[#EB590E]">
+                      {freebieEarned.name
+                        ? `${freebieEarned.name} is free on this order`
+                        : "You have earned a free item on this order"}
+                    </p>
+                  ) : (
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      Add {RUPEE_SYMBOL}{Number(freebieNext.amountAway || 0).toFixed(2)} more
+                      {freebieNext.name ? ` to get ${freebieNext.name} free` : " to earn a free item"}
+                    </p>
+                  )}
+                  {freebieEarned && freebieNext && (
+                    <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                      Add {RUPEE_SYMBOL}{Number(freebieNext.amountAway || 0).toFixed(2)} more
+                      {freebieNext.name ? ` for ${freebieNext.name} instead` : " for a better reward"}
+                    </p>
+                  )}
+                </div>
+              )}
+
 {/* Bill Details */}
               <div className="bg-white dark:bg-[#1a1a1a] px-4 md:px-6 py-5 rounded-2xl shadow-sm border border-slate-100 dark:border-gray-800">
                 <button
@@ -2496,6 +2529,14 @@ export default function Cart() {
 
                 {showBillDetails && (
                   <div className="mt-4 pt-4 border-t border-dashed border-gray-200 dark:border-gray-800 space-y-3">
+                    {freebieEarned && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[#EB590E] font-medium">
+                          Free: {freebieEarned.name || "Reward"}
+                        </span>
+                        <span className="text-[#EB590E] font-medium">{RUPEE_SYMBOL}0.00</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600 dark:text-gray-400">Item Total</span>
                       <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{subtotal.toFixed(2)}</span>

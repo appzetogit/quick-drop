@@ -774,6 +774,7 @@ export default function ExploreMore() {
     { id: 3, label: "Dining Reservations", icon: Calendar, route: "/restaurant/reservations" },
     { id: 4, label: "Menu categories", icon: Settings, route: "/restaurant/menu-categories" },
     { id: "coupons-nav", label: "Offers & Coupons", icon: FileCheck, route: "/restaurant/coupon" },
+    { id: "freebie-nav", label: "Free Item Offers", icon: FileCheck, route: "/restaurant/free-item-offers" },
     { id: "analytics-nav", label: "Analytics", icon: BarChart2, route: "/restaurant/analytics" },
   ]
 
