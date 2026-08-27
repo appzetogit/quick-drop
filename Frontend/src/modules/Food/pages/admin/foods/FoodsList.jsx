@@ -5,7 +5,7 @@ import { adminAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@food/components/ui/popover"
-import { getFoodDisplayPrice, getFoodVariants } from "@food/utils/foodVariants"
+import { getFoodDisplayPrice, getFoodVariants, getStoredFoodVariants } from "@food/utils/foodVariants"
 import ItemAvailabilityScheduleEditor, { buildScheduleState, isScheduleEmpty } from "@food/components/ItemAvailabilityScheduleEditor"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -20,6 +20,7 @@ const createFoodForm = () => ({
   price: "",
   basePrice: "",
   otherPrice: "",
+  variantsEnabled: false,
   variants: [],
   description: "",
   image: "",
@@ -148,7 +149,7 @@ export default function FoodsList() {
               price: getFoodDisplayPrice(f),
               basePrice: f.basePrice ?? f.price ?? 0,
               otherPrice: f.otherPrice ?? 0,
-              variants: getFoodVariants(f),
+              variants: getStoredFoodVariants(f),
               foodType: f.foodType || "Non-Veg",
               approvalStatus: f.approvalStatus || "approved",
               description: f.description || "",
@@ -292,7 +293,9 @@ export default function FoodsList() {
       // same figure for an undiscounted item.
       basePrice: String(food.basePrice ?? food.price ?? ""),
       otherPrice: food.otherPrice ? String(food.otherPrice) : "",
-      variants: getFoodVariants(food).map(createVariantDraft),
+      variants: getStoredFoodVariants(food).map(createVariantDraft),
+      // Absent on old rows means "sell by variants if any exist".
+      variantsEnabled: food.variantsEnabled === true || (food.variantsEnabled == null && getStoredFoodVariants(food).length > 0),
       description: String(food.description || ""),
       image: String(food.image || ""),
       foodType: String(food.foodType || "Non-Veg"),
@@ -403,7 +406,7 @@ export default function FoodsList() {
       }))
       .filter((variant) => variant.id || variant.name || variant.price)
 
-    const hasVariants = normalizedVariants.length > 0
+    const hasVariants = foodForm.variantsEnabled === true
     const parsedPrice = Number(foodForm.basePrice)
 
     if (normalizedVariants.some((variant) => !variant.name)) {
@@ -416,6 +419,10 @@ export default function FoodsList() {
       return
     }
 
+    if (hasVariants && normalizedVariants.length === 0) {
+      toast.error("Add at least one variant, or switch variants off")
+      return
+    }
     if (!hasVariants && (!Number.isFinite(parsedPrice) || parsedPrice <= 0)) {
       toast.error("Base price must be greater than 0")
       return
@@ -446,6 +453,7 @@ export default function FoodsList() {
         categoryName: String(foodForm.categoryName || "").trim(),
         name: foodForm.name.trim(),
         basePrice: hasVariants ? undefined : parsedPrice,
+        variantsEnabled: hasVariants,
         // Base price is charged as typed; the comparison is presentational.
         discountPercent: 0,
         otherPrice: foodForm.otherPrice === "" ? 0 : Number(foodForm.otherPrice),
@@ -1031,10 +1039,32 @@ export default function FoodsList() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Variants</p>
-                  <p className="text-xs text-slate-500">Optional. Add multiple names and prices such as Half, Full, Small, or Large.</p>
+                  <p className="text-xs text-slate-500">
+                    {foodForm.variantsEnabled
+                      ? "Customers pick a size; each has its own price and add-ons."
+                      : "Switched off: kept for later, customers pay the base price."}
+                  </p>
                 </div>
+                {/* The toggle. Off retains the rows below so switching back on
+                    never means retyping. */}
                 <button
                   type="button"
+                  role="switch"
+                  aria-checked={foodForm.variantsEnabled === true}
+                  onClick={() => setFoodForm((prev) => ({ ...prev, variantsEnabled: prev.variantsEnabled !== true }))}
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    foodForm.variantsEnabled ? "bg-slate-900" : "bg-slate-300"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                      foodForm.variantsEnabled ? "translate-x-[22px]" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+                <button
+                  type="button"
+                  disabled={foodForm.variantsEnabled !== true}
                   onClick={handleAddVariant}
                   className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-50"
                 >

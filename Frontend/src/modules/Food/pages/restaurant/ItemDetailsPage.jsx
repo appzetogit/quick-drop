@@ -33,7 +33,7 @@ import { restaurantAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
-import { getFoodVariants } from "@food/utils/foodVariants"
+import { getStoredFoodVariants } from "@food/utils/foodVariants"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -87,7 +87,10 @@ export default function ItemDetailsPage() {
   const [itemDescription, setItemDescription] = useState("")
   const [foodType, setFoodType] = useState("Non-Veg")
   const [basePrice, setBasePrice] = useState("")
-  const [otherPrice, setOtherPrice] = useState("")
+  // Whether this dish sells by its variants. Off keeps them stored -- the
+  // editor stays visible so nothing looks lost -- but the base price is what
+  // customers are charged.
+  const [variantsEnabled, setVariantsEnabled] = useState(false)
   const [commission, setCommission] = useState(null)
   const [addonIds, setAddonIds] = useState([])
   const [availableAddons, setAvailableAddons] = useState([])
@@ -145,14 +148,17 @@ export default function ItemDetailsPage() {
     setItemSizeUnit(item.itemSizeUnit || "piece")
     setItemDescription(item.description || "")
     setFoodType(item.foodType === "Veg" ? "Veg" : "Non-Veg")
-    const itemVariants = getFoodVariants(item)
+    // Stored accessor on purpose: the editor must show variants even while
+    // the toggle is off, or the next save would wipe them.
+    const itemVariants = getStoredFoodVariants(item)
     setVariants(itemVariants.map(createVariantDraft))
     setBasePrice(
       itemVariants.length === 0
         ? String(item.basePrice ?? item.price ?? "")
         : ""
     )
-    setOtherPrice(item.otherPrice ? String(item.otherPrice) : "")
+    // Absent flag on old rows means "sell by variants if any exist".
+    setVariantsEnabled(item.variantsEnabled === true || (item.variantsEnabled == null && itemVariants.length > 0))
     setAddonIds(Array.isArray(item.addonIds) ? item.addonIds.map(String) : [])
     setPreparationTime(item.preparationTime || "")
     setMinOrderQuantity(String(item.minOrderQuantity ?? 1))
@@ -354,22 +360,23 @@ export default function ItemDetailsPage() {
     }
   }, [])
 
+  /**
+   * What the customer will see and what the restaurant keeps. The comparison
+   * strikethrough is gone from this panel on purpose: the other-platform
+   * figure is admin-owned now, so previewing it here would show the restaurant
+   * a number it cannot edit.
+   */
   const pricePreview = useMemo(() => {
     const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100
 
-    const price =
-      variants.length > 0
-        ? variants.reduce((lo, v) => {
-            const value = Number(v.price)
-            return Number.isFinite(value) && value > 0 ? Math.min(lo, value) : lo
-          }, Infinity)
-        : Number(basePrice)
+    const price = variantsEnabled
+      ? variants.reduce((lo, v) => {
+          const value = Number(v.price)
+          return Number.isFinite(value) && value > 0 ? Math.min(lo, value) : lo
+        }, Infinity)
+      : Number(basePrice)
 
     if (!Number.isFinite(price) || price <= 0) return null
-
-    const other = Number(otherPrice)
-    const strikePrice = Number.isFinite(other) && other > price ? round2(other) : null
-    const savings = strikePrice ? round2(strikePrice - price) : 0
 
     const commissionAmount =
       commission === null
@@ -380,18 +387,16 @@ export default function ItemDetailsPage() {
 
     return {
       price: round2(price),
-      strikePrice,
-      savingsPercent: strikePrice ? Math.round((savings / strikePrice) * 100) : 0,
       commissionAmount,
       takeHome: round2(price - commissionAmount),
       commissionLabel:
         commission === null
           ? ''
           : commission.type === 'flat'
-            ? `₹${commission.value}`
+            ? `\u20B9${commission.value}`
             : `${commission.value}%`,
     }
-  }, [variants, basePrice, otherPrice, commission])
+  }, [variants, basePrice, variantsEnabled, commission])
 
   // Track visual viewport for mobile keyboard
   useEffect(() => {
@@ -624,8 +629,13 @@ export default function ItemDetailsPage() {
         return
       }
 
-      const hasVariants = normalizedVariants.length > 0
+      const hasVariants = variantsEnabled
       const parsedBasePrice = Number(basePrice)
+      if (variantsEnabled && normalizedVariants.length === 0) {
+        toast.error("Add at least one variant, or switch variants off")
+        setUploadingImages(false)
+        return
+      }
       if (!hasVariants && (!Number.isFinite(parsedBasePrice) || parsedBasePrice < 0)) {
         toast.error("Please enter a valid base price")
         setUploadingImages(false)
@@ -654,7 +664,7 @@ export default function ItemDetailsPage() {
         },
         availabilitySchedule,
         discountPercent: 0,
-        otherPrice: otherPrice === "" ? 0 : Number(otherPrice),
+        variantsEnabled,
         addonIds,
       }
 
@@ -1101,27 +1111,14 @@ export default function ItemDetailsPage() {
                         </div>
                       </div>
 
+                      {/* No strikethrough here any more: the comparison figure
+                          is admin-owned, so this preview shows only what the
+                          restaurant controls. */}
                       <div className="flex flex-wrap items-baseline gap-2 pt-1">
-                        {pricePreview.strikePrice !== null && (
-                          <span className="text-xs text-gray-400 line-through">
-                            ₹{pricePreview.strikePrice}
-                          </span>
-                        )}
                         <span className="text-base font-bold text-gray-900">
-                          {variants.length > 0 ? "From " : ""}₹{pricePreview.price}
+                          {variantsEnabled ? "From " : ""}₹{pricePreview.price}
                         </span>
-                        {pricePreview.strikePrice !== null && (
-                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-bold text-green-700">
-                            {pricePreview.savingsPercent}% OFF
-                          </span>
-                        )}
                       </div>
-
-                      {pricePreview.strikePrice !== null && (
-                        <p className="text-[11px] text-gray-400 italic">
-                          Struck-through price displays as competitive other-platform reference
-                        </p>
-                      )}
                     </div>
 
                     {/* Earnings Breakdown */}
@@ -1225,14 +1222,14 @@ export default function ItemDetailsPage() {
                   </div>
 
                   {/* Single Base Price (if no variants) */}
-                  {variants.length === 0 ? (
+                  {!variantsEnabled ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-semibold text-gray-700 mb-1.5">
                           Base Selling Price <span className="text-red-500">*</span>
                         </label>
                         <div className="relative">
-                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-500">₹</span>
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-500">{"\u20B9"}</span>
                           <input
                             type="text"
                             value={basePrice}
@@ -1247,53 +1244,11 @@ export default function ItemDetailsPage() {
                         </div>
                         <p className="mt-1 text-[11px] text-gray-500">Final price charged to customers</p>
                       </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                          Other Platform Price <span className="text-gray-400 font-normal">(Optional)</span>
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-500">₹</span>
-                          <input
-                            type="text"
-                            value={otherPrice}
-                            onChange={(e) => {
-                              const value = e.target.value.replace(/[\u20B9\s,]/g, '').replace(/[^0-9.]/g, '')
-                              const parts = value.split('.')
-                              setOtherPrice(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value)
-                            }}
-                            placeholder="0"
-                            className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-xl text-sm font-semibold text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all shadow-sm"
-                          />
-                        </div>
-                        <p className="mt-1 text-[11px] text-gray-500">Shown struck-through to showcase savings</p>
-                      </div>
                     </div>
                   ) : (
-                    <div>
-                      <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-xs text-amber-800 flex items-center gap-2.5">
-                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span>Variants configured. Base price is determined by the lowest priced variant.</span>
-                      </div>
-                      <div className="mt-4">
-                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                          Other Platform Comparison Price <span className="text-gray-400 font-normal">(Optional)</span>
-                        </label>
-                        <div className="relative max-w-sm">
-                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-500">₹</span>
-                          <input
-                            type="text"
-                            value={otherPrice}
-                            onChange={(e) => {
-                              const value = e.target.value.replace(/[\u20B9\s,]/g, '').replace(/[^0-9.]/g, '')
-                              const parts = value.split('.')
-                              setOtherPrice(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value)
-                            }}
-                            placeholder="0"
-                            className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-xl text-sm font-semibold text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent transition-all shadow-sm"
-                          />
-                        </div>
-                      </div>
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-xs text-amber-800 flex items-center gap-2.5">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>Selling by variants: customers pay the price of the size they pick, and the menu shows the cheapest as the starting price.</span>
                     </div>
                   )}
 
@@ -1302,10 +1257,32 @@ export default function ItemDetailsPage() {
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <h3 className="text-sm font-bold text-gray-900">Portions & Variants</h3>
-                        <p className="text-xs text-gray-500">Offer multiple sizes such as Half, Full, Small, Large.</p>
+                        <p className="text-xs text-gray-500">
+                          {variantsEnabled
+                            ? "Customers pick a size; each has its own price and add-ons."
+                            : "Switched off: kept for later, customers pay the base price."}
+                        </p>
                       </div>
+                      {/* The toggle. Off retains everything below, greyed, so
+                          switching back on never means retyping. */}
                       <button
                         type="button"
+                        role="switch"
+                        aria-checked={variantsEnabled}
+                        onClick={() => setVariantsEnabled((v) => !v)}
+                        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                          variantsEnabled ? "bg-gray-900" : "bg-gray-300"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                            variantsEnabled ? "translate-x-[22px]" : "translate-x-0.5"
+                          }`}
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!variantsEnabled}
                         onClick={handleAddVariant}
                         className="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-900 text-xs font-semibold rounded-xl border border-gray-200 transition-colors flex items-center gap-1.5"
                       >

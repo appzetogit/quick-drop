@@ -3139,6 +3139,10 @@ export async function getFoods(query) {
         otherPrice: Number(f.otherPrice) || 0,
         availabilitySchedule: f.availabilitySchedule || null,
         variants: serializeFoodVariants(f.variants),
+        // The toggle, tri-state on old rows: absent means "sell by variants if"
+        // "any exist", which is what those rows always did. Serialised as the
+        // resolved boolean so no client re-derives the legacy rule.
+        variantsEnabled: f.variantsEnabled !== false,
         variations: serializeFoodVariants(f.variants),
         image: f.image || '',
         foodType: f.foodType || 'Non-Veg',
@@ -3190,19 +3194,41 @@ const resolveAdminFoodCategory = async ({ categoryId, categoryName, foodType, pu
     };
 };
 
+/**
+ * Same toggle semantics as the restaurant service: variantsEnabled decides
+ * which price is charged, and the flag falls back to "has variants" for callers
+ * that predate it. Duplicated logic here is the price of the two panels having
+ * separate write paths; both lean on the same shared validators underneath.
+ */
+const resolveAdminVariantsEnabled = (body = {}, existing = null) => {
+    if (body.variantsEnabled !== undefined) {
+        return body.variantsEnabled === true || body.variantsEnabled === 'true';
+    }
+    if (existing && existing.variantsEnabled !== undefined && existing.variantsEnabled !== null) {
+        return existing.variantsEnabled === true;
+    }
+    const touched = body.variants !== undefined || body.variations !== undefined;
+    if (touched) {
+        return normalizeFoodVariantsInput(extractRawFoodVariants(body)).length > 0;
+    }
+    return existing ? hasFoodVariants(existing) : false;
+};
+
 const getAdminFoodCreatePricing = (body = {}) => {
     const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
-    const hasVariants = variants.length > 0;
+    const variantsEnabled = resolveAdminVariantsEnabled(body);
+
+    if (variantsEnabled) {
+        if (variants.length === 0) {
+            throw new ValidationError('Add at least one variant, or switch variants off');
+        }
+        const from = getFoodDisplayPrice({ variants });
+        return { price: from, basePrice: from, discountPercent: 0, variants, variantsEnabled: true };
+    }
 
     let pricing;
     try {
-        pricing = resolveItemPricingForWrite({
-            body,
-            existing: {},
-            hasVariants,
-            variantPrice: hasVariants ? getFoodDisplayPrice({ variants }) : null,
-            requirePositive: true,
-        });
+        pricing = resolveItemPricingForWrite({ body, existing: {}, requirePositive: true });
     } catch (error) {
         throw new ValidationError(error.message);
     }
@@ -3213,66 +3239,59 @@ const getAdminFoodCreatePricing = (body = {}) => {
         basePrice: pricing.basePrice,
         discountPercent: pricing.discountPercent,
         variants,
+        variantsEnabled: false,
     };
 };
 
 const getAdminFoodUpdatedPricing = (existing = {}, body = {}) => {
     const variantsTouched = body.variants !== undefined || body.variations !== undefined;
-    const existingHasVariants = hasFoodVariants(existing);
     const update = {};
 
-    const applyPricing = (bodyPart, opts = {}) => {
-        try {
-            return resolveItemPricingForWrite({ body: bodyPart, existing, requirePositive: true, ...opts });
-        } catch (error) {
-            throw new ValidationError(error.message);
-        }
-    };
-    const assign = (pricing) => {
-        if (!pricing) return;
-        update.price = pricing.price;
-        update.basePrice = pricing.basePrice;
-        update.discountPercent = pricing.discountPercent;
-    };
+    const variants = variantsTouched
+        ? normalizeFoodVariantsInput(extractRawFoodVariants(body))
+        : (existing.variants || []);
+    if (variantsTouched) update.variants = variants;
 
-    if (variantsTouched) {
-        const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
-        update.variants = variants;
+    const variantsEnabled = resolveAdminVariantsEnabled(body, existing);
+    if (body.variantsEnabled !== undefined || variantsTouched) {
+        update.variantsEnabled = variantsEnabled;
+    }
 
-        if (variants.length > 0) {
-            assign(applyPricing(body, { hasVariants: true, variantPrice: getFoodDisplayPrice({ variants }) }));
-            if (update.price === undefined) update.price = getFoodDisplayPrice({ variants });
-            return update;
+    if (variantsEnabled) {
+        if (variants.length === 0) {
+            throw new ValidationError('Add at least one variant, or switch variants off');
         }
-
-        const fallbackBase = existingHasVariants ? undefined : existing.price;
-        const pricing = applyPricing({
-            basePrice: body.basePrice !== undefined ? body.basePrice
-                : body.price !== undefined ? body.price
-                : fallbackBase,
-            discountPercent: body.discountPercent,
-        });
-        if (!pricing) {
-            throw new ValidationError('Base price must be greater than 0 when variants are removed');
-        }
-        assign(pricing);
+        const from = getFoodDisplayPrice({ variants });
+        update.price = from;
+        update.basePrice = from;
+        update.discountPercent = 0;
         return update;
     }
 
-    if (body.price !== undefined || body.basePrice !== undefined || body.discountPercent !== undefined) {
-        if (existingHasVariants && (body.price !== undefined || body.basePrice !== undefined)) {
-            throw new ValidationError('Update variants instead of base price for foods with variants');
-        }
+    const mentionsPrice = body.price !== undefined || body.basePrice !== undefined || body.discountPercent !== undefined;
+    if (!mentionsPrice && body.variantsEnabled === undefined && !variantsTouched) return update;
 
-        if (existingHasVariants) {
-            // Only the discount moved; re-derive the "from" price from stored variants.
-            assign(applyPricing(body, { hasVariants: true, variantPrice: getFoodDisplayPrice({ variants: existing.variants }) }));
-            return update;
-        }
-
-        assign(applyPricing(body));
+    let pricing;
+    try {
+        pricing = resolveItemPricingForWrite({
+            body: {
+                basePrice: body.basePrice !== undefined ? body.basePrice
+                    : body.price !== undefined ? body.price
+                    : (existing.basePrice ?? existing.price),
+                discountPercent: body.discountPercent,
+            },
+            existing,
+            requirePositive: true,
+        });
+    } catch (error) {
+        throw new ValidationError(error.message);
     }
-
+    if (!pricing) {
+        throw new ValidationError('Enter a base price, or switch variants on');
+    }
+    update.price = pricing.price;
+    update.basePrice = pricing.basePrice;
+    update.discountPercent = pricing.discountPercent;
     return update;
 };
 
@@ -3293,7 +3312,7 @@ export async function createFood(body) {
     if (restaurant.pureVegRestaurant === true && foodType !== 'Veg') {
         throw new ValidationError('Pure veg restaurants can only use veg foods');
     }
-    const { price, basePrice, discountPercent, variants } = getAdminFoodCreatePricing(body);
+    const { price, basePrice, discountPercent, variants, variantsEnabled } = getAdminFoodCreatePricing(body);
 
     let categoryName = typeof body.categoryName === 'string' ? body.categoryName.trim() : '';
     if (!categoryName && typeof body.category === 'string') categoryName = body.category.trim();
@@ -3315,6 +3334,7 @@ export async function createFood(body) {
         price,
         basePrice,
         discountPercent,
+        variantsEnabled,
         ...(normalizeItemOtherPriceInput(body) || {}),
         variants,
         image: typeof body.image === 'string' ? body.image.trim() : '',
@@ -3347,6 +3367,7 @@ export async function updateFood(id, body) {
     const pricingUpdate = getAdminFoodUpdatedPricing(doc.toObject(), body);
     if (pricingUpdate.price !== undefined) doc.price = pricingUpdate.price;
     if (pricingUpdate.basePrice !== undefined) doc.basePrice = pricingUpdate.basePrice;
+    if (pricingUpdate.variantsEnabled !== undefined) doc.variantsEnabled = pricingUpdate.variantsEnabled;
     if (pricingUpdate.discountPercent !== undefined) doc.discountPercent = pricingUpdate.discountPercent;
     // Comparison figure only. Global price adjustment moves this; it never
     // moves what the customer is charged.

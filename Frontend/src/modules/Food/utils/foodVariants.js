@@ -27,7 +27,24 @@ export const normalizeFoodVariants = (value) =>
     })
     .filter(Boolean)
 
+/**
+ * The variants a CUSTOMER can buy. The toggle beats the array: a dish with
+ * variants switched off keeps them stored, but the app must neither show a
+ * size picker nor price from them. Absent flag = legacy row = sell by
+ * variants if any exist, which is what those rows always did.
+ */
 export const getFoodVariants = (item = {}) =>
+  item?.variantsEnabled === false
+    ? []
+    : normalizeFoodVariants(item?.variants || item?.variations || [])
+
+/**
+ * The variants as STORED, toggle ignored -- for the seller and admin editors,
+ * which must show the retained configuration behind an off switch. Using the
+ * customer accessor there would hydrate an empty editor and the next save
+ * would wipe what the toggle was protecting.
+ */
+export const getStoredFoodVariants = (item = {}) =>
   normalizeFoodVariants(item?.variants || item?.variations || [])
 
 export const hasFoodVariants = (item = {}) => getFoodVariants(item).length > 0

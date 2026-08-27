@@ -128,8 +128,26 @@ export const serializeFoodVariants = (value = []) =>
 
 export const hasFoodVariants = (value = {}) => serializeFoodVariants(value?.variants || value?.variations || []).length > 0;
 
+/**
+ * Is this dish actually SOLD by its variants right now?
+ *
+ * The toggle beats the array: variants switched off stay stored (so switching
+ * back on costs nothing) but must not drive pricing or show a size picker.
+ * Rows written before the flag have it undefined, which is NOT off -- for
+ * them, having variants means selling by variants, as it always did.
+ */
+export const sellsByVariants = (value = {}) =>
+    value?.variantsEnabled !== false && hasFoodVariants(value);
+
 export const getFoodDisplayPrice = (value = {}) => {
     const variants = serializeFoodVariants(value?.variants || value?.variations || []);
+    // A doc with variants switched off prices from its own price field; only a
+    // bare {variants} shape (the write paths computing a "from" figure) or a
+    // doc actually selling by variants reads the array.
+    if (value?.variantsEnabled === false) {
+        const own = Number(value?.price);
+        if (Number.isFinite(own) && own > 0) return own;
+    }
     if (variants.length > 0) {
         return Math.min(...variants.map((entry) => Number(entry.price) || 0));
     }

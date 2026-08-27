@@ -93,6 +93,10 @@ const buildMenuFromFoods = async (foods = []) => {
             // pre-filled and the app can offer only the relevant ones.
             addonIds: (food.addonIds || []).map((x) => String(x)),
             variants: serializeFoodVariants(food.variants),
+            // The toggle, tri-state on old rows: absent means "sell by variants if"
+            // "any exist", which is what those rows always did. Serialised as the
+            // resolved boolean so no client re-derives the legacy rule.
+            variantsEnabled: food.variantsEnabled !== false,
             variations: serializeFoodVariants(food.variants),
             image: food.image || '',
             foodType: food.foodType || 'Non-Veg',

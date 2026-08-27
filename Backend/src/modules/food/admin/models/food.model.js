@@ -87,6 +87,18 @@ const foodSchema = new mongoose.Schema(
          */
         /** Retired alongside `mrp`; see above. */
         otherPrice: { type: Number, min: 0, default: 0 },
+        /**
+         * Whether this dish is sold by its variants.
+         *
+         * ON: each variant carries its own price (and add-on pairings), and the
+         * item's price is the cheapest of them -- the "from" figure a listing
+         * shows. OFF: the base price is what is charged, and the variants array
+         * is RETAINED rather than cleared, so switching back on does not mean
+         * retyping every size. The order path ignores a client-sent variantId
+         * while this is off, so a stale cart line is charged the base price
+         * instead of failing the order.
+         */
+        variantsEnabled: { type: Boolean, default: false },
         variants: { type: [foodVariantSchema], default: [] },
         /**
          * Which of the restaurant's add-ons may be chosen with THIS dish.

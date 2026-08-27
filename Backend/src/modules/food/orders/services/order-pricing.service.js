@@ -73,8 +73,16 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
 
     let price = Number(menu.price);
     let variantName = '';
-    if (it?.variantId) {
-      const variant = (menu.variants || []).find((v) => String(v._id) === String(it.variantId));
+    // A dish switched off variants keeps them stored but sells at its base
+    // price. A variantId can still arrive -- a cart line added before the
+    // toggle flipped -- and is ignored rather than refused, so a stale cart
+    // gets charged the base price instead of failing at checkout. Rows written
+    // before the flag existed have it undefined, which does NOT mean off:
+    // for them, having variants means selling by variants, as it always did.
+    const sellsByVariants = menu.variantsEnabled !== false;
+    const chosenVariantId = sellsByVariants ? (it?.variantId || null) : null;
+    if (chosenVariantId) {
+      const variant = (menu.variants || []).find((v) => String(v._id) === String(chosenVariantId));
       if (!variant) throw new ValidationError(`Selected option for "${menu.name}" is not available`);
       // The item's discount is a single percentage that applies to whichever
       // option is chosen, so a variant is charged from its own price less that
@@ -92,7 +100,7 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
       menu,
       requestedAddonsByLine[index],
       addonsById,
-      it?.variantId || null,
+      chosenVariantId,
     );
 
     return {

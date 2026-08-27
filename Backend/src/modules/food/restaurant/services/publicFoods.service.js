@@ -132,6 +132,10 @@ export async function listPublicFoods(query = {}) {
             // refused with "please select a size". The customer was left with an
             // error and no control that could clear it.
             variants: serializeFoodVariants(food.variants),
+            // The toggle, tri-state on old rows: absent means "sell by variants if"
+            // "any exist", which is what those rows always did. Serialised as the
+            // resolved boolean so no client re-derives the legacy rule.
+            variantsEnabled: food.variantsEnabled !== false,
             variations: serializeFoodVariants(food.variants),
             image: food.image || '',
             // Falls back to the single image so a dish saved before galleries
