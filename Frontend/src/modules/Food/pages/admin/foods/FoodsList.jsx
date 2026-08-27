@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom"
 import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { adminAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
+import { Switch } from "@food/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@food/components/ui/popover"
 import { getFoodDisplayPrice, getFoodVariants, getStoredFoodVariants } from "@food/utils/foodVariants"
@@ -913,11 +914,11 @@ export default function FoodsList() {
                   step="0.01"
                   value={foodForm.basePrice}
                   onChange={(e) => setFoodForm((prev) => ({ ...prev, basePrice: e.target.value }))}
-                  disabled={(foodForm.variants || []).length > 0}
+                  disabled={foodForm.variantsEnabled === true}
                   className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400"
                 />
-                {(foodForm.variants || []).length > 0 ? (
-                  <p className="mt-1 text-xs text-slate-500">Variants are active, so customers will see the lowest variant price as the starting price.</p>
+                {foodForm.variantsEnabled === true ? (
+                  <p className="mt-1 text-xs text-slate-500">Selling by variants: customers see the lowest variant price as the starting price.</p>
                 ) : null}
               </div>
               {/* Comparison figure only. Customers are charged the base price above;
@@ -1045,34 +1046,27 @@ export default function FoodsList() {
                       : "Switched off: kept for later, customers pay the base price."}
                   </p>
                 </div>
-                {/* The toggle. Off retains the rows below so switching back on
-                    never means retyping. */}
+                {/* Shared Switch, not a hand-rolled pill -- global button
+                    styling turned the manual one into an unreadable blob. Off
+                    keeps the rows in state; the editor below simply hides. */}
+                <Switch
+                  checked={foodForm.variantsEnabled === true}
+                  onCheckedChange={(next) => setFoodForm((prev) => ({ ...prev, variantsEnabled: next === true }))}
+                />
+                {foodForm.variantsEnabled === true && (
                 <button
                   type="button"
-                  role="switch"
-                  aria-checked={foodForm.variantsEnabled === true}
-                  onClick={() => setFoodForm((prev) => ({ ...prev, variantsEnabled: prev.variantsEnabled !== true }))}
-                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                    foodForm.variantsEnabled ? "bg-slate-900" : "bg-slate-300"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
-                      foodForm.variantsEnabled ? "translate-x-[22px]" : "translate-x-0.5"
-                    }`}
-                  />
-                </button>
-                <button
-                  type="button"
-                  disabled={foodForm.variantsEnabled !== true}
                   onClick={handleAddVariant}
                   className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-50"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   Add variant
                 </button>
+                )}
               </div>
-              {(foodForm.variants || []).length ? (
+              {/* Rows only while selling by variants; drafts stay in state
+                  either way, so toggling back on restores them untouched. */}
+              {foodForm.variantsEnabled === true && ((foodForm.variants || []).length ? (
                 <div className="space-y-3">
                   {(foodForm.variants || []).map((variant, index) => (
                     <div key={variant.id} className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-slate-200 bg-white p-3">
@@ -1181,7 +1175,7 @@ export default function FoodsList() {
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">No variants added. This food will use the single base price.</p>
-              )}
+              ))}
             </div>
             <div className="flex justify-end">
               <button

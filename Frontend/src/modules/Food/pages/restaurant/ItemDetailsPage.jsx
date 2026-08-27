@@ -1263,35 +1263,30 @@ export default function ItemDetailsPage() {
                             : "Switched off: kept for later, customers pay the base price."}
                         </p>
                       </div>
-                      {/* The toggle. Off retains everything below, greyed, so
-                          switching back on never means retyping. */}
+                      {/* The page's own Switch, not a hand-rolled pill: the
+                          redesign styles raw buttons, which turned a manual
+                          toggle into an unreadable black blob. Off retains the
+                          variants in storage; the editor below simply hides. */}
+                      <Switch
+                        checked={variantsEnabled}
+                        onCheckedChange={(next) => setVariantsEnabled(next === true)}
+                      />
+                      {variantsEnabled && (
                       <button
                         type="button"
-                        role="switch"
-                        aria-checked={variantsEnabled}
-                        onClick={() => setVariantsEnabled((v) => !v)}
-                        className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                          variantsEnabled ? "bg-gray-900" : "bg-gray-300"
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
-                            variantsEnabled ? "translate-x-[22px]" : "translate-x-0.5"
-                          }`}
-                        />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!variantsEnabled}
                         onClick={handleAddVariant}
                         className="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-900 text-xs font-semibold rounded-xl border border-gray-200 transition-colors flex items-center gap-1.5"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Add Variant</span>
                       </button>
+                      )}
                     </div>
 
-                    {variants.length > 0 ? (
+                    {/* Rows appear only while selling by variants. The drafts
+                        stay in state and storage either way, so toggling back
+                        on restores them untouched. */}
+                    {variantsEnabled && (variants.length > 0 ? (
                       <div className="space-y-3">
                         {variants.map((variant, index) => (
                           <div
@@ -1426,9 +1421,9 @@ export default function ItemDetailsPage() {
                       </div>
                     ) : (
                       <p className="text-xs text-gray-400 italic bg-gray-50 p-3 rounded-xl border border-dashed border-gray-200">
-                        No variants added yet. This dish will sell at the base price.
+                        No variants added yet. Add one with the button above.
                       </p>
-                    )}
+                    ))}
                   </div>
                 </div>
 
