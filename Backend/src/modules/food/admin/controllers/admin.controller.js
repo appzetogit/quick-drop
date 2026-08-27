@@ -274,6 +274,58 @@ export async function getRestaurantAnalytics(req, res, next) {
     }
 }
 
+/**
+ * A restaurant's spend-threshold reward ladder, from the admin panel.
+ *
+ * Reads and writes the same document the restaurant's own panel edits, rather
+ * than an admin-side copy: two ladders for one restaurant would mean the order
+ * path has to pick one, and whichever it picked would surprise somebody.
+ */
+export async function getRestaurantFreebieOffer(req, res, next) {
+    try {
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid restaurant id' });
+        }
+        const { getFreebieOffer } = await import('../../shared/freebieOffer.service.js');
+        const offer = await getFreebieOffer(id);
+        res.status(200).json({
+            success: true,
+            message: 'Freebie offer fetched successfully',
+            data: { offer: offer || { restaurantId: id, isActive: true, tiers: [] } },
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function updateRestaurantFreebieOffer(req, res, next) {
+    try {
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid restaurant id' });
+        }
+        const { normalizeFreebieTiersInput } = await import('../../shared/freebieRewards.js');
+        const { saveFreebieOffer } = await import('../../shared/freebieOffer.service.js');
+
+        let tiers;
+        try {
+            tiers = normalizeFreebieTiersInput(req.body || {})?.tiers;
+        } catch (validationError) {
+            return res.status(400).json({ success: false, message: validationError.message });
+        }
+
+        const offer = await saveFreebieOffer(id, {
+            tiers,
+            isActive: req.body?.isActive,
+            updatedByRole: 'ADMIN',
+        });
+        res.status(200).json({ success: true, message: 'Freebie offer saved successfully', data: { offer } });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export async function getRestaurantMenuById(req, res, next) {
     try {
         const { id } = req.params;

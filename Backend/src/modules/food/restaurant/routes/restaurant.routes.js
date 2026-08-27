@@ -7,6 +7,8 @@ import {
     listPublicOffersController,
     getCurrentRestaurantController,
     getRestaurantCommissionRateController,
+    getFreebieOfferController,
+    updateFreebieOfferController,
     updateRestaurantProfileController,
     updateRestaurantAcceptingOrdersController,
     updateCurrentRestaurantDiningSettingsController,
@@ -122,6 +124,8 @@ router.patch('/availability', authMiddleware, requireRestaurant, async (req, res
     next();
 }, updateRestaurantAcceptingOrdersController);
 router.get('/commission', authMiddleware, requireRestaurant, getRestaurantCommissionRateController);
+router.get('/freebie-offer', authMiddleware, requireRestaurant, getFreebieOfferController);
+router.put('/freebie-offer', authMiddleware, requireRestaurant, updateFreebieOfferController);
 router.patch('/profile', authMiddleware, requireRestaurant, updateRestaurantProfileController);
 router.delete('/profile/account', authMiddleware, requireRestaurant, deleteCurrentRestaurantAccountController);
 // Same handler under the name quick-commerce uses. The restaurant app serves both

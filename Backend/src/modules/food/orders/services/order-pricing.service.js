@@ -20,6 +20,7 @@ import {
     resolveItemPackagingAmount
 } from '../../shared/packagingCharge.js';
 import { assertFoodAvailableNow } from '../../shared/itemAvailability.js';
+import { resolveFreebieForOrder } from '../../shared/freebieOffer.service.js';
 import { computeSellingPrice } from '../../shared/itemDiscountPricing.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
@@ -196,6 +197,21 @@ export async function calculateOrderPricing(userId, dto) {
       + ((Number(it.price) || 0) + (Number(it.addonsTotal) || 0)) * (Number(it.quantity) || 1),
     0,
   );
+
+  // Spend-threshold reward, resolved AFTER the subtotal above and appended
+  // without changing it. Order matters: counting the reward toward the amount
+  // that earned it would let a zero-priced line push an order over a threshold
+  // it never reached, and on a two-tier ladder that cascades.
+  //
+  // Server-side because the reward is earned, not chosen -- a client asking for
+  // a freebie, or for a costlier one than its order earned, gets what the
+  // subtotal actually entitles it to.
+  const { line: freebieLine, tier: freebieTier, nextTier: freebieNextTier } =
+    await resolveFreebieForOrder(dto.restaurantId, subtotal);
+  if (freebieLine) {
+    items.push(freebieLine);
+    dto.items = items;
+  }
 
   const feeDoc = await FoodFeeSettings.findOne({ isActive: true })
     .sort({ createdAt: -1 })
@@ -409,6 +425,13 @@ export async function calculateOrderPricing(userId, dto) {
   );
 
   return {
+    /**
+     * The lines this pricing was computed from, including any freebie appended
+     * above. Returned rather than mutated onto the caller's dto: createOrder
+     * passes a spread copy here, so a mutation would be invisible to it and the
+     * reward would be priced but never saved on the order.
+     */
+    items,
     pricing: {
       subtotal,
       tax,
@@ -430,6 +453,31 @@ export async function calculateOrderPricing(userId, dto) {
       currency: "INR",
       couponCode: appliedCoupon?.code || codeRaw || null,
       appliedCoupon,
+      /**
+       * The spend-threshold reward, for the cart and the order summary.
+       *
+       * `earned` is what this order qualified for; `next` is the nearest tier it
+       * has not reached, so a cart can say "add Rs.40 more for a free Gulab
+       * Jamun". Both come from the same resolution the order itself uses, so the
+       * cart cannot promise something the order would not give.
+       */
+      freebie: {
+        earned: freebieTier
+          ? {
+              minOrderValue: freebieTier.minOrderValue,
+              rewardType: freebieTier.rewardType,
+              name: freebieLine?.name || '',
+            }
+          : null,
+        next: freebieNextTier
+          ? {
+              minOrderValue: freebieNextTier.minOrderValue,
+              amountAway: freebieNextTier.amountAway,
+              rewardType: freebieNextTier.rewardType,
+              name: freebieNextTier.rewardName || '',
+            }
+          : null,
+      },
     },
   };
 }

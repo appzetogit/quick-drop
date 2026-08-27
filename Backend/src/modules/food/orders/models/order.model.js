@@ -34,7 +34,18 @@ const orderItemSchema = new mongoose.Schema(
             default: [],
         },
         /** Per-unit total of the add-ons above, stamped so pricing never re-derives it. */
-        addonsTotal: { type: Number, min: 0, default: 0 }
+        addonsTotal: { type: Number, min: 0, default: 0 },
+        /**
+         * A spend-threshold reward the server added, not something the customer
+         * put in the cart. Stored so the kitchen knows to send it, the invoice
+         * can say why a line costs nothing, and support can tell a genuine
+         * freebie from an item mistakenly priced at zero.
+         */
+        isFreebie: { type: Boolean, default: false },
+        freebie: {
+            minOrderValue: { type: Number, min: 0, default: 0 },
+            rewardType: { type: String, enum: ['item', 'addon'], default: 'item' },
+        }
     },
     { _id: false }
 );

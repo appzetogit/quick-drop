@@ -149,6 +149,14 @@ export async function createOrder(userId, dto) {
     if (!pricingResult?.pricing) {
       throw new ValidationError("Unable to calculate order pricing from fee settings");
     }
+
+    // Adopt the lines pricing actually used. A spend-threshold reward is appended
+    // there, and without this the order would be charged as if it had one while
+    // saving items that do not include it -- so the kitchen would never see the
+    // free dish it is meant to send.
+    if (Array.isArray(pricingResult.items) && pricingResult.items.length) {
+      dto.items = pricingResult.items;
+    }
     const normalizedPricing = {
       subtotal: Number(pricingResult.pricing.subtotal ?? computedSubtotal) || 0,
       tax: Number(pricingResult.pricing.tax ?? 0) || 0,

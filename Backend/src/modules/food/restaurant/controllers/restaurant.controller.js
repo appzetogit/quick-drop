@@ -107,6 +107,49 @@ export const getRestaurantCommissionRateController = async (req, res, next) => {
     }
 };
 
+/**
+ * The restaurant's own "spend this much, get this free" ladder.
+ *
+ * The same document the admin panel edits, so whichever side saves last wins and
+ * neither can end up looking at a different offer than the one being applied.
+ */
+export const getFreebieOfferController = async (req, res, next) => {
+    try {
+        const restaurantId = req.user?.userId;
+        const { getFreebieOffer } = await import('../../shared/freebieOffer.service.js');
+        const offer = await getFreebieOffer(restaurantId);
+        return sendResponse(res, 200, 'Freebie offer fetched successfully', {
+            offer: offer || { restaurantId, isActive: true, tiers: [] },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateFreebieOfferController = async (req, res, next) => {
+    try {
+        const restaurantId = req.user?.userId;
+        const { normalizeFreebieTiersInput } = await import('../../shared/freebieRewards.js');
+        const { saveFreebieOffer } = await import('../../shared/freebieOffer.service.js');
+
+        let tiers;
+        try {
+            tiers = normalizeFreebieTiersInput(req.body || {})?.tiers;
+        } catch (validationError) {
+            return sendResponse(res, 400, validationError.message, null);
+        }
+
+        const offer = await saveFreebieOffer(restaurantId, {
+            tiers,
+            isActive: req.body?.isActive,
+            updatedByRole: 'RESTAURANT',
+        });
+        return sendResponse(res, 200, 'Freebie offer saved successfully', { offer });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const updateRestaurantProfileController = async (req, res, next) => {
     try {
         const restaurantId = req.user?.userId;

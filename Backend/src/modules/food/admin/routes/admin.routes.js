@@ -63,6 +63,8 @@ router.get('/restaurants/reviews', adminController.getRestaurantReviews);
 router.get('/restaurants/:id', adminController.getRestaurantById);
 router.get('/restaurants/:id/analytics', adminController.getRestaurantAnalytics);
 router.get('/restaurants/:id/menu', adminController.getRestaurantMenuById);
+router.get('/restaurants/:id/freebie-offer', adminController.getRestaurantFreebieOffer);
+router.put('/restaurants/:id/freebie-offer', adminController.updateRestaurantFreebieOffer);
 router.post('/restaurants', adminController.createRestaurant);
 router.patch('/restaurants/:id', adminController.updateRestaurantById);
 router.patch('/restaurants/:id/status', adminController.updateRestaurantStatus);
