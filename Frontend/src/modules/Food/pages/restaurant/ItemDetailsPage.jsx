@@ -103,6 +103,106 @@ export default function ItemDetailsPage() {
   const [availabilitySchedule, setAvailabilitySchedule] = useState(() => buildScheduleState(null))
   const [gst, setGst] = useState("5.0")
   const [isRecommended, setIsRecommended] = useState(false)
+
+  /**
+   * Field-keyed validation errors, shown inline at the field instead of as a
+   * chain of toasts. Keys: name, category, schedule, basePrice, variants,
+   * v-<localId>-name / -price, v-<localId>-addon-<addonId>, minQty, maxQty,
+   * packaging. Cleared per field as the user edits it.
+   */
+  const [formErrors, setFormErrors] = useState({})
+  const clearError = (key) =>
+    setFormErrors((prev) => {
+      if (!(key in prev)) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  const FieldError = ({ field }) =>
+    formErrors[field] ? (
+      <p className="mt-1 text-xs font-semibold text-red-600">{formErrors[field]}</p>
+    ) : null
+  const errRing = (field) => (formErrors[field] ? " border-red-400 ring-2 ring-red-300" : "")
+
+  /**
+   * Everything checkable without a network call, in one pass, run BEFORE any
+   * image uploads -- it used to run after them, so a missing name cost a full
+   * upload round-trip to discover. Returns { errors, anchors }: anchors are the
+   * data-err hooks to scroll to, in severity order.
+   */
+  const validateForm = () => {
+    const errors = {}
+    const anchors = []
+    const fail = (key, message, anchor) => {
+      errors[key] = message
+      anchors.push(anchor || key)
+    }
+
+    if (!itemName.trim()) fail("name", "Give the dish a name")
+    else if (itemName.trim().length > 200) fail("name", "Name is too long (200 characters max)")
+
+    const matchedCategory = Array.isArray(categories)
+      ? categories.find((c) => String(c?.id || "") === String(selectedCategoryId || ""))
+      : null
+    if (!matchedCategory) fail("category", "Pick an approved category")
+    else if (
+      matchedCategory.foodTypeScope &&
+      matchedCategory.foodTypeScope !== "Both" &&
+      matchedCategory.foodTypeScope !== foodType
+    ) {
+      fail("category", `This ${matchedCategory.foodTypeScope} category cannot accept ${foodType} food`)
+    }
+
+    if (isScheduleEmpty(availabilitySchedule)) {
+      fail("schedule", "Turn on at least one day, or switch the schedule off")
+    }
+
+    if (variantsEnabled) {
+      const live = variants.filter(
+        (v) => String(v.name || "").trim() || String(v.price || "").trim() || v.persistedId,
+      )
+      if (live.length === 0) fail("variants", "Add at least one variant, or switch variants off")
+
+      const seenNames = new Set()
+      for (const v of live) {
+        const name = String(v.name || "").trim()
+        if (!name) fail(`v-${v.localId}-name`, "Name this variant", `v-${v.localId}`)
+        else if (seenNames.has(name.toLowerCase()))
+          fail(`v-${v.localId}-name`, `"${name}" is used twice`, `v-${v.localId}`)
+        else seenNames.add(name.toLowerCase())
+
+        const price = Number(v.price)
+        if (!Number.isFinite(price) || price <= 0)
+          fail(`v-${v.localId}-price`, "Price must be above 0", `v-${v.localId}`)
+
+        for (const addonId of v.addonIds || []) {
+          const raw = (v.addonPrices || {})[addonId]
+          if (raw === undefined || raw === "") continue
+          const pairPrice = Number(raw)
+          if (!Number.isFinite(pairPrice) || pairPrice < 0)
+            fail(`v-${v.localId}-addon-${addonId}`, "Add-on price must be 0 or more", `v-${v.localId}`)
+        }
+      }
+    } else {
+      const price = Number(basePrice)
+      if (!Number.isFinite(price) || price <= 0) fail("basePrice", "Enter a price above 0")
+    }
+
+    const minQty = Number(minOrderQuantity)
+    if (!Number.isInteger(minQty) || minQty < 1) fail("minQty", "Minimum quantity must be at least 1")
+    const maxQty = Number(maxOrderQuantity)
+    if (!Number.isInteger(maxQty) || maxQty < 0) fail("maxQty", "Use 0 for no cap, or a whole number")
+    else if (maxQty !== 0 && Number.isInteger(minQty) && maxQty < minQty)
+      fail("maxQty", `Cap cannot be below the minimum of ${minQty}`)
+
+    if (packagingEnabled) {
+      const amount = Number(packagingAmount)
+      if (!Number.isFinite(amount) || amount <= 0)
+        fail("packaging", "Enter a packaging charge above 0, or switch it off")
+    }
+
+    return { errors, anchors }
+  }
   const [isInStock, setIsInStock] = useState(true)
   const [weightPerServing, setWeightPerServing] = useState("")
   const [calorieCount, setCalorieCount] = useState("")
@@ -526,12 +626,15 @@ export default function ItemDetailsPage() {
   }
 
   const handleSave = async () => {
-    if (!itemName.trim()) {
-      toast.error("Please enter an item name")
-      return
-    }
-    if (isScheduleEmpty(availabilitySchedule)) {
-      toast.error("Turn on at least one day for the availability schedule, or switch it off")
+    // Validate everything first: an invalid form must cost zero uploads.
+    const { errors: validationErrors, anchors } = validateForm()
+    setFormErrors(validationErrors)
+    if (anchors.length > 0) {
+      toast.error("Please fix the highlighted fields")
+      if (validationErrors.category) setIsCategoryPopupOpen(true)
+      document
+        .querySelector(`[data-err="${anchors[0]}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" })
       return
     }
 
@@ -590,22 +693,7 @@ export default function ItemDetailsPage() {
       const categoryId = matchedCategory?.id || matchedCategory?._id || null
       const categoryName = matchedCategory?.name || category || ""
 
-      if (!categoryId) {
-        toast.error("Please select an approved category first")
-        setIsCategoryPopupOpen(true)
-        setUploadingImages(false)
-        return
-      }
-
-      if (
-        matchedCategory?.foodTypeScope &&
-        matchedCategory.foodTypeScope !== "Both" &&
-        matchedCategory.foodTypeScope !== foodType
-      ) {
-        toast.error(`This ${matchedCategory.foodTypeScope} category cannot accept ${foodType} food`)
-        setUploadingImages(false)
-        return
-      }
+      // Category validity was proven by validateForm before any upload ran.
 
       const normalizedVariants = variants
         .map((variant) => ({
@@ -617,30 +705,8 @@ export default function ItemDetailsPage() {
         }))
         .filter((variant) => variant.name || variant.persistedId || variant.price)
 
-      if (normalizedVariants.some((variant) => !variant.name)) {
-        toast.error("Each variant must have a name")
-        setUploadingImages(false)
-        return
-      }
-
-      if (normalizedVariants.some((variant) => !Number.isFinite(variant.price) || variant.price <= 0)) {
-        toast.error("Each variant price must be greater than 0")
-        setUploadingImages(false)
-        return
-      }
-
       const hasVariants = variantsEnabled
       const parsedBasePrice = Number(basePrice)
-      if (variantsEnabled && normalizedVariants.length === 0) {
-        toast.error("Add at least one variant, or switch variants off")
-        setUploadingImages(false)
-        return
-      }
-      if (!hasVariants && (!Number.isFinite(parsedBasePrice) || parsedBasePrice < 0)) {
-        toast.error("Please enter a valid base price")
-        setUploadingImages(false)
-        return
-      }
 
       const variantPayload = normalizedVariants.map((variant) => ({
         ...(variant.persistedId ? { _id: variant.persistedId } : {}),
@@ -738,9 +804,14 @@ export default function ItemDetailsPage() {
           ? `Item created successfully`
           : `Item updated and sent for approval again`
       )
-      await new Promise((resolve) => setTimeout(resolve, 200))
-      navigate("/food/restaurant/inventory", { replace: true })
       window.dispatchEvent(new CustomEvent('foodsChanged'))
+      // Stay here. Bouncing to the inventory threw the restaurant out of the
+      // dish they were mid-editing on every save. A NEW dish swaps its /new URL
+      // for its real id (replace, so Back does not return to a stale form);
+      // an existing dish just stays put with its state already current.
+      if (isNewItem && itemId) {
+        navigate(`/food/restaurant/hub-menu/item/${itemId}`, { replace: true })
+      }
     } catch (error) {
       debugError('Error saving menu:', error)
       if (error.code === 'ERR_NETWORK') {
@@ -1232,8 +1303,10 @@ export default function ItemDetailsPage() {
                           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-500">{"\u20B9"}</span>
                           <input
                             type="text"
+                            data-err="basePrice"
                             value={basePrice}
                             onChange={(e) => {
+                              clearError("basePrice")
                               const value = e.target.value.replace(/[\u20B9\s,]/g, '').replace(/[^0-9.]/g, '')
                               const parts = value.split('.')
                               setBasePrice(parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value)
@@ -1243,6 +1316,7 @@ export default function ItemDetailsPage() {
                           />
                         </div>
                         <p className="mt-1 text-[11px] text-gray-500">Final price charged to customers</p>
+                        <FieldError field="basePrice" />
                       </div>
                     </div>
                   ) : (
@@ -1256,7 +1330,7 @@ export default function ItemDetailsPage() {
                   <div className="pt-4 border-t border-gray-100 space-y-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <h3 className="text-sm font-bold text-gray-900">Portions & Variants</h3>
+                        <h3 data-err="variants" className="text-sm font-bold text-gray-900">Portions & Variants</h3>
                         <p className="text-xs text-gray-500">
                           {variantsEnabled
                             ? "Customers pick a size; each has its own price and add-ons."
@@ -1283,6 +1357,7 @@ export default function ItemDetailsPage() {
                       )}
                     </div>
 
+<FieldError field="variants" />
                     {/* Rows appear only while selling by variants. The drafts
                         stay in state and storage either way, so toggling back
                         on restores them untouched. */}
@@ -1291,6 +1366,7 @@ export default function ItemDetailsPage() {
                         {variants.map((variant, index) => (
                           <div
                             key={variant.localId}
+                            data-err={`v-${variant.localId}`}
                             className="p-4 rounded-xl border border-gray-200 bg-gray-50/70 hover:border-gray-300 transition-colors"
                           >
                             <div className="flex items-start justify-between gap-3">
@@ -1300,10 +1376,11 @@ export default function ItemDetailsPage() {
                                   <input
                                     type="text"
                                     value={variant.name}
-                                    onChange={(e) => handleVariantChange(variant.localId, "name", e.target.value)}
+                                    onChange={(e) => { handleVariantChange(variant.localId, "name", e.target.value); clearError(`v-${variant.localId}-name`) }}
                                     placeholder={index === 0 ? "Full" : "Half"}
                                     className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
                                   />
+                                  <FieldError field={`v-${variant.localId}-name`} />
                                 </div>
                                 <div>
                                   <label className="block text-xs font-semibold text-gray-700 mb-1">Price</label>
@@ -1312,6 +1389,7 @@ export default function ItemDetailsPage() {
                                     <input
                                       type="text"
                                       value={variant.price}
+                                      onFocus={() => clearError(`v-${variant.localId}-price`)}
                                       onChange={(e) => {
                                         const value = e.target.value.replace(/[\u20B9\s,]/g, '').replace(/[^0-9.]/g, '')
                                         const parts = value.split('.')
@@ -1324,6 +1402,7 @@ export default function ItemDetailsPage() {
                                       className="w-full pl-7 pr-3 py-2.5 border border-gray-300 rounded-lg text-sm font-semibold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
                                     />
                                   </div>
+                                  <FieldError field={`v-${variant.localId}-price`} />
                                 </div>
 
                                 {/* Variant specific addons */}
@@ -1459,10 +1538,13 @@ export default function ItemDetailsPage() {
                         type="number"
                         min="1"
                         max="99"
+                        data-err="minQty"
                         value={minOrderQuantity}
+                        onFocus={() => clearError("minQty")}
                         onChange={(e) => setMinOrderQuantity(e.target.value)}
                         className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 shadow-sm"
                       />
+                      <FieldError field="minQty" />
                     </div>
 
                     <div>
@@ -1471,10 +1553,13 @@ export default function ItemDetailsPage() {
                         type="number"
                         min="0"
                         max="99"
+                        data-err="maxQty"
                         value={maxOrderQuantity}
+                        onFocus={() => clearError("maxQty")}
                         onChange={(e) => setMaxOrderQuantity(e.target.value)}
                         className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 shadow-sm"
                       />
+                      <FieldError field="maxQty" />
                     </div>
                   </div>
 
@@ -1499,11 +1584,14 @@ export default function ItemDetailsPage() {
                             type="number"
                             min="0"
                             step="0.01"
+                            data-err="packaging"
                             value={packagingAmount}
+                            onFocus={() => clearError("packaging")}
                             onChange={(e) => setPackagingAmount(e.target.value)}
                             placeholder="e.g. 5"
                             className="w-full pl-8 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm font-semibold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 shadow-sm"
                           />
+                          <FieldError field="packaging" />
                         </div>
                       </div>
                     )}
@@ -1580,6 +1668,7 @@ export default function ItemDetailsPage() {
                     <Calendar className="w-4 h-4 text-gray-600" />
                     <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Availability Schedule</h2>
                   </div>
+                  <div data-err="schedule"><FieldError field="schedule" /></div>
                   <ItemAvailabilityScheduleEditor
                     value={availabilitySchedule}
                     onChange={setAvailabilitySchedule}
