@@ -102,6 +102,25 @@ const feeSettingsSchema = new mongoose.Schema(
             ),
             default: () => ({})
         },
+        /**
+         * The struck-through "what you'd pay elsewhere" figure, as a markup over
+         * our selling price rather than a number typed per dish.
+         *
+         * Derived on read, which is what makes it follow a global price
+         * adjustment: raise every menu price and this rises with them, with no
+         * stored value that can fall out of step. See shared/otherPlatformPricing.js.
+         */
+        otherPlatformPrice: {
+            type: new mongoose.Schema(
+                {
+                    isEnabled: { type: Boolean, default: false },
+                    markupPercent: { type: Number, min: 0, max: 300, default: 0 },
+                    label: { type: String, trim: true, default: 'Other platforms' }
+                },
+                { _id: false }
+            ),
+            default: () => ({})
+        },
         isActive: { type: Boolean, default: true, index: true }
     },
     { collection: 'food_fee_settings', timestamps: true }

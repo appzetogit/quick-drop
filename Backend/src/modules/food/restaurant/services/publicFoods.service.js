@@ -30,6 +30,15 @@ export async function listPublicFoods(query = {}) {
         restaurantFilter.zoneId = new mongoose.Types.ObjectId(zoneIdRaw);
     }
 
+    // The other-platform comparison markup, read once for the whole list. It is
+    // applied to each item's selling price at render time rather than stored, so
+    // a global price adjustment moves it automatically.
+    const { FoodFeeSettings } = await import('../../admin/models/feeSettings.model.js');
+    const { normalizeOtherPlatformSettings, computeOtherPlatformPrice, resolveComparisonPrice } =
+        await import('../../shared/otherPlatformPricing.js');
+    const feeDoc = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
+    const otherPlatform = normalizeOtherPlatformSettings(feeDoc || {});
+
     const restaurants = await FoodRestaurant.find(restaurantFilter)
         .select('_id restaurantName slug zoneId profileImage rating totalRatings ratingCount estimatedDeliveryTime estimatedDeliveryTimeMinutes location coverImages menuImages isActive isAcceptingOrders outletTimings openDays deliveryTimings openingTime closingTime')
         .lean();
@@ -91,7 +100,21 @@ export async function listPublicFoods(query = {}) {
             // a price and show "N% OFF" without deriving the rule itself.
             // strikePrice is null whenever there is nothing honest to show, so the
             // client can render it unconditionally instead of guessing.
-            ...resolveItemDisplayPricing(food),
+            ...(() => {
+                const display = resolveItemDisplayPricing(food);
+                const otherPlatformPrice = computeOtherPlatformPrice(display.price, otherPlatform);
+                // One struck-through figure, not two: whichever is higher between
+                // the restaurant's own pre-discount price and the platform
+                // comparison. Labelled, because a struck "Rs.100" means different
+                // things depending on which it is.
+                const comparison = resolveComparisonPrice({
+                    price: display.price,
+                    basePrice: display.basePrice,
+                    otherPlatformPrice,
+                    label: otherPlatform.label,
+                });
+                return { ...display, otherPlatformPrice, ...comparison };
+            })(),
             // The add-ons this dish offers. The order API re-checks the list, so
             // this is for showing the right picker, not for deciding what is allowed.
             addonIds: (food.addonIds || []).map((x) => String(x)),

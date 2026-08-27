@@ -1865,6 +1865,8 @@ export async function upsertFeeSettings(body) {
 
         if (body.packagingCharge !== undefined) $set.packagingCharge = body.packagingCharge;
 
+        if (body.otherPlatformPrice !== undefined) $set.otherPlatformPrice = body.otherPlatformPrice;
+
         if (body.isActive !== undefined) $set.isActive = body.isActive;
 
         const update = {};
@@ -1898,6 +1900,7 @@ export async function upsertFeeSettings(body) {
     if (body.codOrderLimit !== undefined && body.codOrderLimit !== null) payload.codOrderLimit = body.codOrderLimit;
     if (body.maxOrderQuantityCeiling !== undefined && body.maxOrderQuantityCeiling !== null) payload.maxOrderQuantityCeiling = body.maxOrderQuantityCeiling;
     if (body.packagingCharge !== undefined) payload.packagingCharge = body.packagingCharge;
+    if (body.otherPlatformPrice !== undefined) payload.otherPlatformPrice = body.otherPlatformPrice;
 
     const created = await FoodFeeSettings.create(payload);
     invalidateOrderQuantityCeilingCache();

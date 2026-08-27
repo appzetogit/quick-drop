@@ -25,6 +25,12 @@ const packagingChargeSchema = z.object({
     adminChargePerOrder: z.number().min(0).optional()
 });
 
+const otherPlatformPriceSchema = z.object({
+    isEnabled: z.boolean().optional(),
+    markupPercent: z.number().min(0).max(300).optional(),
+    label: z.string().optional()
+});
+
 const feeSettingsUpsertSchema = z.object({
     deliveryFee: z.number().min(0).nullable().optional(),
     deliveryFeeRanges: z.array(rangeSchema).optional(),
@@ -36,6 +42,7 @@ const feeSettingsUpsertSchema = z.object({
     gstRate: z.number().min(0).max(100).nullable().optional(),
     codOrderLimit: z.number().min(0).nullable().optional(),
     packagingCharge: packagingChargeSchema.optional(),
+    otherPlatformPrice: otherPlatformPriceSchema.optional(),
     isActive: z.boolean().optional()
 });
 
@@ -104,6 +111,19 @@ export const validateFeeSettingsUpsertDto = (body) => {
                 adminChargePerOrder: body.packagingCharge.adminChargePerOrder !== undefined
                     ? Number(body.packagingCharge.adminChargePerOrder)
                     : 0
+            }
+            : undefined,
+        otherPlatformPrice: body?.otherPlatformPrice
+            ? {
+                isEnabled: body.otherPlatformPrice.isEnabled !== undefined
+                    ? Boolean(body.otherPlatformPrice.isEnabled)
+                    : false,
+                markupPercent: body.otherPlatformPrice.markupPercent !== undefined
+                    ? Number(body.otherPlatformPrice.markupPercent)
+                    : 0,
+                label: body.otherPlatformPrice.label !== undefined
+                    ? String(body.otherPlatformPrice.label)
+                    : undefined
             }
             : undefined,
         isActive: body?.isActive !== undefined ? Boolean(body.isActive) : undefined

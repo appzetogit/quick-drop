@@ -2508,6 +2508,21 @@ function RestaurantDetailsContent() {
 
                               <div className="flex items-center gap-3 mt-1">
                                 <p className="font-semibold text-red-600 dark:text-red-500">{getFoodPriceLabel(item)}</p>
+                                {/* One struck-through figure, chosen server-side between the
+                                    restaurant's own pre-discount price and the platform comparison,
+                                    so the client never has to decide which. */}
+                                {item.strikePrice > 0 && (
+                                  <span className="flex items-baseline gap-1.5">
+                                    <span className="text-sm text-gray-400 line-through">
+                                      {"₹"}{Math.round(item.strikePrice)}
+                                    </span>
+                                    {item.strikeLabel ? (
+                                      <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                                        {item.strikeLabel}
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                )}
                                 {/* The dish is on the menu but outside its serving hours. Stated here,
                                     with the hours, rather than letting the order fail at checkout. */}
                                 {isUnavailableNow && (
@@ -2754,6 +2769,21 @@ function RestaurantDetailsContent() {
 
                                         <div className="flex items-center gap-3 mt-1">
                                           <p className="font-semibold text-red-600 dark:text-red-500">{getFoodPriceLabel(item)}</p>
+                                          {/* One struck-through figure, chosen server-side between the
+                                              restaurant's own pre-discount price and the platform comparison,
+                                              so the client never has to decide which. */}
+                                          {item.strikePrice > 0 && (
+                                            <span className="flex items-baseline gap-1.5">
+                                              <span className="text-sm text-gray-400 line-through">
+                                                {"₹"}{Math.round(item.strikePrice)}
+                                              </span>
+                                              {item.strikeLabel ? (
+                                                <span className="text-[10px] uppercase tracking-wide text-gray-400">
+                                                  {item.strikeLabel}
+                                                </span>
+                                              ) : null}
+                                            </span>
+                                          )}
                                           {/* The dish is on the menu but outside its serving hours. Stated here,
                                               with the hours, rather than letting the order fail at checkout. */}
                                           {isUnavailableNow && (

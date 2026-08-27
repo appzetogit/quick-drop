@@ -9,11 +9,19 @@ import { resolveItemPackagingAmount } from '../../shared/packagingCharge.js';
 import { describeTodaysWindow, isFoodAvailableNow } from '../../shared/itemAvailability.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { resolveItemDisplayPricing } from '../../shared/itemDiscountPricing.js';
+import { computeOtherPlatformPrice, normalizeOtherPlatformSettings, resolveComparisonPrice } from '../../shared/otherPlatformPricing.js';
 
 const buildMenuFromFoods = async (foods = []) => {
     // Admin-configurable platform cap, so the limits the seller UI shows match
     // what checkout will actually enforce. Read once per menu, not per item.
     const quantityCeiling = await getOrderQuantityCeiling();
+
+    // The other-platform comparison markup, also read once. Applied to each
+    // item's selling price at render time rather than stored, so a global price
+    // adjustment carries it along automatically.
+    const { FoodFeeSettings } = await import('../../admin/models/feeSettings.model.js');
+    const feeDoc = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
+    const otherPlatform = normalizeOtherPlatformSettings(feeDoc || {});
 
     const categoryIds = Array.from(
         new Set(
@@ -65,7 +73,17 @@ const buildMenuFromFoods = async (foods = []) => {
             // Base price, discount and the strike price to render. The item form
             // sends these, so they have to come back or the fields hydrate blank and
             // the next save writes the blanks over what the restaurant set.
-            ...resolveItemDisplayPricing({ ...food, price: getFoodDisplayPrice(food) }),
+            ...(() => {
+                const display = resolveItemDisplayPricing({ ...food, price: getFoodDisplayPrice(food) });
+                const otherPlatformPrice = computeOtherPlatformPrice(display.price, otherPlatform);
+                const comparison = resolveComparisonPrice({
+                    price: display.price,
+                    basePrice: display.basePrice,
+                    otherPlatformPrice,
+                    label: otherPlatform.label,
+                });
+                return { ...display, otherPlatformPrice, ...comparison };
+            })(),
             // Which add-ons this dish offers, so the editor can show the picker
             // pre-filled and the app can offer only the relevant ones.
             addonIds: (food.addonIds || []).map((x) => String(x)),
