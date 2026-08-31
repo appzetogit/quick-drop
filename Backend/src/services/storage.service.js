@@ -34,6 +34,39 @@ const WEBP_MIME = 'image/webp';
 const GIF_MIME = 'image/gif';
 const FOLDER_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9/_-]*$/;
 
+/** Hero banners may be video, so the store is not images-only. */
+const VIDEO_MIME_EXTENSIONS = {
+    'video/mp4': '.mp4',
+    'video/webm': '.webm',
+    'video/quicktime': '.mov',
+    'video/x-m4v': '.m4v',
+    'video/ogg': '.ogv',
+};
+
+/**
+ * Identify a buffer by its magic bytes.
+ *
+ * Most callers hand us a bare Buffer with no mime type -- the old Cloudinary
+ * helpers took `(buffer, folder)` and let the service sniff server-side. Sharp
+ * could infer image types on its own, but video has to bypass sharp entirely,
+ * so the type must be known before choosing a path.
+ */
+export const detectMimeType = (buffer) => {
+    if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
+
+    if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return 'image/png';
+    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+    if (buffer.toString('ascii', 0, 3) === 'GIF') return GIF_MIME;
+    if (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') return WEBP_MIME;
+    if (buffer.toString('ascii', 4, 8) === 'ftyp') return 'video/mp4';
+    if (buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) return 'video/webm';
+
+    return null;
+};
+
+export const isVideoMimeType = (mimeType) =>
+    Object.prototype.hasOwnProperty.call(VIDEO_MIME_EXTENSIONS, String(mimeType || '').toLowerCase());
+
 /**
  * Folder names arrive from client form data, so they are path-traversal input
  * until proven otherwise. Rejecting `..` is not enough on its own — getAbsolutePath
@@ -223,6 +256,43 @@ export const saveImageBuffer = async (buffer, folder, options = {}) => saveImage
     },
     folder
 );
+
+/**
+ * Store an image OR a video, sniffing the type when the caller does not know it.
+ *
+ * This is the local equivalent of Cloudinary's `resource_type: 'auto'`, which
+ * hero banners depend on: a banner may be a video, and the home page decides
+ * between <img> and <video> from the stored resource type. Video is written
+ * through untouched -- sharp is an image pipeline and would reject it.
+ */
+export const saveMediaBuffer = async (buffer, folder, options = {}) => {
+    if (!buffer?.length) {
+        throw new ValidationError('File is required');
+    }
+
+    const mimeType = String(options.mimeType || detectMimeType(buffer) || 'image/jpeg').toLowerCase();
+
+    if (!isVideoMimeType(mimeType)) {
+        const stored = await saveImageBuffer(buffer, folder, { ...options, mimeType });
+        return { ...stored, resourceType: 'image' };
+    }
+
+    const safeFolder = sanitizeUploadFolder(folder);
+    const filename = buildFilename(VIDEO_MIME_EXTENSIONS[mimeType]);
+    const relativePath = path.posix.join(safeFolder, filename);
+
+    await ensureUploadStorageReady(safeFolder);
+    await fs.writeFile(getAbsolutePath(relativePath), buffer);
+
+    return {
+        url: buildPublicUrl(relativePath),
+        path: relativePath,
+        filename,
+        mimeType,
+        size: buffer.length,
+        resourceType: 'video'
+    };
+};
 
 export const deleteStoredFile = async (relativePath) => {
     const safePath = String(relativePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
