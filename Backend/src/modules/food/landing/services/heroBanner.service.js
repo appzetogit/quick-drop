@@ -1,10 +1,8 @@
 import { FoodHeroBanner } from '../models/heroBanner.model.js';
-import { v2 as cloudinary } from 'cloudinary';
-// Side-effect import: this module is what calls cloudinary.config(). The
-// cloudinary v2 export is a singleton, so today this file happens to be
-// configured by whatever else imported it first during boot. Importing it
-// here makes that explicit rather than a load-order accident.
-import '../../../../services/cloudinary.service.js';
+import {
+    uploadMediaBufferDetailed,
+    deleteStoredAsset,
+} from '../../../../services/cloudinary.service.js';
 
 export const listHeroBanners = async () => {
     return FoodHeroBanner.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
@@ -19,22 +17,14 @@ export const createHeroBannersFromFiles = async (files, meta = {}) => {
 
     for (const file of files) {
         try {
-            const uploadResult = await new Promise((resolve, reject) => {
-                const stream = cloudinary.uploader.upload_stream(
-                    // 'auto' rather than 'image' so a hero banner can be a video.
-                    // Cloudinary detects the type, stores a video under its own
-                    // resource type, and returns a /video/upload/ URL -- which is
-                    // what the home page keys on to render <video> instead of
-                    // <img>. Pinned to 'image' this upload simply failed, so a
-                    // video banner could not be created at all.
-                    { folder: 'food/hero-banners', resource_type: 'auto' },
-                    (error, result) => {
-                        if (error) return reject(error);
-                        return resolve(result);
-                    }
-                );
-                stream.end(file.buffer);
-            });
+            // Media, not image: a hero banner may be a video, and the home page
+            // renders <video> instead of <img> based on the resource type
+            // recorded below. The store sniffs the buffer and writes video
+            // through untouched.
+            const uploadResult = await uploadMediaBufferDetailed(
+                file.buffer,
+                'food/hero-banners',
+            );
 
             const banner = await FoodHeroBanner.create({
                 imageUrl: uploadResult.secure_url,
@@ -73,13 +63,8 @@ export const deleteHeroBanner = async (id) => {
     }
 
     if (doc.publicId) {
-        try {
-            await cloudinary.uploader.destroy(doc.publicId, {
-                resource_type: doc.resourceType === 'video' ? 'video' : 'image',
-            });
-        } catch {
-            // ignore cloudinary deletion errors to avoid blocking deletion
-        }
+        // Best-effort: a missing file must not block deleting the record.
+        await deleteStoredAsset(doc.publicId);
     }
 
     await doc.deleteOne();

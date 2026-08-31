@@ -1,5 +1,8 @@
 import { FoodDiningBanner } from '../models/diningBanner.model.js';
-import { v2 as cloudinary } from 'cloudinary';
+import {
+    uploadMediaBufferDetailed,
+    deleteStoredAsset,
+} from '../../../../services/cloudinary.service.js';
 
 export const listDiningBanners = async () => {
     return FoodDiningBanner.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
@@ -14,16 +17,10 @@ export const createDiningBannersFromFiles = async (files, meta = {}) => {
 
     for (const file of files) {
         try {
-            const uploadResult = await new Promise((resolve, reject) => {
-                const stream = cloudinary.uploader.upload_stream(
-                    { folder: 'food/dining-banners', resource_type: 'image' },
-                    (error, result) => {
-                        if (error) return reject(error);
-                        return resolve(result);
-                    }
-                );
-                stream.end(file.buffer);
-            });
+            const uploadResult = await uploadMediaBufferDetailed(
+                file.buffer,
+                'food/dining-banners',
+            );
 
             const banner = await FoodDiningBanner.create({
                 imageUrl: uploadResult.secure_url,
@@ -52,11 +49,8 @@ export const deleteDiningBanner = async (id) => {
     }
 
     if (doc.publicId) {
-        try {
-            await cloudinary.uploader.destroy(doc.publicId);
-        } catch {
-            // ignore cloudinary deletion errors
-        }
+        // Best-effort: a missing file must not block deleting the record.
+        await deleteStoredAsset(doc.publicId);
     }
 
     await doc.deleteOne();

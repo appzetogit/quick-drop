@@ -1,5 +1,8 @@
 import { HomePromotionBanner } from '../models/homePromotionBanner.model.js';
-import { v2 as cloudinary } from 'cloudinary';
+import {
+    uploadMediaBufferDetailed,
+    deleteStoredAsset,
+} from '../../../../services/cloudinary.service.js';
 
 export const listHomePromotionBanners = async () => {
     return HomePromotionBanner.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
@@ -42,16 +45,10 @@ export const createHomePromotionBanner = async (file, meta = {}) => {
     if (!file) return null;
 
     try {
-        const uploadResult = await new Promise((resolve, reject) => {
-            const stream = cloudinary.uploader.upload_stream(
-                { folder: 'food/home-promotion-banners', resource_type: 'image' },
-                (error, result) => {
-                    if (error) return reject(error);
-                    return resolve(result);
-                }
-            );
-            stream.end(file.buffer);
-        });
+        const uploadResult = await uploadMediaBufferDetailed(
+            file.buffer,
+            'food/home-promotion-banners',
+        );
 
         return await HomePromotionBanner.create({
             imageUrl: uploadResult.secure_url,
@@ -82,11 +79,8 @@ export const deleteHomePromotionBanner = async (id) => {
     if (!doc) return { deleted: false };
 
     if (doc.publicId) {
-        try {
-            await cloudinary.uploader.destroy(doc.publicId);
-        } catch {
-            // ignore cloudinary errors
-        }
+        // Best-effort: a missing file must not block deleting the record.
+        await deleteStoredAsset(doc.publicId);
     }
 
     await doc.deleteOne();
