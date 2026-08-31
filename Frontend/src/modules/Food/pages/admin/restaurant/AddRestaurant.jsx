@@ -554,14 +554,14 @@ export default function AddRestaurant() {
       // Upload all images first
       let profileImageData = null
       if (step2.profileImage instanceof File) {
-        profileImageData = await handleUpload(step2.profileImage, "K9 Rides/restaurant/profile")
+        profileImageData = await handleUpload(step2.profileImage, "restaurant/profile")
       } else if (step2.profileImage?.url) {
         profileImageData = step2.profileImage
       }
 
       let menuImagesData = []
       for (const file of step2.menuImages.filter(f => f instanceof File)) {
-        const uploaded = await handleUpload(file, "K9 Rides/restaurant/menu")
+        const uploaded = await handleUpload(file, "restaurant/menu")
         menuImagesData.push(uploaded)
       }
       const existingMenuUrls = step2.menuImages.filter(img => !(img instanceof File) && (img?.url || (typeof img === 'string' && img.startsWith('http'))))
@@ -569,7 +569,7 @@ export default function AddRestaurant() {
 
       let panImageData = null
       if (step3.panImage instanceof File) {
-        panImageData = await handleUpload(step3.panImage, "K9 Rides/restaurant/pan")
+        panImageData = await handleUpload(step3.panImage, "restaurant/pan")
       } else if (step3.panImage?.url) {
         panImageData = step3.panImage
       }
@@ -577,7 +577,7 @@ export default function AddRestaurant() {
       let gstImageData = null
       if (step3.gstRegistered && step3.gstImage) {
         if (step3.gstImage instanceof File) {
-          gstImageData = await handleUpload(step3.gstImage, "K9 Rides/restaurant/gst")
+          gstImageData = await handleUpload(step3.gstImage, "restaurant/gst")
         } else if (step3.gstImage?.url) {
           gstImageData = step3.gstImage
         }
@@ -585,7 +585,7 @@ export default function AddRestaurant() {
 
       let fssaiImageData = null
       if (step3.fssaiImage instanceof File) {
-        fssaiImageData = await handleUpload(step3.fssaiImage, "K9 Rides/restaurant/fssai")
+        fssaiImageData = await handleUpload(step3.fssaiImage, "restaurant/fssai")
       } else if (step3.fssaiImage?.url) {
         fssaiImageData = step3.fssaiImage
       }
@@ -593,7 +593,7 @@ export default function AddRestaurant() {
       // Only a medical store has a drug licence to upload.
       let drugLicenseImageData = null
       if (step3.drugLicenseImage instanceof File) {
-        drugLicenseImageData = await handleUpload(step3.drugLicenseImage, "K9 Rides/restaurant/drug-licence")
+        drugLicenseImageData = await handleUpload(step3.drugLicenseImage, "restaurant/drug-licence")
       } else if (step3.drugLicenseImage?.url) {
         drugLicenseImageData = step3.drugLicenseImage
       }

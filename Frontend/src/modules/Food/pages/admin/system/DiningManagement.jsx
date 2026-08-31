@@ -102,7 +102,7 @@ export default function DiningManagement() {
             let imageUrl = editingCategoryImageUrl
 
             if (categoryFile) {
-                const uploadResponse = await uploadAPI.uploadMedia(categoryFile, { folder: "K9 Rides/dining/categories" })
+                const uploadResponse = await uploadAPI.uploadMedia(categoryFile, { folder: "dining/categories" })
                 imageUrl = uploadResponse?.data?.data?.url || ""
             }
 

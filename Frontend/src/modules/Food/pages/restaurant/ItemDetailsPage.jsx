@@ -641,10 +641,13 @@ export default function ItemDetailsPage() {
     try {
       setUploadingImages(true)
       const uploadedImageUrls = []
+      // Keep already-saved images. `/uploads/...` counts: images now live on our
+      // own disk and are stored as a site-relative path, so an http-only test
+      // would discard the dish's photo on every unrelated edit. blob:/data: are
+      // in-browser previews of files not yet uploaded and must not be persisted.
       const existingImageUrls = images.filter(img =>
         typeof img === 'string' &&
-        (img.startsWith('http://') || img.startsWith('https://')) &&
-        !img.startsWith('blob:')
+        (img.startsWith('http://') || img.startsWith('https://') || img.startsWith('/uploads/'))
       )
 
       const filesToUpload = Array.from(imageFiles.values())
@@ -656,7 +659,7 @@ export default function ItemDetailsPage() {
             let uploadResponse
             try {
               uploadResponse = await uploadAPI.uploadMedia(file, {
-                folder: 'K9 Rides/restaurant/menu-items'
+                folder: 'restaurant/menu-items'
               })
             } catch (folderUploadError) {
               debugWarn(`Retrying upload without folder for ${file.name}:`, folderUploadError)

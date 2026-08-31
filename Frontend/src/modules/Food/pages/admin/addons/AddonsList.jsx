@@ -135,7 +135,7 @@ export default function AddonsList() {
       let imageUrl = editImagePreview || ""
       // If a new file selected, upload it
       if (editImageFile) {
-        const uploadRes = await uploadAPI.uploadMedia(editImageFile, { folder: "K9 Rides/admin/addons" })
+        const uploadRes = await uploadAPI.uploadMedia(editImageFile, { folder: "admin/addons" })
         imageUrl = uploadRes?.data?.data?.url || uploadRes?.data?.url || imageUrl
       }
 

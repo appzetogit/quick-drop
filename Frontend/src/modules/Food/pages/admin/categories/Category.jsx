@@ -332,7 +332,7 @@ export default function Category() {
       let imageUrl = String(formData.image || "").trim()
 
       if (selectedImageFile) {
-        const uploadRes = await uploadAPI.uploadMedia(selectedImageFile, { folder: "K9 Rides/categories" })
+        const uploadRes = await uploadAPI.uploadMedia(selectedImageFile, { folder: "categories" })
         const payload = uploadRes?.data?.data || uploadRes?.data
         imageUrl = payload?.url || imageUrl
       }
