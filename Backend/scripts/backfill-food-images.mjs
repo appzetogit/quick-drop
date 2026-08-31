@@ -47,7 +47,9 @@ const TERMS = [
     [/chill?[iy]\s*chick/i, 'chilli chicken'],
     [/chic\w*\s*pakora|chic\w*\s*fry|tawa\s*chic/i, 'fried chicken pieces'],
     [/chic\w*\s*burger/i, 'chicken burger'],
-    [/chic\w*\s*sandwich/i, 'chicken sandwich'],
+    // Non-adjacent on purpose: "Chicken Grilled Sandwich" must not fall through
+    // to the grilled-cheese rule below.
+    [/chic\w*.*sandwich/i, 'chicken sandwich'],
     [/paneer\s*burger/i, 'paneer burger'],
     [/che?e?sse?\s*burger|cheese\s*burger/i, 'cheeseburger'],
     [/veg\s*burger/i, 'veggie burger'],
