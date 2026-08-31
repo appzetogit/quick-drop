@@ -25,6 +25,7 @@ import { saveImageFromUrl } from '../src/services/storage.service.js';
 const dryRun = process.argv.includes('--dry-run');
 const onlyArg = process.argv.find((a) => a.startsWith('--only='));
 const only = onlyArg ? onlyArg.slice('--only='.length).toLowerCase() : null;
+const force = process.argv.includes('--force');
 
 const FOLDER = 'food/menu-items';
 
@@ -97,12 +98,34 @@ const termFor = (name) => {
     return 'indian food dish';
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Wikimedia rate-limits hard: firing 69 searches back to back earned a 429 on
+ * all but nine of them. Space the requests out and back off when throttled.
+ */
+const PACE_MS = 1200;
+const withRetry = async (label, fn) => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+        try {
+            return await fn();
+        } catch (error) {
+            const status = error?.response?.status;
+            if (status !== 429 && status !== 503) throw error;
+            const backoff = 2000 * 2 ** attempt;
+            console.log(`      (${label}: ${status}, retrying in ${backoff / 1000}s)`);
+            await sleep(backoff);
+        }
+    }
+    throw new Error('rate limited after 5 attempts');
+};
+
 /** Commons search, cached per term. Returns a list of candidate image URLs. */
 const candidateCache = new Map();
 const fetchCandidates = async (term) => {
     if (candidateCache.has(term)) return candidateCache.get(term);
 
-    const { data } = await axios.get('https://commons.wikimedia.org/w/api.php', {
+    const { data } = await withRetry(`search ${term}`, () => axios.get('https://commons.wikimedia.org/w/api.php', {
         params: {
             action: 'query',
             format: 'json',
@@ -116,7 +139,7 @@ const fetchCandidates = async (term) => {
         },
         timeout: 30000,
         headers: { 'User-Agent': 'QuickDrop/1.0 (media seeding; contact: admin@quickdrop.com)' },
-    });
+    }));
 
     const pages = Object.values(data?.query?.pages || {});
     const urls = pages
@@ -138,6 +161,15 @@ const main = async () => {
 
     let items = await collection.find({}).project({ name: 1, image: 1 }).toArray();
     if (only) items = items.filter((i) => String(i.name || '').toLowerCase().includes(only));
+
+    // Resume by default: a throttled run leaves most items untouched, and
+    // re-fetching the ones that already succeeded just burns rate limit.
+    if (!force) {
+        const before = items.length;
+        items = items.filter((i) => !/\/uploads\//.test(String(i.image || '')));
+        const skipped = before - items.length;
+        if (skipped > 0) console.log(`skipping ${skipped} item(s) that already have a local image (--force to redo)`);
+    }
 
     console.log(`${items.length} items to process${dryRun ? ' (dry run)' : ''}\n`);
 
@@ -168,7 +200,7 @@ const main = async () => {
             usedPerTerm.set(term, index + 1);
             const chosen = candidates[index % candidates.length];
 
-            const stored = await saveImageFromUrl(chosen.url, FOLDER);
+            const stored = await withRetry(`fetch ${name}`, () => saveImageFromUrl(chosen.url, FOLDER));
 
             await collection.updateOne(
                 { _id: item._id },
@@ -184,6 +216,7 @@ const main = async () => {
 
             console.log(`  ${label} -> ${term.padEnd(24)} ${(stored.size / 1024).toFixed(0).padStart(4)}KB  ${stored.url}`);
             ok += 1;
+            await sleep(PACE_MS);
         } catch (error) {
             console.log(`  ${label} !! ${error?.message || error}`);
             failed += 1;
