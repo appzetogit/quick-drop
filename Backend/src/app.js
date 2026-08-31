@@ -1,4 +1,5 @@
 import { config, isOriginAllowed } from './config/env.js';
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -65,6 +66,35 @@ app.get('/health', async (_req, res) => {
 app.get('/ready', (_req, res) => {
     res.status(200).json({ status: 'ready' });
 });
+
+/**
+ * Uploaded images.
+ *
+ * In production nginx serves this path straight off disk and never reaches
+ * Node; this handler is the fallback that makes local dev work and keeps the
+ * site serving if the nginx location block is ever missing — which is exactly
+ * how food images broke before (URLs pointed at /uploads, nothing served it).
+ *
+ * Mounted ahead of helmet and the body parsers deliberately: these are plain
+ * image bytes, so they need neither, and helmet's default same-origin resource
+ * policy would block the Flutter app and any cross-origin admin build from
+ * loading them. Filenames are content-random and never reused, so the long
+ * immutable cache is safe.
+ */
+app.use(
+    '/uploads',
+    (_req, res, next) => {
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        next();
+    },
+    express.static(path.resolve(config.uploadStorageRoot), {
+        maxAge: '1y',
+        immutable: true,
+        index: false,
+        fallthrough: false
+    })
+);
 
 // Security & parsing middlewares
 app.use(helmet({

@@ -1,8 +1,48 @@
 import express from 'express';
-import { upload } from '../../../middleware/upload.js';
-import { uploadImageBuffer } from '../../../services/cloudinary.service.js';
+import multer from 'multer';
+import { config } from '../../../config/env.js';
+import { saveImageFile } from '../../../services/storage.service.js';
 
 const router = express.Router();
+
+/**
+ * Uploads land on local disk, not Cloudinary. The Cloudinary account is
+ * disabled, so `uploadImageBuffer` returned 401 for every call — see
+ * services/storage.service.js for the full story.
+ *
+ * Memory storage, because the image is transcoded to WebP before it is ever
+ * written; a disk-backed multer would just write a file we immediately replace.
+ */
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: config.uploadMaxFileSizeBytes, files: 1 }
+});
+
+const DEFAULT_FOLDER = 'food/menu-items';
+
+/**
+ * Coerce a client-supplied folder into something the storage layer accepts.
+ *
+ * Shipped clients — including Flutter builds already on people's phones, which
+ * cannot be updated on our schedule — send `K9 Rides/restaurant/menu-items`.
+ * That space fails the storage folder pattern, so rejecting it would break
+ * every existing app install. Slugify instead: the old clients keep working and
+ * land somewhere sane, and nothing about the stored path is trusted anyway
+ * (storage.service re-validates that the resolved path stays under the root).
+ */
+const normalizeFolder = (raw) => {
+    const cleaned = String(raw || '')
+        .trim()
+        .replace(/\\/g, '/')
+        .replace(/^\/+|\/+$/g, '')
+        .replace(/\.+/g, '')           // no traversal segments
+        .replace(/[^a-zA-Z0-9/_-]+/g, '-')  // spaces and friends become dashes
+        .replace(/-+/g, '-')
+        .replace(/\/+/g, '/')
+        .replace(/^[^a-zA-Z0-9]+/, '');
+
+    return cleaned || DEFAULT_FOLDER;
+};
 
 // POST /v1/uploads/image
 router.post('/image', upload.single('file'), async (req, res, next) => {
@@ -14,18 +54,20 @@ router.post('/image', upload.single('file'), async (req, res, next) => {
             });
         }
 
-        const folder = typeof req.body?.folder === 'string' && req.body.folder.trim()
-            ? req.body.folder.trim()
-            : 'uploads';
+        const stored = await saveImageFile(req.file, normalizeFolder(req.body?.folder));
 
-        const url = await uploadImageBuffer(req.file.buffer, folder);
-
+        // Response shape is unchanged from the Cloudinary era on purpose: web and
+        // app clients read `data.url`, and `publicId` stays null now that there
+        // is no remote asset id to report.
         return res.status(200).json({
             success: true,
             message: 'Image uploaded successfully',
             data: {
-                url,
-                publicId: null
+                url: stored.url,
+                publicId: null,
+                path: stored.path,
+                size: stored.size,
+                mimeType: stored.mimeType
             }
         });
     } catch (error) {
@@ -34,4 +76,3 @@ router.post('/image', upload.single('file'), async (req, res, next) => {
 });
 
 export default router;
-
