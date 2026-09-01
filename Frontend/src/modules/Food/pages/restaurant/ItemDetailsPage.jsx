@@ -41,14 +41,25 @@ const debugError = (...args) => {}
 
 const INVENTORY_RECOMMENDED_KEY = "restaurant_inventory_recommended_map"
 
-const getUploadErrorMessage = (error, fileName = "image") => {
-  const message =
-    error?.response?.data?.message ||
-    error?.response?.data?.error ||
-    error?.message ||
-    "Please try again."
-  return `Failed to upload ${fileName}: ${message}`
-}
+/**
+ * The reason the server gave, in the server's own words.
+ *
+ * Both keys are checked because the API sends `message` on success-shaped
+ * responses and the error handler sends both. Falling straight through to
+ * error.message is what produced "Request failed with status code 400" on
+ * screen -- that is axios describing the HTTP status, not the validation
+ * reason the backend actually wrote for the user.
+ */
+const getServerMessage = (error, fallback = "Something went wrong. Please try again.") =>
+  error?.response?.data?.message ||
+  error?.response?.data?.error ||
+  (error?.code === "ERR_NETWORK"
+    ? "Cannot reach the server. Check your connection and try again."
+    : "") ||
+  fallback
+
+const getUploadErrorMessage = (error, fileName = "image") =>
+  `Could not upload ${fileName}: ${getServerMessage(error, "Please try again.")}`
 
 const createVariantDraft = (variant = {}) => ({
   localId: String(variant?.id || variant?._id || `variant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
@@ -817,11 +828,10 @@ export default function ItemDetailsPage() {
       }
     } catch (error) {
       debugError('Error saving menu:', error)
-      if (error.code === 'ERR_NETWORK') {
-        toast.error('Network error. Please check if backend server is running and try again.')
-      } else {
-        toast.error(error.response?.data?.message || error.message || "Failed to save item. Please try again.")
-      }
+      // Show the server's reason, not the HTTP status. A rejected save is
+      // nearly always a rule the restaurant can act on ("Maximum order
+      // quantity ... cannot exceed 5"), and a status code tells them nothing.
+      toast.error(getServerMessage(error, "Could not save this dish. Please try again."))
     } finally {
       setUploadingImages(false)
     }
