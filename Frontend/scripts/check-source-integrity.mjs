@@ -1,7 +1,7 @@
 /**
  * Refuse to build source that looks like it has had code injected into it.
  *
- * Three times now an obfuscated build-time payload has been appended to
+ * Repeatedly now, an obfuscated build-time payload has been appended to
  * vite.config.js: one enormous single line, pushed off screen by a wall of
  * whitespace after the closing `});`, committed under a real author's name.
  * It is build-time code, so it targets exactly this moment -- the config is
@@ -82,7 +82,7 @@ if (findings.length > 0) {
     console.error('\n[integrity] Build stopped: source looks tampered with.\n');
     for (const finding of findings) console.error(`  ${finding}`);
     console.error(
-        '\n  An obfuscated payload has been appended to this project three times,'
+        '\n  An obfuscated payload has repeatedly been appended to this project,'
         + '\n  always as one very long line hidden behind trailing whitespace.'
         + '\n  Inspect the lines above before building. If one is legitimate,'
         + '\n  reformat it rather than raising the threshold.\n'
