@@ -9,7 +9,7 @@ import { FoodDeliveryCommissionRule } from '../../admin/models/deliveryCommissio
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
-import { haversineKm } from './order.helpers.js';
+import { resolveDeliveryDistanceKm } from './deliveryDistance.service.js';
 import {
     assertOrderQuantity,
     resolveOrderQuantityRules
@@ -269,11 +269,20 @@ export async function calculateOrderPricing(userId, dto) {
     
     let distanceRule = null;
     let distanceKm = 0;
-    
+    let distanceSource = 'unknown';
+
     if (restCoords && customerCoords) {
       const [rLng, rLat] = restCoords;
       const [cLng, cLat] = customerCoords;
-      distanceKm = haversineKm(rLat, rLng, cLat, cLng);
+      // Road distance, not straight line. The rider follows the road, and in
+      // hill terrain the two differ by a factor of two -- which put orders in
+      // a cheaper slab than the trip they actually paid for.
+      const measured = await resolveDeliveryDistanceKm(
+        { lat: rLat, lng: rLng },
+        { lat: cLat, lng: cLng },
+      );
+      distanceKm = measured.km;
+      distanceSource = measured.source;
       distanceRule = await resolveDistanceRule(distanceKm);
     } else {
       // Fallback: If coordinates are missing, assume base distance (0 km) to apply base delivery fee
@@ -307,6 +316,8 @@ export async function calculateOrderPricing(userId, dto) {
         deliveryFeeBreakdown = {
           source: 'distance_slab',
           distanceKm: Math.round(Number(distanceKm || 0) * 100) / 100,
+          // Recorded so a disputed fee can be traced to how it was measured.
+          distanceSource,
           distanceRuleId: String(distanceRule._id),
           distanceRange: {
             minDistance,
