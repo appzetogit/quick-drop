@@ -20,6 +20,33 @@ const upload = multer({
 
 const DEFAULT_FOLDER = 'food/menu-items';
 
+const megabytes = (bytes) => Math.round((bytes / (1024 * 1024)) * 10) / 10;
+
+/**
+ * Turn multer's own failures into something the uploader can act on.
+ *
+ * A MulterError carries no statusCode, so it fell through to the generic
+ * handler and was masked as "Internal server error" -- a restaurant picking a
+ * photo straight off a phone camera hits the size limit routinely, and telling
+ * them the server broke is both wrong and unactionable.
+ */
+const runUpload = (req, res, next) => {
+    upload.single('file')(req, res, (error) => {
+        if (!error) return next();
+
+        const limitMb = megabytes(config.uploadMaxFileSizeBytes);
+        const readable = {
+            LIMIT_FILE_SIZE: `That image is too large. The limit is ${limitMb}MB — please pick a smaller photo.`,
+            LIMIT_FILE_COUNT: 'Please upload one image at a time.',
+            LIMIT_UNEXPECTED_FILE: 'Unexpected file field. The image must be sent as "file".',
+        }[error.code];
+
+        if (!readable) return next(error);
+
+        return res.status(400).json({ success: false, message: readable, error: readable });
+    });
+};
+
 /**
  * Coerce a client-supplied folder into something the storage layer accepts.
  *
@@ -45,7 +72,7 @@ const normalizeFolder = (raw) => {
 };
 
 // POST /v1/uploads/image
-router.post('/image', upload.single('file'), async (req, res, next) => {
+router.post('/image', runUpload, async (req, res, next) => {
     try {
         if (!req.file || !req.file.buffer) {
             return res.status(400).json({
