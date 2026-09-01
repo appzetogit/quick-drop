@@ -86,13 +86,13 @@ export function assertOrderQuantity(quantity, rules, label = 'This item') {
     }
     if (qty < min) {
         throw new ValidationError(
-            `"${label}" has a minimum order quantity of ${min}`,
+            `You need to order at least ${min} of "${label}".`,
             'MIN_ORDER_QUANTITY'
         );
     }
     if (hasCap && qty > max) {
         throw new ValidationError(
-            `"${label}" has a maximum order quantity of ${max}`,
+            `You can order at most ${max} of "${label}".`,
             'MAX_ORDER_QUANTITY'
         );
     }
@@ -101,7 +101,7 @@ export function assertOrderQuantity(quantity, rules, label = 'This item') {
     const platformCap = resolveCeiling(rules?.ceiling);
     if (qty > platformCap) {
         throw new ValidationError(
-            `"${label}" is limited to ${platformCap} per order`,
+            `You can order at most ${platformCap} of "${label}" in a single order.`,
             'MAX_ORDER_QUANTITY'
         );
     }
@@ -119,11 +119,14 @@ export function normalizeOrderQuantityInput(body = {}, { label = 'This item', ce
     if (body.minOrderQuantity !== undefined && body.minOrderQuantity !== null && body.minOrderQuantity !== '') {
         const min = toInt(body.minOrderQuantity);
         if (!Number.isFinite(min) || min < 1) {
-            throw new ValidationError(`Minimum order quantity for "${label}" must be at least 1`);
+            throw new ValidationError(
+                `"${label}": the smallest order quantity must be at least 1.`
+            );
         }
         if (min > cap) {
             throw new ValidationError(
-                `Minimum order quantity for "${label}" cannot exceed ${cap}`
+                `"${label}": the smallest order quantity cannot be more than ${cap}, `
+                + `which is the platform limit right now. An admin can change it under Fee Settings.`
             );
         }
         update.minOrderQuantity = min;
@@ -134,11 +137,15 @@ export function normalizeOrderQuantityInput(body = {}, { label = 'This item', ce
     if (body.maxOrderQuantity !== undefined && body.maxOrderQuantity !== null && body.maxOrderQuantity !== '') {
         const max = toInt(body.maxOrderQuantity);
         if (!Number.isFinite(max) || max < 0) {
-            throw new ValidationError(`Maximum order quantity for "${label}" must be 0 or more`);
+            throw new ValidationError(
+                `"${label}": the largest order quantity must be 0 or more. Use 0 for no limit.`
+            );
         }
         if (max > cap) {
             throw new ValidationError(
-                `Maximum order quantity for "${label}" cannot exceed ${cap}`
+                `"${label}": the largest order quantity can be at most ${cap} — that is the `
+                + `platform limit right now. Enter ${cap} or less, or 0 for no limit. `
+                + `An admin can raise the limit under Fee Settings.`
             );
         }
         update.maxOrderQuantity = max;

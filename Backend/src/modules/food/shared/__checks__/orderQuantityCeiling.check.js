@@ -54,31 +54,31 @@ assert.equal(resolveOrderQuantityRules({ minOrderQuantity: 40 }, 10).min, 10);
 {
     const rules = resolveOrderQuantityRules({ maxOrderQuantity: 0 }, 10);
     assert.equal(assertOrderQuantity(10, rules, 'Item'), 10);          // at the ceiling
-    throws(() => assertOrderQuantity(11, rules, 'Item'), /limited to 10 per order/);
+    throws(() => assertOrderQuantity(11, rules, 'Item'), /at most 10 of "Item" in a single order/);
 }
 // --- an item cap produces its own message, not the platform one ---------
 {
     const rules = resolveOrderQuantityRules({ maxOrderQuantity: 3 }, 10);
-    throws(() => assertOrderQuantity(4, rules, 'Item'), /maximum order quantity of 3/);
+    throws(() => assertOrderQuantity(4, rules, 'Item'), /at most 3 of "Item"/);
 }
 // --- with no ceiling passed, the old constant still binds ---------------
 {
     const rules = resolveOrderQuantityRules({ maxOrderQuantity: 0 });
     assert.equal(assertOrderQuantity(99, rules, 'Item'), 99);
-    throws(() => assertOrderQuantity(100, rules, 'Item'), /limited to 99 per order/);
+    throws(() => assertOrderQuantity(100, rules, 'Item'), /at most 99 of "Item" in a single order/);
 }
 // --- a rules object from an older caller (no ceiling key) still works ----
-throws(() => assertOrderQuantity(100, { min: 1, max: 99, hasCap: false }, 'Item'), /limited to 99 per order/);
+throws(() => assertOrderQuantity(100, { min: 1, max: 99, hasCap: false }, 'Item'), /at most 99 of "Item" in a single order/);
 
 // --- admin/seller input is validated against the configured ceiling ------
 assert.deepEqual(
     normalizeOrderQuantityInput({ maxOrderQuantity: 8 }, { ceiling: 10 }),
     { maxOrderQuantity: 8 }
 );
-throws(() => normalizeOrderQuantityInput({ maxOrderQuantity: 11 }, { ceiling: 10 }), /cannot exceed 10/);
-throws(() => normalizeOrderQuantityInput({ minOrderQuantity: 11 }, { ceiling: 10 }), /cannot exceed 10/);
+throws(() => normalizeOrderQuantityInput({ maxOrderQuantity: 11 }, { ceiling: 10 }), /largest order quantity can be at most 10/);
+throws(() => normalizeOrderQuantityInput({ minOrderQuantity: 11 }, { ceiling: 10 }), /smallest order quantity cannot be more than 10/);
 // Without a ceiling the original limit message stands.
-throws(() => normalizeOrderQuantityInput({ maxOrderQuantity: 100 }, {}), /cannot exceed 99/);
+throws(() => normalizeOrderQuantityInput({ maxOrderQuantity: 100 }, {}), /largest order quantity can be at most 99/);
 
 // --- what the client is told reflects the ceiling ------------------------
 assert.deepEqual(formatOrderQuantityLimits({ maxOrderQuantity: 0 }, 10), {

@@ -30,6 +30,13 @@ const errorHandler = (err, req, res, next) => {
 
     res.status(statusCode).json({
         success: false,
+        // Both keys carry the same text. `error` is the original field; `message`
+        // is what almost every client actually reads (483 call sites in the web
+        // app, and the shape every non-error response already uses). Without it
+        // a validation failure reached the user as axios's own fallback --
+        // "Request failed with status code 400" -- instead of the reason we
+        // wrote for them, e.g. "Maximum order quantity ... cannot exceed 5".
+        message: publicMessage,
         error: publicMessage,
         // Lets a user quote an id that points at the real message in the logs. Without
         // it, masking a 5xx leaves support with nothing to correlate against.
