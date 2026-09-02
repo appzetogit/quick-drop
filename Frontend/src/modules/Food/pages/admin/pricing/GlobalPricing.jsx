@@ -27,6 +27,9 @@ export default function GlobalPricing() {
   const [itemCount, setItemCount] = useState(null)
   const [cappedCount, setCappedCount] = useState(0)
   const [history, setHistory] = useState([])
+  // Real dishes at their real values. A generic "Rs 500 becomes Rs 550"
+  // cannot tell you whether the last run actually landed; these can.
+  const [samples, setSamples] = useState([])
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
   // Which number an adjustment moves. Defaults to the comparison figure so a
@@ -82,9 +85,10 @@ export default function GlobalPricing() {
         if (!cancelled) {
           setItemCount(response?.data?.data?.itemCount ?? null)
           setCappedCount(response?.data?.data?.itemsCappedByMrp ?? 0)
+              setSamples(response?.data?.data?.samples ?? [])
         }
       } catch {
-        if (!cancelled) { setItemCount(null); setCappedCount(0) }
+        if (!cancelled) { setItemCount(null); setCappedCount(0); setSamples([]) }
       }
     }
     loadPreview()
@@ -279,15 +283,27 @@ export default function GlobalPricing() {
           <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-700">
             <span className="inline-flex items-center gap-1 font-medium">
               <IndianRupee className="h-4 w-4" />
-              Example
+              {target === "price" ? "Selling price" : "Other platform price"} on your actual menu
             </span>
-            <span className="ml-2">
-              {RUPEE}500 becomes {RUPEE}
-              {Math.max(0.01, Math.round(500 * (1 + signedPercent / 100) * 100) / 100)}
-              {"  ·  "}
-              {RUPEE}199 becomes {RUPEE}
-              {Math.max(0.01, Math.round(199 * (1 + signedPercent / 100) * 100) / 100)}
-            </span>
+            {samples.length === 0 ? (
+              <span className="ml-2">
+                {RUPEE}500 becomes {RUPEE}
+                {Math.max(0.01, Math.round(500 * (1 + signedPercent / 100) * 100) / 100)}
+              </span>
+            ) : (
+              <ul className="mt-2 space-y-1">
+                {samples.map((s) => (
+                  <li key={s.name} className="flex items-center justify-between gap-3">
+                    <span className="truncate text-slate-600">{s.name}</span>
+                    <span className="shrink-0 tabular-nums">
+                      <span className="text-slate-500">{RUPEE}{s.current}</span>
+                      <span className="mx-1 text-slate-400">&rarr;</span>
+                      <span className="font-semibold text-slate-900">{RUPEE}{s.next}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 

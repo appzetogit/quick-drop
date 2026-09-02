@@ -198,7 +198,7 @@ export async function listPriceAdjustments({ limit = 20 } = {}) {
     return { adjustments };
 }
 
-export async function getPriceAdjustmentPreview({ restaurantId, percent } = {}) {
+export async function getPriceAdjustmentPreview({ restaurantId, percent, target } = {}) {
     const { restaurantName } = await resolveRestaurant(restaurantId);
     const filter = buildFilter(restaurantId);
     const itemCount = await FoodItem.countDocuments(filter);
@@ -210,7 +210,34 @@ export async function getPriceAdjustmentPreview({ restaurantId, percent } = {}) 
         ? await countItemsCappedByMrp(filter, 1 + pct / 100)
         : 0;
 
-    return { itemCount, restaurantName, itemsCappedByMrp };
+    /**
+     * Real dishes at their real current values, not an invented "Rs 500
+     * becomes Rs 550". Without this the admin cannot see what a run did, so a
+     * run that worked and one that silently did nothing look identical -- which
+     * is how the same increase came to be applied five times in a row and
+     * compounded to twenty times the selling price.
+     */
+    const field = String(target || 'otherPrice') === 'price' ? 'price' : 'otherPrice';
+    const factor = Number.isFinite(pct) ? 1 + pct / 100 : 1;
+    const sampleDocs = await FoodItem.find(filter)
+        .select(`name price otherPrice`)
+        .sort({ name: 1 })
+        .limit(5)
+        .lean();
+
+    const samples = sampleDocs.map((doc) => {
+        // An item with no comparison figure yet is seeded from its price, which
+        // is exactly what the run itself will do.
+        const stored = Number(doc?.[field]);
+        const current = Number.isFinite(stored) && stored > 0 ? stored : Number(doc?.price) || 0;
+        return {
+            name: doc?.name || '',
+            current: Math.round(current * 100) / 100,
+            next: Math.round(Math.max(MIN_RESULT_PRICE, current * factor) * 100) / 100,
+        };
+    });
+
+    return { itemCount, restaurantName, itemsCappedByMrp, target: field, samples };
 }
 
 /**
