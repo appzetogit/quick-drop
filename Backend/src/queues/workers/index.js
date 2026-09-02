@@ -25,6 +25,8 @@ import 'dotenv/config';
 import { config } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { closeBullMQConnection } from '../index.js';
+import mongoose from 'mongoose';
+import { connectDB, disconnectDB } from '../../config/db.js';
 
 /** Longer than the API's 10s: a worker may be mid-job when the signal arrives. */
 const SHUTDOWN_TIMEOUT_MS = 15000;
@@ -36,6 +38,31 @@ if (!config.bullmqEnabled) {
 if (!config.redisEnabled) {
     logger.error('BullMQ requires Redis, but REDIS_ENABLED is not true. Exiting.');
     process.exit(1);
+}
+
+/**
+ * Connect Mongo before any worker can claim a job.
+ *
+ * Only the tracking processor used to connect, lazily, inside the job itself.
+ * Mongoose is a singleton, so every other worker silently depended on a
+ * tracking job having run first -- which holds all day and fails at 04:00,
+ * when the maintenance jobs fire and nothing has moved since the last deploy.
+ * The FSSAI expiry check had been dying that way every night for twelve days:
+ * `food_restaurants.find()` buffering timed out after 10000ms, logged and
+ * otherwise invisible, so nobody was told their licence was expiring.
+ *
+ * Not exiting if it fails: connectDB already sets that policy -- in production
+ * it keeps the process alive so Mongoose can reconnect -- and a worker bundle
+ * that exits on a momentary Mongo blip would just restart-loop under pm2. The
+ * connection state is logged instead, so a worker running without a database is
+ * visible rather than silent.
+ */
+await connectDB();
+if (mongoose.connection.readyState !== 1) {
+    logger.warn(
+        `Workers started without a live MongoDB connection (readyState=${mongoose.connection.readyState}). `
+        + 'Mongoose will retry; jobs that query before it succeeds will time out.'
+    );
 }
 
 // Each module starts its worker on import and exports nothing, so these are
@@ -83,6 +110,7 @@ const shutdown = async (signal) => {
         // Closing the shared BullMQ connection stops every worker from claiming new
         // jobs and lets in-flight ones finish.
         await closeBullMQConnection();
+        await disconnectDB();
         clearTimeout(forced);
         logger.info('Workers closed cleanly');
         process.exit(0);
