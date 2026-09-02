@@ -16,7 +16,18 @@ const PREP_TIME_OPTIONS = [
 /**
  * Generates an Excel template for bulk menu upload.
  */
-export async function generateBulkMenuTemplate() {
+/**
+ * The bulk sheet, pre-filled with the restaurant's current menu.
+ *
+ * It used to download empty apart from a hardcoded "Paneer Tikka" sample, so
+ * editing an existing menu in bulk meant retyping all of it, and anyone who
+ * uploaded the sheet as-downloaded created a Paneer Tikka they never asked for.
+ *
+ * Upload matches rows on { name, restaurantId }, so a downloaded sheet edited
+ * and sent back updates those dishes in place rather than duplicating them --
+ * which is what makes pre-filling safe as well as useful.
+ */
+export async function generateBulkMenuTemplate(restaurantId = null) {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Menu Template');
 
@@ -84,21 +95,56 @@ export async function generateBulkMenuTemplate() {
         });
     }
 
-    // Add Sample Row
-    sheet.addRow({
-        category: 'Starters',
-        name: 'Paneer Tikka',
-        description: 'Spicy marinated paneer grilled to perfection',
-        price: 250,
-        foodType: 'Veg',
-        isRecommended: 'Yes',
-        prepTime: '20-25 mins',
-        imageUrl: 'https://example.com/paneer.jpg',
-        v1Name: 'Half',
-        v1Price: 150,
-        v2Name: 'Full',
-        v2Price: 280
-    });
+    // Existing menu first, so the sheet is an editable copy of what is live.
+    let existing = [];
+    if (restaurantId && mongoose.Types.ObjectId.isValid(String(restaurantId))) {
+        existing = await FoodItem.find({ restaurantId: new mongoose.Types.ObjectId(String(restaurantId)) })
+            .sort({ categoryName: 1, name: 1 })
+            .lean();
+    }
+
+    for (const item of existing) {
+        // Only the variants the sheet has columns for. A dish with more keeps
+        // them in the database; they are simply not editable here.
+        const variants = Array.isArray(item.variants) ? item.variants.slice(0, 3) : [];
+        sheet.addRow({
+            category: item.categoryName || '',
+            name: item.name || '',
+            description: item.description || '',
+            // basePrice is what the admin form calls "Base Price" and what upload
+            // writes back; price alone would silently drop any discount.
+            price: Number(item.basePrice ?? item.price ?? 0),
+            foodType: item.foodType === 'Veg' ? 'Veg' : 'Non-Veg',
+            isRecommended: item.isRecommended === true ? 'Yes' : 'No',
+            prepTime: item.preparationTime || '',
+            imageUrl: item.image || '',
+            v1Name: variants[0]?.name || '',
+            v1Price: variants[0]?.price ?? '',
+            v2Name: variants[1]?.name || '',
+            v2Price: variants[1]?.price ?? '',
+            v3Name: variants[2]?.name || '',
+            v3Price: variants[2]?.price ?? '',
+        });
+    }
+
+    // The sample only appears on an empty menu. Left in alongside real dishes it
+    // would be uploaded back as a real one.
+    if (existing.length === 0) {
+        sheet.addRow({
+            category: 'Starters',
+            name: 'Paneer Tikka',
+            description: 'Spicy marinated paneer grilled to perfection',
+            price: 250,
+            foodType: 'Veg',
+            isRecommended: 'Yes',
+            prepTime: '20-25 mins',
+            imageUrl: 'https://example.com/paneer.jpg',
+            v1Name: 'Half',
+            v1Price: 150,
+            v2Name: 'Full',
+            v2Price: 280
+        });
+    }
 
     return workbook;
 }

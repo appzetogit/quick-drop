@@ -4,7 +4,8 @@ import fs from 'fs';
 
 export const downloadBulkMenuTemplateController = async (req, res, next) => {
     try {
-        const workbook = await generateBulkMenuTemplate();
+        // The signed-in restaurant, so the sheet comes back filled with its menu.
+        const workbook = await generateBulkMenuTemplate(req.user?.userId);
         
         res.setHeader(
             'Content-Type',

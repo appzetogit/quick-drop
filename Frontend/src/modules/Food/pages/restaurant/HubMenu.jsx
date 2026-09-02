@@ -526,6 +526,9 @@ export default function HubMenu() {
 
   // Handle add-on save
   const handleSaveAddon = async () => {
+    // Set the moment the write returns, so a failure after it cannot be
+    // reported as the save itself having failed.
+    let saved = false
     if (!addonName.trim()) {
       toast.error("Please enter add-on name")
       return
@@ -598,10 +601,12 @@ export default function HubMenu() {
       if (editingAddon) {
         // Update existing add-on
         await restaurantAPI.updateAddon(editingAddon.id, { draft: addonData })
+        saved = true
         toast.success('Add-on updated successfully! Pending admin approval.')
       } else {
         // Create new add-on
         await restaurantAPI.addAddon(addonData)
+        saved = true
         toast.success('Add-on added successfully! Pending admin approval.')
       }
       
@@ -614,14 +619,22 @@ export default function HubMenu() {
       setEditingAddon(null)
       setIsAddAddonModalOpen(false)
       
-      // Refresh add-ons list
-      fetchAddons(true)
     } catch (error) {
       debugError('Error saving add-on:', error)
-      toast.error(error?.response?.data?.message || (editingAddon ? 'Failed to update add-on' : 'Failed to add add-on'))
+      // Only blame the save if the save is what failed. Anything after the write
+      // -- resetting the form, refreshing the list -- used to land here too, so
+      // an add-on the server had already created (201 in the access log) was
+      // reported back to the restaurant as "Failed to add add-on".
+      if (!saved) {
+        toast.error(error?.response?.data?.message || (editingAddon ? 'Failed to update add-on' : 'Failed to add add-on'))
+      }
     } finally {
       setUploadingAddonImages(false)
     }
+
+    // Outside the try on purpose: fetchAddons reports its own failure, and a
+    // list that will not reload says nothing about whether the add-on saved.
+    if (saved) fetchAddons(true)
   }
 
   // Handle edit add-on
