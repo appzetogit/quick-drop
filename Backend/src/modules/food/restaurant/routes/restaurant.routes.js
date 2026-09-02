@@ -235,11 +235,20 @@ router.patch('/foods/:id', authMiddleware, requireRestaurant, async (req, res, n
 router.get('/bulk-upload/template', authMiddleware, requireRestaurant, downloadBulkMenuTemplateController);
 router.post('/bulk-upload', authMiddleware, requireRestaurant, upload.single('file'), uploadBulkMenuController);
 
-// Add-ons (restaurant dashboard) - approval handled by admin
-router.get('/addons', authMiddleware, requireRestaurant, listAddonsController);
-router.post('/addons', authMiddleware, requireRestaurant, createAddonController);
-router.patch('/addons/:id', authMiddleware, requireRestaurant, updateAddonController);
-router.delete('/addons/:id', authMiddleware, requireRestaurant, deleteAddonController);
+// Add-ons (restaurant dashboard) - approval handled by admin.
+//
+// Also served under /item-extras, for the same reason the admin router is: ad
+// blockers kill any XHR whose path contains "addons" (ERR_BLOCKED_BY_CLIENT).
+// The admin router got that alias and this one did not, while the web app was
+// switched to call /item-extras everywhere -- so the restaurant panel's add-on
+// list came back empty and the item form had nothing to suggest when a dish was
+// being created.
+['/addons', '/item-extras'].forEach((base) => {
+    router.get(base, authMiddleware, requireRestaurant, listAddonsController);
+    router.post(base, authMiddleware, requireRestaurant, createAddonController);
+    router.patch(`${base}/:id`, authMiddleware, requireRestaurant, updateAddonController);
+    router.delete(`${base}/:id`, authMiddleware, requireRestaurant, deleteAddonController);
+});
 
 // Orders (restaurant dashboard)
 router.get('/orders', authMiddleware, requireRestaurant, orderController.listOrdersRestaurantController);
