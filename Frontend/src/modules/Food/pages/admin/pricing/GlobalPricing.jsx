@@ -26,6 +26,9 @@ export default function GlobalPricing() {
   const [percent, setPercent] = useState("10")
   const [itemCount, setItemCount] = useState(null)
   const [cappedCount, setCappedCount] = useState(0)
+  // Dishes that would be left with nothing struck through. A decrease can
+  // move every figure correctly and still blank the whole menu.
+  const [noComparisonCount, setNoComparisonCount] = useState(0)
   const [history, setHistory] = useState([])
   // Real dishes at their real values. A generic "Rs 500 becomes Rs 550"
   // cannot tell you whether the last run actually landed; these can.
@@ -85,10 +88,16 @@ export default function GlobalPricing() {
         if (!cancelled) {
           setItemCount(response?.data?.data?.itemCount ?? null)
           setCappedCount(response?.data?.data?.itemsCappedByMrp ?? 0)
-              setSamples(response?.data?.data?.samples ?? [])
+          setSamples(response?.data?.data?.samples ?? [])
+          setNoComparisonCount(response?.data?.data?.itemsWithoutComparison ?? 0)
         }
       } catch {
-        if (!cancelled) { setItemCount(null); setCappedCount(0); setSamples([]) }
+        if (!cancelled) {
+          setItemCount(null)
+          setCappedCount(0)
+          setSamples([])
+          setNoComparisonCount(0)
+        }
       }
     }
     loadPreview()
@@ -191,6 +200,12 @@ export default function GlobalPricing() {
               {cappedCount > 0 && (
                 <span className="mt-1 block text-amber-700">
                   {cappedCount} of them would go above their MRP and will be held at it instead.
+                </span>
+              )}
+              {noComparisonCount > 0 && (
+                <span className="mt-1 block text-amber-700">
+                  {noComparisonCount} of them would be left with nothing struck through — a
+                  comparison only shows while it sits above the price you charge.
                 </span>
               )}
             </p>

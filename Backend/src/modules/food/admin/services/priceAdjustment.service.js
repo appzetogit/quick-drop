@@ -237,7 +237,43 @@ export async function getPriceAdjustmentPreview({ restaurantId, percent, target 
         };
     });
 
-    return { itemCount, restaurantName, itemsCappedByMrp, target: field, samples };
+    /**
+     * How many dishes would end up with nothing struck through.
+     *
+     * A comparison only displays while it sits above the price charged, so a
+     * decrease can move every figure correctly and still blank the whole menu
+     * -- the run reports "70 items updated" and the customer sees no comparison
+     * at all. That is indistinguishable from the feature being broken, so the
+     * preview has to say it before the button is pressed.
+     */
+    const newPriceExpr = field === 'price' ? { $multiply: ['$price', factor] } : '$price';
+    const newOtherExpr = field === 'price'
+        ? { $ifNull: ['$otherPrice', 0] }
+        : {
+            $multiply: [
+                { $cond: [{ $gt: [{ $ifNull: ['$otherPrice', 0] }, 0] }, '$otherPrice', '$price'] },
+                factor,
+            ],
+        };
+
+    const itemsWithoutComparison = await FoodItem.countDocuments({
+        ...filter,
+        $expr: {
+            $and: [
+                { $lte: [{ $ifNull: ['$basePrice', 0] }, newPriceExpr] },
+                { $lte: [newOtherExpr, newPriceExpr] },
+            ],
+        },
+    });
+
+    return {
+        itemCount,
+        restaurantName,
+        itemsCappedByMrp,
+        target: field,
+        samples,
+        itemsWithoutComparison,
+    };
 }
 
 /**
