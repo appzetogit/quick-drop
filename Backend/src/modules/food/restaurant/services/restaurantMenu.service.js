@@ -92,12 +92,18 @@ const buildMenuFromFoods = async (foods = []) => {
             // Which add-ons this dish offers, so the editor can show the picker
             // pre-filled and the app can offer only the relevant ones.
             addonIds: (food.addonIds || []).map((x) => String(x)),
-            variants: serializeFoodVariants(food.variants),
+            // Variant rows are withheld while the toggle is off. They stay in the
+            // database on purpose -- switching variants off is meant to be
+            // reversible -- but serving them let clients price from a row the
+            // dish is not sold by. Missi Roti sells for 50 with variants off and
+            // still carried a 26.52 'half' row, so the app advertised 26.52 for a
+            // dish that charges 50.
+            variants: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants) : [],
             // The toggle, tri-state on old rows: absent means "sell by variants if"
             // "any exist", which is what those rows always did. Serialised as the
             // resolved boolean so no client re-derives the legacy rule.
             variantsEnabled: food.variantsEnabled !== false,
-            variations: serializeFoodVariants(food.variants),
+            variations: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants) : [],
             image: food.image || '',
             foodType: food.foodType || 'Non-Veg',
             isActive: food.isActive !== false,

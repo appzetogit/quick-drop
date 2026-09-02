@@ -131,12 +131,18 @@ export async function listPublicFoods(query = {}) {
             // checkout — which reads the dish from the database — correctly
             // refused with "please select a size". The customer was left with an
             // error and no control that could clear it.
-            variants: serializeFoodVariants(food.variants),
+            // Variant rows are withheld while the toggle is off. They stay in the
+            // database on purpose -- switching variants off is meant to be
+            // reversible -- but serving them let clients price from a row the
+            // dish is not sold by. Missi Roti sells for 50 with variants off and
+            // still carried a 26.52 'half' row, so the app advertised 26.52 for a
+            // dish that charges 50.
+            variants: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants) : [],
             // The toggle, tri-state on old rows: absent means "sell by variants if"
             // "any exist", which is what those rows always did. Serialised as the
             // resolved boolean so no client re-derives the legacy rule.
             variantsEnabled: food.variantsEnabled !== false,
-            variations: serializeFoodVariants(food.variants),
+            variations: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants) : [],
             image: food.image || '',
             // Falls back to the single image so a dish saved before galleries
             // existed still returns a one-entry list — the app can then always
