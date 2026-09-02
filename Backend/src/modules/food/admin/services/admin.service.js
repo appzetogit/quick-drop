@@ -3771,12 +3771,16 @@ export async function getDeliveryJoinRequests(query) {
         .limit(limitNum)
         .lean();
 
+    const { getCapabilitiesForPartners: capsFor } = await import('../../../../core/identity/driverCapabilities.service.js');
+    const requestCaps = await capsFor(list);
+
     const requests = list.map((doc, index) => ({
         _id: doc._id,
         sl: skip + index + 1,
         name: doc.name || '',
         email: doc.email || '',
         phone: doc.phone || '',
+        ...(requestCaps.get(String(doc._id)) || {}),
         zone: doc.city || doc.state || doc.address || '',
         jobType: doc.jobType || '',
         vehicleType: doc.vehicleType || '',
@@ -3916,12 +3920,16 @@ export async function getDeliveryPartners(query) {
         FoodDeliveryPartner.countDocuments(filter)
     ]);
 
+    const { getCapabilitiesForPartners } = await import('../../../../core/identity/driverCapabilities.service.js');
+    const capsById = await getCapabilitiesForPartners(list);
+
     const deliveryPartners = list.map((doc, index) => ({
         _id: doc._id,
         sl: skip + index + 1,
         name: doc.name || '',
         email: doc.email || '',
         phone: doc.phone || '',
+        ...(capsById.get(String(doc._id)) || {}),
         deliveryId: doc._id ? `DP-${doc._id.toString().slice(-8).toUpperCase()}` : null,
         zone: doc.city || doc.state || doc.address || '',
         vehicleType: doc.vehicleType || '',
@@ -4513,8 +4521,11 @@ export async function getDeliveryPartnerById(id) {
     const partner = await FoodDeliveryPartner.findById(id).lean();
     if (!partner) return null;
     const deliveryId = partner._id ? `DP-${partner._id.toString().slice(-8).toUpperCase()}` : null;
+    const { getCapabilitiesForPartners } = await import('../../../../core/identity/driverCapabilities.service.js');
+    const caps = (await getCapabilitiesForPartners([partner])).get(String(partner._id));
     return {
         ...partner,
+        ...caps,
         email: partner.email || null,
         deliveryId,
         status: partner.status === 'rejected' ? 'blocked' : partner.status,
@@ -4618,9 +4629,22 @@ export async function getDeliverymanReviews(query = {}) {
     return { reviews, total, page, limit };
 }
 
-export async function approveDeliveryPartner(id) {
+export async function approveDeliveryPartner(id, { serviceCapabilities } = {}) {
     const partner = await FoodDeliveryPartner.findById(id);
     if (!partner) return null;
+
+    // Which verticals this driver will be offered -- food, quick-commerce, taxi.
+    // Applied BEFORE the status flips so a rejected capability list leaves the
+    // request untouched rather than approved-but-unconfigured. Defaults to food
+    // only: that is what a food-app signup could always be offered, and the
+    // admin has to opt them into taxi or grocery explicitly.
+    const { applyPartnerCapabilities } = await import('../../../../core/identity/driverCapabilities.service.js');
+    const capabilityResult = await applyPartnerCapabilities(
+        partner,
+        serviceCapabilities ?? ['delivery'],
+        { approved: true },
+    );
+
     partner.status = 'approved';
     partner.approvedAt = new Date();
     partner.rejectedAt = undefined;
@@ -4689,7 +4713,23 @@ export async function approveDeliveryPartner(id) {
         // eslint-disable-next-line no-console
         console.warn('Referral crediting failed (delivery approval):', e?.message || e);
     }
-    return partner.toObject();
+    return { ...partner.toObject(), ...capabilityResult };
+}
+
+/**
+ * Change which verticals an already-approved driver may work. Same mechanism
+ * as approval; exists so the admin can correct a choice without re-approving.
+ */
+export async function updateDeliveryPartnerCapabilities(id, serviceCapabilities) {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+    const partner = await FoodDeliveryPartner.findById(id);
+    if (!partner) return null;
+
+    const { applyPartnerCapabilities } = await import('../../../../core/identity/driverCapabilities.service.js');
+    const result = await applyPartnerCapabilities(partner, serviceCapabilities, {
+        approved: partner.status === 'approved',
+    });
+    return { ...partner.toObject(), ...result };
 }
 
 export async function rejectDeliveryPartner(id, reason) {

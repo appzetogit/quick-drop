@@ -22,6 +22,9 @@ export default function JoinRequest() {
   const [viewDetails, setViewDetails] = useState(null)
   const [processing, setProcessing] = useState(false)
   const [rejectionReason, setRejectionReason] = useState("")
+  // Which verticals the driver will be offered. Defaults to food only: the
+  // admin opts a driver into grocery or taxi explicitly.
+  const [approveCapabilities, setApproveCapabilities] = useState(["delivery"])
   const [filters, setFilters] = useState({
     zone: "",
     jobType: "",
@@ -112,15 +115,25 @@ export default function JoinRequest() {
 
   const handleApprove = (request) => {
     setSelectedRequest(request)
+    setApproveCapabilities(
+      Array.isArray(request?.serviceCapabilities) && request.serviceCapabilities.length
+        ? request.serviceCapabilities
+        : ["delivery"],
+    )
     setIsApproveOpen(true)
   }
+
+  const toggleApproveCapability = (key) =>
+    setApproveCapabilities((prev) =>
+      prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key],
+    )
 
   const confirmApprove = async () => {
     if (!selectedRequest) return
 
     try {
       setProcessing(true)
-      await adminAPI.approveDeliveryPartner(selectedRequest._id)
+      await adminAPI.approveDeliveryPartner(selectedRequest._id, { serviceCapabilities: approveCapabilities })
       
       // Refresh the list
       await fetchJoinRequests()
@@ -497,10 +510,33 @@ export default function JoinRequest() {
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>Approve Request</DialogTitle>
           </DialogHeader>
-          <div className="px-6 pb-6">
+          <div className="px-6 pb-6 space-y-4">
             <p className="text-sm text-slate-700">
               Are you sure you want to approve "{selectedRequest?.name}"'s join request?
             </p>
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Which orders will they take?</p>
+              <div className="space-y-2">
+                {[
+                  ["delivery", "Food delivery"],
+                  ["quickCommerce", "Quick Commerce"],
+                  ["taxi", "Taxi rides"],
+                ].map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-2 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={approveCapabilities.includes(key)}
+                      onChange={() => toggleApproveCapability(key)}
+                      className="h-4 w-4 accent-slate-900"
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+              {approveCapabilities.length === 0 && (
+                <p className="mt-2 text-xs text-red-600">Pick at least one.</p>
+              )}
+            </div>
           </div>
           <DialogFooter className="px-6 pb-6">
             <button
@@ -512,7 +548,7 @@ export default function JoinRequest() {
             </button>
             <button
               onClick={confirmApprove}
-              disabled={processing}
+              disabled={processing || approveCapabilities.length === 0}
               className="px-4 py-2 text-sm font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
             >
               {processing && <Loader2 className="w-4 h-4 animate-spin" />}

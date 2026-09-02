@@ -331,10 +331,19 @@ export const adminAPI = {
     }),
   getDeliveryPartnerById: (id) =>
     apiClient.get(`/food/admin/delivery/${id}`, { contextModule: "admin" }),
-  approveDeliveryPartner: (id) =>
+  /** serviceCapabilities: any of "delivery" | "quickCommerce" | "taxi". Omitted = food only. */
+  approveDeliveryPartner: (id, { serviceCapabilities } = {}) =>
     apiClient.patch(
       `/food/admin/delivery/${String(id)}/approve`,
-      {},
+      serviceCapabilities ? { serviceCapabilities } : {},
+      {
+        contextModule: "admin",
+      },
+    ),
+  updateDeliveryPartnerCapabilities: (id, serviceCapabilities) =>
+    apiClient.patch(
+      `/food/admin/delivery/${String(id)}/capabilities`,
+      { serviceCapabilities },
       {
         contextModule: "admin",
       },

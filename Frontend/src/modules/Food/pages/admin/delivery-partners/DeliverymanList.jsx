@@ -15,6 +15,9 @@ const formatCurrency = (amount) => {
 }
 
 export default function DeliverymanList() {
+  // Verticals the driver may work, editable here after approval.
+  const [capEdit, setCapEdit] = useState([])
+  const [savingCaps, setSavingCaps] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [deliverymen, setDeliverymen] = useState([])
   const [loading, setLoading] = useState(true)
@@ -163,6 +166,7 @@ availableCashLimit: wallet?.availableCashLimit || 0,
   const handleView = async (deliveryman) => {
     try {
       setLoading(true)
+      setCapEdit([])
       const response = await adminAPI.getDeliveryPartnerById(deliveryman._id)
       
       if (response.data && response.data.success) {
@@ -759,6 +763,61 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
                     <div>
                       <label className="text-xs font-semibold text-slate-500 uppercase">Delivery ID</label>
                       <p className="text-sm font-medium text-slate-900 mt-1">{viewDetails.deliveryId || "N/A"}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <label className="text-xs font-semibold text-slate-500 uppercase">Takes orders for</label>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {[
+                          ["delivery", "Food delivery"],
+                          ["quickCommerce", "Quick Commerce"],
+                          ["taxi", "Taxi rides"],
+                        ].map(([key, label]) => {
+                          const current = capEdit.length ? capEdit : (viewDetails.serviceCapabilities || ["delivery"])
+                          const on = current.includes(key)
+                          return (
+                            <label key={key} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm cursor-pointer ${on ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700"}`}>
+                              <input
+                                type="checkbox"
+                                className="hidden"
+                                checked={on}
+                                onChange={() => {
+                                  const base = capEdit.length ? capEdit : (viewDetails.serviceCapabilities || ["delivery"])
+                                  setCapEdit(on ? base.filter((c) => c !== key) : [...base, key])
+                                }}
+                              />
+                              {label}
+                            </label>
+                          )
+                        })}
+                        {capEdit.length > 0 && (
+                          <button
+                            type="button"
+                            disabled={savingCaps}
+                            onClick={async () => {
+                              try {
+                                setSavingCaps(true)
+                                const res = await adminAPI.updateDeliveryPartnerCapabilities(viewDetails._id, capEdit)
+                                const saved = res?.data?.data?.serviceCapabilities || capEdit
+                                setViewDetails((prev) => ({ ...prev, serviceCapabilities: saved, linked: true }))
+                                setCapEdit([])
+                                toast.success("Driver services updated")
+                              } catch (err) {
+                                toast.error(err?.response?.data?.message || err?.response?.data?.error || "Could not update driver services")
+                              } finally {
+                                setSavingCaps(false)
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-sm font-medium disabled:opacity-50"
+                          >
+                            {savingCaps ? "Saving..." : "Save"}
+                          </button>
+                        )}
+                      </div>
+                      {!viewDetails.linked && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Not yet linked to a unified driver {"\u2014"} saving will create the link.
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-500 uppercase">Status</label>

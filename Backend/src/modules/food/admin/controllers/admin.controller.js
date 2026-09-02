@@ -1269,7 +1269,9 @@ export async function getDeliveryPartnerById(req, res, next) {
 
 export async function approveDeliveryPartner(req, res, next) {
     try {
-        const partner = await adminService.approveDeliveryPartner(req.params.id);
+        // Optional: which verticals to enable. Omitted means food delivery only.
+        const serviceCapabilities = req.body?.serviceCapabilities;
+        const partner = await adminService.approveDeliveryPartner(req.params.id, { serviceCapabilities });
         if (!partner) {
             return res.status(404).json({
                 success: false,
@@ -1280,6 +1282,25 @@ export async function approveDeliveryPartner(req, res, next) {
             success: true,
             message: 'Delivery partner approved successfully',
             data: partner
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function updateDeliveryPartnerCapabilities(req, res, next) {
+    try {
+        const partner = await adminService.updateDeliveryPartnerCapabilities(
+            req.params.id,
+            req.body?.serviceCapabilities,
+        );
+        if (!partner) {
+            return res.status(404).json({ success: false, message: 'Delivery partner not found' });
+        }
+        res.status(200).json({
+            success: true,
+            message: 'Driver services updated successfully',
+            data: partner,
         });
     } catch (error) {
         next(error);
