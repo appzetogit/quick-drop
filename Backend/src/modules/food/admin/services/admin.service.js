@@ -3396,6 +3396,13 @@ export async function updateFood(id, body) {
         doc.categoryName = categoryName;
     }
     await doc.save();
+
+    // Public menu responses are cached for up to five minutes, so an edited
+    // price stays invisible to the apps for that long without this -- the
+    // same reason a bulk adjustment looked like it had done nothing.
+    const { invalidatePriceCaches } = await import('../../../../middleware/cache.js');
+    await invalidatePriceCaches();
+
     return doc.toObject();
 }
 
@@ -5205,7 +5212,7 @@ export async function bulkApproveFoodItems(restaurantId) {
     if (restaurantId && mongoose.Types.ObjectId.isValid(restaurantId)) {
         try {
             const { invalidateCache } = await import('../../../../middleware/cache.js');
-            await invalidateCache(`restaurant_menu:${restaurantId}`);
+            await invalidateCache('restaurant_menu:*');
         } catch (cacheErr) {
             console.error('Failed to invalidate cache after bulk approval:', cacheErr);
         }

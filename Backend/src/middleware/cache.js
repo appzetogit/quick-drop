@@ -48,6 +48,31 @@ export const cacheResponse = (ttlInSeconds = 300, prefix = 'api_cache') => {
 };
 
 /**
+ * Drop every cached response that carries a menu price.
+ *
+ * Keys are `${prefix}:${method}:${url}`, so a bare id never matches -- the
+ * pattern has to end in `*`. Writing prices without calling this is why a bulk
+ * adjustment appeared not to work: the new figures were in Mongo immediately,
+ * and the public endpoints kept serving their cached copy for up to five
+ * minutes, so the apps showed the old struck-through price and the admin
+ * concluded the run had failed and ran it again.
+ *
+ * Deliberately broad. These are read-through caches that refill on the next
+ * request, so over-clearing costs one uncached query; under-clearing shows
+ * customers a stale price.
+ */
+export const invalidatePriceCaches = async () => {
+    await Promise.all([
+        invalidateCache('public_foods:*'),
+        invalidateCache('restaurant_menu:*'),
+        invalidateCache('restaurant_detail:*'),
+        invalidateCache('restaurants:*'),
+        invalidateCache('search_unified:*'),
+        invalidateCache('search_products:*'),
+    ]);
+};
+
+/**
  * Clear cache by pattern (e.g. 'api_cache:GET:/api/food/restaurants*')
  * WARNING: 'keys' is O(N), use with care or switch to SCAN for large datasets.
  * @param {string} pattern - Redis glob pattern for keys to delete.

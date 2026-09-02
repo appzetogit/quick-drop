@@ -3,6 +3,7 @@ import { FoodItem } from '../models/food.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodPriceAdjustment } from '../models/priceAdjustment.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
+import { invalidatePriceCaches } from '../../../../middleware/cache.js';
 
 /**
  * A single adjustment may not wipe out more than 90% of a price or more than
@@ -385,6 +386,11 @@ export async function applyPriceAdjustment(body = {}, actor = {}) {
         ...(await resolveActor(actor))
     });
 
+    // The public endpoints cache for up to five minutes. Without this the new
+    // prices sit in Mongo while the apps keep serving the old ones, which reads
+    // as the run having done nothing -- and invites running it again.
+    await invalidatePriceCaches();
+
     return { adjustment: adjustment.toObject(), itemsUpdated, itemsCappedByMrp };
 }
 
@@ -431,6 +437,8 @@ export async function revertPriceAdjustment(id, actor = {}) {
         revertsAdjustmentId: original._id,
         ...(await resolveActor(actor))
     });
+
+    await invalidatePriceCaches();
 
     return { adjustment: revertEntry.toObject(), itemsUpdated };
 }
