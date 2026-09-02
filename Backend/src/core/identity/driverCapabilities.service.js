@@ -345,7 +345,10 @@ export async function ensureUnifiedDriverForPartner(partner, { approved } = {}) 
             password: crypto.randomBytes(16).toString('hex'),
             vehicleType: partner.vehicleType || 'bike',
             serviceCapabilities: ['delivery'],
-            workMode: 'delivery',
+            // Schema default; applyPartnerCapabilities coerces this to the widest mode
+            // the admin's capabilities allow. A fixed 'delivery' here made a new driver
+            // granted taxi+delivery start delivery-only and never be offered rides.
+            workMode: 'all',
             status: isApproved ? 'approved' : 'pending',
             approve: isApproved,
             city: partner.city || '',
