@@ -234,63 +234,49 @@ export async function getPriceAdjustmentPreview({ restaurantId, percent } = {}) 
  * otherPrice is kept in step too, for anything else that might still read it --
  * harmless, and cheaper than proving nothing does.
  */
+/**
+ * Scale the other-platform comparison figure, and nothing else.
+ *
+ * This mirrors what editing one dish on the admin foods page does: that form
+ * writes `otherPrice` and leaves the selling price alone, noting that "base
+ * price is charged as typed; the comparison is presentational". A bulk run is
+ * the same operation at a different scale, so it must move the same field.
+ *
+ * Rows with no figure are seeded from their price rather than skipped. Skipping
+ * them is the original bug -- 8 dishes of 70 carried a figure, so a run moved
+ * those 8, compounded them absurdly, and looked like it had done nothing.
+ *
+ * basePrice and discountPercent are deliberately untouched. An earlier fix
+ * scaled those instead, which does make the strike-through move, but it does it
+ * by inflating the restaurant's own pre-discount price and manufacturing a
+ * larger discount than the restaurant ever offered -- a +10% run turned a 31.7%
+ * discount into 37.9%. That is the restaurant's number, not the platform's, and
+ * a comparison price is not a discount.
+ */
 const applyFactorToComparison = async (filter, factor) => {
-    const clampToMrp = (scaledExpr) => ({
-        $cond: [
-            { $gt: [{ $ifNull: ['$mrp', 0] }, 0] },
-            { $min: [scaledExpr, '$mrp'] },
-            scaledExpr,
-        ],
-    });
-    const scaled = (expr) => ({
-        $max: [MIN_RESULT_PRICE, { $round: [{ $multiply: [expr, factor] }, 2] }],
-    });
-
     const result = await FoodItem.updateMany(filter, [
         {
             $set: {
-                basePrice: clampToMrp(
-                    scaled({
-                        $cond: [
-                            { $gt: [{ $ifNull: ['$basePrice', 0] }, 0] },
-                            '$basePrice',
-                            '$price',
-                        ],
-                    }),
-                ),
-                // Seeded from price when absent, exactly as basePrice is above.
-                // Skipping unset rows is what made a bulk run look broken: the
-                // apps read this raw stored field, so after it was cleared a
-                // run moved basePrice and the Flutter app -- which reads
-                // otherPrice -- showed no change at all. Editing one dish by
-                // hand writes this field, so a bulk run has to write it too or
-                // the two paths disagree about what a comparison price is.
-                otherPrice: scaled({
-                    $cond: [
-                        { $gt: [{ $ifNull: ['$otherPrice', 0] }, 0] },
-                        '$otherPrice',
-                        '$price',
-                    ],
-                }),
-            },
-        },
-        {
-            $set: {
-                discountPercent: {
-                    $cond: [
-                        { $gt: ['$basePrice', '$price'] },
+                otherPrice: {
+                    $max: [
+                        MIN_RESULT_PRICE,
                         {
                             $round: [
                                 {
                                     $multiply: [
-                                        { $divide: [{ $subtract: ['$basePrice', '$price'] }, '$basePrice'] },
-                                        100,
+                                        {
+                                            $cond: [
+                                                { $gt: [{ $ifNull: ['$otherPrice', 0] }, 0] },
+                                                '$otherPrice',
+                                                '$price',
+                                            ],
+                                        },
+                                        factor,
                                     ],
                                 },
                                 2,
                             ],
                         },
-                        0,
                     ],
                 },
             },
