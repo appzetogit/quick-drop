@@ -103,6 +103,8 @@ const buildMenuFromFoods = async (foods = []) => {
             // "any exist", which is what those rows always did. Serialised as the
             // resolved boolean so no client re-derives the legacy rule.
             variantsEnabled: food.variantsEnabled !== false,
+            showIn99Store: food.showIn99Store === true,
+            freeDelivery: food.freeDelivery === true,
             variations: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants) : [],
             image: food.image || '',
             foodType: food.foodType || 'Non-Veg',

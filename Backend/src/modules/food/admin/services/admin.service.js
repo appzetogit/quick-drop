@@ -3378,6 +3378,10 @@ export async function updateFood(id, body) {
     if (body.showIn99Store !== undefined) {
         doc.showIn99Store = body.showIn99Store === true || body.showIn99Store === 'true';
     }
+    // Free delivery. Admin-only for the same reason: the platform absorbs it.
+    if (body.freeDelivery !== undefined) {
+        doc.freeDelivery = body.freeDelivery === true || body.freeDelivery === 'true';
+    }
     if (pricingUpdate.variants !== undefined) doc.variants = pricingUpdate.variants;
     if (body.image !== undefined) doc.image = String(body.image || '').trim();
     if (body.foodType !== undefined) doc.foodType = targetFoodType;

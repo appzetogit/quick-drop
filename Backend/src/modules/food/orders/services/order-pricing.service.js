@@ -112,6 +112,9 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
       variantName: variantName || it?.variantName || '',
       // Per-unit packaging charge, stamped from the DB item — never client input.
       foodPackagingCharge: resolveItemPackagingAmount(menu),
+      // Read from the menu, never the request: a client that could send
+      // this would waive its own delivery fee.
+      freeDelivery: menu.freeDelivery === true,
       // Snapshotted per unit, same as the packaging charge above.
       addons,
       addonsTotal,
@@ -335,6 +338,36 @@ export async function calculateOrderPricing(userId, dto) {
           feeSource: isBaseSlab ? 'distance_base_slab' : 'distance_non_base_slab'
         };
       }
+  }
+
+  /**
+   * Free-delivery dishes waive the fee, but only when the whole order is made of
+   * them.
+   *
+   * Waiving as soon as any one such dish is present would make the flag a
+   * loophole: add the cheapest free-delivery item to any basket and the delivery
+   * is free on everything. Requiring all of them keeps the promise honest -- the
+   * dish ships free, not everything it is ordered alongside.
+   *
+   * The rider is still paid: only what the customer is charged is waived, which
+   * is why riderDeliveryEarningAfterAdminCommission is left untouched and the
+   * platform absorbs the difference. That is also why this is admin-only.
+   */
+  const orderedMenuItems = Array.isArray(items) ? items : [];
+  const allItemsShipFree = orderedMenuItems.length > 0
+    && orderedMenuItems.every((line) => line?.freeDelivery === true);
+
+  if (allItemsShipFree && deliveryFee > 0) {
+    const waivedAmount = deliveryFee;
+    deliveryFee = 0;
+    deliveryFeeBreakdown = {
+      ...(deliveryFeeBreakdown || {}),
+      freeDeliveryApplied: true,
+      // Kept so the order records what would have been charged, and so
+      // reconciliation can see what the platform absorbed.
+      waivedDeliveryFee: waivedAmount,
+      appliedDeliveryFee: 0,
+    };
   }
 
   const incentiveThreshold = Math.round((Number(incentiveRule.minOrderAmount || 0) * 100)) / 100;

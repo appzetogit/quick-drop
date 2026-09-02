@@ -175,6 +175,7 @@ export async function listPublicFoods(query = {}) {
             // Carried through so the shelf filter below can read it, and so the
             // app can badge a dish as part of the Rs 99 store.
             showIn99Store: food.showIn99Store === true,
+            freeDelivery: food.freeDelivery === true,
             preparationTime: food.preparationTime || '',
             approvalStatus: food.approvalStatus || 'approved'
         };

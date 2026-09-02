@@ -126,6 +126,12 @@ const foodSchema = new mongoose.Schema(
          * shelf on its own rather than needing the flag cleared by hand.
          */
         showIn99Store: { type: Boolean, default: false, index: true },
+        /**
+         * Admin-set: this dish ships without a delivery charge. Waiving the fee is
+         * the platform's cost to bear, not the restaurant's, so the restaurant
+         * panel never sets it.
+         */
+        freeDelivery: { type: Boolean, default: false, index: true },
         preparationTime: { type: String, trim: true, default: '' },
         /**
          * Per-item order quantity limits, enforced server-side by

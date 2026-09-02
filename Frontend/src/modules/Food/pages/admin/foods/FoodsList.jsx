@@ -28,6 +28,7 @@ const createFoodForm = () => ({
   foodType: "Non-Veg",
   isAvailable: true,
   showIn99Store: false,
+  freeDelivery: false,
   preparationTime: "",
   availabilitySchedule: buildScheduleState(null),
 })
@@ -299,6 +300,7 @@ export default function FoodsList() {
       // Absent on old rows means "sell by variants if any exist".
       variantsEnabled: food.variantsEnabled === true || (food.variantsEnabled == null && getStoredFoodVariants(food).length > 0),
       showIn99Store: food.showIn99Store === true,
+    freeDelivery: food.freeDelivery === true,
     description: String(food.description || ""),
       image: String(food.image || ""),
       foodType: String(food.foodType || "Non-Veg"),
@@ -460,6 +462,7 @@ export default function FoodsList() {
         // Base price is charged as typed; the comparison is presentational.
         discountPercent: 0,
       showIn99Store: foodForm.showIn99Store === true,
+      freeDelivery: foodForm.freeDelivery === true,
         otherPrice: foodForm.otherPrice === "" ? 0 : Number(foodForm.otherPrice),
         variants: normalizedVariants.map((variant) => ({
           ...(variant.id && !variant.id.startsWith("variant-") ? { _id: variant.id } : {}),
@@ -986,6 +989,25 @@ export default function FoodsList() {
                   }
                   return <p className="mt-1 text-xs text-slate-600">Will appear in the app{"’"}s {"₹"}99 store.</p>
                 })()}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Free delivery
+                </label>
+                <label className="flex items-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={foodForm.freeDelivery === true}
+                    onChange={(e) => setFoodForm((prev) => ({ ...prev, freeDelivery: e.target.checked }))}
+                    className="h-4 w-4 accent-slate-900"
+                  />
+                  <span>Ship this dish free</span>
+                </label>
+                <p className="mt-1 text-xs text-slate-500">
+                  The fee is waived only when every dish in the order ships free {"—"} otherwise
+                  one cheap free-delivery item would make any basket free. The rider is still paid;
+                  the platform absorbs it.
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Food Type</label>
