@@ -258,13 +258,20 @@ const applyFactorToComparison = async (filter, factor) => {
                         ],
                     }),
                 ),
-                otherPrice: {
+                // Seeded from price when absent, exactly as basePrice is above.
+                // Skipping unset rows is what made a bulk run look broken: the
+                // apps read this raw stored field, so after it was cleared a
+                // run moved basePrice and the Flutter app -- which reads
+                // otherPrice -- showed no change at all. Editing one dish by
+                // hand writes this field, so a bulk run has to write it too or
+                // the two paths disagree about what a comparison price is.
+                otherPrice: scaled({
                     $cond: [
                         { $gt: [{ $ifNull: ['$otherPrice', 0] }, 0] },
-                        scaled('$otherPrice'),
                         '$otherPrice',
+                        '$price',
                     ],
-                },
+                }),
             },
         },
         {
