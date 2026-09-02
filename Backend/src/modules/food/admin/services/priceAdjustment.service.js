@@ -2,6 +2,11 @@ import mongoose from 'mongoose';
 import { FoodItem } from '../models/food.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodPriceAdjustment } from '../models/priceAdjustment.model.js';
+import { FoodFeeSettings } from '../models/feeSettings.model.js';
+import {
+    normalizeOtherPlatformSettings,
+    MAX_MARKUP_PERCENT,
+} from '../../shared/otherPlatformPricing.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 
 /**
@@ -214,32 +219,93 @@ export async function getPriceAdjustmentPreview({ restaurantId, percent } = {}) 
 }
 
 /**
- * Scale only the struck-through comparison figure.
+ * Scale the struck-through comparison figure. What the customer is charged is
+ * untouched -- this moves the "elsewhere" price beside it.
  *
- * What the customer is charged is untouched: this moves the "elsewhere" price
- * next to it, which is the whole point of adjusting that number separately.
+ * Most dishes have no per-item figure: the comparison is derived from the
+ * selling price via one admin markup, which is what makes it track price
+ * changes. Scaling only stored figures therefore moved a handful of rows and
+ * looked broken -- on this platform 8 items of 70 had one, so a run reported
+ * success and nothing visibly changed.
  *
- * Items with no figure set are skipped rather than seeded from their price --
- * scaling something that was never there would invent a comparison the
- * restaurant never claimed.
+ * So the number moved depends on what the run covers:
+ *
+ *  - Platform-wide: move the markup itself, which reprices every dish at once,
+ *    including the ones whose stored figure is 0 or absent. Composed rather
+ *    than added -- +10% on a 20% markup is 1.20 x 1.10, i.e. 32%, not 30%.
+ *  - One restaurant: a global markup cannot be moved for a single restaurant,
+ *    so its dishes get a stored figure seeded from what they currently show,
+ *    then scaled. Those dishes stop tracking the markup, which is the price of
+ *    scoping the run this way.
+ *
+ * Stored figures are always scaled, so a dish the restaurant priced by hand
+ * keeps pace either way.
  */
-const applyFactorToComparison = async (filter, factor) => {
-    const result = await FoodItem.updateMany(
+const applyFactorToComparison = async (filter, factor, restaurantId = null) => {
+    const scaleExpr = (field) => ({
+        $max: [MIN_RESULT_PRICE, { $round: [{ $multiply: [`$${field}`, factor] }, 2] }],
+    });
+
+    const scaled = await FoodItem.updateMany(
         { ...filter, otherPrice: { $gt: 0 } },
-        [
-            {
-                $set: {
-                    otherPrice: {
-                        $max: [
-                            MIN_RESULT_PRICE,
-                            { $round: [{ $multiply: ['$otherPrice', factor] }, 2] },
-                        ],
-                    },
+        [{ $set: { otherPrice: scaleExpr('otherPrice') } }],
+    );
+    const itemsScaled = scaled?.modifiedCount || 0;
+
+    const feeDoc = await FoodFeeSettings.findOne({ isActive: true }).lean();
+    const settings = normalizeOtherPlatformSettings(feeDoc || {});
+
+    if (!restaurantId) {
+        // Composing the factor onto the markup keeps repeated runs consistent
+        // with what scaling a stored figure would have done.
+        const nextMarkup = Math.min(
+            Math.max(((1 + settings.markupPercent / 100) * factor - 1) * 100, 0),
+            MAX_MARKUP_PERCENT,
+        );
+        const markupPercent = Math.round(nextMarkup * 100) / 100;
+        await FoodFeeSettings.updateMany({}, { $set: { 'otherPlatformPrice.markupPercent': markupPercent } });
+
+        const itemsOnMarkup = await FoodItem.countDocuments({
+            ...filter,
+            $or: [{ otherPrice: null }, { otherPrice: { $lte: 0 } }, { otherPrice: { $exists: false } }],
+        });
+
+        return {
+            itemsUpdated: itemsScaled + itemsOnMarkup,
+            itemsScaled,
+            itemsOnMarkup,
+            markupPercentBefore: settings.markupPercent,
+            markupPercentAfter: markupPercent,
+        };
+    }
+
+    // Scoped run: seed from the figure the dish shows today, then scale it.
+    const markupFactor = 1 + settings.markupPercent / 100;
+    const seeded = await FoodItem.updateMany(
+        {
+            ...filter,
+            price: { $gt: 0 },
+            $or: [{ otherPrice: null }, { otherPrice: { $lte: 0 } }, { otherPrice: { $exists: false } }],
+        },
+        [{
+            $set: {
+                otherPrice: {
+                    $max: [
+                        MIN_RESULT_PRICE,
+                        { $round: [{ $multiply: ['$price', markupFactor * factor] }, 2] },
+                    ],
                 },
             },
-        ],
+        }],
     );
-    return result?.modifiedCount || 0;
+
+    return {
+        itemsUpdated: itemsScaled + (seeded?.modifiedCount || 0),
+        itemsScaled,
+        itemsSeeded: seeded?.modifiedCount || 0,
+        markupPercentBefore: settings.markupPercent,
+        markupPercentAfter: settings.markupPercent,
+    };
 };
 
 export async function applyPriceAdjustment(body = {}, actor = {}) {
@@ -264,9 +330,15 @@ export async function applyPriceAdjustment(body = {}, actor = {}) {
     // held at MRP and the comparison no longer finds them. Only meaningful when
     // selling prices are the thing being moved.
     const itemsCappedByMrp = target === 'price' ? await countItemsCappedByMrp(filter, factor) : 0;
-    const itemsUpdated = target === 'price'
-        ? await applyFactorToMenu(filter, factor)
-        : await applyFactorToComparison(filter, factor);
+
+    let itemsUpdated = 0;
+    let comparison = null;
+    if (target === 'price') {
+        itemsUpdated = await applyFactorToMenu(filter, factor);
+    } else {
+        comparison = await applyFactorToComparison(filter, factor, restaurantId);
+        itemsUpdated = comparison.itemsUpdated;
+    }
 
     const adjustment = await FoodPriceAdjustment.create({
         percent,
@@ -279,7 +351,10 @@ export async function applyPriceAdjustment(body = {}, actor = {}) {
         ...(await resolveActor(actor))
     });
 
-    return { adjustment: adjustment.toObject(), itemsUpdated, itemsCappedByMrp };
+    // The markup figures are returned so the admin sees what actually moved --
+    // a run that repriced every dish via the markup used to report only the
+    // handful of stored figures it touched, which read as "nothing happened".
+    return { adjustment: adjustment.toObject(), itemsUpdated, itemsCappedByMrp, ...(comparison || {}) };
 }
 
 export async function revertPriceAdjustment(id, actor = {}) {
@@ -301,7 +376,15 @@ export async function revertPriceAdjustment(id, actor = {}) {
     // multiple (and any price clamped at MIN_RESULT_PRICE does not come back).
     // Snapshot every item's old price if exact restoration ever matters.
     const inverse = 1 / factor;
-    const itemsUpdated = await applyFactorToMenu(buildFilter(original.restaurantId), inverse);
+
+    // Undo the number the original run moved. This used to always scale the
+    // selling price, so reverting a comparison-price run silently repriced the
+    // live menu -- the one thing that run had deliberately left alone.
+    const target = String(original.target || 'otherPrice') === 'price' ? 'price' : 'otherPrice';
+    const filter = buildFilter(original.restaurantId);
+    const itemsUpdated = target === 'price'
+        ? await applyFactorToMenu(filter, inverse)
+        : (await applyFactorToComparison(filter, inverse, original.restaurantId)).itemsUpdated;
 
     original.isReverted = true;
     await original.save();
@@ -309,6 +392,7 @@ export async function revertPriceAdjustment(id, actor = {}) {
     const revertEntry = await FoodPriceAdjustment.create({
         percent: (inverse - 1) * 100,
         factor: inverse,
+        target,
         restaurantId: original.restaurantId,
         restaurantName: original.restaurantName,
         itemsUpdated,
