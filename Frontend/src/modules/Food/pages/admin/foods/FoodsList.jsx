@@ -27,6 +27,7 @@ const createFoodForm = () => ({
   image: "",
   foodType: "Non-Veg",
   isAvailable: true,
+  showIn99Store: false,
   preparationTime: "",
   availabilitySchedule: buildScheduleState(null),
 })
@@ -297,7 +298,8 @@ export default function FoodsList() {
       variants: getStoredFoodVariants(food).map(createVariantDraft),
       // Absent on old rows means "sell by variants if any exist".
       variantsEnabled: food.variantsEnabled === true || (food.variantsEnabled == null && getStoredFoodVariants(food).length > 0),
-      description: String(food.description || ""),
+      showIn99Store: food.showIn99Store === true,
+    description: String(food.description || ""),
       image: String(food.image || ""),
       foodType: String(food.foodType || "Non-Veg"),
       isAvailable: food.isAvailable !== false,
@@ -457,6 +459,7 @@ export default function FoodsList() {
         variantsEnabled: hasVariants,
         // Base price is charged as typed; the comparison is presentational.
         discountPercent: 0,
+      showIn99Store: foodForm.showIn99Store === true,
         otherPrice: foodForm.otherPrice === "" ? 0 : Number(foodForm.otherPrice),
         variants: normalizedVariants.map((variant) => ({
           ...(variant.id && !variant.id.startsWith("variant-") ? { _id: variant.id } : {}),
@@ -951,6 +954,37 @@ export default function FoodsList() {
                       <span className="font-semibold">{"₹"}{base}</span> ({off}% OFF)
                     </p>
                   )
+                })()}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  {"₹"}99 Store
+                </label>
+                <label className="flex items-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={foodForm.showIn99Store === true}
+                    onChange={(e) => setFoodForm((prev) => ({ ...prev, showIn99Store: e.target.checked }))}
+                    className="h-4 w-4 accent-slate-900"
+                  />
+                  <span>Show in the {"₹"}99 store</span>
+                </label>
+                {(() => {
+                  // The shelf is capped at 99 at read time, so a dish above it is
+                  // simply not shown. Say so here rather than let the admin tick a
+                  // box that quietly does nothing.
+                  const p99 = Number(foodForm.basePrice)
+                  if (foodForm.showIn99Store !== true) {
+                    return <p className="mt-1 text-xs text-slate-500">Admin-curated shelf in the app.</p>
+                  }
+                  if (Number.isFinite(p99) && p99 > 99) {
+                    return (
+                      <p className="mt-1 text-xs text-amber-700">
+                        At {"₹"}{p99} this stays hidden {"—"} the store only shows dishes at {"₹"}99 or less.
+                      </p>
+                    )
+                  }
+                  return <p className="mt-1 text-xs text-slate-600">Will appear in the app{"’"}s {"₹"}99 store.</p>
                 })()}
               </div>
               <div>

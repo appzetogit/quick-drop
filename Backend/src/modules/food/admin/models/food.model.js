@@ -119,6 +119,13 @@ const foodSchema = new mongoose.Schema(
         isActive: { type: Boolean, default: true, index: true },
         isAvailable: { type: Boolean, default: true, index: true },
         isRecommended: { type: Boolean, default: false, index: true },
+        /**
+         * Admin-curated shelf for the Rs 99 store in the app. The admin decides
+         * which dishes are eligible; the price ceiling is enforced separately at
+         * read time, so a dish that later rises above Rs 99 drops out of the
+         * shelf on its own rather than needing the flag cleared by hand.
+         */
+        showIn99Store: { type: Boolean, default: false, index: true },
         preparationTime: { type: String, trim: true, default: '' },
         /**
          * Per-item order quantity limits, enforced server-side by

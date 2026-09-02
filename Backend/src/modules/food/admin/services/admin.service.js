@@ -3373,6 +3373,11 @@ export async function updateFood(id, body) {
     // moves what the customer is charged.
     const otherPriceUpdate = normalizeItemOtherPriceInput(body);
     if (otherPriceUpdate) doc.otherPrice = otherPriceUpdate.otherPrice;
+    // Rs 99 store shelf. Admin-only: the restaurant panel never sends this, so a
+    // restaurant cannot put its own dish on the shelf.
+    if (body.showIn99Store !== undefined) {
+        doc.showIn99Store = body.showIn99Store === true || body.showIn99Store === 'true';
+    }
     if (pricingUpdate.variants !== undefined) doc.variants = pricingUpdate.variants;
     if (body.image !== undefined) doc.image = String(body.image || '').trim();
     if (body.foodType !== undefined) doc.foodType = targetFoodType;

@@ -16,14 +16,34 @@ const buildCategoryKeywords = (categorySlug) => {
     return [...new Set([raw, normalized, ...words])];
 };
 
-const isSwitch99Price = (price) => String(price ?? '').includes('99');
+/**
+ * The Rs 99 store: an admin-curated shelf, capped by price.
+ *
+ * This used to be `String(price).includes('99')`, which is a string match and
+ * not a price rule -- it admitted 199, 299, 1099 and 1.99 while excluding 95.
+ * Eligibility is now the admin's toggle on the dish, and the ceiling is applied
+ * here at read time so a dish that later rises above the cap leaves the shelf
+ * by itself rather than needing the flag cleared by hand.
+ */
+const NINETY_NINE_STORE_MAX_PRICE = 99;
+const UNDER_250_MAX_PRICE = 250;
+
+const qualifiesFor99Store = (food, price) =>
+    food?.showIn99Store === true
+    && Number.isFinite(Number(price))
+    && Number(price) <= NINETY_NINE_STORE_MAX_PRICE;
 
 export async function listPublicFoods(query = {}) {
     const limit = Math.min(Math.max(parseInt(query.limit, 10) || 500, 1), 1000);
     const zoneIdRaw = String(query.zoneId || '').trim();
     const categorySlug = String(query.categorySlug || query.category || '').trim().toLowerCase();
     const promo = String(query.promo || query.promoSlug || '').trim().toLowerCase();
-    const isSwitch99Promo = promo === 'switch99' || promo === 'under-250' || promo === 'under250';
+    // Two different shelves that shared one flag. The 99 store is curated by the
+    // admin and capped at Rs 99; under-250 is purely a price band, as its name
+    // says -- it was matching the same "contains 99" string as everything else.
+    const is99StorePromo = promo === 'switch99' || promo === '99-store' || promo === 'store99';
+    const isUnder250Promo = promo === 'under-250' || promo === 'under250';
+    const isPromoList = is99StorePromo || isUnder250Promo;
 
     const restaurantFilter = { status: 'approved' };
     if (zoneIdRaw && mongoose.Types.ObjectId.isValid(zoneIdRaw)) {
@@ -71,7 +91,7 @@ export async function listPublicFoods(query = {}) {
 
     const list = await FoodItem.find(foodFilter)
         .sort({ createdAt: -1 })
-        .limit(isSwitch99Promo ? Math.max(limit, 2000) : limit)
+        .limit(isPromoList ? Math.max(limit, 2000) : limit)
         .lean();
 
     // One clock for the whole page, so two items cannot straddle a minute boundary.
@@ -152,13 +172,20 @@ export async function listPublicFoods(query = {}) {
                 : (food.image ? [food.image] : []),
             foodType: food.foodType || 'Non-Veg',
             isAvailable: food.isAvailable !== false,
+            // Carried through so the shelf filter below can read it, and so the
+            // app can badge a dish as part of the Rs 99 store.
+            showIn99Store: food.showIn99Store === true,
             preparationTime: food.preparationTime || '',
             approvalStatus: food.approvalStatus || 'approved'
         };
     })
         .filter((food) => {
             if (food.isAvailable === false) return false;
-            if (isSwitch99Promo) return isSwitch99Price(food.price);
+            if (is99StorePromo) return qualifiesFor99Store(food, food.price);
+            if (isUnder250Promo) {
+                const value = Number(food.price);
+                return Number.isFinite(value) && value <= UNDER_250_MAX_PRICE;
+            }
             return true;
         })
         .slice(0, limit);
