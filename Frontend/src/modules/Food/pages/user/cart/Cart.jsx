@@ -964,6 +964,13 @@ export default function Cart() {
   // the order disagree about what was earned.
   const freebieEarned = pricing?.freebie?.earned || null
   const freebieNext = pricing?.freebie?.next || null
+
+  // Buy-one-get-one, likewise straight from the server's own resolution. The
+  // saving is already out of the item total below -- the free units were split
+  // onto zero-priced lines before it was summed -- so it is shown, never
+  // subtracted again here.
+  const bogoLines = Array.isArray(pricing?.bogo?.lines) ? pricing.bogo.lines : []
+  const bogoSavings = Number(pricing?.bogo?.savings || 0)
   const surgeAmount = Number(pricing?.surgeAmount || 0)
   const gstCharges = Number(pricing?.tax ?? 0)
   const discount = pricing?.discount ?? (appliedCoupon ? Math.min(appliedCoupon.discount, subtotal * 0.5) : 0)
@@ -2471,6 +2478,29 @@ export default function Cart() {
                   </div>
                 )}
               </div>
+              {/* Buy-one-get-one already applied to this cart. Named per line
+                  rather than as one total, because "1 free" against a dish is the
+                  bit a customer checks; the rupee figure alone reads as a coupon
+                  they have to go and find. */}
+              {bogoLines.length > 0 && (
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-4 md:px-6 py-4">
+                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                    Buy one get one applied &mdash; you saved {RUPEE_SYMBOL}{bogoSavings.toFixed(2)}
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {bogoLines.map((line, index) => (
+                      <li
+                        key={`${line.itemId}-${line.variantName || ''}-${index}`}
+                        className="text-xs text-gray-600 dark:text-gray-400"
+                      >
+                        {line.freeQuantity} x {line.name}
+                        {line.variantName ? ` (${line.variantName})` : ''} free
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* Spend-threshold reward. Two states, never both: something already
                   earned, or how much more would earn the next one. The amounts come
                   from the server's own resolution, so the number shown here is the
@@ -2529,6 +2559,20 @@ export default function Cart() {
 
                 {showBillDetails && (
                   <div className="mt-4 pt-4 border-t border-dashed border-gray-200 dark:border-gray-800 space-y-3">
+                    {bogoLines.map((line, index) => (
+                      <div
+                        key={`bogo-${line.itemId}-${line.variantName || ''}-${index}`}
+                        className="flex justify-between text-sm"
+                      >
+                        <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                          Free ({line.freeQuantity} x buy one get one): {line.name}
+                          {line.variantName ? ` (${line.variantName})` : ''}
+                        </span>
+                        <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                          {RUPEE_SYMBOL}0.00
+                        </span>
+                      </div>
+                    ))}
                     {freebieEarned && (
                       <div className="flex justify-between text-sm">
                         <span className="text-[#EB590E] font-medium">

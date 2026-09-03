@@ -150,6 +150,50 @@ export const updateFreebieOfferController = async (req, res, next) => {
     }
 };
 
+/**
+ * The restaurant's own "buy one, get one free" dishes.
+ *
+ * Like the freebie ladder above, the same document the admin panel edits, so
+ * whichever side saves last wins and neither can end up looking at an offer
+ * different from the one being applied at checkout.
+ */
+export const getBogoOfferController = async (req, res, next) => {
+    try {
+        const restaurantId = req.user?.userId;
+        const { getBogoOffer } = await import('../../shared/bogoOffer.service.js');
+        const offer = await getBogoOffer(restaurantId);
+        return sendResponse(res, 200, 'Buy one get one offer fetched successfully', {
+            offer: offer || { restaurantId, isActive: true, offers: [] },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateBogoOfferController = async (req, res, next) => {
+    try {
+        const restaurantId = req.user?.userId;
+        const { normalizeBogoOffersInput } = await import('../../shared/bogoOffer.js');
+        const { saveBogoOffer } = await import('../../shared/bogoOffer.service.js');
+
+        let offers;
+        try {
+            offers = normalizeBogoOffersInput(req.body || {})?.offers;
+        } catch (validationError) {
+            return sendResponse(res, 400, validationError.message, null);
+        }
+
+        const offer = await saveBogoOffer(restaurantId, {
+            offers,
+            isActive: req.body?.isActive,
+            updatedByRole: 'RESTAURANT',
+        });
+        return sendResponse(res, 200, 'Buy one get one offer saved successfully', { offer });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const updateRestaurantProfileController = async (req, res, next) => {
     try {
         const restaurantId = req.user?.userId;

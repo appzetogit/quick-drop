@@ -775,6 +775,7 @@ export default function ExploreMore() {
     { id: 4, label: "Menu categories", icon: Settings, route: "/restaurant/menu-categories" },
     { id: "coupons-nav", label: "Offers & Coupons", icon: FileCheck, route: "/restaurant/coupon" },
     { id: "freebie-nav", label: "Free Item Offers", icon: FileCheck, route: "/restaurant/free-item-offers" },
+    { id: "bogo-nav", label: "Buy One Get One", icon: FileCheck, route: "/restaurant/bogo-offers" },
     { id: "analytics-nav", label: "Analytics", icon: BarChart2, route: "/restaurant/analytics" },
   ]
 

@@ -326,6 +326,58 @@ export async function updateRestaurantFreebieOffer(req, res, next) {
     }
 }
 
+/**
+ * A restaurant's buy-one-get-one dishes, from the admin side.
+ *
+ * The same document the restaurant panel edits, for the same reason as the
+ * freebie ladder above: one row per restaurant means support can fix a badly
+ * configured offer without the restaurant and admin looking at rival copies.
+ */
+export async function getRestaurantBogoOffer(req, res, next) {
+    try {
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid restaurant id' });
+        }
+        const { getBogoOffer } = await import('../../shared/bogoOffer.service.js');
+        const offer = await getBogoOffer(id);
+        res.status(200).json({
+            success: true,
+            message: 'Buy one get one offer fetched successfully',
+            data: { offer: offer || { restaurantId: id, isActive: true, offers: [] } },
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function updateRestaurantBogoOffer(req, res, next) {
+    try {
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid restaurant id' });
+        }
+        const { normalizeBogoOffersInput } = await import('../../shared/bogoOffer.js');
+        const { saveBogoOffer } = await import('../../shared/bogoOffer.service.js');
+
+        let offers;
+        try {
+            offers = normalizeBogoOffersInput(req.body || {})?.offers;
+        } catch (validationError) {
+            return res.status(400).json({ success: false, message: validationError.message });
+        }
+
+        const offer = await saveBogoOffer(id, {
+            offers,
+            isActive: req.body?.isActive,
+            updatedByRole: 'ADMIN',
+        });
+        res.status(200).json({ success: true, message: 'Buy one get one offer saved successfully', data: { offer } });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export async function getRestaurantMenuById(req, res, next) {
     try {
         const { id } = req.params;

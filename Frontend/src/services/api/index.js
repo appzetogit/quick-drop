@@ -525,6 +525,12 @@ export const adminAPI = {
     apiClient.put(`/food/admin/restaurants/${id}/freebie-offer`, body ?? {}, {
       contextModule: "admin",
     }),
+  getRestaurantBogoOffer: (id) =>
+    apiClient.get(`/food/admin/restaurants/${id}/bogo-offer`, { contextModule: "admin" }),
+  updateRestaurantBogoOffer: (id, body) =>
+    apiClient.put(`/food/admin/restaurants/${id}/bogo-offer`, body ?? {}, {
+      contextModule: "admin",
+    }),
   /** Foods (admin) - separate collection */
   getFoods: (params = {}) =>
     apiClient.get("/food/admin/foods", { params, contextModule: "admin" }),
@@ -1446,6 +1452,14 @@ export const restaurantAPI = {
     apiClient.get("/food/restaurant/freebie-offer", { contextModule: "restaurant" }),
   updateFreebieOffer: (body) =>
     apiClient.put("/food/restaurant/freebie-offer", body ?? {}, { contextModule: "restaurant" }),
+  /**
+   * The restaurant's buy-one-get-one dishes. Shares the freebie ladder's
+   * arrangement: one document per restaurant, editable from either panel.
+   */
+  getBogoOffer: () =>
+    apiClient.get("/food/restaurant/bogo-offer", { contextModule: "restaurant" }),
+  updateBogoOffer: (body) =>
+    apiClient.put("/food/restaurant/bogo-offer", body ?? {}, { contextModule: "restaurant" }),
   /** Add-ons (restaurant) - approval handled by admin */
   getAddons: (params = {}) =>
     apiClient.get("/food/restaurant/item-extras", {
