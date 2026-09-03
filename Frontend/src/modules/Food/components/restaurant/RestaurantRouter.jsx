@@ -12,6 +12,7 @@ const RestaurantOnboarding = lazy(() => import("@food/pages/restaurant/Onboardin
 const CouponListPage = lazy(() => import("@food/pages/restaurant/CouponListPage"))
 const FreebieOffersPage = lazy(() => import("@food/pages/restaurant/FreebieOffersPage"))
 const BogoOffersPage = lazy(() => import("@food/pages/restaurant/BogoOffersPage"))
+const CombosPage = lazy(() => import("@food/pages/restaurant/CombosPage"))
 const AddCouponPage = lazy(() => import("@food/pages/restaurant/AddCouponPage"))
 const EditCouponPage = lazy(() => import("@food/pages/restaurant/EditCouponPage"))
 const MenuCategoriesPage = lazy(() => import("@food/pages/restaurant/MenuCategoriesPage"))
@@ -74,6 +75,7 @@ export default function RestaurantRouter() {
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><CouponListPage /></ProtectedRoute>} path="coupon" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><FreebieOffersPage /></ProtectedRoute>} path="free-item-offers" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><BogoOffersPage /></ProtectedRoute>} path="bogo-offers" />
+        <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><CombosPage /></ProtectedRoute>} path="combos" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><AddCouponPage /></ProtectedRoute>} path="coupon/new" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><EditCouponPage /></ProtectedRoute>} path="coupon/:id/edit" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><DeliverySettings /></ProtectedRoute>} path="delivery-settings" />

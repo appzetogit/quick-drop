@@ -531,6 +531,25 @@ export const adminAPI = {
     apiClient.put(`/food/admin/restaurants/${id}/bogo-offer`, body ?? {}, {
       contextModule: "admin",
     }),
+  /**
+   * Combos: existing dishes grouped into one menu entry at a fixed price.
+   * A combo is stored as a FoodItem, so these are dish endpoints rather than
+   * offer endpoints, and what an admin saves here is live immediately.
+   */
+  getRestaurantCombos: (id) =>
+    apiClient.get(`/food/admin/restaurants/${id}/combos`, { contextModule: "admin" }),
+  createRestaurantCombo: (id, body) =>
+    apiClient.post(`/food/admin/restaurants/${id}/combos`, body ?? {}, {
+      contextModule: "admin",
+    }),
+  updateRestaurantCombo: (id, comboId, body) =>
+    apiClient.put(`/food/admin/restaurants/${id}/combos/${comboId}`, body ?? {}, {
+      contextModule: "admin",
+    }),
+  deleteRestaurantCombo: (id, comboId) =>
+    apiClient.delete(`/food/admin/restaurants/${id}/combos/${comboId}`, {
+      contextModule: "admin",
+    }),
   /** Foods (admin) - separate collection */
   getFoods: (params = {}) =>
     apiClient.get("/food/admin/foods", { params, contextModule: "admin" }),
@@ -1460,6 +1479,20 @@ export const restaurantAPI = {
     apiClient.get("/food/restaurant/bogo-offer", { contextModule: "restaurant" }),
   updateBogoOffer: (body) =>
     apiClient.put("/food/restaurant/bogo-offer", body ?? {}, { contextModule: "restaurant" }),
+  /**
+   * Combos. Saved by a restaurant these enter the approval queue exactly as a new
+   * dish does -- a combo is a dish, so it is not a way around approval.
+   */
+  getCombos: () =>
+    apiClient.get("/food/restaurant/combos", { contextModule: "restaurant" }),
+  createCombo: (body) =>
+    apiClient.post("/food/restaurant/combos", body ?? {}, { contextModule: "restaurant" }),
+  updateCombo: (comboId, body) =>
+    apiClient.put(`/food/restaurant/combos/${comboId}`, body ?? {}, {
+      contextModule: "restaurant",
+    }),
+  deleteCombo: (comboId) =>
+    apiClient.delete(`/food/restaurant/combos/${comboId}`, { contextModule: "restaurant" }),
   /** Add-ons (restaurant) - approval handled by admin */
   getAddons: (params = {}) =>
     apiClient.get("/food/restaurant/item-extras", {

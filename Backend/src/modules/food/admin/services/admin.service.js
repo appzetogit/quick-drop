@@ -1851,6 +1851,15 @@ export async function upsertFeeSettings(body) {
         if (body.freeDeliveryThreshold === null) $unset.freeDeliveryThreshold = 1;
         else if (body.freeDeliveryThreshold !== undefined) $set.freeDeliveryThreshold = body.freeDeliveryThreshold;
 
+        // Normalised and validated before storage, so pricing never has to reason
+        // about a half-filled rule.
+        if (body.freeDeliveryRule !== undefined) {
+            const { validateFreeDeliveryRule } = await import('../../shared/freeDeliveryRule.js');
+            const verdict = validateFreeDeliveryRule(body.freeDeliveryRule);
+            if (!verdict.ok) throw new ValidationError(verdict.reason);
+            $set.freeDeliveryRule = verdict.rule;
+        }
+
         if (body.platformFee === null) $unset.platformFee = 1;
         else if (body.platformFee !== undefined) $set.platformFee = body.platformFee;
 
@@ -1899,6 +1908,7 @@ export async function upsertFeeSettings(body) {
     };
     if (body.deliveryFee !== undefined && body.deliveryFee !== null) payload.deliveryFee = body.deliveryFee;
     if (body.freeDeliveryThreshold !== undefined && body.freeDeliveryThreshold !== null) payload.freeDeliveryThreshold = body.freeDeliveryThreshold;
+    if (body.freeDeliveryRule !== undefined) payload.freeDeliveryRule = body.freeDeliveryRule;
     if (body.codOrderLimit !== undefined && body.codOrderLimit !== null) payload.codOrderLimit = body.codOrderLimit;
     if (body.maxOrderQuantityCeiling !== undefined && body.maxOrderQuantityCeiling !== null) payload.maxOrderQuantityCeiling = body.maxOrderQuantityCeiling;
     if (body.packagingCharge !== undefined) payload.packagingCharge = body.packagingCharge;
@@ -3418,6 +3428,15 @@ export async function updateFood(id, body) {
     }
 
     await doc.save();
+
+    // Availability may have changed; a combo containing this dish must follow it
+    // off the menu, and back on again when it returns.
+    try {
+        const { syncComboAvailability } = await import('../../shared/combo.service.js');
+        await syncComboAvailability(doc.restaurantId);
+    } catch (e) {
+        console.error('Combo availability sync failed:', e?.message || e);
+    }
 
     // Public menu responses are cached for up to five minutes, so an edited
     // price stays invisible to the apps for that long without this -- the

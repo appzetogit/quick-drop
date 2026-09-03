@@ -459,5 +459,18 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
         }
     }
 
+    // A dish going off the menu takes any combo containing it off too, and a dish
+    // coming back restores those combos. Without this a combo would keep
+    // advertising something the kitchen has just switched off, and the customer
+    // would pay the combo price for food that cannot be made.
+    if (updated && (body.isActive !== undefined || body.isAvailable !== undefined)) {
+        try {
+            const { syncComboAvailability } = await import('../../shared/combo.service.js');
+            await syncComboAvailability(restaurantId);
+        } catch (e) {
+            console.error('Combo availability sync failed:', e?.message || e);
+        }
+    }
+
     return updated;
 }

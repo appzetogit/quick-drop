@@ -1,26 +1,6 @@
 import { useMemo } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import {
-  Gift,
-  Copy,
-  BarChart3,
-  Building2,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  Compass,
-  Download,
-  FileText,
-  LifeBuoy,
-  Landmark,
-  Map,
-  Package,
-  Star,
-  Store,
-  Tag,
-  Utensils,
-  Wallet,
-} from "lucide-react"
+import { BarChart3, Boxes, Building2, ChevronLeft, ChevronRight, Clock, Compass, Copy, Download, FileText, Gift, Landmark, LifeBuoy, Map, Package, Star, Store, Tag, Utensils, Wallet } from "lucide-react"
 
 /**
  * Desktop sidebar for the restaurant dashboard.
@@ -46,6 +26,7 @@ const getNavSections = (base) => [
       { label: "Coupons", path: `${base}/coupon`, icon: Tag },
       { label: "Free item offers", path: `${base}/free-item-offers`, icon: Gift },
       { label: "Buy one get one", path: `${base}/bogo-offers`, icon: Copy },
+      { label: "Combos", path: `${base}/combos`, icon: Boxes },
       { label: "Analytics", path: `${base}/analytics`, icon: BarChart3 },
       { label: "Ratings & reviews", path: `${base}/ratings-reviews`, icon: Star },
       { label: "Explore", path: `${base}/explore`, icon: Compass },

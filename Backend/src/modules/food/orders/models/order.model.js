@@ -62,6 +62,35 @@ const orderItemSchema = new mongoose.Schema(
             buyQty: { type: Number, min: 1, default: 1 },
             getQty: { type: Number, min: 1, default: 1 },
             sourceItemId: { type: String, trim: true, default: '' },
+        },
+        /**
+         * A combo: several dishes sold as one line at one fixed price.
+         *
+         * The components are copied onto the order rather than looked up later,
+         * for the same reason the add-on snapshot above exists -- the kitchen has
+         * to be able to make what was actually sold, and a combo whose components
+         * were renamed, repriced or deleted next month must still print correctly
+         * on an invoice raised today.
+         *
+         * `allocatedLineTotal` is that component's share of the combo price, split
+         * pro-rata by list price. The shares sum to the line price, so per-dish
+         * reporting adds up to exactly what the customer paid.
+         */
+        isCombo: { type: Boolean, default: false },
+        comboComponents: {
+            type: [new mongoose.Schema(
+                {
+                    itemId: { type: String, trim: true, default: '' },
+                    variantId: { type: String, trim: true, default: '' },
+                    quantity: { type: Number, min: 1, default: 1 },
+                    name: { type: String, trim: true, default: '' },
+                    variantName: { type: String, trim: true, default: '' },
+                    listUnitPrice: { type: Number, min: 0, default: 0 },
+                    allocatedLineTotal: { type: Number, min: 0, default: 0 }
+                },
+                { _id: false }
+            )],
+            default: []
         }
     },
     { _id: false }

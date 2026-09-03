@@ -18,6 +18,11 @@ export default function FeeSettings() {
       minOrderAmount: "0",
       incentivePercent: "0",
     },
+    freeDeliveryRule: {
+      isEnabled: false,
+      maxDistanceKm: "3",
+      minOrderAmount: "300",
+    },
     platformFee: "",
     gstRate: "",
     codOrderLimit: "",
@@ -101,6 +106,11 @@ export default function FeeSettings() {
             minOrderAmount: String(saved.deliveryPartnerIncentiveRule?.minOrderAmount ?? 0),
             incentivePercent: String(saved.deliveryPartnerIncentiveRule?.incentivePercent ?? 0),
           },
+          freeDeliveryRule: {
+            isEnabled: saved.freeDeliveryRule?.isEnabled === true,
+            maxDistanceKm: String(saved.freeDeliveryRule?.maxDistanceKm ?? 3),
+            minOrderAmount: String(saved.freeDeliveryRule?.minOrderAmount ?? 300),
+          },
           platformFee: saved.platformFee ?? "",
           gstRate: saved.gstRate ?? "",
           codOrderLimit: saved.codOrderLimit ?? "",
@@ -114,6 +124,11 @@ export default function FeeSettings() {
             isEnabled: false,
             minOrderAmount: "0",
             incentivePercent: "0",
+          },
+          freeDeliveryRule: {
+            isEnabled: false,
+            maxDistanceKm: "3",
+            minOrderAmount: "300",
           },
           platformFee: "",
           gstRate: "",
@@ -339,6 +354,11 @@ export default function FeeSettings() {
           isEnabled: feeSettings.deliveryPartnerIncentiveRule?.isEnabled === true,
           minOrderAmount: Number(feeSettings.deliveryPartnerIncentiveRule?.minOrderAmount || 0),
           incentivePercent: Number(feeSettings.deliveryPartnerIncentiveRule?.incentivePercent || 0),
+        },
+        freeDeliveryRule: {
+          isEnabled: feeSettings.freeDeliveryRule?.isEnabled === true,
+          maxDistanceKm: Number(feeSettings.freeDeliveryRule?.maxDistanceKm || 0),
+          minOrderAmount: Number(feeSettings.freeDeliveryRule?.minOrderAmount || 0),
         },
         platformFee,
         gstRate,
@@ -673,6 +693,86 @@ export default function FeeSettings() {
                   </div>
                 </div>
 
+              </div>
+
+              {/*
+                Platform-funded free delivery. Both conditions are required: distance
+                alone would give away long trips on tiny baskets, and order value alone
+                would give away a long run because somebody spent enough. The rider is
+                still paid in full and the platform absorbs the fee, which is why only
+                an admin can set this.
+              */}
+              <div className="border-t border-slate-200 pt-6 mt-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-800">Free delivery near the customer</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Waive the delivery fee when the restaurant is close enough and the order is large enough.
+                      Both conditions have to be met.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={feeSettings.freeDeliveryRule?.isEnabled === true}
+                    onClick={() =>
+                      setFeeSettings((st) => ({ ...st, freeDeliveryRule: { ...st.freeDeliveryRule, isEnabled: !st.freeDeliveryRule?.isEnabled } }))
+                    }
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                      feeSettings.freeDeliveryRule?.isEnabled ? "bg-green-600" : "bg-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        feeSettings.freeDeliveryRule?.isEnabled ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-slate-700">Within radius (km)</label>
+                    <input
+                      type="number"
+                      value={feeSettings.freeDeliveryRule?.maxDistanceKm ?? ""}
+                      onChange={(e) => setFeeSettings((st) => ({ ...st, freeDeliveryRule: { ...st.freeDeliveryRule, maxDistanceKm: e.target.value } }))}
+                      disabled={!feeSettings.freeDeliveryRule?.isEnabled}
+                      min="0"
+                      max="50"
+                      step="0.5"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all disabled:bg-slate-100 disabled:text-slate-400"
+                      placeholder="3"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Measured along the road, the same distance the delivery slab is priced from.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-slate-700">On orders of at least (₹)</label>
+                    <input
+                      type="number"
+                      value={feeSettings.freeDeliveryRule?.minOrderAmount ?? ""}
+                      onChange={(e) => setFeeSettings((st) => ({ ...st, freeDeliveryRule: { ...st.freeDeliveryRule, minOrderAmount: e.target.value } }))}
+                      disabled={!feeSettings.freeDeliveryRule?.isEnabled}
+                      min="0"
+                      step="10"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all disabled:bg-slate-100 disabled:text-slate-400"
+                      placeholder="300"
+                    />
+                    <p className="text-xs text-slate-500">
+                      Compared against the food subtotal, before fees and tax.
+                    </p>
+                  </div>
+                </div>
+
+                {feeSettings.freeDeliveryRule?.isEnabled && (
+                  <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-800">
+                    Free delivery within {feeSettings.freeDeliveryRule?.maxDistanceKm || 0} km on orders of ₹
+                    {feeSettings.freeDeliveryRule?.minOrderAmount || 0} or more. The platform absorbs the fee and the
+                    rider is paid in full.
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-slate-200 pt-6 mt-6">

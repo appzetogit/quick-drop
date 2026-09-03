@@ -31,6 +31,7 @@ const JoiningRequest = lazy(() => import("@food/pages/admin/restaurant/JoiningRe
 const RestaurantCommission = lazy(() => import("@food/pages/admin/restaurant/RestaurantCommission"));
 const RestaurantFreebieOffers = lazy(() => import("@food/pages/admin/restaurant/RestaurantFreebieOffers"));
 const RestaurantBogoOffers = lazy(() => import("@food/pages/admin/restaurant/RestaurantBogoOffers"));
+const RestaurantCombos = lazy(() => import("@food/pages/admin/restaurant/RestaurantCombos"));
 const RestaurantComplaints = lazy(() => import("@food/pages/admin/restaurant/RestaurantComplaints"));
 const RestaurantReviews = lazy(() => import("@food/pages/admin/restaurant/RestaurantReviews"));
 const RestaurantsBulkImport = lazy(() => import("@food/pages/admin/restaurant/RestaurantsBulkImport"));
@@ -189,6 +190,7 @@ const verticalAdminRoutes = (
             <Route path="restaurants/commission" element={<RestaurantCommission />} />
             <Route path="restaurants/free-item-offers" element={<RestaurantFreebieOffers />} />
             <Route path="restaurants/bogo-offers" element={<RestaurantBogoOffers />} />
+          <Route path="restaurants/combos" element={<RestaurantCombos />} />
             <Route path="restaurants/complaints" element={<RestaurantComplaints />} />
             <Route path="restaurants/reviews" element={<RestaurantReviews />} />
             <Route path="restaurants/bulk-import" element={<RestaurantsBulkImport />} />

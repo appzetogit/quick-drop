@@ -378,6 +378,81 @@ export async function updateRestaurantBogoOffer(req, res, next) {
     }
 }
 
+/**
+ * Combos, admin side.
+ *
+ * A combo is stored as an ordinary FoodItem marked `isCombo`, so what the admin
+ * saves here is live immediately -- the same rule that applies to a dish the
+ * admin creates directly, and the reason the restaurant's own combos go to the
+ * approval queue instead.
+ */
+const invalidComboRestaurant = (id, res) => {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+        res.status(400).json({ success: false, message: 'Invalid restaurant id' });
+        return true;
+    }
+    return false;
+};
+
+const comboValidationHandled = (error, res) => {
+    if (error?.name === 'ValidationError' && error?.statusCode === 400) {
+        res.status(400).json({ success: false, message: error.message });
+        return true;
+    }
+    return false;
+};
+
+export async function listRestaurantCombos(req, res, next) {
+    try {
+        const { id } = req.params;
+        if (invalidComboRestaurant(id, res)) return;
+        const { listCombos } = await import('../../shared/combo.service.js');
+        const combos = await listCombos(id);
+        res.status(200).json({ success: true, message: 'Combos fetched successfully', data: { combos } });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function createRestaurantCombo(req, res, next) {
+    try {
+        const { id } = req.params;
+        if (invalidComboRestaurant(id, res)) return;
+        const { saveCombo } = await import('../../shared/combo.service.js');
+        const result = await saveCombo(id, req.body || {}, { updatedByRole: 'ADMIN' });
+        res.status(201).json({ success: true, message: 'Combo created successfully', data: result });
+    } catch (error) {
+        if (comboValidationHandled(error, res)) return;
+        next(error);
+    }
+}
+
+export async function updateRestaurantCombo(req, res, next) {
+    try {
+        const { id, comboId } = req.params;
+        if (invalidComboRestaurant(id, res)) return;
+        const { saveCombo } = await import('../../shared/combo.service.js');
+        const result = await saveCombo(id, req.body || {}, { comboId, updatedByRole: 'ADMIN' });
+        res.status(200).json({ success: true, message: 'Combo updated successfully', data: result });
+    } catch (error) {
+        if (comboValidationHandled(error, res)) return;
+        next(error);
+    }
+}
+
+export async function deleteRestaurantCombo(req, res, next) {
+    try {
+        const { id, comboId } = req.params;
+        if (invalidComboRestaurant(id, res)) return;
+        const { deleteCombo } = await import('../../shared/combo.service.js');
+        await deleteCombo(id, comboId);
+        res.status(200).json({ success: true, message: 'Combo deleted successfully', data: null });
+    } catch (error) {
+        if (comboValidationHandled(error, res)) return;
+        next(error);
+    }
+}
+
 export async function getRestaurantMenuById(req, res, next) {
     try {
         const { id } = req.params;

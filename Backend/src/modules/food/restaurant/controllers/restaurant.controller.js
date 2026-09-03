@@ -194,6 +194,72 @@ export const updateBogoOfferController = async (req, res, next) => {
     }
 };
 
+/**
+ * Combos: several existing dishes sold together as one menu entry at a fixed
+ * price.
+ *
+ * A combo is stored as an ordinary FoodItem marked `isCombo`, so it appears on
+ * the menu, in the cart and on the order exactly as a dish does. What a
+ * restaurant saves here therefore enters the normal approval queue, the same as
+ * any dish it adds -- a combo is not a way around it.
+ */
+export const listCombosController = async (req, res, next) => {
+    try {
+        const restaurantId = req.user?.userId;
+        const { listCombos } = await import('../../shared/combo.service.js');
+        const combos = await listCombos(restaurantId);
+        return sendResponse(res, 200, 'Combos fetched successfully', { combos });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createComboController = async (req, res, next) => {
+    try {
+        const restaurantId = req.user?.userId;
+        const { saveCombo } = await import('../../shared/combo.service.js');
+        const result = await saveCombo(restaurantId, req.body || {}, { updatedByRole: 'RESTAURANT' });
+        return sendResponse(res, 201, 'Combo created and sent for approval', result);
+    } catch (error) {
+        // A ValidationError carries a message written for the person who typed it.
+        if (error?.name === 'ValidationError' && error?.statusCode === 400) {
+            return sendResponse(res, 400, error.message, null);
+        }
+        next(error);
+    }
+};
+
+export const updateComboController = async (req, res, next) => {
+    try {
+        const restaurantId = req.user?.userId;
+        const { saveCombo } = await import('../../shared/combo.service.js');
+        const result = await saveCombo(restaurantId, req.body || {}, {
+            comboId: req.params.comboId,
+            updatedByRole: 'RESTAURANT',
+        });
+        return sendResponse(res, 200, 'Combo updated and sent for approval', result);
+    } catch (error) {
+        if (error?.name === 'ValidationError' && error?.statusCode === 400) {
+            return sendResponse(res, 400, error.message, null);
+        }
+        next(error);
+    }
+};
+
+export const deleteComboController = async (req, res, next) => {
+    try {
+        const restaurantId = req.user?.userId;
+        const { deleteCombo } = await import('../../shared/combo.service.js');
+        await deleteCombo(restaurantId, req.params.comboId);
+        return sendResponse(res, 200, 'Combo deleted successfully', null);
+    } catch (error) {
+        if (error?.name === 'ValidationError' && error?.statusCode === 400) {
+            return sendResponse(res, 400, error.message, null);
+        }
+        next(error);
+    }
+};
+
 export const updateRestaurantProfileController = async (req, res, next) => {
     try {
         const restaurantId = req.user?.userId;

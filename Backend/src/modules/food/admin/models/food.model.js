@@ -132,6 +132,43 @@ const foodSchema = new mongoose.Schema(
          * panel never sets it.
          */
         freeDelivery: { type: Boolean, default: false, index: true },
+        /**
+         * Combos: this dish is a bundle of other dishes on the same menu, sold as
+         * one line at one fixed price.
+         *
+         * A combo is a FoodItem rather than its own collection so that the menu,
+         * the cart, order pricing, commission and the POS all handle it as the
+         * dish the customer thinks it is. `price` is the combo price and
+         * `basePrice` is what the components cost separately, which is what makes
+         * the saving render through the existing struck-through-price display.
+         *
+         * Components are snapshotted by name and price at save time: a kitchen
+         * ticket printed next year must stay readable after a component has been
+         * renamed, repriced or removed.
+         */
+        isCombo: { type: Boolean, default: false, index: true },
+        comboComponents: {
+            type: [new mongoose.Schema(
+                {
+                    itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodItem', required: true },
+                    variantId: { type: mongoose.Schema.Types.ObjectId, default: null },
+                    quantity: { type: Number, min: 1, default: 1 },
+                    nameSnapshot: { type: String, trim: true, default: '' },
+                    variantNameSnapshot: { type: String, trim: true, default: '' },
+                    listUnitPrice: { type: Number, min: 0, default: 0 },
+                    allocatedLineTotal: { type: Number, min: 0, default: 0 }
+                },
+                { _id: false }
+            )],
+            default: []
+        },
+        /**
+         * Set when a combo was taken off the menu automatically because one of its
+         * components went unavailable -- never when a person switched it off. Only
+         * an automatic disable is automatically undone, so a deliberately parked
+         * combo stays parked when its components come back.
+         */
+        comboAutoDisabled: { type: Boolean, default: false },
         preparationTime: { type: String, trim: true, default: '' },
         /**
          * Per-item order quantity limits, enforced server-side by

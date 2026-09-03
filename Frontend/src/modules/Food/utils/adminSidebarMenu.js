@@ -79,6 +79,7 @@ export const adminSidebarMenu = [
           { label: "Restaurant Commission", path: "/admin/food/restaurants/commission" },
           { label: "Free Item Offers", path: "/admin/food/restaurants/free-item-offers" },
           { label: "Buy One Get One", path: "/admin/food/restaurants/bogo-offers" },
+      { label: "Combos", path: "/admin/food/restaurants/combos" },
           { label: "Restaurant Reviews", path: "/admin/food/restaurants/reviews" },
           { label: "Restaurant Complaints", path: "/admin/food/restaurants/complaints" },
         ],

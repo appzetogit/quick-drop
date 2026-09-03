@@ -1592,6 +1592,17 @@ export default function OrdersMain() {
             `₹${(item.price || 0).toFixed(2)}`,
             `₹${((item.price || 0) * qty).toFixed(2)}`,
           ]];
+          // A combo is one priced line, but the kitchen has to make several
+          // dishes. List them underneath, unpriced -- the money is on the combo
+          // line above, and a price here would read as an extra charge.
+          for (const part of item.comboComponents || []) {
+            rows.push([
+              `   - ${(part.quantity || 1) * qty} x ${part.name}${part.variantName ? ` (${part.variantName})` : ""}`,
+              "",
+              "",
+              "",
+            ]);
+          }
           for (const addon of item.addons || []) {
             rows.push([
               `   + ${addon.name}`,
@@ -2245,6 +2256,21 @@ export default function OrdersMain() {
                                         ₹{(item.price + (item.addonsTotal || 0)) * item.quantity}
                                       </p>
                                     </div>
+                                    {/* A combo is one line at one price, but several dishes have to
+                                        be made. The parts are listed unpriced -- the money is on the
+                                        line above. */}
+                                    {Array.isArray(item.comboComponents) && item.comboComponents.length > 0 && (
+                                      <ul className="mt-1 space-y-0.5">
+                                        {item.comboComponents.map((part, partIndex) => (
+                                          <li
+                                            key={`${part.itemId || partIndex}-${partIndex}`}
+                                            className="text-xs text-indigo-800">
+                                            - {(part.quantity || 1) * item.quantity} x {part.name}
+                                            {part.variantName ? ` (${part.variantName})` : ""}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
                                     {/* Add-ons chosen for this line. The kitchen needs these
                                         as prominently as the dish itself -- a burger made
                                         without the extra cheese that was paid for comes back. */}

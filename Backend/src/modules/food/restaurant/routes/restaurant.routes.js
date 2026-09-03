@@ -11,6 +11,10 @@ import {
     updateFreebieOfferController,
     getBogoOfferController,
     updateBogoOfferController,
+    listCombosController,
+    createComboController,
+    updateComboController,
+    deleteComboController,
     updateRestaurantProfileController,
     updateRestaurantAcceptingOrdersController,
     updateCurrentRestaurantDiningSettingsController,
@@ -130,6 +134,11 @@ router.get('/freebie-offer', authMiddleware, requireRestaurant, getFreebieOfferC
 router.put('/freebie-offer', authMiddleware, requireRestaurant, updateFreebieOfferController);
 router.get('/bogo-offer', authMiddleware, requireRestaurant, getBogoOfferController);
 router.put('/bogo-offer', authMiddleware, requireRestaurant, updateBogoOfferController);
+// Combos are dishes, so they are managed here rather than under an offers path.
+router.get('/combos', authMiddleware, requireRestaurant, listCombosController);
+router.post('/combos', authMiddleware, requireRestaurant, createComboController);
+router.put('/combos/:comboId', authMiddleware, requireRestaurant, updateComboController);
+router.delete('/combos/:comboId', authMiddleware, requireRestaurant, deleteComboController);
 router.patch('/profile', authMiddleware, requireRestaurant, updateRestaurantProfileController);
 router.delete('/profile/account', authMiddleware, requireRestaurant, deleteCurrentRestaurantAccountController);
 // Same handler under the name quick-commerce uses. The restaurant app serves both

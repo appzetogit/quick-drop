@@ -119,6 +119,21 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
       // Snapshotted per unit, same as the packaging charge above.
       addons,
       addonsTotal,
+      // A combo carries its parts so the kitchen knows what to make. Read from
+      // the menu item, never the request: a client that could name its own
+      // components would be choosing what it gets for the combo price.
+      isCombo: menu.isCombo === true,
+      comboComponents: menu.isCombo === true
+        ? (menu.comboComponents || []).map((c) => ({
+            itemId: String(c.itemId || ''),
+            variantId: c.variantId ? String(c.variantId) : '',
+            quantity: Number(c.quantity) || 1,
+            name: c.nameSnapshot || '',
+            variantName: c.variantNameSnapshot || '',
+            listUnitPrice: Number(c.listUnitPrice) || 0,
+            allocatedLineTotal: Number(c.allocatedLineTotal) || 0,
+          }))
+        : [],
     };
   });
 }
@@ -284,6 +299,11 @@ export async function calculateOrderPricing(userId, dto) {
   let deliveryPartnerIncentivePercent = Math.round((Number(incentiveRule.incentivePercent || 0) * 100)) / 100;
   let deliveryPartnerIncentiveAmount = 0;
   let deliveryPartnerIncentiveEligible = false;
+  // Hoisted: the free-delivery radius rule below is judged on the SAME road
+  // distance the delivery slab was priced from. Re-measuring, or falling back to
+  // a straight line here, would let a customer be charged a hill-road fee and
+  // then assessed against a crow-flies radius. Null means never measured.
+  let measuredDistanceKm = null;
 
   if (mode === 'distance_order_value') {
     const restCoords = extractCoords(restaurant);
@@ -305,6 +325,7 @@ export async function calculateOrderPricing(userId, dto) {
       );
       distanceKm = measured.km;
       distanceSource = measured.source;
+      measuredDistanceKm = measured.km;
       distanceRule = await resolveDistanceRule(distanceKm);
     } else {
       // Fallback: If coordinates are missing, assume base distance (0 km) to apply base delivery fee
@@ -375,6 +396,43 @@ export async function calculateOrderPricing(userId, dto) {
   const orderedMenuItems = Array.isArray(items) ? items : [];
   const allItemsShipFree = orderedMenuItems.length > 0
     && orderedMenuItems.every((line) => line?.freeDelivery === true);
+
+  /*
+   * Platform-funded free delivery: close enough AND spending enough.
+   *
+   * Evaluated before the all-items waiver below so that whichever applies, the
+   * fee is waived once and the breakdown records which rule did it. Both are
+   * absorbed by the platform rather than the restaurant, and neither changes
+   * what the rider is paid.
+   */
+  if (deliveryFee > 0 && !allItemsShipFree) {
+    try {
+      const { qualifiesForFreeDelivery, normalizeFreeDeliveryRule } =
+        await import('../../shared/freeDeliveryRule.js');
+      const rule = normalizeFreeDeliveryRule(feeSettings?.freeDeliveryRule);
+      if (qualifiesForFreeDelivery({ rule, distanceKm: measuredDistanceKm, subtotal })) {
+        const waivedAmount = deliveryFee;
+        deliveryFee = 0;
+        deliveryFeeBreakdown = {
+          ...(deliveryFeeBreakdown || {}),
+          freeDeliveryApplied: true,
+          freeDeliveryReason: 'distance_and_order_value',
+          freeDeliveryRule: {
+            maxDistanceKm: rule.maxDistanceKm,
+            minOrderAmount: rule.minOrderAmount,
+            distanceKm: measuredDistanceKm,
+          },
+          // Kept so the order records what would have been charged, and so
+          // reconciliation can see what the platform absorbed.
+          waivedDeliveryFee: waivedAmount,
+          appliedDeliveryFee: 0,
+        };
+      }
+    } catch (err) {
+      // A broken rule must never block an order; the fee simply stands.
+      console.error('Free delivery rule evaluation failed:', err?.message || err);
+    }
+  }
 
   if (allItemsShipFree && deliveryFee > 0) {
     const waivedAmount = deliveryFee;

@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { ValidationError } from '../../../../core/auth/errors.js';
 
+// Platform-funded free delivery: a radius AND a minimum basket, both required.
+const freeDeliveryRuleSchema = z.object({
+    isEnabled: z.boolean().optional(),
+    maxDistanceKm: z.number().min(0).max(50).optional(),
+    minOrderAmount: z.number().min(0).optional()
+});
+
 const rangeSchema = z.object({
     min: z.number().min(0),
     max: z.number().min(0),
@@ -38,6 +45,7 @@ const feeSettingsUpsertSchema = z.object({
     distanceSlabAdminDeliveryCommission: z.array(distanceSlabAdminDeliveryCommissionSchema).optional(),
     deliveryPartnerIncentiveRule: deliveryPartnerIncentiveRuleSchema.optional(),
     freeDeliveryThreshold: z.number().min(0).nullable().optional(),
+    freeDeliveryRule: freeDeliveryRuleSchema.optional(),
     platformFee: z.number().min(0).nullable().optional(),
     gstRate: z.number().min(0).max(100).nullable().optional(),
     codOrderLimit: z.number().min(0).nullable().optional(),

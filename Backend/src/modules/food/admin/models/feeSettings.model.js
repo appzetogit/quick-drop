@@ -73,6 +73,23 @@ const feeSettingsSchema = new mongoose.Schema(
             }
         },
         freeDeliveryThreshold: { type: Number, min: 0 },
+        /**
+         * Platform-funded free delivery: within `maxDistanceKm` of the customer
+         * AND at or above `minOrderAmount`, the delivery fee is waived. Both
+         * conditions are required.
+         *
+         * Admin-only. The rider is still paid in full and the platform absorbs
+         * the difference, which is why a restaurant cannot set this.
+         *
+         * Off by default. The older `freeDeliveryThreshold` above was stored and
+         * editable but never read by pricing -- this replaces it, and is opt-in
+         * so a stale value cannot start giving deliveries away.
+         */
+        freeDeliveryRule: {
+            isEnabled: { type: Boolean, default: false },
+            maxDistanceKm: { type: Number, min: 0, default: 3 },
+            minOrderAmount: { type: Number, min: 0, default: 300 }
+        },
         platformFee: { type: Number, min: 0 },
         gstRate: { type: Number, min: 0, max: 100 },
         codOrderLimit: { type: Number, min: 0 },
