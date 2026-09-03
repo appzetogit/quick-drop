@@ -207,6 +207,66 @@ export function splitBogoLine(line, freeUnits, offer = {}) {
 }
 
 /**
+ * How close a line is to earning another free unit, or null.
+ *
+ * Powers the "add 1 more and get it free" nudge, which is the whole point of
+ * advertising the offer: a customer holding one pizza is one tap from a second
+ * one costing nothing, and nobody reads a menu badge again once they are in the
+ * cart.
+ *
+ * Deliberately silent on a clean multiple. Someone holding exactly two on a buy
+ * one get one has already taken the offer, and telling them to add two more to
+ * take it again is nagging rather than helping.
+ *
+ * @param {number} quantity  units ordered on this line
+ * @param {object} offer     the configured row, for its ratio
+ * @param {number|null} remainingAllowance  free units this dish may still give
+ *   away on this order AFTER what it has already granted, or null for uncapped.
+ *   A dish that has hit its cap cannot earn another, so it is not offered one.
+ */
+export function describeNextBogoUnits(quantity, offer = {}, remainingAllowance = null) {
+    const qty = toFiniteNumber(quantity);
+    if (qty === null || qty < 1) return null;
+
+    const buyQty = toPositiveInteger(offer?.buyQty ?? DEFAULT_BUY_QTY);
+    const getQty = toPositiveInteger(offer?.getQty ?? DEFAULT_GET_QTY);
+    if (buyQty === null || getQty === null) return null;
+
+    if (remainingAllowance !== null && remainingAllowance !== undefined) {
+        const remaining = toFiniteNumber(remainingAllowance);
+        if (remaining === null || remaining < 1) return null;
+    }
+
+    const groupSize = buyQty + getQty;
+    const remainder = qty % groupSize;
+    if (remainder === 0) return null;
+
+    const freeQuantity = remainingAllowance === null || remainingAllowance === undefined
+        ? getQty
+        : Math.min(getQty, Math.floor(Number(remainingAllowance)));
+    if (freeQuantity < 1) return null;
+
+    return { unitsAway: groupSize - remainder, freeQuantity };
+}
+
+/**
+ * The offer as a badge, or null when the row is unusable.
+ *
+ * Built here rather than in each client so the menu, the dish card and the cart
+ * cannot end up phrasing the same ratio three different ways -- "buy 2 get 1" is
+ * already easy enough to misread as "3 for the price of 1".
+ */
+export function describeBogoOffer(offer) {
+    if (!offer) return null;
+
+    const buyQty = toPositiveInteger(offer?.buyQty ?? DEFAULT_BUY_QTY);
+    const getQty = toPositiveInteger(offer?.getQty ?? DEFAULT_GET_QTY);
+    if (buyQty === null || getQty === null) return null;
+
+    return { buyQty, getQty, label: `Buy ${buyQty} Get ${getQty} Free` };
+}
+
+/**
  * What the customer saved on one split line.
  *
  * The item price only, matching what splitBogoLine actually gave away -- add-ons

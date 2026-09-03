@@ -15,6 +15,8 @@ import {
     computeFreeUnits,
     splitBogoLine,
     describeBogoSaving,
+    describeNextBogoUnits,
+    describeBogoOffer,
     MAX_BOGO_OFFERS,
     DEFAULT_BUY_QTY,
     DEFAULT_GET_QTY,
@@ -214,6 +216,65 @@ check('the saving counts the item price only', () => {
 
 check('nothing free describes no saving', () => {
     assert.equal(describeBogoSaving(line(), 0), null);
+});
+
+// ---- the "add one more" nudge ----------------------------------------------
+check('one unit is one away from a free one', () => {
+    // The nudge that matters: one tap from a second pizza costing nothing.
+    const step = describeNextBogoUnits(1, b1g1);
+    assert.equal(step.unitsAway, 1);
+    assert.equal(step.freeQuantity, 1);
+});
+
+check('a clean multiple is not nagged', () => {
+    // Two on a buy one get one has already taken the offer. Telling them to add
+    // two more to take it again is nagging, not helping.
+    assert.equal(describeNextBogoUnits(2, b1g1), null);
+    assert.equal(describeNextBogoUnits(4, b1g1), null);
+});
+
+check('an odd quantity above the first pair is still one away', () => {
+    assert.equal(describeNextBogoUnits(3, b1g1).unitsAway, 1);
+});
+
+check('buy 2 get 1 counts the distance to the full group', () => {
+    const b2g1 = { buyQty: 2, getQty: 1 };
+    assert.equal(describeNextBogoUnits(1, b2g1).unitsAway, 2);
+    assert.equal(describeNextBogoUnits(2, b2g1).unitsAway, 1);
+    assert.equal(describeNextBogoUnits(3, b2g1), null);
+});
+
+check('a dish that has hit its cap is not offered another', () => {
+    // Otherwise the cart promises a free unit the order would refuse to grant.
+    assert.equal(describeNextBogoUnits(1, b1g1, 0), null);
+});
+
+check('a remaining allowance below the ratio shrinks what is promised', () => {
+    const step = describeNextBogoUnits(1, { buyQty: 1, getQty: 3 }, 2);
+    assert.equal(step.freeQuantity, 2);
+});
+
+check('an uncapped offer promises the full ratio', () => {
+    assert.equal(describeNextBogoUnits(1, b1g1, null).freeQuantity, 1);
+});
+
+check('an empty cart line is not nudged', () => {
+    assert.equal(describeNextBogoUnits(0, b1g1), null);
+});
+
+// ---- the menu badge --------------------------------------------------------
+check('the badge words the classic offer', () => {
+    assert.equal(describeBogoOffer(b1g1).label, 'Buy 1 Get 1 Free');
+});
+
+check('the badge words an uneven ratio', () => {
+    assert.equal(describeBogoOffer({ buyQty: 2, getQty: 1 }).label, 'Buy 2 Get 1 Free');
+});
+
+check('a missing or malformed offer has no badge', () => {
+    assert.equal(describeBogoOffer(null), null);
+    assert.equal(describeBogoOffer(undefined), null);
+    assert.equal(describeBogoOffer({ buyQty: 0, getQty: 1 }), null);
 });
 
 // ---- what the panel may submit ---------------------------------------------

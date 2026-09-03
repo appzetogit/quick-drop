@@ -544,6 +544,12 @@ export async function calculateOrderPricing(userId, dto) {
         totalFreeUnits: bogo.totalFreeUnits,
         savings: bogo.savings,
         lines: bogo.lines,
+        /**
+         * Lines one or more units short of another free one, so the cart can say
+         * "add 1 more and get it free". Same resolution the split above used, so
+         * the cart cannot promise a free unit the order would not grant.
+         */
+        next: bogo.next,
       },
       freebie: {
         earned: freebieTier

@@ -2508,6 +2508,13 @@ function RestaurantDetailsContent() {
 
                               <div className="flex items-center gap-3 mt-1">
                                 <p className="font-semibold text-red-600 dark:text-red-500">{getFoodPriceLabel(item)}</p>
+                                {/* Buy-one-get-one, worded by the server so the menu, the dish card
+                                    and the cart cannot phrase the same ratio three different ways. */}
+                                {item.bogo?.label && (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-400">
+                                    {item.bogo.label}
+                                  </span>
+                                )}
                                 {/* One struck-through figure, chosen server-side between the
                                     restaurant's own pre-discount price and the platform comparison,
                                     so the client never has to decide which. */}
@@ -2769,6 +2776,13 @@ function RestaurantDetailsContent() {
 
                                         <div className="flex items-center gap-3 mt-1">
                                           <p className="font-semibold text-red-600 dark:text-red-500">{getFoodPriceLabel(item)}</p>
+                                          {/* Buy-one-get-one, worded by the server so the menu, the dish card
+                                              and the cart cannot phrase the same ratio three different ways. */}
+                                          {item.bogo?.label && (
+                                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-400">
+                                              {item.bogo.label}
+                                            </span>
+                                          )}
                                           {/* One struck-through figure, chosen server-side between the
                                               restaurant's own pre-discount price and the platform comparison,
                                               so the client never has to decide which. */}

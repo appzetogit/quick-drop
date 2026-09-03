@@ -16,6 +16,15 @@ const buildMenuFromFoods = async (foods = []) => {
     // what checkout will actually enforce. Read once per menu, not per item.
     const quantityCeiling = await getOrderQuantityCeiling();
 
+    // Which dishes are on a buy-one-get-one right now, in one query for the whole
+    // menu. Read here rather than stored on the dish so a run window opening or
+    // closing takes effect without anyone re-saving the item.
+    const { getLiveBogoOffersByItem, describeBogoBadge } =
+        await import('../../shared/bogoOffer.service.js');
+    const bogoOffersByItem = await getLiveBogoOffersByItem(
+        (foods || []).map((food) => food?.restaurantId).filter(Boolean),
+    );
+
     // The other-platform comparison markup, also read once. Applied to each
     // item's selling price at render time rather than stored, so a global price
     // adjustment carries it along automatically.
@@ -104,6 +113,10 @@ const buildMenuFromFoods = async (foods = []) => {
             // resolved boolean so no client re-derives the legacy rule.
             variantsEnabled: food.variantsEnabled !== false,
             showIn99Store: food.showIn99Store === true,
+            // The buy-one-get-one badge, or null. Phrased by the server so the
+            // menu, the dish card and the cart cannot word the same ratio three
+            // different ways.
+            bogo: describeBogoBadge(bogoOffersByItem, food._id),
             freeDelivery: food.freeDelivery === true,
             variations: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants) : [],
             image: food.image || '',

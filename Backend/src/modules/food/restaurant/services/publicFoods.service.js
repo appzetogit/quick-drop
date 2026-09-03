@@ -94,6 +94,13 @@ export async function listPublicFoods(query = {}) {
         .limit(isPromoList ? Math.max(limit, 2000) : limit)
         .lean();
 
+    // Which dishes are on a buy-one-get-one right now. One query for the whole
+    // page rather than one per kitchen on it, and read at render time so a run
+    // window opening or closing takes effect without anyone re-saving the dish.
+    const { getLiveBogoOffersByItem, describeBogoBadge } =
+        await import('../../shared/bogoOffer.service.js');
+    const bogoOffersByItem = await getLiveBogoOffersByItem(restaurantIds);
+
     // One clock for the whole page, so two items cannot straddle a minute boundary.
     const now = new Date();
     const foods = list
@@ -179,6 +186,9 @@ export async function listPublicFoods(query = {}) {
             // Carried through so the shelf filter below can read it, and so the
             // app can badge a dish as part of the Rs 99 store.
             showIn99Store: food.showIn99Store === true,
+            // The buy-one-get-one badge, or null. Phrased by the server so every
+            // surface words the same ratio identically.
+            bogo: describeBogoBadge(bogoOffersByItem, food._id),
             freeDelivery: food.freeDelivery === true,
             preparationTime: food.preparationTime || '',
             approvalStatus: food.approvalStatus || 'approved'

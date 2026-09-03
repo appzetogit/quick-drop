@@ -971,6 +971,9 @@ export default function Cart() {
   // subtracted again here.
   const bogoLines = Array.isArray(pricing?.bogo?.lines) ? pricing.bogo.lines : []
   const bogoSavings = Number(pricing?.bogo?.savings || 0)
+  // Lines a unit or two short of another free one. Server-resolved like the rest,
+  // so the cart cannot promise a free unit the order would refuse to grant.
+  const bogoNext = Array.isArray(pricing?.bogo?.next) ? pricing.bogo.next : []
   const surgeAmount = Number(pricing?.surgeAmount || 0)
   const gstCharges = Number(pricing?.tax ?? 0)
   const discount = pricing?.discount ?? (appliedCoupon ? Math.min(appliedCoupon.discount, subtotal * 0.5) : 0)
@@ -2478,6 +2481,29 @@ export default function Cart() {
                   </div>
                 )}
               </div>
+              {/* "Add 1 more and get it free" -- the whole point of running the
+                  offer. Placed above the recap below because what a customer can
+                  still get is worth more to them than what they already have. */}
+              {bogoNext.length > 0 && (
+                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 md:px-6 py-4">
+                  <p className="text-sm font-bold text-emerald-800 dark:text-emerald-300">
+                    You are one step from a free dish
+                  </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {bogoNext.map((step, index) => (
+                      <li
+                        key={`bogo-next-${step.itemId}-${step.variantName || ''}-${index}`}
+                        className="text-xs text-emerald-900/80 dark:text-emerald-200/80"
+                      >
+                        Add {step.unitsAway} more {step.name}
+                        {step.variantName ? ` (${step.variantName})` : ''} and get{' '}
+                        {step.freeQuantity} free
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* Buy-one-get-one already applied to this cart. Named per line
                   rather than as one total, because "1 free" against a dish is the
                   bit a customer checks; the rupee figure alone reads as a coupon
