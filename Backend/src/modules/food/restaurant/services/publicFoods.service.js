@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { NINETY_NINE_STORE_MAX_PRICE } from '../../shared/ninetyNineStore.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
@@ -25,7 +26,6 @@ const buildCategoryKeywords = (categorySlug) => {
  * here at read time so a dish that later rises above the cap leaves the shelf
  * by itself rather than needing the flag cleared by hand.
  */
-const NINETY_NINE_STORE_MAX_PRICE = 99;
 const UNDER_250_MAX_PRICE = 250;
 
 const qualifiesFor99Store = (food, price) =>
