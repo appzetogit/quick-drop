@@ -45,6 +45,23 @@ const orderItemSchema = new mongoose.Schema(
         freebie: {
             minOrderValue: { type: Number, min: 0, default: 0 },
             rewardType: { type: String, enum: ['item', 'addon'], default: 'item' },
+        },
+        /**
+         * The free half of a buy-one-get-one line, split off the paid half at
+         * pricing time. Stored for the same reasons as isFreebie above -- the
+         * kitchen has to make it, the invoice has to say why it costs nothing, and
+         * support has to be able to tell a granted free unit from a dish somebody
+         * mispriced at zero.
+         *
+         * The paid and free halves are separate lines of the same dish, so an
+         * order showing "Margherita x1 at 200" and "Margherita x1 at 0" is one
+         * customer receiving two pizzas, not a duplicate.
+         */
+        isBogoFree: { type: Boolean, default: false },
+        bogo: {
+            buyQty: { type: Number, min: 1, default: 1 },
+            getQty: { type: Number, min: 1, default: 1 },
+            sourceItemId: { type: String, trim: true, default: '' },
         }
     },
     { _id: false }
@@ -88,6 +105,16 @@ const pricingSchema = new mongoose.Schema(
         surgeAmount: { type: Number, default: 0, min: 0 },
         restaurantCommission: { type: Number, default: 0, min: 0 },
         discount: { type: Number, default: 0, min: 0 },
+        /**
+         * What the buy-one-get-one units were worth.
+         *
+         * Recorded, not deducted: the free units were already split onto
+         * zero-priced lines before `subtotal` was summed, so this is what the
+         * customer saved rather than something still to come off the total.
+         * Stored so an invoice or a report can say so without re-pricing the
+         * order against offers that may since have changed.
+         */
+        bogoSavings: { type: Number, default: 0, min: 0 },
         total: { type: Number, required: true, min: 0 },
         currency: { type: String, default: 'INR' }
     },

@@ -154,6 +154,12 @@ export async function createOrder(userId, dto) {
     // there, and without this the order would be charged as if it had one while
     // saving items that do not include it -- so the kitchen would never see the
     // free dish it is meant to send.
+    //
+    // Buy-one-get-one lines are split there too, into a paid half and a
+    // zero-priced half. Same consequence if they were not adopted, in reverse:
+    // the customer would be charged the split price while the saved order still
+    // showed one full-price line, and nothing downstream would know a unit was
+    // free.
     if (Array.isArray(pricingResult.items) && pricingResult.items.length) {
       dto.items = pricingResult.items;
     }
@@ -174,6 +180,8 @@ export async function createOrder(userId, dto) {
       platformFee: Number(pricingResult.pricing.platformFee ?? 0) || 0,
       surgeAmount: Number(pricingResult.pricing.surgeAmount ?? 0) || 0,
       discount: Number(pricingResult.pricing.discount ?? 0) || 0,
+      // Recorded, not deducted -- the free units are already out of the subtotal.
+      bogoSavings: Number(pricingResult.pricing.bogo?.savings ?? 0) || 0,
       total: Number(pricingResult.pricing.total ?? 0) || 0,
       currency: String(pricingResult.pricing.currency || "INR"),
       couponCode: pricingResult.pricing.couponCode || null,

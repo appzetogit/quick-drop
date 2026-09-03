@@ -21,6 +21,7 @@ import {
 } from '../../shared/packagingCharge.js';
 import { assertFoodAvailableNow } from '../../shared/itemAvailability.js';
 import { resolveFreebieForOrder } from '../../shared/freebieOffer.service.js';
+import { applyBogoToItems } from '../../shared/bogoOffer.service.js';
 import { computeSellingPrice } from '../../shared/itemDiscountPricing.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
@@ -198,11 +199,25 @@ export async function calculateOrderPricing(userId, dto) {
     throw new ValidationError("Restaurant not available");
 
   // Resolve prices from the live menu — never trust client-supplied item prices.
-  const items = await resolveAuthoritativeItems(dto.restaurantId, dto.items);
+  const resolvedItems = await resolveAuthoritativeItems(dto.restaurantId, dto.items);
+
+  // Buy-one-get-one, applied BEFORE the subtotal below rather than as a discount
+  // after it. A qualifying line is split into a paid half and a zero-priced half,
+  // so the free units are simply absent from the sum -- which is what keeps
+  // commission (taken on pricing.subtotal) off food the restaurant gave away, and
+  // keeps the POS payload, which is sent price x quantity per line, agreeing with
+  // what we charged.
+  //
+  // Server-side because the free units are earned by quantity, not chosen: a
+  // client asking for a free dish gets what its own order actually qualifies for.
+  const { items, bogo } = await applyBogoToItems(dto.restaurantId, resolvedItems);
   dto.items = items;
+
   // Add-ons are priced per unit, so they scale with quantity exactly as the item
   // price does. Left out of this sum they would be shown on the order and in the
-  // kitchen but never charged.
+  // kitchen but never charged. Add-ons and packaging ride along on a free
+  // buy-one-get-one unit at their real values, so they are still counted here:
+  // only the item price was given away.
   const subtotal = items.reduce(
     (sum, it) => sum
       + ((Number(it.price) || 0) + (Number(it.addonsTotal) || 0)) * (Number(it.quantity) || 1),
@@ -213,6 +228,10 @@ export async function calculateOrderPricing(userId, dto) {
   // without changing it. Order matters: counting the reward toward the amount
   // that earned it would let a zero-priced line push an order over a threshold
   // it never reached, and on a two-tier ladder that cascades.
+  //
+  // The subtotal it reads is already net of any buy-one-get-one units, which is
+  // the same rule stated the other way round: the threshold is measured on what
+  // the customer PAYS for, and a free second pizza is not paid for.
   //
   // Server-side because the reward is earned, not chosen -- a client asking for
   // a freebie, or for a costlier one than its order earned, gets what the
@@ -513,6 +532,19 @@ export async function calculateOrderPricing(userId, dto) {
        * Jamun". Both come from the same resolution the order itself uses, so the
        * cart cannot promise something the order would not give.
        */
+      /**
+       * Buy-one-get-one, for the cart banner and the order summary.
+       *
+       * DISPLAY ONLY. The saving is already out of `subtotal` above -- the free
+       * units were split onto zero-priced lines before it was summed -- so it is
+       * deliberately absent from the `total` arithmetic. Subtracting it there
+       * would take the same discount twice.
+       */
+      bogo: {
+        totalFreeUnits: bogo.totalFreeUnits,
+        savings: bogo.savings,
+        lines: bogo.lines,
+      },
       freebie: {
         earned: freebieTier
           ? {
