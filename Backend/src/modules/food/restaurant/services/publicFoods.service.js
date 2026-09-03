@@ -186,6 +186,20 @@ export async function listPublicFoods(query = {}) {
             // Carried through so the shelf filter below can read it, and so the
             // app can badge a dish as part of the Rs 99 store.
             showIn99Store: food.showIn99Store === true,
+            // A combo is an ordinary dish to order, but the app has to be able to
+            // say what is inside one. Without these two the customer sees a
+            // cheaper dish and no reason why.
+            isCombo: food.isCombo === true,
+            comboComponents: food.isCombo === true
+                ? (food.comboComponents || []).map((c) => ({
+                    itemId: String(c.itemId || ''),
+                    variantId: c.variantId ? String(c.variantId) : '',
+                    quantity: Number(c.quantity) || 1,
+                    name: c.nameSnapshot || '',
+                    variantName: c.variantNameSnapshot || '',
+                    listUnitPrice: Number(c.listUnitPrice) || 0,
+                }))
+                : [],
             // The buy-one-get-one badge, or null. Phrased by the server so every
             // surface words the same ratio identically.
             bogo: describeBogoBadge(bogoOffersByItem, food._id),
