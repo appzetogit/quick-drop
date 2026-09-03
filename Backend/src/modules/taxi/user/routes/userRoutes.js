@@ -56,7 +56,7 @@ import {
   createPoolingBooking,
   getMyPoolingBookings
 } from '../controllers/poolingController.js';
-import { getAppModules, getGoodsTypes, getPublicRentalVehicleCatalog, getPublicSetPrices, getPublicVehicleTypeCatalog } from '../../admin/controllers/adminController.js';
+import { getAppModules, getGoodsTypes, getPublicRentalVehicleCatalog, getPublicSetPrices, getPublicVehicleTypeCatalog, getRideCancelReasons } from '../../admin/controllers/adminController.js';
 import { triggerUserSosAlert } from '../../safety/controllers/safetyController.js';
 
 export const userRouter = Router();
@@ -64,6 +64,10 @@ export const userRouter = Router();
 userRouter.get('/app-modules', asyncHandler(getAppModules));
 userRouter.get('/intercity-packages', asyncHandler(getIntercityPackageCatalog));
 userRouter.get('/goods-types', asyncHandler(getGoodsTypes));
+// Reasons offered when a rider cancels. Public: the picker has to render even
+// if the session has expired, and the list is not user-specific.
+// `?stage=searching|assigned` narrows it to what makes sense at that point.
+userRouter.get('/cancellation-reasons', asyncHandler(getRideCancelReasons));
 userRouter.get('/vehicle-types', asyncHandler(getPublicVehicleTypeCatalog));
 // Public tariffs. Present pre-merge as userRouter.get('/set-prices'); the
 // rider app has always read fares from here and shows blank prices without it.

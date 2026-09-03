@@ -3,7 +3,6 @@ import { AuthError } from '../../../../core/auth/errors.js';
 import * as adminController from '../controllers/admin.controller.js';
 import * as foodApprovalController from '../controllers/foodApproval.controller.js';
 import * as addonsApprovalController from '../controllers/addonsApproval.controller.js';
-import { getMapSettingsController, updateMapSettingsController } from '../controllers/mapSettings.controller.js';
 import * as businessSettingsController from '../controllers/businessSettings.controller.js';
 import * as feedbackExperienceController from '../controllers/feedbackExperience.controller.js';
 import * as notificationBroadcastController from '../controllers/notificationBroadcast.controller.js';
@@ -19,7 +18,7 @@ router.get('/business-settings/public', businessSettingsController.getBusinessSe
 
 const requireAdmin = (req, _res, next) => {
     const user = req.user;
-    if (!user || (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN')) {
+    if (!user || user.role !== 'ADMIN') {
         return next(new AuthError('Admin access required'));
     }
     return next();
@@ -63,8 +62,6 @@ router.get('/restaurants/reviews', adminController.getRestaurantReviews);
 router.get('/restaurants/:id', adminController.getRestaurantById);
 router.get('/restaurants/:id/analytics', adminController.getRestaurantAnalytics);
 router.get('/restaurants/:id/menu', adminController.getRestaurantMenuById);
-router.get('/restaurants/:id/freebie-offer', adminController.getRestaurantFreebieOffer);
-router.put('/restaurants/:id/freebie-offer', adminController.updateRestaurantFreebieOffer);
 router.post('/restaurants', adminController.createRestaurant);
 router.patch('/restaurants/:id', adminController.updateRestaurantById);
 router.patch('/restaurants/:id/status', adminController.updateRestaurantStatus);
@@ -81,13 +78,6 @@ router.get('/restaurant-commissions/:id', adminController.getRestaurantCommissio
 router.patch('/restaurant-commissions/:id', adminController.updateRestaurantCommission);
 router.delete('/restaurant-commissions/:id', adminController.deleteRestaurantCommission);
 router.patch('/restaurant-commissions/:id/toggle', adminController.toggleRestaurantCommissionStatus);
-// Dated overrides of the standing rate above -- festive weeks, promotions, a
-// renegotiated month. Declared after the :id routes so "schedules" is not
-// swallowed as an id.
-router.get('/commission-schedules', adminController.listCommissionSchedules);
-router.post('/commission-schedules', adminController.createCommissionSchedule);
-router.patch('/commission-schedules/:id', adminController.updateCommissionSchedule);
-router.delete('/commission-schedules/:id', adminController.deleteCommissionSchedule);
 
 // ----- Categories -----
 router.get('/categories', adminController.getCategories);
@@ -100,19 +90,10 @@ router.patch('/categories/:id/reject', adminController.rejectCategory);
 router.patch('/categories/:id/make-global', adminController.makeCategoryGlobal);
 
 // ----- Restaurant Add-ons Approval -----
-// Google Maps key — consumed by every frontend via /api/v1/env/public.
-router.get('/map-settings', getMapSettingsController);
-router.patch('/map-settings', updateMapSettingsController);
-
-// Also served under /item-extras: ad blockers kill any XHR whose path contains
-// "addons" (ERR_BLOCKED_BY_CLIENT), which left the admin list silently empty.
-['/addons', '/item-extras'].forEach((base) => {
-    router.get(base, addonsApprovalController.getRestaurantAddons);
-    router.patch(`${base}/:id`, addonsApprovalController.updateRestaurantAddon);
-    router.patch(`${base}/:id/approve`, addonsApprovalController.approveRestaurantAddon);
-    router.patch(`${base}/:id/reject`, addonsApprovalController.rejectRestaurantAddon);
-    router.delete(`${base}/:id`, addonsApprovalController.deleteRestaurantAddon);
-});
+router.get('/addons', addonsApprovalController.getRestaurantAddons);
+router.patch('/addons/:id', addonsApprovalController.updateRestaurantAddon);
+router.patch('/addons/:id/approve', addonsApprovalController.approveRestaurantAddon);
+router.patch('/addons/:id/reject', addonsApprovalController.rejectRestaurantAddon);
 
 // ----- Foods -----
 router.get('/foods', adminController.getFoods);
@@ -124,12 +105,6 @@ router.get('/foods/pending-approvals', foodApprovalController.getPendingFoodAppr
 router.patch('/foods/:id/approve', foodApprovalController.approveFoodItemController);
 router.patch('/foods/:id/reject', foodApprovalController.rejectFoodItemController);
 router.post('/foods/bulk-approve', adminController.bulkApproveFoodItems);
-
-// ----- Global Menu Price Adjustment -----
-router.get('/price-adjustments', adminController.getPriceAdjustments);
-router.get('/price-adjustments/preview', adminController.getPriceAdjustmentPreview);
-router.post('/price-adjustments', adminController.applyPriceAdjustment);
-router.post('/price-adjustments/:id/revert', adminController.revertPriceAdjustment);
 
 
 // ----- Offers & Coupons -----
@@ -209,7 +184,6 @@ router.get('/delivery/partners', adminController.getDeliveryPartners);
 router.get('/delivery/:id', adminController.getDeliveryPartnerById);
 router.patch('/delivery/:id/approve', adminController.approveDeliveryPartner);
 router.patch('/delivery/:id/reject', adminController.rejectDeliveryPartner);
-router.patch('/delivery/:id/capabilities', adminController.updateDeliveryPartnerCapabilities);
 
 // ----- Zones -----
 router.get('/zones', adminController.getZones);

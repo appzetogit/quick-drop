@@ -197,12 +197,11 @@ export function validateDispatchSettingsDto(body) {
     return result.data;
 }
 
-export function validateOrderRatingsDto(body) {
+/** The other direction: the delivery partner rating the customer after handover. */
+export function validateCustomerRatingDto(body) {
     const schema = z.object({
-        restaurantRating: z.number().min(1).max(5),
-        deliveryPartnerRating: z.number().min(1).max(5).optional(),
-        restaurantComment: z.string().max(500).optional(),
-        deliveryPartnerComment: z.string().max(500).optional()
+        rating: z.number().min(1).max(5),
+        comment: z.string().max(500).optional()
     });
     const result = schema.safeParse(body || {});
     if (!result.success) {
@@ -211,11 +210,12 @@ export function validateOrderRatingsDto(body) {
     return result.data;
 }
 
-/** The other direction: the delivery partner rating the customer after handover. */
-export function validateCustomerRatingDto(body) {
+export function validateOrderRatingsDto(body) {
     const schema = z.object({
-        rating: z.number().min(1).max(5),
-        comment: z.string().max(500).optional()
+        restaurantRating: z.number().min(1).max(5),
+        deliveryPartnerRating: z.number().min(1).max(5).optional(),
+        restaurantComment: z.string().max(500).optional(),
+        deliveryPartnerComment: z.string().max(500).optional()
     });
     const result = schema.safeParse(body || {});
     if (!result.success) {

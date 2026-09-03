@@ -1,5 +1,4 @@
 import { config, isOriginAllowed } from './config/env.js';
-import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -15,20 +14,6 @@ import { healthCheck } from './config/health.js';
 
 
 const app = express();
-
-// Service-Provider (Homster) came in as a CJS app whose Mongoose models reject
-// explicit nulls, so its integration added a global null-stripper. Global was too
-// wide: every other vertical uses null to mean "clear this field", and having it
-// deleted before the controller ran made those saves no-ops that still reported
-// success -- e.g. an earning add-on could never be set back to unlimited
-// redemptions. Scoped to the paths that actually needed it.
-const SP_NULL_STRIP_PREFIXES = [
-    '/api/v1/sp',
-    '/api/users', '/api/user', '/api/vendors', '/api/workers', '/api/bookings',
-    '/api/scrap', '/api/image', '/api/public'
-];
-
-const needsNullStrip = (p) => SP_NULL_STRIP_PREFIXES.some((x) => p === x || p.startsWith(`${x}/`));
 
 const stripNullsDeep = (value) => {
     if (Array.isArray(value)) {
@@ -55,10 +40,7 @@ app.use(requestIdMiddleware);
 app.get('/health', async (_req, res) => {
     try {
         const data = await healthCheck();
-        // DEGRADED stays 200 so the instance keeps serving traffic while monitoring
-        // alerts on it; only DOWN (no MongoDB) is a non-2xx, which is what the
-        // post-deploy gate polls for.
-        res.status(data.status === 'DOWN' ? 503 : 200).json(data);
+        res.status(200).json(data);
     } catch (err) {
         res.status(503).json({ status: 'DOWN', error: 'Health check failed' });
     }
@@ -66,35 +48,6 @@ app.get('/health', async (_req, res) => {
 app.get('/ready', (_req, res) => {
     res.status(200).json({ status: 'ready' });
 });
-
-/**
- * Uploaded images.
- *
- * In production nginx serves this path straight off disk and never reaches
- * Node; this handler is the fallback that makes local dev work and keeps the
- * site serving if the nginx location block is ever missing — which is exactly
- * how food images broke before (URLs pointed at /uploads, nothing served it).
- *
- * Mounted ahead of helmet and the body parsers deliberately: these are plain
- * image bytes, so they need neither, and helmet's default same-origin resource
- * policy would block the Flutter app and any cross-origin admin build from
- * loading them. Filenames are content-random and never reused, so the long
- * immutable cache is safe.
- */
-app.use(
-    '/uploads',
-    (_req, res, next) => {
-        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        next();
-    },
-    express.static(path.resolve(config.uploadStorageRoot), {
-        maxAge: '1y',
-        immutable: true,
-        index: false,
-        fallthrough: false
-    })
-);
 
 // Security & parsing middlewares
 app.use(helmet({
@@ -131,25 +84,12 @@ app.use((req, _res, next) => {
     req.body = mongoSanitize(req.body);
     req.query = mongoSanitize(req.query);
     req.params = mongoSanitize(req.params);
-    if (needsNullStrip(req.path)) {
-        req.body = stripNullsDeep(req.body);
-        req.query = stripNullsDeep(req.query);
-        req.params = stripNullsDeep(req.params);
-    }
+    req.body = stripNullsDeep(req.body);
+    req.query = stripNullsDeep(req.query);
+    req.params = stripNullsDeep(req.params);
     next();
 });
-
-// xss-clean HTML-escapes every string in the body. That is right for the whole API
-// except the CMS pages, whose `content` field is stored as HTML by design and
-// rendered with dangerouslySetInnerHTML. Escaping it turned an admin's saved markup
-// into visible tags, and because each save re-escaped the previous one, the damage
-// compounded on every edit. Admin-only and role-gated, so the exemption is narrow.
-const xssCleanMiddleware = xssClean();
-const CMS_HTML_PATH = /\/admin\/pages-social-media\//;
-app.use((req, res, next) => {
-    if (CMS_HTML_PATH.test(req.path)) return next();
-    return xssCleanMiddleware(req, res, next);
-});
+app.use(xssClean());
 
 // Global rate limiting for API routes
 app.use('/api', apiRateLimiter);

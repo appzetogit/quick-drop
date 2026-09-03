@@ -4,25 +4,8 @@ import { FoodRestaurant } from '../models/restaurant.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
-import { formatOrderQuantityLimits } from '../../shared/orderQuantityRules.js';
-import { resolveItemPackagingAmount } from '../../shared/packagingCharge.js';
-import { describeTodaysWindow, isFoodAvailableNow } from '../../shared/itemAvailability.js';
-import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
-import { resolveItemDisplayPricing } from '../../shared/itemDiscountPricing.js';
-import { normalizeOtherPlatformSettings, resolveComparisonPrice, resolveItemOtherPlatformPrice } from '../../shared/otherPlatformPricing.js';
 
 const buildMenuFromFoods = async (foods = []) => {
-    // Admin-configurable platform cap, so the limits the seller UI shows match
-    // what checkout will actually enforce. Read once per menu, not per item.
-    const quantityCeiling = await getOrderQuantityCeiling();
-
-    // The other-platform comparison markup, also read once. Applied to each
-    // item's selling price at render time rather than stored, so a global price
-    // adjustment carries it along automatically.
-    const { FoodFeeSettings } = await import('../../admin/models/feeSettings.model.js');
-    const feeDoc = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
-    const otherPlatform = normalizeOtherPlatformSettings(feeDoc || {});
-
     const categoryIds = Array.from(
         new Set(
             (foods || [])
@@ -69,43 +52,8 @@ const buildMenuFromFoods = async (foods = []) => {
             name: food.name,
             description: food.description || '',
             price: getFoodDisplayPrice(food),
-            // MRP + the discount it implies, so the seller sees what the customer sees.
-            // Base price, discount and the strike price to render. The item form
-            // sends these, so they have to come back or the fields hydrate blank and
-            // the next save writes the blanks over what the restaurant set.
-            ...(() => {
-                const display = resolveItemDisplayPricing({ ...food, price: getFoodDisplayPrice(food) });
-                // Per-item figure wins over the blanket markup; see
-                // shared/otherPlatformPricing.js for why.
-                const otherPlatformPrice = resolveItemOtherPlatformPrice(
-                    { ...food, price: display.price },
-                    otherPlatform,
-                );
-                const comparison = resolveComparisonPrice({
-                    price: display.price,
-                    basePrice: display.basePrice,
-                    otherPlatformPrice,
-                    label: otherPlatform.label,
-                });
-                return { ...display, otherPrice: Number(food.otherPrice) || 0, otherPlatformPrice, ...comparison };
-            })(),
-            // Which add-ons this dish offers, so the editor can show the picker
-            // pre-filled and the app can offer only the relevant ones.
-            addonIds: (food.addonIds || []).map((x) => String(x)),
-            // Variant rows are withheld while the toggle is off. They stay in the
-            // database on purpose -- switching variants off is meant to be
-            // reversible -- but serving them let clients price from a row the
-            // dish is not sold by. Missi Roti sells for 50 with variants off and
-            // still carried a 26.52 'half' row, so the app advertised 26.52 for a
-            // dish that charges 50.
-            variants: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants) : [],
-            // The toggle, tri-state on old rows: absent means "sell by variants if"
-            // "any exist", which is what those rows always did. Serialised as the
-            // resolved boolean so no client re-derives the legacy rule.
-            variantsEnabled: food.variantsEnabled !== false,
-            showIn99Store: food.showIn99Store === true,
-            freeDelivery: food.freeDelivery === true,
-            variations: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants) : [],
+            variants: serializeFoodVariants(food.variants),
+            variations: serializeFoodVariants(food.variants),
             image: food.image || '',
             foodType: food.foodType || 'Non-Veg',
             isActive: food.isActive !== false,
@@ -117,19 +65,8 @@ const buildMenuFromFoods = async (foods = []) => {
             approvedAt: food.approvedAt,
             rejectedAt: food.rejectedAt,
             preparationTime: food.preparationTime || '',
-            ...formatOrderQuantityLimits(food, quantityCeiling),
-            packagingCharge: {
-                isEnabled: food?.packagingCharge?.isEnabled === true,
-                amount: resolveItemPackagingAmount(food)
-            },
-            // Serving window, so the menu editor can show what is stored and the
-            // dashboard can mark an item as outside its hours right now.
-            availabilitySchedule: food.availabilitySchedule || null,
-            isAvailableNow: isFoodAvailableNow(food),
-            // The hours themselves, so a dish shown as unavailable can say when it
-            // will be. Without this the customer is told no, but not when to come
-            // back. Empty for items with no schedule, which is most of them.
-            availabilityWindowLabel: describeTodaysWindow(food.availabilitySchedule),
+            minQtyPerOrder: food.minQtyPerOrder ?? null,
+            maxQtyPerOrder: food.maxQtyPerOrder ?? null,
             createdAt: food.createdAt,
             updatedAt: food.updatedAt
         });

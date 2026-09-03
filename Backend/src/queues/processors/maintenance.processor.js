@@ -16,7 +16,7 @@ export const processMaintenanceJob = async (job) => {
 
     if (type === 'FSSAI_EXPIRY_CHECK') {
         try {
-            const { syncExpiredFssaiNotifications } = await import('../../modules/food/restaurant/services/fssaiExpiry.service.js');
+            const { syncExpiredFssaiNotifications } = await import('../../../modules/food/restaurant/services/fssaiExpiry.service.js');
             const results = await syncExpiredFssaiNotifications();
             logger.info(`[BullMQ:maintenance] FSSAI_EXPIRY_CHECK complete. Total Expired: ${results.totalExpired}, Notifications: ${results.createdCount}`);
         } catch (err) {

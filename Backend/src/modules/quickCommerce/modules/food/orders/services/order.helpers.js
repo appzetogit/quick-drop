@@ -7,7 +7,7 @@ import {
   sendNotificationToOwner,
   sendNotificationToOwners,
 } from "../../../../core/notifications/firebase.service.js";
-import { getIO, rooms } from '../../../../config/socket.js';
+import { getIO, rooms } from '../../../../../../config/socket.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
 
 export function enqueueOrderEvent(action, payload = {}) {

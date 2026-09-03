@@ -76,51 +76,6 @@ const feeSettingsSchema = new mongoose.Schema(
         platformFee: { type: Number, min: 0 },
         gstRate: { type: Number, min: 0, max: 100 },
         codOrderLimit: { type: Number, min: 0 },
-        /**
-         * Platform-wide ceiling on how many of one item may be in a single order.
-         *
-         * An item's own maxOrderQuantity still applies and is the tighter of the
-         * two; this is the cap that holds when an item sets none (0). Was a hard
-         * constant of 99 in shared/orderQuantityRules.js, which stays the default
-         * and the fallback whenever this is unset, so behaviour is unchanged until
-         * an admin sets it. Minimum of 1 -- a ceiling of 0 would make every item
-         * unorderable.
-         */
-        maxOrderQuantityCeiling: { type: Number, min: 1, max: 9999 },
-        // Who owns the food packaging charge, and how much it is when admin owns it.
-        // RESTAURANT mode reads the per-unit charge off each menu item instead
-        // (see FoodItem.packagingCharge and shared/packagingCharge.js).
-        packagingCharge: {
-            type: new mongoose.Schema(
-                {
-                    isEnabled: { type: Boolean, default: false },
-                    mode: { type: String, enum: ['ADMIN', 'RESTAURANT'], default: 'ADMIN' },
-                    /** Flat charge added once per order in ADMIN mode. */
-                    adminChargePerOrder: { type: Number, min: 0, default: 0 }
-                },
-                { _id: false }
-            ),
-            default: () => ({})
-        },
-        /**
-         * The struck-through "what you'd pay elsewhere" figure, as a markup over
-         * our selling price rather than a number typed per dish.
-         *
-         * Derived on read, which is what makes it follow a global price
-         * adjustment: raise every menu price and this rises with them, with no
-         * stored value that can fall out of step. See shared/otherPlatformPricing.js.
-         */
-        otherPlatformPrice: {
-            type: new mongoose.Schema(
-                {
-                    isEnabled: { type: Boolean, default: false },
-                    markupPercent: { type: Number, min: 0, max: 300, default: 0 },
-                    label: { type: String, trim: true, default: 'Other platforms' }
-                },
-                { _id: false }
-            ),
-            default: () => ({})
-        },
         isActive: { type: Boolean, default: true, index: true }
     },
     { collection: 'food_fee_settings', timestamps: true }

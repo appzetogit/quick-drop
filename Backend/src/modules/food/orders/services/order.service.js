@@ -149,14 +149,6 @@ export async function createOrder(userId, dto) {
     if (!pricingResult?.pricing) {
       throw new ValidationError("Unable to calculate order pricing from fee settings");
     }
-
-    // Adopt the lines pricing actually used. A spend-threshold reward is appended
-    // there, and without this the order would be charged as if it had one while
-    // saving items that do not include it -- so the kitchen would never see the
-    // free dish it is meant to send.
-    if (Array.isArray(pricingResult.items) && pricingResult.items.length) {
-      dto.items = pricingResult.items;
-    }
     const normalizedPricing = {
       subtotal: Number(pricingResult.pricing.subtotal ?? computedSubtotal) || 0,
       tax: Number(pricingResult.pricing.tax ?? 0) || 0,
@@ -373,7 +365,7 @@ export async function createOrder(userId, dto) {
         body: isAwaitingOnlinePayment
           ? `Order #${order.order_id || order._id} is created. Please complete payment to send it to ${restaurant.restaurantName || "the restaurant"}.`
           : `Your order #${order.order_id || order._id} from ${restaurant.restaurantName || "the restaurant"} has been placed successfully.`,
-        image: "https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png",
+        image: "https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png",
         data: {
           type: isAwaitingOnlinePayment ? "order_created_pending_payment" : "order_created",
           orderId: String(order._id),
@@ -505,7 +497,7 @@ export async function verifyPayment(userId, dto) {
   await notifyOwnersSafely([{ ownerType: "USER", ownerId: userId }], {
     title: "Payment Successful! ✅",
     body: `We have received your payment of ₹${order.payment.amountDue} for Order #${order._id.toString()}.`,
-    image: "https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png",
+    image: "https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png",
     data: {
       type: "payment_success",
       orderId: String(order._id.toString()),
@@ -856,7 +848,7 @@ export async function cancelOrder(orderId, userId, reason) {
     {
       title: "Order Cancelled ❌",
       body: `Order #${order.order_id || order._id} has been cancelled successfully.${refundDetail}`,
-      image: "https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png",
+      image: "https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png",
       data: {
         type: "order_cancelled",
         orderId: String(order._id.toString()),
@@ -1187,7 +1179,7 @@ export async function updateOrderStatusRestaurant(
       {
         title: title,
         body: body,
-        image: "https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png",
+        image: "https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png",
         data: {
           type: "order_status_update",
           orderId: order._id.toString(),

@@ -72,6 +72,7 @@ const buildMenuFromFoods = async (foods = []) => {
             // no threshold to read and flagged every product at a hardcoded 10
             // regardless of what the seller had set.
             lowStockThreshold: food.lowStockThreshold ?? null,
+            minQtyPerOrder: food.minQtyPerOrder ?? null,
             maxQtyPerOrder: food.maxQtyPerOrder ?? null,
             brand: food.brand || '',
             packSize: food.packSize || '',

@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { getFirebaseDB } from '../../../../config/firebase.js';
-import { getIO, rooms } from '../../../../config/socket.js';
+import { getIO, rooms } from '../../../../../../config/socket.js';
 import {
     NotFoundError,
     ValidationError

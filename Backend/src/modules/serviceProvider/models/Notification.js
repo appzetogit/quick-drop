@@ -72,24 +72,6 @@ const notificationSchema = new mongoose.Schema({
       'scrap_accepted',
       'scrap_completed',
       'vendor_withdrawal_request',
-
-      // Types the controllers actually emit that were missing here. A value
-      // absent from this enum does not raise anything to the caller:
-      // createNotification catches the validation error and logs it, so the
-      // notification is simply dropped. That silently cost the customer the
-      // 'professional accepted' and 'work started' alerts, and cost workers
-      // and vendors every earnings and withdrawal alert.
-      'worker_accepted',
-      'worker_approved',
-      'work_started',
-      'earnings_credited',
-      'withdrawal_requested',
-      'withdrawal_approved',
-      'withdrawal_rejected',
-      'vendor_approval_request',
-      'vendor_settlement_request',
-      'vendor_cash_limit_exceeded',
-
       'general'
     ],
     index: true

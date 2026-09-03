@@ -31,6 +31,14 @@ import {
     updateHomePromotionBannerOrderController
 } from '../controllers/homePromotionBanner.controller.js';
 import {
+    listHomeHeaderVideosController,
+    createHomeHeaderVideoController,
+    deleteHomeHeaderVideoController,
+    toggleHomeHeaderVideoStatusController,
+    getPublicHomeHeaderVideoController
+} from '../controllers/homeHeaderVideo.controller.js';
+import { uploadHeaderMedia } from '../middleware/uploadHeaderMedia.js';
+import {
     getAdminLandingSettingsController,
     updateAdminLandingSettingsController
 } from '../controllers/landingSettings.controller.js';
@@ -116,6 +124,16 @@ router.delete('/hero-banners/home-promotion/:id', deleteHomePromotionBannerContr
 router.patch('/hero-banners/home-promotion/:id/status', toggleHomePromotionBannerStatusController);
 router.patch('/hero-banners/home-promotion/:id/order', updateHomePromotionBannerOrderController);
 
+// Admin Home Header Video (animated GIF background behind the home-screen header)
+router.get('/hero-banners/home-header-video', listHomeHeaderVideosController);
+router.post(
+    '/hero-banners/home-header-video',
+    uploadHeaderMedia.single('file'),
+    createHomeHeaderVideoController
+);
+router.delete('/hero-banners/home-header-video/:id', deleteHomeHeaderVideoController);
+router.patch('/hero-banners/home-header-video/:id/status', toggleHomeHeaderVideoStatusController);
+
 // Admin Explore More (icons)
 router.get('/hero-banners/landing/explore-more', listExploreMoreController);
 router.post(
@@ -145,6 +163,7 @@ router.get('/hero-banners/under-250/public', getPublicUnder250BannersController)
 router.get('/hero-banners/dining/public', getPublicDiningBannersController);
 router.get('/explore-icons/public', getPublicExploreIconsController);
 router.get('/hero-banners/home-promotion/public', getPublicHomePromotionBannersController);
+router.get('/hero-banners/home-header-video/public', getPublicHomeHeaderVideoController);
 router.get('/hero-banners/gourmet/public', getPublicGourmetController);
 router.get('/landing/settings/public', getPublicLandingSettingsController);
 router.get('/zones/detect', detectZonePublicController);

@@ -96,6 +96,10 @@ const restaurantRegisterSchema = z.object({
     gstAddress: z.string().optional(),
     fssaiNumber: z.string().optional(),
     fssaiExpiry: z.string().optional(),
+    storeType: z.string().optional(),
+    drugLicenseNumber: z.string().optional(),
+    drugLicenseExpiry: z.string().optional(),
+    drugLicenseImage: z.string().optional(), // pre-uploaded image URL, mirrors fssaiImage
     accountNumber: z.string().optional(),
     ifscCode: z.string().optional(),
     accountHolderName: z.string().optional(),

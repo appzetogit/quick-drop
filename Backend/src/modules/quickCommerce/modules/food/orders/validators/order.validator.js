@@ -142,6 +142,62 @@ export function validateCreateOrderDto(body) {
     return result.data;
 }
 
+export function validateCreatePrescriptionOrderDto(body) {
+    const schema = z.object({
+        restaurantId: z.string().min(1, 'Pharmacy id required'),
+        prescriptionImage: z.string().min(1, 'Prescription photo required'),
+        address: addressSchema,
+        customerName: z.string().optional(),
+        customerPhone: z.string().optional(),
+        note: z.string().max(300).optional()
+    });
+    const result = schema.safeParse(body);
+    if (!result.success) {
+        const msg = result.error.errors?.[0]?.message || 'Validation failed';
+        throw new ValidationError(msg);
+    }
+    return result.data;
+}
+
+export function validateReviewPrescriptionDto(body) {
+    const schema = z
+        .object({
+            status: z.enum(['approved', 'rejected']),
+            reason: z.string().optional()
+        })
+        .refine((data) => data.status !== 'rejected' || !!String(data.reason || '').trim(), {
+            message: 'A reason is required to reject a prescription',
+            path: ['reason']
+        });
+    const result = schema.safeParse(body);
+    if (!result.success) {
+        const msg = result.error.errors?.[0]?.message || 'Validation failed';
+        throw new ValidationError(msg);
+    }
+    return result.data;
+}
+
+export function validateFillPrescriptionOrderDto(body) {
+    const schema = z.object({
+        items: z
+            .array(
+                z.object({
+                    name: z.string().min(1, 'Medicine name required'),
+                    price: z.number().min(0),
+                    quantity: z.number().int().min(1),
+                    packSize: z.string().optional()
+                })
+            )
+            .min(1, 'Add at least one medicine')
+    });
+    const result = schema.safeParse(body);
+    if (!result.success) {
+        const msg = result.error.errors?.[0]?.message || 'Validation failed';
+        throw new ValidationError(msg);
+    }
+    return result.data;
+}
+
 export function validateVerifyPaymentDto(body) {
     const schema = z.object({
         orderId: z.string().min(1, 'Order id required'),

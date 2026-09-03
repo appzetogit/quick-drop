@@ -3,9 +3,6 @@ import { FoodUser } from '../../../../core/users/user.model.js';
 import { FoodUserCart } from '../models/userCart.model.js';
 import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js';
 import { calculateOrderPricing } from '../../orders/services/order-pricing.service.js';
-import { FoodItem } from '../../admin/models/food.model.js';
-import { clampOrderQuantity, resolveOrderQuantityRules } from '../../shared/orderQuantityRules.js';
-import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 
 const toPositiveInt = (value, fallback = 1) => {
     const parsed = Number(value);
@@ -158,78 +155,26 @@ async function enrichStoredCartPricing(cart, storedPricing) {
     }
 }
 
-/**
- * Pull cart quantities into the limits the menu actually allows.
- *
- * Clamped rather than refused, deliberately. This endpoint mirrors client state,
- * so throwing would make a cart that is already over the limit -- because an
- * admin lowered the ceiling, or the restaurant tightened an item -- impossible to
- * load or edit. Clamping corrects it and hands back what changed, so the client
- * can say so instead of silently showing a different number.
- *
- * Checkout re-checks all of this against the database regardless; this is here so
- * the customer is told at the moment they add, not at payment.
- *
- * Items no longer on the menu are left untouched: removing someone's cart line as
- * a side effect of a sync is worse than letting checkout refuse it with a reason.
- *
- * @returns {Promise<{ items: Array, adjustments: Array<{itemId: string, name: string, requested: number, allowed: number}> }>}
- */
-const applyCartQuantityLimits = async (items = []) => {
-    const ids = [...new Set(items.map((i) => String(i.itemId || '')).filter(Boolean))]
-        .filter((id) => mongoose.Types.ObjectId.isValid(id));
-    if (ids.length === 0) return { items, adjustments: [] };
-
-    const [menuItems, ceiling] = await Promise.all([
-        FoodItem.find({ _id: { $in: ids } }).select('_id name minOrderQuantity maxOrderQuantity').lean(),
-        getOrderQuantityCeiling(),
-    ]);
-    const byId = new Map(menuItems.map((m) => [String(m._id), m]));
-
-    const adjustments = [];
-    const next = items.map((item) => {
-        const menu = byId.get(String(item.itemId || ''));
-        if (!menu) return item;
-
-        const rules = resolveOrderQuantityRules(menu, ceiling);
-        const allowed = clampOrderQuantity(item.quantity, rules);
-        if (allowed === item.quantity) return item;
-
-        adjustments.push({
-            itemId: String(item.itemId),
-            name: item.name || menu.name || 'Item',
-            requested: item.quantity,
-            allowed,
-        });
-        return { ...item, quantity: allowed };
-    });
-
-    return { items: next, adjustments };
-};
-
 export async function syncUserCart(userId, rawItems = [], rawPricing = null) {
     if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) {
         throw new ValidationError('Invalid user');
     }
 
     const userObjectId = new mongoose.Types.ObjectId(String(userId));
-    const normalized = normalizeCartItems(rawItems);
+    const items = normalizeCartItems(rawItems);
 
-    if (normalized.length === 0) {
+    if (items.length === 0) {
         await FoodUserCart.deleteOne({ userId: userObjectId });
         return null;
     }
 
-    // Per-item limits and the platform ceiling, applied before anything is stored
-    // so the totals below are computed from quantities the menu actually permits.
-    const { items, adjustments } = await applyCartQuantityLimits(normalized);
-
+    const firstItem = items[0];
     const rawFirst = Array.isArray(rawItems) ? rawItems[0] : null;
     const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const pricing = normalizePricingSnapshot(rawPricing);
 
-    const saved = await FoodUserCart.findOneAndUpdate(
+    return FoodUserCart.findOneAndUpdate(
         { userId: userObjectId },
         {
             userId: userObjectId,
@@ -244,10 +189,6 @@ export async function syncUserCart(userId, rawItems = [], rawPricing = null) {
         },
         { upsert: true, new: true, setDefaultsOnInsert: true },
     ).lean();
-
-    // Present only when something was pulled into range, so a client can show a
-    // message without having to diff what it sent against what came back.
-    return adjustments.length ? { ...saved, quantityAdjustments: adjustments } : saved;
 }
 
 const buildSearchUserIds = async (search = '') => {

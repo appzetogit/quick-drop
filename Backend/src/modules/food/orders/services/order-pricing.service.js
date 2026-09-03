@@ -9,22 +9,9 @@ import { FoodDeliveryCommissionRule } from '../../admin/models/deliveryCommissio
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
-import { resolveDeliveryDistanceKm } from './deliveryDistance.service.js';
-import {
-    assertOrderQuantity,
-    resolveOrderQuantityRules
-} from '../../shared/orderQuantityRules.js';
-import {
-    computeFoodPackagingFee,
-    normalizePackagingConfig,
-    resolveItemPackagingAmount
-} from '../../shared/packagingCharge.js';
-import { assertFoodAvailableNow } from '../../shared/itemAvailability.js';
-import { resolveFreebieForOrder } from '../../shared/freebieOffer.service.js';
-import { computeSellingPrice } from '../../shared/itemDiscountPricing.js';
-import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
-import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
-import { loadSellableAddons, normalizeRequestedAddonIds, resolveLineAddons } from '../../shared/orderAddons.js';
+import { haversineKm } from './order.helpers.js';
+
+const MAX_ITEM_QTY = 50;
 
 /**
  * Resolves order items against the restaurant's live menu and returns copies with
@@ -46,62 +33,35 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
   const menuItems = await FoodItem.find({ _id: { $in: ids }, restaurantId }).lean();
   const byId = new Map(menuItems.map((m) => [String(m._id), m]));
 
-  // Admin-configurable platform cap, read once for the whole order rather than
-  // per line -- it is the same value for every item and the map below is sync.
-  const quantityCeiling = await getOrderQuantityCeiling();
-
-  // Add-ons for every line, fetched in one query and validated per line below.
-  // Loaded from the published records, so the price charged is the approved one
-  // and never whatever the client sent.
-  const requestedAddonsByLine = list.map((it) => normalizeRequestedAddonIds(it));
-  const allAddonIds = [...new Set(requestedAddonsByLine.flat())];
-  const addonsById = await loadSellableAddons(FoodAddon, restaurantId, allAddonIds);
-
-  return list.map((it, index) => {
+  return list.map((it) => {
     const menu = byId.get(String(it?.itemId || ''));
     if (!menu) throw new ValidationError('One or more items are not available at this restaurant');
     if (menu.isActive === false || menu.isAvailable === false || menu.approvalStatus !== 'approved') {
       throw new ValidationError(`"${menu.name}" is currently unavailable`);
     }
 
-    // Per-item serving window, e.g. breakfast only until 11:30. Checked against
-    // the restaurant's wall clock, not the server's UTC one.
-    assertFoodAvailableNow(menu);
+    const qty = Number(it?.quantity);
+    if (!Number.isInteger(qty) || qty < 1 || qty > MAX_ITEM_QTY) {
+      throw new ValidationError(`Invalid quantity for "${menu.name}" (1-${MAX_ITEM_QTY} allowed)`);
+    }
 
-    // Per-item min/max set by the restaurant, with the platform ceiling as fallback.
-    const qty = assertOrderQuantity(it?.quantity, resolveOrderQuantityRules(menu, quantityCeiling), menu.name);
+    const minQty = Number(menu.minQtyPerOrder);
+    if (Number.isFinite(minQty) && minQty > 1 && qty < minQty) {
+      throw new ValidationError(`You must order at least ${minQty} of "${menu.name}"`);
+    }
+    const maxQty = Number(menu.maxQtyPerOrder);
+    if (Number.isFinite(maxQty) && maxQty > 0 && qty > maxQty) {
+      throw new ValidationError(`You can order at most ${maxQty} of "${menu.name}"`);
+    }
 
     let price = Number(menu.price);
     let variantName = '';
-    // A dish switched off variants keeps them stored but sells at its base
-    // price. A variantId can still arrive -- a cart line added before the
-    // toggle flipped -- and is ignored rather than refused, so a stale cart
-    // gets charged the base price instead of failing at checkout. Rows written
-    // before the flag existed have it undefined, which does NOT mean off:
-    // for them, having variants means selling by variants, as it always did.
-    const sellsByVariants = menu.variantsEnabled !== false;
-    const chosenVariantId = sellsByVariants ? (it?.variantId || null) : null;
-    if (chosenVariantId) {
-      const variant = (menu.variants || []).find((v) => String(v._id) === String(chosenVariantId));
+    if (it?.variantId) {
+      const variant = (menu.variants || []).find((v) => String(v._id) === String(it.variantId));
       if (!variant) throw new ValidationError(`Selected option for "${menu.name}" is not available`);
-      // The item's discount is a single percentage that applies to whichever
-      // option is chosen, so a variant is charged from its own price less that
-      // discount. Taking variant.price raw would have billed the large size at
-      // full price while the menu advertised it as discounted.
-      price = computeSellingPrice(variant.price, menu.discountPercent) ?? Number(variant.price);
+      price = Number(variant.price);
       variantName = variant.name;
     }
-
-    // Add-ons the dish actually offers, priced from the published record. The
-    // chosen variant is passed too: an add-on may be attached to one size only,
-    // and without this a variant-only add-on would be refused on the very
-    // variant it belongs to.
-    const { addons, addonsTotal } = resolveLineAddons(
-      menu,
-      requestedAddonsByLine[index],
-      addonsById,
-      chosenVariantId,
-    );
 
     return {
       ...it,
@@ -110,14 +70,6 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
       price,
       quantity: qty,
       variantName: variantName || it?.variantName || '',
-      // Per-unit packaging charge, stamped from the DB item — never client input.
-      foodPackagingCharge: resolveItemPackagingAmount(menu),
-      // Read from the menu, never the request: a client that could send
-      // this would waive its own delivery fee.
-      freeDelivery: menu.freeDelivery === true,
-      // Snapshotted per unit, same as the packaging charge above.
-      addons,
-      addonsTotal,
     };
   });
 }
@@ -200,29 +152,10 @@ export async function calculateOrderPricing(userId, dto) {
   // Resolve prices from the live menu — never trust client-supplied item prices.
   const items = await resolveAuthoritativeItems(dto.restaurantId, dto.items);
   dto.items = items;
-  // Add-ons are priced per unit, so they scale with quantity exactly as the item
-  // price does. Left out of this sum they would be shown on the order and in the
-  // kitchen but never charged.
   const subtotal = items.reduce(
-    (sum, it) => sum
-      + ((Number(it.price) || 0) + (Number(it.addonsTotal) || 0)) * (Number(it.quantity) || 1),
+    (sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
     0,
   );
-
-  // Spend-threshold reward, resolved AFTER the subtotal above and appended
-  // without changing it. Order matters: counting the reward toward the amount
-  // that earned it would let a zero-priced line push an order over a threshold
-  // it never reached, and on a two-tier ladder that cascades.
-  //
-  // Server-side because the reward is earned, not chosen -- a client asking for
-  // a freebie, or for a costlier one than its order earned, gets what the
-  // subtotal actually entitles it to.
-  const { line: freebieLine, tier: freebieTier, nextTier: freebieNextTier } =
-    await resolveFreebieForOrder(dto.restaurantId, subtotal);
-  if (freebieLine) {
-    items.push(freebieLine);
-    dto.items = items;
-  }
 
   const feeDoc = await FoodFeeSettings.findOne({ isActive: true })
     .sort({ createdAt: -1 })
@@ -239,10 +172,7 @@ export async function calculateOrderPricing(userId, dto) {
     }
   };
 
-  const { packagingFee } = computeFoodPackagingFee({
-    items,
-    config: normalizePackagingConfig(feeDoc),
-  });
+  const packagingFee = 0;
   const configuredPlatformFee = Number(feeSettings.platformFee);
   const platformFee = (!Number.isFinite(configuredPlatformFee) || configuredPlatformFee < 0)
     ? 0
@@ -272,20 +202,11 @@ export async function calculateOrderPricing(userId, dto) {
     
     let distanceRule = null;
     let distanceKm = 0;
-    let distanceSource = 'unknown';
-
+    
     if (restCoords && customerCoords) {
       const [rLng, rLat] = restCoords;
       const [cLng, cLat] = customerCoords;
-      // Road distance, not straight line. The rider follows the road, and in
-      // hill terrain the two differ by a factor of two -- which put orders in
-      // a cheaper slab than the trip they actually paid for.
-      const measured = await resolveDeliveryDistanceKm(
-        { lat: rLat, lng: rLng },
-        { lat: cLat, lng: cLng },
-      );
-      distanceKm = measured.km;
-      distanceSource = measured.source;
+      distanceKm = haversineKm(rLat, rLng, cLat, cLng);
       distanceRule = await resolveDistanceRule(distanceKm);
     } else {
       // Fallback: If coordinates are missing, assume base distance (0 km) to apply base delivery fee
@@ -319,8 +240,6 @@ export async function calculateOrderPricing(userId, dto) {
         deliveryFeeBreakdown = {
           source: 'distance_slab',
           distanceKm: Math.round(Number(distanceKm || 0) * 100) / 100,
-          // Recorded so a disputed fee can be traced to how it was measured.
-          distanceSource,
           distanceRuleId: String(distanceRule._id),
           distanceRange: {
             minDistance,
@@ -338,36 +257,6 @@ export async function calculateOrderPricing(userId, dto) {
           feeSource: isBaseSlab ? 'distance_base_slab' : 'distance_non_base_slab'
         };
       }
-  }
-
-  /**
-   * Free-delivery dishes waive the fee, but only when the whole order is made of
-   * them.
-   *
-   * Waiving as soon as any one such dish is present would make the flag a
-   * loophole: add the cheapest free-delivery item to any basket and the delivery
-   * is free on everything. Requiring all of them keeps the promise honest -- the
-   * dish ships free, not everything it is ordered alongside.
-   *
-   * The rider is still paid: only what the customer is charged is waived, which
-   * is why riderDeliveryEarningAfterAdminCommission is left untouched and the
-   * platform absorbs the difference. That is also why this is admin-only.
-   */
-  const orderedMenuItems = Array.isArray(items) ? items : [];
-  const allItemsShipFree = orderedMenuItems.length > 0
-    && orderedMenuItems.every((line) => line?.freeDelivery === true);
-
-  if (allItemsShipFree && deliveryFee > 0) {
-    const waivedAmount = deliveryFee;
-    deliveryFee = 0;
-    deliveryFeeBreakdown = {
-      ...(deliveryFeeBreakdown || {}),
-      freeDeliveryApplied: true,
-      // Kept so the order records what would have been charged, and so
-      // reconciliation can see what the platform absorbed.
-      waivedDeliveryFee: waivedAmount,
-      appliedDeliveryFee: 0,
-    };
   }
 
   const incentiveThreshold = Math.round((Number(incentiveRule.minOrderAmount || 0) * 100)) / 100;
@@ -477,13 +366,6 @@ export async function calculateOrderPricing(userId, dto) {
   );
 
   return {
-    /**
-     * The lines this pricing was computed from, including any freebie appended
-     * above. Returned rather than mutated onto the caller's dto: createOrder
-     * passes a spread copy here, so a mutation would be invisible to it and the
-     * reward would be priced but never saved on the order.
-     */
-    items,
     pricing: {
       subtotal,
       tax,
@@ -505,31 +387,6 @@ export async function calculateOrderPricing(userId, dto) {
       currency: "INR",
       couponCode: appliedCoupon?.code || codeRaw || null,
       appliedCoupon,
-      /**
-       * The spend-threshold reward, for the cart and the order summary.
-       *
-       * `earned` is what this order qualified for; `next` is the nearest tier it
-       * has not reached, so a cart can say "add Rs.40 more for a free Gulab
-       * Jamun". Both come from the same resolution the order itself uses, so the
-       * cart cannot promise something the order would not give.
-       */
-      freebie: {
-        earned: freebieTier
-          ? {
-              minOrderValue: freebieTier.minOrderValue,
-              rewardType: freebieTier.rewardType,
-              name: freebieLine?.name || '',
-            }
-          : null,
-        next: freebieNextTier
-          ? {
-              minOrderValue: freebieNextTier.minOrderValue,
-              amountAway: freebieNextTier.amountAway,
-              rewardType: freebieNextTier.rewardType,
-              name: freebieNextTier.rewardName || '',
-            }
-          : null,
-      },
     },
   };
 }

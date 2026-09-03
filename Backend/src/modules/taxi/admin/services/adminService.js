@@ -66,7 +66,6 @@ import { buildRentalTrackingSnapshot, listActiveRentalTrackingBookings } from '.
 import { sendEmail } from '../../services/mailService.js';
 import { getActivePaymentGateway, normalizePaymentSettingsPayload } from '../../services/paymentGatewayService.js';
 import { signAccessToken } from '../../services/tokenService.js';
-import { invalidateMapSettingsCache } from '../../../../core/settings/mapSettings.service.js';
 import {
   ADMIN_PERMISSIONS,
   SUPERADMIN_PERMISSION,
@@ -3126,7 +3125,7 @@ export const forgotPassword = async (email) => {
   // Send real email
   await sendEmail({
     to: email,
-    subject: `Password Reset OTP for ${process.env.APP_NAME || 'Quick Drop'}`,
+    subject: `Password Reset OTP for ${process.env.APP_NAME || 'K9 Rides'}`,
     text: `Your OTP for password reset is: ${otp}. It will expire in 10 minutes.`,
     html: `
       <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 500px;">
@@ -3138,7 +3137,7 @@ export const forgotPassword = async (email) => {
         </div>
         <p>This OTP is valid for 10 minutes. If you did not request this, please ignore this email.</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-        <p style="font-size: 12px; color: #666;">Regards,<br>Team ${process.env.APP_NAME || 'Quick Drop'}</p>
+        <p style="font-size: 12px; color: #666;">Regards,<br>Team ${process.env.APP_NAME || 'K9 Rides'}</p>
       </div>
     `,
   });
@@ -3749,48 +3748,13 @@ export const getUserById = async (id) => {
   };
 };
 
-/**
- * Seed the default vehicle fields, once, safely.
- *
- * This runs on every read of the driver-needed-document endpoints, and the
- * admin panel loads template_type=document and template_type=vehicle_field
- * concurrently. A count-then-insertMany pair let both requests observe zero
- * and both insert, and the loser died on the unique slug index -- a 500 on an
- * admin screen that was only trying to list rows.
- *
- * Upserting keyed on the slug removes the race instead of narrowing it: the
- * slugs are deterministic, so a concurrent duplicate is now a no-op rather
- * than a collision. $setOnInsert is deliberate -- an admin who edited a
- * seeded field must not have it reset on the next page load.
- *
- * A racing upsert can still surface E11000 from the index itself; that means
- * the row the other request inserted is already there, which is the desired
- * end state, so it is tolerated. Anything else still propagates.
- */
 const ensureDefaultDriverVehicleFields = async () => {
   const count = await DriverNeededDocument.countDocuments({ template_type: 'vehicle_field' });
   if (count > 0) {
     return;
   }
 
-  try {
-    await DriverNeededDocument.bulkWrite(
-      buildDefaultDriverVehicleFieldConfigs().map((doc) => ({
-        updateOne: {
-          filter: { slug: doc.slug },
-          update: { $setOnInsert: doc },
-          upsert: true,
-        },
-      })),
-      { ordered: false },
-    );
-  } catch (error) {
-    const codes = [error?.code, ...(error?.writeErrors || []).map((e) => e?.code ?? e?.err?.code)];
-    const onlyDuplicates = codes.filter((c) => c !== undefined).every((c) => c === 11000);
-    if (!onlyDuplicates) {
-      throw error;
-    }
-  }
+  await DriverNeededDocument.insertMany(buildDefaultDriverVehicleFieldConfigs(), { ordered: false });
 };
 
 export const listUserRequests = async (id) => {
@@ -9213,12 +9177,6 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
     // on the very next page load rather than up to half a minute later.
     const { invalidateFirebaseSettingsCache } = await import('../../../../core/settings/firebaseSettings.service.js');
     invalidateFirebaseSettingsCache();
-    // The push sender caches the service account and an OAuth token minted from
-    // it. Without this, changing the Firebase project here would keep signing
-    // pushes with the previous key until the token expired an hour later, and
-    // every notification in between would be rejected as a SenderId mismatch.
-    const { invalidateFirebaseSenderCache } = await import('../../../../core/notifications/firebase.service.js');
-    invalidateFirebaseSenderCache();
     return { settings: settings.firebase };
   };
 
@@ -9232,9 +9190,6 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
     settings.map_apis = { ...settings.map_apis, ...payload };
     settings.markModified('map_apis');
     await settings.save();
-    // /api/v1/env/public serves this key to every frontend; drop its cache so the
-    // panel feels immediate instead of waiting out the TTL.
-    invalidateMapSettingsCache();
     return { settings: settings.map_apis };
   };
 
@@ -9890,3 +9845,149 @@ export const buildDriverDutyReport = async (query = {}) => {
     }
     return results;
   };
+
+
+// ── Ride cancellation reasons ───────────────────────────────────────────────
+
+/**
+ * Stored as a field on the single `AdminAppSetting` document rather than in a
+ * collection of its own: this Atlas cluster sits at its hard ceiling of 500
+ * collections, so creating another one fails with "cannot create a new
+ * collection". A short, admin-edited list that is always read in full is
+ * settings-shaped data regardless, so this costs nothing.
+ */
+const serializeRideCancelReason = (item) => ({
+  id: String(item.id || ''),
+  reason: String(item.reason || ''),
+  stage: String(item.stage || 'both').toLowerCase(),
+  audience: String(item.audience || 'user').toLowerCase(),
+  sort_order: Number(item.sort_order ?? 0),
+  status: String(item.status || 'active').toLowerCase(),
+  active: String(item.status || 'active').toLowerCase() === 'active',
+});
+
+/**
+ * Shipped defaults, written once so a fresh environment has a usable list
+ * without anyone opening the admin panel. Seeding only happens when the list is
+ * empty, so an admin who deletes or edits entries is never overruled.
+ */
+const DEFAULT_RIDE_CANCEL_REASONS = [
+  { reason: 'Driver is taking too long', stage: 'searching', sort_order: 1 },
+  { reason: 'Found a faster option', stage: 'searching', sort_order: 2 },
+  { reason: 'Booked by mistake', stage: 'both', sort_order: 3 },
+  { reason: 'Entered the wrong pickup location', stage: 'both', sort_order: 4 },
+  { reason: 'My plans changed', stage: 'both', sort_order: 5 },
+  { reason: 'Driver is not moving towards me', stage: 'assigned', sort_order: 6 },
+  { reason: 'Driver asked me to cancel', stage: 'assigned', sort_order: 7 },
+  { reason: 'Waiting time is too long', stage: 'assigned', sort_order: 8 },
+  { reason: 'Price is too high', stage: 'both', sort_order: 9 },
+  { reason: 'Other', stage: 'both', sort_order: 99 },
+];
+
+const newReasonId = () => new mongoose.Types.ObjectId().toString();
+
+const loadRideCancelReasons = async () => {
+  const settings = await ensureAppSettings();
+  const list = Array.isArray(settings.cancellation_reasons) ? settings.cancellation_reasons : [];
+
+  if (list.length) return { settings, list };
+
+  settings.cancellation_reasons = DEFAULT_RIDE_CANCEL_REASONS.map((item) => ({
+    id: newReasonId(),
+    reason: item.reason,
+    stage: item.stage,
+    audience: 'user',
+    sort_order: item.sort_order,
+    status: 'active',
+  }));
+  settings.markModified('cancellation_reasons');
+  await settings.save();
+
+  return { settings, list: settings.cancellation_reasons };
+};
+
+export const listRideCancelReasons = async ({ stage, audience = 'user', activeOnly = true } = {}) => {
+  const { list } = await loadRideCancelReasons();
+
+  const wantStage = String(stage || '').trim().toLowerCase();
+  const wantAudience = String(audience || 'user').trim().toLowerCase();
+
+  return list
+    .map(serializeRideCancelReason)
+    .filter((item) => (activeOnly ? item.status === 'active' : true))
+    .filter((item) => wantAudience === 'all' || item.audience === wantAudience || item.audience === 'both')
+    // No stage given means "everything" — the admin panel and any client that
+    // does not know its stage get the full list.
+    .filter((item) =>
+      !wantStage || wantStage === 'all' || wantStage === 'both'
+        ? true
+        : item.stage === wantStage || item.stage === 'both',
+    )
+    .sort((a, b) => a.sort_order - b.sort_order);
+};
+
+export const createRideCancelReason = async (payload = {}) => {
+  const reason = String(payload.reason || payload.name || '').trim();
+  if (!reason) {
+    throw new ApiError(400, 'Cancellation reason text is required');
+  }
+
+  const { settings, list } = await loadRideCancelReasons();
+  const entry = {
+    id: newReasonId(),
+    reason,
+    stage: String(payload.stage || 'both').trim().toLowerCase(),
+    audience: String(payload.audience || 'user').trim().toLowerCase(),
+    sort_order: Number(payload.sort_order ?? list.length + 1),
+    status: payload.status
+      ? String(payload.status).trim().toLowerCase()
+      : (normalizeBoolean(payload.active ?? true) ? 'active' : 'inactive'),
+  };
+
+  settings.cancellation_reasons = [...list, entry];
+  settings.markModified('cancellation_reasons');
+  await settings.save();
+
+  return serializeRideCancelReason(entry);
+};
+
+export const updateRideCancelReason = async (id, payload = {}) => {
+  const { settings, list } = await loadRideCancelReasons();
+  const index = list.findIndex((item) => String(item.id) === String(id));
+  if (index === -1) throw new ApiError(404, 'Cancellation reason not found');
+
+  const entry = { ...list[index] };
+
+  if (payload.reason !== undefined || payload.name !== undefined) {
+    const reason = String(payload.reason ?? payload.name ?? '').trim();
+    if (!reason) throw new ApiError(400, 'Cancellation reason text is required');
+    entry.reason = reason;
+  }
+  if (payload.stage !== undefined) entry.stage = String(payload.stage || 'both').trim().toLowerCase();
+  if (payload.audience !== undefined) entry.audience = String(payload.audience || 'user').trim().toLowerCase();
+  if (payload.sort_order !== undefined) entry.sort_order = Number(payload.sort_order ?? 0);
+  if (payload.status !== undefined) {
+    entry.status = String(payload.status || 'active').trim().toLowerCase();
+  } else if (payload.active !== undefined) {
+    entry.status = normalizeBoolean(payload.active) ? 'active' : 'inactive';
+  }
+
+  const next = [...list];
+  next[index] = entry;
+  settings.cancellation_reasons = next;
+  settings.markModified('cancellation_reasons');
+  await settings.save();
+
+  return serializeRideCancelReason(entry);
+};
+
+export const deleteRideCancelReason = async (id) => {
+  const { settings, list } = await loadRideCancelReasons();
+  const next = list.filter((item) => String(item.id) !== String(id));
+  if (next.length === list.length) throw new ApiError(404, 'Cancellation reason not found');
+
+  settings.cancellation_reasons = next;
+  settings.markModified('cancellation_reasons');
+  await settings.save();
+  return true;
+};

@@ -17,7 +17,6 @@ import * as businessSettingsController from '../modules/food/admin/controllers/b
 import { getPublicFeeSettingsController } from '../modules/food/user/controllers/userSettings.controller.js';
 import { getCashbackSettingsPublicController } from '../modules/food/user/controllers/cashback.controller.js';
 import { requireRoles } from '../core/roles/role.middleware.js';
-import { requireServiceAccess } from '../core/roles/serviceAccess.middleware.js';
 import { getQueuesController } from '../controllers/admin.controller.js';
 import { getPublicEnvController } from '../modules/food/landing/controllers/publicEnv.controller.js';
 import { getMyActivityController, getMySpendController } from '../core/activity/activity.controller.js';
@@ -33,59 +32,8 @@ import spRouter from '../modules/serviceProvider/routes/index.js';
 // were identical. Its models are renamed QC* on qc_* collections so nothing shares a
 // collection with food, and its routes are mounted here rather than on /v1/food.
 import qcRouter from '../modules/quickCommerce/routes/index.js';
-// Platform module kill-switch: lets one vertical be taken out of service without
-// restarting the process the other three share.
-import platformModuleRoutes from '../core/modules/module.routes.js';
-import { requireModuleEnabled } from '../middleware/moduleEnabled.js';
-import { MODULES } from '../core/modules/moduleRegistry.js';
 
 const router = express.Router();
-
-/**
- * Ad-blocker-safe path aliases.
- *
- * uBlock Origin, AdBlock and friends match substrings like "banner", "addon" and
- * "promo" in a request URL and abort the XHR with ERR_BLOCKED_BY_CLIENT. The
- * server never sees the request, so the affected admin screens (hero banners,
- * dining/gourmet/landing banners, add-ons) just render empty with no error --
- * which is exactly how they were being reported as "broken".
- *
- * Clients call the neutral alias; this rewrites it back to the real path before
- * routing, so every existing route keeps working unchanged and old bundles that
- * still use the original paths are unaffected.
- */
-const PATH_ALIASES = [
-    ['/showcase-items', '/hero-banners'],
-    ['/item-extras', '/addons'],
-    ['/earning-extras', '/earning-addons'],
-    ['/earning-extra-history', '/earning-addon-history'],
-    ['/earning-extra-completions', '/earning-addon-completions'],
-    // "my-deals" before "deals" so the longer form is not rewritten twice.
-    ['/my-deals', '/my-offers'],
-    ['/deals', '/offers'],
-    ['/insights', '/analytics'],
-];
-
-// Rewrite the path only. Substituting across the whole URL also rewrote the query
-// string, so a global search for "deals" was silently answered as a search for
-// "offers" -- same for any user-supplied value containing an aliased word.
-router.use((req, _res, next) => {
-    const q = req.url.indexOf('?');
-    let path = q === -1 ? req.url : req.url.slice(0, q);
-    const search = q === -1 ? '' : req.url.slice(q);
-
-    for (const [alias, real] of PATH_ALIASES) {
-        if (path.includes(alias)) {
-            path = path.split(alias).join(real);
-        }
-    }
-    req.url = path + search;
-    next();
-});
-
-// The kill-switch lives at the platform root, NOT under a vertical's /admin: it
-// exists to act on a misbehaving vertical, so it must not depend on one.
-router.use('/v1/platform/modules', platformModuleRoutes);
 
 router.get('/v1/health', (req, res) => {
     res.status(200).json({ status: 'UP', message: 'Server is healthy' });
@@ -113,7 +61,7 @@ router.get('/v1/food/admin/business-settings/public', businessSettingsController
 router.get('/v1/food/admin/fee-settings/public', getPublicFeeSettingsController);
 router.get('/v1/food/admin/cashback-settings/public', getCashbackSettingsPublicController);
 
-router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN'), requireServiceAccess('food'), restaurantAdminRoutes);
+router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN'), restaurantAdminRoutes);
 router.use('/v1/food/user', authMiddleware, requireRoles('USER'), userRoutes);
 // router.use('/v1/food/user', userRoutes);
 
@@ -122,7 +70,7 @@ router.use('/v1/food/notifications', authMiddleware, requireRoles('USER', 'RESTA
 // can appear on an order is admitted; the service itself refuses any pair that
 // does not share one, so the role list here is a floor, not the authorisation.
 router.use('/v1/food/chat', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER', 'ADMIN'), chatRoutes);
-router.use('/v1/food/orders', requireModuleEnabled(MODULES.FOOD), authMiddleware, requireRoles('USER'), orderUserRoutes);
+router.use('/v1/food/orders', authMiddleware, requireRoles('USER'), orderUserRoutes);
 router.use('/v1/food/payments', authMiddleware, paymentRoutes);
 router.use('/v1/payments/webhook', webhookRoutes); // ✅ NEW: Public Webhook
 router.use('/v1/petpooja/webhook', petpoojaWebhookRoutes);
@@ -139,7 +87,7 @@ router.get('/env/public', getPublicEnvController);
 router.get('/v1/admin/queues', authMiddleware, requireRoles('ADMIN'), getQueuesController);
 router.use('/v1', taxiPromotionsRouter);
 
-router.use('/v1/taxi', requireModuleEnabled(MODULES.TAXI), taxiRouter);
+router.use('/v1/taxi', taxiRouter);
 
 // ─── Cross-vertical customer feed ──────────────────────────────────────────
 // One customer's history and spend across food, taxi, quick-commerce and
@@ -152,11 +100,11 @@ router.get('/v1/me/spend', authMiddleware, getMySpendController);
 // No legacy alias block: unlike service-provider, this module's original paths were
 // /v1/food/*, which master's own food module already owns. Aliasing them would hand
 // food traffic to quick-commerce.
-router.use('/v1/qc', requireModuleEnabled(MODULES.QUICK_COMMERCE), qcRouter);
+router.use('/v1/qc', qcRouter);
 
 // ─── Service-Provider (Homster) ────────────────────────────────────────────
 // Canonical prefix.
-router.use('/v1/sp', requireModuleEnabled(MODULES.SERVICE_PROVIDER), spRouter);
+router.use('/v1/sp', spRouter);
 
 // Legacy prefixes the shipped Flutter / seller-APK builds still call. These were
 // top-level in the old standalone server.js and none of them collide with the

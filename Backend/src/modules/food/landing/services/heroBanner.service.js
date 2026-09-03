@@ -1,8 +1,5 @@
 import { FoodHeroBanner } from '../models/heroBanner.model.js';
-import {
-    uploadMediaBufferDetailed,
-    deleteStoredAsset,
-} from '../../../../services/cloudinary.service.js';
+import { v2 as cloudinary } from 'cloudinary';
 
 export const listHeroBanners = async () => {
     return FoodHeroBanner.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
@@ -17,21 +14,20 @@ export const createHeroBannersFromFiles = async (files, meta = {}) => {
 
     for (const file of files) {
         try {
-            // Media, not image: a hero banner may be a video, and the home page
-            // renders <video> instead of <img> based on the resource type
-            // recorded below. The store sniffs the buffer and writes video
-            // through untouched.
-            const uploadResult = await uploadMediaBufferDetailed(
-                file.buffer,
-                'food/hero-banners',
-            );
+            const uploadResult = await new Promise((resolve, reject) => {
+                const stream = cloudinary.uploader.upload_stream(
+                    { folder: 'food/hero-banners', resource_type: 'image' },
+                    (error, result) => {
+                        if (error) return reject(error);
+                        return resolve(result);
+                    }
+                );
+                stream.end(file.buffer);
+            });
 
             const banner = await FoodHeroBanner.create({
                 imageUrl: uploadResult.secure_url,
                 publicId: uploadResult.public_id,
-                // Recorded at upload so deletion can target the right resource
-                // type; Cloudinary cannot infer it from the public id alone.
-                resourceType: uploadResult.resource_type === 'video' ? 'video' : 'image',
                 title: meta.title,
                 ctaText: meta.ctaText,
                 ctaLink: meta.ctaLink,
@@ -42,14 +38,7 @@ export const createHeroBannersFromFiles = async (files, meta = {}) => {
 
             results.push({ success: true, banner: banner.toObject() });
         } catch (error) {
-            // Cloudinary rejects with a bare string or a plain object as often as
-            // with an Error, so error.message alone reports "undefined" to the admin
-            // and hides why the upload failed.
-            const reason =
-                typeof error === 'string'
-                    ? error
-                    : error?.message || error?.error?.message || 'Upload failed';
-            results.push({ success: false, error: reason });
+            results.push({ success: false, error: error.message });
         }
     }
 
@@ -63,8 +52,11 @@ export const deleteHeroBanner = async (id) => {
     }
 
     if (doc.publicId) {
-        // Best-effort: a missing file must not block deleting the record.
-        await deleteStoredAsset(doc.publicId);
+        try {
+            await cloudinary.uploader.destroy(doc.publicId);
+        } catch {
+            // ignore cloudinary deletion errors to avoid blocking deletion
+        }
     }
 
     await doc.deleteOne();

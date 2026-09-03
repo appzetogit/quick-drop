@@ -153,6 +153,11 @@ export async function resolveOrderCartItems(restaurantId, rawItems = []) {
         throw new ValidationError(`You can order at most ${cap} of ${foodDoc.name}`);
       }
 
+      const minCap = Number(foodDoc.minQtyPerOrder);
+      if (Number.isFinite(minCap) && minCap > 1 && quantity < minCap) {
+        throw new ValidationError(`You must order at least ${minCap} of ${foodDoc.name}`);
+      }
+
       const onHand = foodDoc.stockQty;
       if (onHand !== null && onHand !== undefined && Number(onHand) < quantity) {
         throw new ValidationError(

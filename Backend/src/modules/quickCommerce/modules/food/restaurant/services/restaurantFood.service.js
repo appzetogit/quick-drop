@@ -212,6 +212,9 @@ const buildAvailabilityUpdate = (body = {}) => {
     const lowStockThreshold = parseStockNumber(body.lowStockThreshold);
     if (lowStockThreshold !== undefined) update.lowStockThreshold = lowStockThreshold;
 
+    const minQtyPerOrder = parseStockNumber(body.minQtyPerOrder, { min: 1 });
+    if (minQtyPerOrder !== undefined) update.minQtyPerOrder = minQtyPerOrder;
+
     const maxQtyPerOrder = parseStockNumber(body.maxQtyPerOrder, { min: 1 });
     if (maxQtyPerOrder !== undefined) update.maxQtyPerOrder = maxQtyPerOrder;
 
@@ -377,6 +380,7 @@ export async function updateRestaurantFoodStock(restaurantId, entries = []) {
             const { update, unset } = buildAvailabilityUpdate({
                 stockQty: entry?.stockQty,
                 lowStockThreshold: entry?.lowStockThreshold,
+                minQtyPerOrder: entry?.minQtyPerOrder,
                 maxQtyPerOrder: entry?.maxQtyPerOrder,
                 ...(entry?.isAvailable !== undefined ? { isAvailable: entry.isAvailable } : {})
             });
@@ -394,7 +398,7 @@ export async function updateRestaurantFoodStock(restaurantId, entries = []) {
                 },
                 { new: true }
             )
-                .select('_id name stockQty lowStockThreshold maxQtyPerOrder isAvailable')
+                .select('_id name stockQty lowStockThreshold minQtyPerOrder maxQtyPerOrder isAvailable')
                 .lean();
 
             if (!doc) {
@@ -466,6 +470,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         // who never enters a count keeps the old always-in-stock behaviour.
         stockQty: parseStockNumber(body.stockQty) ?? undefined,
         lowStockThreshold: parseStockNumber(body.lowStockThreshold) ?? undefined,
+        minQtyPerOrder: parseStockNumber(body.minQtyPerOrder, { min: 1 }) ?? undefined,
         maxQtyPerOrder: parseStockNumber(body.maxQtyPerOrder, { min: 1 }) ?? undefined,
         ...catalogFields,
         isRecommended: body.isRecommended === true,

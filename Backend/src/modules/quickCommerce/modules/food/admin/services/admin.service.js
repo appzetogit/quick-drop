@@ -18,12 +18,6 @@ import { FoodItem } from '../models/food.model.js';
 import { FoodOffer } from '../models/offer.model.js';
 import { FoodOfferUsage } from '../models/offerUsage.model.js';
 import { DeliveryBonusTransaction } from '../models/deliveryBonusTransaction.model.js';
-import {
-    assertMedicalOnboarding,
-    mergeStoreTypeUpdate,
-    normalizeDrugLicenceInput,
-    normalizeStoreTypeInput,
-} from '../../shared/storeType.js';
 import { FoodEarningAddon } from '../models/earningAddon.model.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
@@ -3117,25 +3111,6 @@ export async function updateRestaurantById(id, body = {}) {
     if (body.fssaiNumber !== undefined) doc.fssaiNumber = toStr(body.fssaiNumber);
     if (body.fssaiExpiry !== undefined) doc.fssaiExpiry = body.fssaiExpiry ? new Date(body.fssaiExpiry) : undefined;
 
-    // Store type + drug licence. Merged over what is stored before being checked, so
-    // an update cannot turn a grocery into a pharmacy simply by omitting the licence,
-    // and an existing pharmacy editing an unrelated field is not asked to resend one.
-    {
-        const storeType = normalizeStoreTypeInput(body.storeType);
-        const drugLicence = normalizeDrugLicenceInput(body);
-        if (storeType !== undefined || drugLicence !== undefined) {
-            const resolved = mergeStoreTypeUpdate(doc, {
-                ...(storeType !== undefined ? { storeType } : {}),
-                ...(drugLicence || {}),
-            });
-            assertMedicalOnboarding(resolved);
-            doc.storeType = resolved.storeType;
-            doc.drugLicenseNumber = resolved.drugLicenseNumber;
-            doc.drugLicenseImage = resolved.drugLicenseImage;
-            doc.drugLicenseExpiry = resolved.drugLicenseExpiry;
-        }
-    }
-
     // Bank Details
     if (body.accountNumber !== undefined) doc.accountNumber = toStr(body.accountNumber);
     if (body.ifscCode !== undefined) doc.ifscCode = toStr(body.ifscCode);
@@ -3849,10 +3824,6 @@ export async function getFoods(query) {
         description: f.description || '',
         price: getFoodDisplayPrice(f),
         otherPrice: getFoodDisplayOtherPrice(f),
-        // The admin food form is shared with the food vertical and sends mrp, so
-        // it has to come back or the field renders blank and the next save clears
-        // what the seller set.
-        mrp: f.mrp ?? null,
         variants: serializeFoodVariants(f.variants),
         variations: serializeFoodVariants(f.variants),
         image: f.image || '',
@@ -4053,6 +4024,7 @@ function buildAdminCatalogFields(body = {}) {
         gstRate: num(body.gstRate, { max: 100 }),
         stockQty: num(body.stockQty),
         lowStockThreshold: num(body.lowStockThreshold),
+        minQtyPerOrder: num(body.minQtyPerOrder, { min: 1 }),
         maxQtyPerOrder: num(body.maxQtyPerOrder, { min: 1 })
     };
 }
@@ -4235,19 +4207,6 @@ export async function createRestaurantByAdmin(body) {
         status: 'approved',
         approvedAt: new Date()
     };
-
-    // What kind of shop this is, and -- for a medical store -- the drug licence that
-    // lets it dispense. Validated against what will actually be stored, so a pharmacy
-    // cannot be created without a current licence. Admin-created sellers land
-    // 'approved' immediately, which is exactly why this cannot be checked later.
-    const storeType = normalizeStoreTypeInput(body.storeType);
-    const drugLicence = normalizeDrugLicenceInput(body);
-    const resolvedStore = mergeStoreTypeUpdate({}, { ...(storeType !== undefined ? { storeType } : {}), ...(drugLicence || {}) });
-    assertMedicalOnboarding(resolvedStore);
-    doc.storeType = resolvedStore.storeType;
-    doc.drugLicenseNumber = resolvedStore.drugLicenseNumber;
-    doc.drugLicenseImage = resolvedStore.drugLicenseImage;
-    doc.drugLicenseExpiry = resolvedStore.drugLicenseExpiry;
 
     if (body.zoneId !== undefined) {
         const zoneId = String(body.zoneId || '').trim();

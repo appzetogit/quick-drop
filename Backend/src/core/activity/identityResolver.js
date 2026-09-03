@@ -41,21 +41,19 @@ export const resolveCustomerIdentities = async (masterUserId) => {
         logger.warn(`[Activity] could not read the caller's phone: ${err.message}`);
     }
 
-    // Explicit links first (identity merge, phase 1): satellites stamped with
-    // platformUserId are found by an indexed exact match -- deterministic,
-    // format-proof, and it works even when the master user has NO phone (which used
-    // to end resolution right here). The phone-suffix regex remains ONLY as a
-    // fallback for satellite documents the backfill has not linked yet; it can be
-    // deleted once scripts/link-user-identities.js has run everywhere.
-    const bySatellite = phone
-        ? { $or: [{ platformUserId: masterUserId }, { platformUserId: null, phone: new RegExp(`${phone}$`) }] }
-        : { platformUserId: masterUserId };
+    // Without a phone there is nothing to match the other verticals on. Returning the
+    // food/taxi ids alone is correct-but-partial, which beats failing the request.
+    if (!phone) return { ids, phone: null, resolved };
+
+    // Match on the last ten digits, the same rule the SP identity bridge uses, so
+    // +91XXXXXXXXXX and XXXXXXXXXX resolve to the same person.
+    const suffix = new RegExp(`${phone}$`);
 
     try {
         const { createRequire } = await import('node:module');
         const require = createRequire(import.meta.url);
         const SPUser = require('../../modules/serviceProvider/models/User.js');
-        const sp = await SPUser.findOne(bySatellite).select('_id').lean();
+        const sp = await SPUser.findOne({ phone: suffix }).select('_id').lean();
         if (sp?._id) { ids.push(sp._id); resolved.push('serviceProvider'); }
     } catch (err) {
         logger.warn(`[Activity] service-provider identity unresolved: ${err.message}`);
@@ -63,7 +61,7 @@ export const resolveCustomerIdentities = async (masterUserId) => {
 
     try {
         const { FoodUser: QCUser } = await import('../../modules/quickCommerce/core/users/user.model.js');
-        const qc = await QCUser.findOne(bySatellite).select('_id').lean();
+        const qc = await QCUser.findOne({ phone: suffix }).select('_id').lean();
         if (qc?._id) { ids.push(qc._id); resolved.push('quickCommerce'); }
     } catch (err) {
         logger.warn(`[Activity] quick-commerce identity unresolved: ${err.message}`);

@@ -1,11 +1,5 @@
 import { FoodTransaction } from '../models/foodTransaction.model.js';
 import { FoodRestaurantCommission } from '../../admin/models/restaurantCommission.model.js';
-import { FoodCommissionSchedule } from '../../admin/models/commissionSchedule.model.js';
-import {
-  COMMISSION_SOURCES,
-  computeCommissionAmount,
-  resolveCommissionRate,
-} from '../../shared/commissionSchedule.js';
 import mongoose from 'mongoose';
 
 const RESTAURANT_COMMISSION_CACHE_MS = 60 * 1000;
@@ -53,97 +47,37 @@ export function computeRestaurantCommissionAmount(baseAmount, rule) {
   return { commissionAmount, commissionType, commissionValue, baseAmount: safeBase };
 }
 
-/**
- * Dated commission overrides that could apply right now.
- *
- * Cached like the standing rules, and for the same reason: this is read on every
- * order. A minute of staleness is acceptable -- a festive rate starting at
- * midnight takes effect within a minute of it, not on the stroke.
- */
-const COMMISSION_SCHEDULE_CACHE_MS = 60 * 1000;
-let commissionScheduleCache = null;
-let commissionScheduleLoadedAt = 0;
-
-export const invalidateCommissionScheduleCache = () => {
-  commissionScheduleCache = null;
-  commissionScheduleLoadedAt = 0;
-};
-
-async function getActiveCommissionSchedules(at = new Date()) {
-  const now = Date.now();
-  if (commissionScheduleCache && now - commissionScheduleLoadedAt < COMMISSION_SCHEDULE_CACHE_MS) {
-    return commissionScheduleCache;
-  }
-
-  // Only schedules whose window contains this instant; the resolver re-checks,
-  // so this narrowing is an optimisation rather than the rule.
-  const list = await FoodCommissionSchedule.find({
-    status: { $ne: false },
-    startsAt: { $lte: at },
-    endsAt: { $gt: at },
-  }).lean();
-
-  commissionScheduleCache = list || [];
-  commissionScheduleLoadedAt = now;
-  return commissionScheduleCache;
-}
-
-/**
- * The commission owed on one order.
- *
- * The base is the SUBTOTAL -- the food bill. Delivery is collected from the
- * customer and passed through, so commissioning the customer's total would take
- * a cut of money that was never the restaurant's.
- *
- * The rate itself now comes from shared/commissionSchedule.js, which knows about
- * dated overrides; this function keeps its shape so every existing caller is
- * unaffected, and gains the source/label so an invoice can explain a rate that
- * was not the restaurant's usual one.
- */
-export async function getRestaurantCommissionSnapshot(orderDoc, at = new Date()) {
+export async function getRestaurantCommissionSnapshot(orderDoc) {
   const baseAmount = Number(orderDoc?.pricing?.subtotal ?? 0) || 0;
   const restaurantIdRaw =
     orderDoc?.restaurantId?._id ?? orderDoc?.restaurantId ?? null;
 
-  const none = {
-    commissionAmount: 0,
-    commissionType: 'percentage',
-    commissionValue: 0,
-    commissionSource: COMMISSION_SOURCES.NONE,
-    commissionLabel: '',
-    commissionScheduleId: null,
-    baseAmount,
-  };
+  if (!restaurantIdRaw) {
+    return {
+      commissionAmount: 0,
+      commissionType: 'percentage',
+      commissionValue: 0,
+      baseAmount,
+    };
+  }
 
-  if (!restaurantIdRaw) return none;
-
-  const [rules, schedules] = await Promise.all([
-    getActiveRestaurantCommissionRules(),
-    getActiveCommissionSchedules(at),
-  ]);
-
-  const defaultRule =
+  const rules = await getActiveRestaurantCommissionRules();
+  const rule =
     rules.find((r) => String(r.restaurantId) === String(restaurantIdRaw)) ||
     // Fallback: accept legacy docs where restaurantId may be stored under `restaurant` / `restaurant_id`
     rules.find((r) => String(r.restaurant || r.restaurant_id || '') === String(restaurantIdRaw)) ||
     null;
 
-  const rate = resolveCommissionRate({
-    defaultRule,
-    schedules,
-    restaurantId: restaurantIdRaw,
-    at,
-  });
+  if (!rule) {
+    return {
+      commissionAmount: 0,
+      commissionType: 'percentage',
+      commissionValue: 0,
+      baseAmount,
+    };
+  }
 
-  return {
-    commissionAmount: computeCommissionAmount(baseAmount, rate),
-    commissionType: rate.type,
-    commissionValue: rate.value,
-    commissionSource: rate.source,
-    commissionLabel: rate.label,
-    commissionScheduleId: rate.scheduleId,
-    baseAmount,
-  };
+  return computeRestaurantCommissionAmount(baseAmount, rule);
 }
 
 /**

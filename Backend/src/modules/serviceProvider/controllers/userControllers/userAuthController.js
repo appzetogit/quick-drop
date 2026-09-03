@@ -234,13 +234,6 @@ const register = async (req, res) => {
       isEmailVerified: email ? false : true
     });
 
-    // Link to the customer's one platform identity (identity merge, phase 1).
-    // Fire-and-forget by contract: linkSatellite never throws, and an unlinked
-    // document is repaired by the backfill script.
-    import('../../../../core/identity/identityLink.service.js')
-      .then(({ linkSatellite }) => linkSatellite(User, user._id, { phone, name, email }))
-      .catch((err) => console.warn(`[Identity] SP link skipped: ${err.message}`));
-
     // Send Welcome Email
     if (email) {
       sendWelcomeEmail(email, name).catch(err => console.error(err));

@@ -74,7 +74,6 @@ import {
     uploadBulkMenuController
 } from '../controllers/bulkUpload.controller.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
-import { fillPrescriptionOrderController } from '../../orders/controllers/prescriptionOrder.controller.js';
 import { authMiddleware, optionalAuth } from '../../../../core/auth/auth.middleware.js';
 import { sendError } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
@@ -106,7 +105,6 @@ const uploadFields = upload.fields([
     { name: 'panImage', maxCount: 1 },
     { name: 'gstImage', maxCount: 1 },
     { name: 'fssaiImage', maxCount: 1 },
-    // Medical stores: the drug licence a pharmacy must produce to be approved.
     { name: 'drugLicenseImage', maxCount: 1 },
     { name: 'menuImages', maxCount: 10 },
     // Onboarding: main cover + premises gallery (gallery is shown to the rider at pickup).
@@ -298,14 +296,9 @@ router.delete('/addons/:id', authMiddleware, requireRestaurant, deleteAddonContr
 router.get('/orders', authMiddleware, requireRestaurant, orderController.listOrdersRestaurantController);
 router.get('/orders/:orderId', authMiddleware, requireRestaurant, orderController.getOrderByIdRestaurantController);
 router.patch('/orders/:orderId/status', authMiddleware, requireRestaurant, orderController.updateOrderStatusRestaurantController);
-// Medical orders: the seller reviews the customer's prescription before the order
-// can be accepted. Declared next to the status route because they are the two halves
-// of the same decision for a pharmacy.
-router.patch('/orders/:orderId/prescription', authMiddleware, requireRestaurant, orderController.reviewOrderPrescriptionController);
-// The pharmacist enters what they will dispense, which is what gives a
-// prescription-only order its price. Separate from accepting it: the customer is
-// told the total before the order is taken on.
-router.patch('/orders/:orderId/fill', authMiddleware, requireRestaurant, fillPrescriptionOrderController);
+// Prescription-order review (approve/reject the photo) and fill (price the dispensed medicines).
+router.patch('/orders/:orderId/prescription', authMiddleware, requireRestaurant, orderController.reviewPrescriptionController);
+router.patch('/orders/:orderId/fill', authMiddleware, requireRestaurant, orderController.fillPrescriptionOrderController);
 router.post('/orders/:orderId/resend-notification', authMiddleware, requireRestaurant, orderController.resendDeliveryNotificationRestaurantController);
 
 // Complaints (restaurant dashboard)

@@ -35,7 +35,7 @@ router.get('/feature-settings/public', adminController.getFeatureSettings);
 
 const requireAdmin = (req, _res, next) => {
     const user = req.user;
-    if (!user || (user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN')) {
+    if (!user || user.role !== 'ADMIN') {
         return next(new AuthError('Admin access required'));
     }
     return next();

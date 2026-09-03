@@ -67,15 +67,6 @@ const userAddressSchema = new mongoose.Schema(
 
 const userSchema = new mongoose.Schema(
     {
-        // The customer's ONE platform identity (shared `users` collection). Stamped
-        // at registration by core/identity/identityLink.service.js and backfilled by
-        // scripts/link-user-identities.js.
-        platformUserId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'FoodUser',
-            default: null,
-            index: true
-        },
         phone: {
             type: String,
             required: true,

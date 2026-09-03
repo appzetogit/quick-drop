@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { authenticate } from '../../middlewares/authMiddleware.js';
-import { requireServiceAccess } from '../../../../core/roles/serviceAccess.middleware.js';
 import {
   approveOwner,
   approveOwnerSignupFromDriver,
@@ -10,6 +9,10 @@ import {
   createBusService,
   createAppModule,
   createGoodsType,
+  createRideCancelReason,
+  deleteRideCancelReason,
+  getAdminRideCancelReasons,
+  updateRideCancelReason,
   createDriver,
   createDriverNeededDocument,
   bulkImportDrivers,
@@ -234,7 +237,7 @@ adminRouter.get('/admin/service-locations', getServiceLocations);
 adminRouter.get('/admin/service-locations/nearby', getNearbyServiceLocations);
 adminRouter.get('/admin/notification-channels', getNotificationChannels);
 adminRouter.get('/admin/zones', getZones);
-adminRouter.use('/admin', authenticate(['admin']), requireServiceAccess('taxi'));
+adminRouter.use('/admin', authenticate(['admin']));
 
 adminRouter.get('/admin/permissions', getAdminPermissions);
 adminRouter.get('/admin/admin-management/admins', getAdmins);
@@ -354,6 +357,13 @@ adminRouter.get('/admin/goods-types', getGoodsTypes);
 adminRouter.post('/admin/goods-types', createGoodsType);
 adminRouter.patch('/admin/goods-types/:id', updateGoodsType);
 adminRouter.delete('/admin/goods-types/:id', deleteGoodsType);
+
+// Ride cancellation reasons — the list the rider app shows when a customer
+// cancels. Seeded with sensible defaults on first read; fully editable here.
+adminRouter.get('/admin/cancellation-reasons', getAdminRideCancelReasons);
+adminRouter.post('/admin/cancellation-reasons', createRideCancelReason);
+adminRouter.patch('/admin/cancellation-reasons/:id', updateRideCancelReason);
+adminRouter.delete('/admin/cancellation-reasons/:id', deleteRideCancelReason);
 // adminRouter.get('/admin/types/rental-packages', getRentalPackageTypes);
 // adminRouter.post('/admin/types/rental-packages', createRentalPackageType);
 // adminRouter.patch('/admin/types/rental-packages/:id', updateRentalPackageType);

@@ -254,6 +254,28 @@ const deliveryVerificationSchema = new mongoose.Schema(
     { _id: false }
 );
 
+/**
+ * Present only on a photo-first prescription order (`prescriptionOnly: true`), where the
+ * customer submits a prescription photo instead of a cart and the pharmacist prices the
+ * order afterwards. `status` tracks the pharmacist's review of the photo itself, separate
+ * from `orderStatus`, which stays 'created' until the order is priced and confirmed.
+ */
+const prescriptionSchema = new mongoose.Schema(
+    {
+        required: { type: Boolean, default: false },
+        imageUrl: { type: String, default: '', trim: true },
+        status: {
+            type: String,
+            enum: ['not_required', 'pending_review', 'approved', 'rejected'],
+            default: 'not_required'
+        },
+        rejectionReason: { type: String, default: '', trim: true },
+        reviewedAt: { type: Date, default: null },
+        reviewedBy: { type: mongoose.Schema.Types.ObjectId, default: null }
+    },
+    { _id: false }
+);
+
 const orderSchema = new mongoose.Schema(
     {
         order_id: {
@@ -292,7 +314,14 @@ const orderSchema = new mongoose.Schema(
         items: {
             type: [orderItemSchema],
             required: true,
-            validate: (v) => Array.isArray(v) && v.length > 0
+            // A prescription order is created with no items -- the pharmacist fills them
+            // in after reviewing the photo -- so the usual non-empty rule is waived for it.
+            validate: {
+                validator: function (v) {
+                    return this.prescriptionOnly ? Array.isArray(v) : Array.isArray(v) && v.length > 0;
+                },
+                message: 'Order must contain at least one item'
+            }
         },
         deliveryAddress: {
             type: deliveryAddressSchema,
@@ -312,43 +341,6 @@ const orderSchema = new mongoose.Schema(
             type: paymentSchema,
             required: false
         },
-        /**
-         * Prescription, for orders placed with a medical store.
-         *
-         * `required` is stamped from the seller's storeType when the order is created,
-         * not read from the seller at review time: a shop that changes type later must
-         * not retroactively change what an existing order needed.
-         *
-         * The seller reviews it, because they are the pharmacist — but they cannot
-         * confirm the order until they have, which is what stops medicine going out
-         * against nothing. See shared/prescriptionRules.js.
-         */
-        /**
-         * True when this order was placed by photographing a prescription
-         * rather than by adding catalogue items to a cart.
-         *
-         * It carries no items and no price until the pharmacist reads the photo
-         * and enters what they will dispense, so several ordinary invariants —
-         * "an order has a total", "the customer has paid or owes a known
-         * amount" — do not hold for it until then. Indexed because both the
-         * seller queue and the customer's order list have to tell the two kinds
-         * apart to render them at all. See shared/prescriptionOrder.js.
-         */
-        prescriptionOnly: { type: Boolean, default: false, index: true },
-        prescription: {
-            required: { type: Boolean, default: false },
-            imageUrl: { type: String, trim: true, default: '' },
-            uploadedAt: { type: Date, default: null },
-            status: {
-                type: String,
-                enum: ['not_required', 'pending_review', 'approved', 'rejected'],
-                default: 'not_required',
-                index: true,
-            },
-            reviewedAt: { type: Date, default: null },
-            reviewedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
-            rejectionReason: { type: String, trim: true, default: '' },
-        },
         orderStatus: {
             type: String,
             enum: [
@@ -366,6 +358,12 @@ const orderSchema = new mongoose.Schema(
                 'cancelled_by_admin'
             ],
             default: 'created'
+        },
+        /** True for a photo-first prescription order placed with no cart items. */
+        prescriptionOnly: { type: Boolean, default: false, index: true },
+        prescription: {
+            type: prescriptionSchema,
+            default: () => ({})
         },
         dispatch: {
             type: dispatchSchema,

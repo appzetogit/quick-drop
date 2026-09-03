@@ -3,8 +3,22 @@ import { config } from './env.js';
 import { logger } from '../utils/logger.js';
 import { verifyAccessToken } from '../core/auth/token.util.js';
 import { getFirebaseDB } from './firebase.js';
+import {
+    resolveSharedCustomer,
+    resolveSharedDeliveryPartner
+} from '../utils/identityBridge.js';
 
 let io = null;
+
+/**
+ * Same role coverage as the REST middleware's `IDENTITY_BRIDGES`. A resolver
+ * returns null for a QC-native id (it is not in the master collection), so the
+ * handshake falls through to the id the token already carried.
+ */
+const SOCKET_IDENTITY_BRIDGES = {
+    USER: resolveSharedCustomer,
+    DELIVERY_PARTNER: resolveSharedDeliveryPartner
+};
 
 function logDeliverySocket(message, extra = {}) {
     const suffix = Object.keys(extra).length ? ` ${JSON.stringify(extra)}` : '';
@@ -37,34 +51,30 @@ const roomNames = {
 };
 
 /**
- * Attaches the quick-commerce socket handlers to the /qc NAMESPACE of master's one
- * Socket.IO server.
- *
- * This used to build `new Server(server, ...)` of its own -- and was never called,
- * because a second Socket.IO server on the same HTTP server would fight master's for
- * the /socket.io path. Every QC realtime feature (order tracking, chat, emergency
- * alerts, admin broadcast) was silently dead: getIO() logged a warning and returned
- * undefined. Same conversion the service-provider module got (see
- * modules/serviceProvider/sockets/index.js).
- *
- * Auth, rooms and events below are unchanged; they run on the namespace. Rooms are
- * namespace-scoped, so QC's `user:<id>` cannot collide with food's. CORS is inherited
- * from the root server.
- *
- * Clients connect with:  io(BASE_URL + '/qc', { auth: { token } })
- *
- * @param {import('socket.io').Server} rootIo  master's io instance
+ * Initializes Socket.IO with the provided HTTP server.
+ * When REDIS_ENABLED=true and REDIS_URL is set, attaches Redis adapter for horizontal scaling.
+ * @param {import('http').Server} server
+ * @returns {Promise<Server>}
  */
-export const initSocket = async (rootIo) => {
-    if (!rootIo) {
-        logger.warn('[QC Socket] no root io provided; QC realtime is disabled');
-        return null;
-    }
-    if (io) return io;
-    io = rootIo.of('/qc');
+export const initSocket = async (server) => {
+    io = new Server(server, {
+        cors: {
+            origin: config.socketCorsOrigin,
+            methods: ['GET', 'POST']
+        }
+    });
 
     // Socket auth middleware (Bearer token).
-    io.use((socket, next) => {
+    //
+    // NOTE: this whole module is currently inert -- `server.js` initialises only
+    // master's `src/config/socket.js`, so QC realtime is off and every emit
+    // behind `getIO()` is a guarded no-op. The bridge below is written now
+    // because the failure it prevents is silent: when QC sockets are wired up
+    // (`io.of('/qc')`, Phase 4 of QUICK_COMMERCE_INTEGRATION_PLAN.md), a driver
+    // or customer carrying a MASTER token would authenticate successfully and
+    // then join `delivery:<masterId>` while the server emits to
+    // `delivery:<qcId>` -- connected, and deaf. That is trap 3 in the plan.
+    io.use(async (socket, next) => {
         try {
             const token = getTokenFromHandshake(socket);
             if (!token) {
@@ -90,8 +100,20 @@ export const initSocket = async (rootIo) => {
                 tokenPreview: maskToken(token),
             });
             const decoded = verifyAccessToken(token);
-            socket.user = { userId: decoded.userId, role: decoded.role };
-            logger.info(`Socket auth success: ${decoded.role}:${decoded.userId} for socket ${socket.id}`);
+
+            // Resolve a master-issued token to the matching `qc_*` identity, so
+            // the rooms joined below match the ids the server emits to. A
+            // QC-native token resolves to itself and costs one indexed lookup.
+            // See `utils/identityBridge.js`.
+            let userId = decoded.userId;
+            const bridge = SOCKET_IDENTITY_BRIDGES[decoded.role];
+            if (bridge) {
+                const bridged = await bridge(decoded.userId);
+                if (bridged) userId = bridged._id.toString();
+            }
+
+            socket.user = { userId, role: decoded.role };
+            logger.info(`Socket auth success: ${decoded.role}:${userId} for socket ${socket.id}`);
             return next();
         } catch (err) {
             logger.error(`Socket auth failed for socket ${socket.id}: ${err.message}`);
@@ -192,8 +214,7 @@ export const initSocket = async (rootIo) => {
             }
             const room = roomNames.delivery(deliveryPartnerId);
             socket.join(room);
-            // io is a Namespace now: the adapter hangs off it directly, not .sockets.
-            const roomSize = io?.adapter?.rooms?.get(room)?.size || 0;
+            const roomSize = io?.sockets?.adapter?.rooms?.get(room)?.size || 0;
             logDeliverySocket('Delivery room joined', {
                 socketId: socket.id,
                 deliveryPartnerId: String(deliveryPartnerId),

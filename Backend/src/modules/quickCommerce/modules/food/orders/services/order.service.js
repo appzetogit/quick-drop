@@ -27,7 +27,7 @@ import {
     initiateRazorpayRefund,
     fetchRazorpayPayment
 } from '../helpers/razorpay.helper.js';
-import { getIO, rooms } from '../../../../config/socket.js';
+import { getIO, rooms } from '../../../../../../config/socket.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
 import { fetchPolyline } from '../utils/googleMaps.js';
 import { getFirebaseDB } from '../../../../config/firebase.js';
@@ -42,12 +42,6 @@ import {
   assertRestaurantOpenForOrdering,
 } from './order-pricing.service.js';
 import { normalizeDeliveryAddress } from '../../shared/geo.utils.js';
-import {
-  assertCanAcceptOrder,
-  buildOrderPrescription,
-  reviewPrescription,
-} from '../../shared/prescriptionRules.js';
-import { assertPrescriptionOrderPriced } from '../../shared/prescriptionOrder.js';
 import * as dispatchService from './order-dispatch.service.js';
 import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
@@ -632,15 +626,9 @@ export async function createOrder(userId, dto) {
         : "created";
     const acceptanceWindowSeconds = await getOrderAcceptanceWindowSeconds();
 
-    // Medicine may not be dispensed against nothing: an order with a medical seller
-    // must carry a prescription, and this refuses it at creation rather than letting
-    // it reach the seller's queue looking like any other order.
-    const prescription = buildOrderPrescription(restaurant, dto, orderAt);
-
     const order = new FoodOrder({
       userId: toObjectId(userId, 'User ID'),
       restaurantId: restaurantId,
-      prescription,
       // Server-resolved zone wins over the client's: it is the one that was
       // actually tested against the delivery address.
       zoneId: serviceableZone?._id
@@ -829,6 +817,302 @@ export async function createOrder(userId, dto) {
     // Transform system errors to Generic validation error with 500 logging
     throw new ValidationError(err.message || "Something went wrong while placing your order. Please try again.");
   }
+}
+
+// ----- Create prescription order (photo-first, no cart) -----
+//
+// A cart order is priced before it ever reaches the seller. A prescription
+// order inverts that: the customer submits a photo with nothing priced yet,
+// the pharmacist reviews it, and only then is it priced (see
+// fillPrescriptionOrder below). So this skips calculateOrderPricing, stock
+// reservation and Razorpay entirely -- there is nothing to price or reserve
+// until a human has looked at the photo.
+export async function createPrescriptionOrder(userId, dto) {
+  try {
+    const restaurantId = toObjectId(dto.restaurantId, 'Restaurant ID');
+    const restaurant = await loadRestaurantForOrdering(restaurantId);
+    assertRestaurantOpenForOrdering(restaurant, new Date());
+
+    const prescriptionImage = String(dto.prescriptionImage || '').trim();
+    if (!prescriptionImage) {
+      throw new ValidationError('A prescription photo is required');
+    }
+
+    const deliveryAddress = normalizeDeliveryAddress({
+      label: dto.address?.label || 'Home',
+      name: dto.address?.name || dto.address?.fullName || dto.customerName || '',
+      fullName: dto.address?.fullName || dto.address?.name || dto.customerName || '',
+      street: dto.address?.street || '',
+      additionalDetails: dto.address?.additionalDetails || '',
+      city: dto.address?.city || '',
+      state: dto.address?.state || '',
+      zipCode: dto.address?.zipCode || '',
+      phone: dto.address?.phone || '',
+      ...(dto.address || {}),
+    });
+
+    if (!readAddressPoint(deliveryAddress)) {
+      throw new ValidationError(
+        'This address has no location saved. Please re-select it on the map.',
+      );
+    }
+
+    const serviceableZone = await resolveServiceableZone(restaurant, deliveryAddress);
+
+    const order = new FoodOrder({
+      userId: toObjectId(userId, 'User ID'),
+      restaurantId,
+      zoneId: serviceableZone?._id
+        ? toObjectId(serviceableZone._id, 'Zone ID')
+        : toObjectId(restaurant.zoneId, 'Restaurant Zone ID'),
+      items: [],
+      deliveryAddress,
+      customerName: String(dto.customerName || deliveryAddress.fullName || ''),
+      customerPhone: String(dto.customerPhone || deliveryAddress.phone || ''),
+      payment: { method: 'cash', status: 'cod_pending' },
+      orderStatus: 'created',
+      prescriptionOnly: true,
+      prescription: {
+        required: true,
+        imageUrl: prescriptionImage,
+        status: 'pending_review',
+      },
+      dispatch: { modeAtCreation: 'auto', status: 'unassigned' },
+      statusHistory: [
+        {
+          at: new Date(),
+          byRole: 'SYSTEM',
+          from: '',
+          to: 'created',
+          note: 'Prescription submitted, awaiting pharmacist review',
+        },
+      ],
+      note: String(dto.note || ''),
+      // A prescription needs open-ended human review time, not a fixed
+      // acceptance window -- no deadline is armed, so expireUnacceptedOrders
+      // (which sweeps 'created'/'confirmed' orders past their deadline) never
+      // touches it.
+      acceptanceDeadlineAt: null,
+    });
+
+    await order.save();
+
+    try {
+      await notifyOwnersSafely([{ ownerType: 'USER', ownerId: userId }], {
+        title: 'Prescription received 📋',
+        body: `Your prescription has been sent to ${restaurant.restaurantName || 'the pharmacy'} for review.`,
+        data: {
+          type: 'order_created',
+          orderId: String(order._id),
+          orderMongoId: order._id.toString(),
+          link: `/food/user/orders/${order._id.toString()}`,
+        },
+      });
+      await notifyRestaurantNewOrder(order);
+    } catch (err) {
+      logger.warn(`Prescription order notifications failed for ${order._id}: ${err.message}`);
+    }
+
+    return { order: normalizeOrderForClient(order) };
+  } catch (err) {
+    logger.error(`Prescription order placement error: ${err.message}`, { stack: err.stack, userId, dto });
+    if (err instanceof ValidationError || err instanceof ForbiddenError || err instanceof NotFoundError) {
+      throw err;
+    }
+    throw new ValidationError(
+      err.message || 'Something went wrong while submitting your prescription. Please try again.',
+    );
+  }
+}
+
+// ----- Review prescription (pharmacist approves or rejects the photo) -----
+export async function reviewPrescriptionOrder(orderId, restaurantId, { approved, reason } = {}) {
+  const identity = buildOrderIdentityFilter(orderId);
+  if (!identity) throw new ValidationError('Order id required');
+
+  const order = await FoodOrder.findOne({
+    ...identity,
+    restaurantId: new mongoose.Types.ObjectId(restaurantId),
+  });
+  if (!order) throw new NotFoundError('Order not found');
+  if (!order.prescriptionOnly) {
+    throw new ValidationError('This order has no prescription to review');
+  }
+  if (order.prescription?.status !== 'pending_review') {
+    throw new ValidationError(`Prescription has already been ${order.prescription?.status || 'reviewed'}`);
+  }
+
+  const from = order.orderStatus;
+
+  if (approved) {
+    order.prescription.status = 'approved';
+    order.prescription.reviewedAt = new Date();
+    order.prescription.reviewedBy = restaurantId;
+    pushStatusHistory(order, {
+      byRole: 'RESTAURANT',
+      byId: restaurantId,
+      from,
+      to: from,
+      note: 'Prescription approved, pricing the order',
+    });
+  } else {
+    const trimmedReason = String(reason || '').trim();
+    if (!trimmedReason) {
+      throw new ValidationError('A reason is required to reject a prescription');
+    }
+    order.prescription.status = 'rejected';
+    order.prescription.rejectionReason = trimmedReason;
+    order.prescription.reviewedAt = new Date();
+    order.prescription.reviewedBy = restaurantId;
+    order.orderStatus = 'cancelled_by_restaurant';
+    order.acceptanceDeadlineAt = null;
+    pushStatusHistory(order, {
+      byRole: 'RESTAURANT',
+      byId: restaurantId,
+      from,
+      to: 'cancelled_by_restaurant',
+      note: trimmedReason,
+    });
+    await restoreOrderStock(order);
+  }
+
+  await order.save();
+
+  try {
+    const io = getIO();
+    const payload = {
+      orderMongoId: order._id.toString(),
+      orderId: order._id.toString(),
+      orderStatus: order.orderStatus,
+      prescriptionStatus: order.prescription.status,
+      note: order.prescription.rejectionReason || '',
+    };
+    if (io) {
+      io.to(rooms.restaurant(restaurantId)).emit('order_status_update', payload);
+      io.to(rooms.user(order.userId)).emit('order_status_update', payload);
+    }
+    await notifyOwnersSafely(
+      [{ ownerType: 'USER', ownerId: order.userId }],
+      approved
+        ? {
+            title: 'Prescription approved ✅',
+            body: 'Your pharmacist is now pricing your order.',
+            data: {
+              type: 'order_status_update',
+              orderId: order._id.toString(),
+              orderMongoId: order._id.toString(),
+            },
+          }
+        : {
+            title: 'Prescription rejected',
+            body: order.prescription.rejectionReason,
+            data: {
+              type: 'order_status_update',
+              orderId: order._id.toString(),
+              orderMongoId: order._id.toString(),
+            },
+          },
+    );
+  } catch (err) {
+    logger.warn(`Prescription review notification failed for ${order._id}: ${err.message}`);
+  }
+
+  return normalizeOrderForClient(order);
+}
+
+// ----- Fill prescription (pharmacist enters dispensed medicines and prices the order) -----
+export async function fillPrescriptionOrder(orderId, restaurantId, items) {
+  const identity = buildOrderIdentityFilter(orderId);
+  if (!identity) throw new ValidationError('Order id required');
+
+  const order = await FoodOrder.findOne({
+    ...identity,
+    restaurantId: new mongoose.Types.ObjectId(restaurantId),
+  });
+  if (!order) throw new NotFoundError('Order not found');
+  if (!order.prescriptionOnly) {
+    throw new ValidationError('This order has no prescription to fill');
+  }
+  if (order.prescription?.status !== 'approved') {
+    throw new ValidationError('Approve the prescription before adding medicines');
+  }
+
+  const lines = Array.isArray(items) ? items : [];
+  if (!lines.length) {
+    throw new ValidationError('Add at least one medicine to price this order');
+  }
+
+  const normalizedItems = lines.map((line, index) => {
+    const name = String(line?.name || '').trim();
+    const price = Number(line?.price);
+    const quantity = Math.max(1, Math.round(Number(line?.quantity) || 1));
+    if (!name) throw new ValidationError(`Item ${index + 1} needs a name`);
+    if (!Number.isFinite(price) || price < 0) throw new ValidationError(`Item ${index + 1} needs a valid price`);
+    return {
+      itemId: String(new mongoose.Types.ObjectId()),
+      name,
+      price,
+      quantity,
+      packSize: String(line?.packSize || ''),
+    };
+  });
+
+  const subtotal = Math.round(
+    normalizedItems.reduce((sum, it) => sum + it.price * it.quantity, 0) * 100,
+  ) / 100;
+
+  order.items = normalizedItems;
+  // v1: no delivery-fee/tax layering on a priced-after-the-fact prescription
+  // order -- total is simply what was dispensed. A follow-up could route this
+  // through the same fee settings createOrder uses if that's ever needed.
+  order.pricing = { subtotal, total: subtotal, currency: 'INR' };
+  order.payment.amountDue = subtotal;
+
+  const from = order.orderStatus;
+  order.orderStatus = 'confirmed';
+  order.acceptanceDeadlineAt = null;
+  pushStatusHistory(order, {
+    byRole: 'RESTAURANT',
+    byId: restaurantId,
+    from,
+    to: 'confirmed',
+    note: 'Prescription filled and priced',
+  });
+
+  await order.save();
+
+  // Same trigger updateOrderStatusRestaurant uses on first entering 'confirmed':
+  // tell both rooms, and start hunting a rider now that there is finally
+  // something to deliver.
+  try {
+    const io = getIO();
+    if (io) {
+      const payload = {
+        orderMongoId: order._id.toString(),
+        orderId: order._id.toString(),
+        orderStatus: order.orderStatus,
+        note: 'Order priced and confirmed',
+      };
+      io.to(rooms.restaurant(restaurantId)).emit('order_status_update', payload);
+      io.to(rooms.user(order.userId)).emit('order_status_update', payload);
+    }
+    void notifyOwnersSafely([{ ownerType: 'USER', ownerId: order.userId }], {
+      title: 'Order priced 💊',
+      body: `Your order total is ₹${subtotal}. It's being prepared for delivery.`,
+      data: {
+        type: 'order_status_update',
+        orderId: order._id.toString(),
+        orderMongoId: order._id.toString(),
+      },
+    });
+    void tryAutoAssign(order._id).catch((err) => {
+      logger.warn(`Auto-dispatch failed for prescription order ${order._id}: ${err?.message || err}`);
+    });
+  } catch (err) {
+    logger.warn(`Prescription fill notification failed for ${order._id}: ${err.message}`);
+  }
+
+  return normalizeOrderForClient(order);
 }
 
 // ----- Verify payment -----
@@ -1762,35 +2046,6 @@ export async function listOrdersRestaurant(restaurantId, query) {
   };
 }
 
-/**
- * Seller reviews the prescription on a medical order.
- *
- * Separate from the status change on purpose: approving the prescription and
- * accepting the order are two decisions, and collapsing them would let an order be
- * accepted without anyone having looked at what was uploaded.
- *
- * @param {'approved'|'rejected'} decision
- */
-export async function reviewOrderPrescription(orderId, restaurantId, decision, reason = "") {
-  const identity = buildOrderIdentityFilter(orderId);
-  const order = await FoodOrder.findOne({
-    ...identity,
-    restaurantId: new mongoose.Types.ObjectId(restaurantId),
-  });
-  if (!order) throw new NotFoundError("Order not found");
-
-  order.prescription = reviewPrescription(order, decision, {
-    reviewerId: new mongoose.Types.ObjectId(restaurantId),
-    reason,
-  });
-  await order.save();
-
-  return {
-    orderId: String(order._id),
-    prescription: order.prescription,
-  };
-}
-
 export async function updateOrderStatusRestaurant(
   orderId,
   restaurantId,
@@ -1816,17 +2071,6 @@ export async function updateOrderStatusRestaurant(
   }
 
   const targetStatus = String(orderStatus || "").toLowerCase();
-
-  // A medical order cannot be accepted until the seller -- who is the pharmacist --
-  // has reviewed the customer's prescription. Cancelling stays available, so an
-  // order with an unreadable prescription is not stuck.
-  assertCanAcceptOrder(order, targetStatus);
-
-  // ...and a prescription order may not be accepted before it has been priced,
-  // or the customer would be committed to a delivery whose cost nobody has told
-  // them. Cancelling stays available either way.
-  assertPrescriptionOrderPriced(order, targetStatus);
-
   if (targetStatus === "preparing" || targetStatus === "confirmed") {
     const now = new Date();
     const deadline = order.acceptanceDeadlineAt ? new Date(order.acceptanceDeadlineAt) : null;

@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import { safeSignatureEqual } from '../../../../utils/safeCompare.js';
 import mongoose from "mongoose";
 import QRCode from "qrcode";
 import { env } from "../../../../config/env.js";
@@ -7,7 +6,6 @@ import { mirrorTaxiPayment } from '../../services/paymentMirror.service.js';
 import { ApiError } from "../../../../utils/ApiError.js";
 import { normalizePoint, toPoint } from "../../../../utils/geo.js";
 import { Driver } from "../models/Driver.js";
-import { ensureAllDriverCapabilities } from "../../../../core/identity/driverCapabilities.service.js";
 import { BusDriver } from "../models/BusDriver.js";
 import { DriverLoginSession } from "../models/DriverLoginSession.js";
 import { WalletTransaction } from "../models/WalletTransaction.js";
@@ -1727,7 +1725,7 @@ const getBiometricFingerHand = (fingerCode = "") => {
 };
 
 const getBiometricEncryptionKey = () =>
-  crypto.createHash("sha256").update(String(env.jwtSecret || "Quick Drop-biometric-secret")).digest();
+  crypto.createHash("sha256").update(String(env.jwtSecret || "K9 Rides-biometric-secret")).digest();
 
 const encryptBiometricTemplate = (template = "") => {
   const raw = String(template || "");
@@ -2186,10 +2184,6 @@ export const registerDriver = async (req, res) => {
     location: toPoint(coordinates, "location"),
   });
 
-  // Both job streams from one registration -- see
-  // core/identity/driverCapabilities.service.js. Non-fatal.
-  await ensureAllDriverCapabilities(driver);
-
   const token = signAccessToken({ sub: String(driver._id), role: "driver" });
 
   res.status(201).json({
@@ -2251,26 +2245,12 @@ export const loginDriver = async (req, res) => {
 
 /**
  * Sets the driver's work mode — which job streams they accept: all | taxi | delivery.
- *
- * 'delivery' covers BOTH delivery verticals, food and quick-commerce. One toggle,
- * because a rider turning deliveries on wants jobs rather than a choice between
- * two apps they cannot tell apart from the street.
- *
- * Only capabilities the driver actually has are honored, and holding either
- * delivery capability is enough to select it. 'all' means every stream the driver
- * is capable of, so it needs at least two capabilities to be a real choice.
+ * Only capabilities the driver actually has are honored (can't select 'delivery' without it).
  */
-const WORK_MODES = ['all', 'taxi', 'delivery'];
-const DELIVERY_CAPABILITIES = ['delivery', 'quickCommerce'];
-
 export const setWorkMode = async (req, res) => {
-  // Matched case-insensitively but stored in the schema's casing: lowercasing
-  // the input outright would turn 'quickCommerce' into 'quickcommerce', which is
-  // not in the enum, so the mode would be rejected however the client sent it.
-  const raw = String(req.body?.workMode || '').trim();
-  const requested = WORK_MODES.find((m) => m.toLowerCase() === raw.toLowerCase());
-  if (!requested) {
-    throw new ApiError(400, `workMode must be one of: ${WORK_MODES.join(', ')}`);
+  const requested = String(req.body?.workMode || '').trim().toLowerCase();
+  if (!['all', 'taxi', 'delivery'].includes(requested)) {
+    throw new ApiError(400, "workMode must be one of: all, taxi, delivery");
   }
 
   const driver = await Driver.findById(req.auth.sub);
@@ -2281,17 +2261,14 @@ export const setWorkMode = async (req, res) => {
     : ['taxi'];
 
   // Guard: a driver can only pick a mode they're actually set up for.
-  // Delivery is satisfied by EITHER delivery capability, since the one toggle
-  // covers both verticals -- a driver set up for grocery but not food can still
-  // turn deliveries on and will simply only be offered grocery.
   if (requested === 'taxi' && !caps.includes('taxi')) {
-    throw new ApiError(400, 'You are not registered for taxi rides');
+    throw new ApiError(400, "You are not registered for taxi rides");
   }
-  if (requested === 'delivery' && !DELIVERY_CAPABILITIES.some((c) => caps.includes(c))) {
-    throw new ApiError(400, 'You are not registered for deliveries');
+  if (requested === 'delivery' && !caps.includes('delivery')) {
+    throw new ApiError(400, "You are not registered for deliveries");
   }
   if (requested === 'all' && caps.length < 2) {
-    throw new ApiError(400, "You need more than one capability for 'all' mode");
+    throw new ApiError(400, "You need both taxi and delivery capability for 'all' mode");
   }
 
   driver.workMode = requested;
@@ -4983,7 +4960,7 @@ export const verifyDriverWalletTopup = async (req, res) => {
       .update(`${orderId}|${paymentId}`)
       .digest("hex");
 
-    if (!safeSignatureEqual(expectedSignature, signature)) {
+    if (expectedSignature !== signature) {
       throw new ApiError(400, "Invalid payment signature");
     }
 
@@ -5944,10 +5921,6 @@ export const createOwnerFleetDriver = async (req, res) => {
     status: "pending",
     location: toPoint(coordinates, "location"),
   });
-
-  // A fleet driver takes the same jobs as any other, so they get the same
-  // capabilities. Their partner record mirrors the pending approval state.
-  await ensureAllDriverCapabilities(driver);
 
   res.status(201).json({
     success: true,

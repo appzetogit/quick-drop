@@ -4,6 +4,9 @@ import * as foodOrderPaymentService from '../services/foodOrderPayment.service.j
 import {
     validateCalculateOrderDto,
     validateCreateOrderDto,
+    validateCreatePrescriptionOrderDto,
+    validateReviewPrescriptionDto,
+    validateFillPrescriptionOrderDto,
     validateVerifyPaymentDto,
     validateCancelOrderDto,
     validateOrderStatusDto,
@@ -30,6 +33,17 @@ export async function createOrderController(req, res, next) {
         const dto = validateCreateOrderDto(req.body);
         const result = await orderService.createOrder(userId, dto);
         return sendResponse(res, 201, 'Order placed successfully', result);
+    } catch (err) {
+        next(err);
+    }
+}
+
+export async function createPrescriptionOrderController(req, res, next) {
+    try {
+        const userId = req.user?.userId;
+        const dto = validateCreatePrescriptionOrderDto(req.body);
+        const result = await orderService.createPrescriptionOrder(userId, dto);
+        return sendResponse(res, 201, 'Prescription submitted successfully', result);
     } catch (err) {
         next(err);
     }
@@ -205,19 +219,28 @@ export async function updateOrderStatusRestaurantController(req, res, next) {
     }
 }
 
-/**
- * Seller approves or rejects the prescription on a medical order.
- * Separate from the status change: reviewing the prescription and accepting the
- * order are two decisions, and the order cannot be accepted until this one is made.
- */
-export async function reviewOrderPrescriptionController(req, res, next) {
+export async function reviewPrescriptionController(req, res, next) {
     try {
         const restaurantId = req.user?.userId;
         const orderId = req.params.orderId;
-        const decision = String(req.body?.decision || '').trim().toLowerCase();
-        const reason = String(req.body?.reason || req.body?.rejectionReason || '').trim();
-        const result = await orderService.reviewOrderPrescription(orderId, restaurantId, decision, reason);
-        return sendResponse(res, 200, `Prescription ${decision}`, result);
+        const dto = validateReviewPrescriptionDto(req.body);
+        const order = await orderService.reviewPrescriptionOrder(orderId, restaurantId, {
+            approved: dto.status === 'approved',
+            reason: dto.reason,
+        });
+        return sendResponse(res, 200, 'Prescription reviewed', { order });
+    } catch (err) {
+        next(err);
+    }
+}
+
+export async function fillPrescriptionOrderController(req, res, next) {
+    try {
+        const restaurantId = req.user?.userId;
+        const orderId = req.params.orderId;
+        const dto = validateFillPrescriptionOrderDto(req.body);
+        const order = await orderService.fillPrescriptionOrder(orderId, restaurantId, dto.items);
+        return sendResponse(res, 200, 'Order priced', { order });
     } catch (err) {
         next(err);
     }

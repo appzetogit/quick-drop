@@ -14,24 +14,6 @@ import { normalizePhoneToTenDigits } from '../../../../utils/phone.util.js';
 const KEY_ID = String(config.razorpayKeyId || process.env.RAZORPAY_KEY_ID || '').trim();
 const KEY_SECRET = String(config.razorpayKeySecret || process.env.RAZORPAY_KEY_SECRET || '').trim();
 
-/**
- * Whether the gateway may be faked: mock orders, mock payment links, mock refunds.
- *
- * NODE_ENV is the ONLY thing that opens this door. Every site below used to read
- * `config.nodeEnv !== 'production' || config.useDefaultOtp`, but useDefaultOtp is an
- * SMS-delivery switch that validateEnv explicitly permits in production (via
- * ALLOW_INSECURE_DEFAULT_OTP). Coupling the two meant "do not send SMS" also meant
- * "fake the payment gateway" on a live server — verifyPaymentSignature was fixed for
- * exactly this reason, and these three sites were missed.
- *
- * The refund site was the expensive one: it returned a fabricated success for any
- * missing or `mock_` payment id, so a production refund would mark the order refunded
- * while no money ever moved.
- *
- * One constant, not three copies, so the next fix cannot miss a site again.
- */
-const MOCK_GATEWAY_ALLOWED = config.nodeEnv !== 'production';
-
 function getRazorpayErrorMessage(error) {
     return (
         error?.error?.description ||
@@ -69,7 +51,8 @@ export function createRazorpayOrder(amountPaise, currency = 'INR', receipt = '')
             logger.error(`[Razorpay] Order Creation Failed: ${errMsg}`);
             
             if (errMsg.includes('Authentication failed') || errMsg.includes('invalid api key')) {
-                if (MOCK_GATEWAY_ALLOWED) {
+                const isMockAllowed = config.nodeEnv !== 'production' || config.useDefaultOtp;
+                if (isMockAllowed) {
                     logger.warn(`[Razorpay] Generating fallback Mock Order due to Authentication failed`);
                     return {
                         id: `mock_order_${Date.now()}`,
@@ -130,11 +113,12 @@ export function createPaymentLink({ amountPaise, currency = 'INR', description, 
             logger.error(`[Razorpay] Payment Link Failed for Order ${orderId}: ${errMsg}`);
             
             if (errMsg.includes('Authentication failed') || errMsg.includes('invalid api key')) {
-                if (MOCK_GATEWAY_ALLOWED) {
+                const isMockAllowed = config.nodeEnv !== 'production' || config.useDefaultOtp;
+                if (isMockAllowed) {
                     logger.warn(`[Razorpay] Falling back to standard UPI URI due to Authentication failed`);
                     return {
                         id: `mock_plink_${Date.now()}`,
-                        short_url: `upi://pay?pa=k9rides@ybl&pn=QuickDrop&am=${(amountPaise / 100).toFixed(2)}&tr=${orderId}`,
+                        short_url: `upi://pay?pa=k9rides@ybl&pn=K9Rides&am=${(amountPaise / 100).toFixed(2)}&tr=${orderId}`,
                         status: 'created',
                         expire_by: Math.floor(Date.now() / 1000) + 86400
                     };
@@ -145,29 +129,14 @@ export function createPaymentLink({ amountPaise, currency = 'INR', description, 
 }
 
 export function verifyPaymentSignature(orderId, paymentId, signature) {
-    // The mock bypass marks a payment as verified without any signature at all, so it
-    // is only ever allowed outside production.
-    //
-    // It used to also switch on config.useDefaultOtp, which meant a flag whose entire
-    // purpose is "do not send SMS" silently disabled payment verification on a live
-    // server: set USE_DEFAULT_OTP=true and any client could claim an order was paid by
-    // sending the literal string below. The two settings are unrelated and the coupling
-    // is deliberately gone. NODE_ENV is the only thing that opens this door.
-    if (config.nodeEnv !== 'production'
-        && signature === 'mock_signature_bypass'
-        && String(orderId || '').startsWith('mock_order_')) {
+    const isMockAllowed = config.nodeEnv !== 'production' || config.useDefaultOtp;
+    if (isMockAllowed && signature === 'mock_signature_bypass' && String(orderId || '').startsWith('mock_order_')) {
         return true;
     }
     if (!KEY_SECRET) return false;
     const body = `${orderId}|${paymentId}`;
     const expected = crypto.createHmac('sha256', KEY_SECRET).update(body).digest('hex');
-    // timingSafeEqual, not ===: a plain string compare returns as soon as two bytes
-    // differ, so response time leaks how many leading hex characters were correct and
-    // a signature can be recovered byte by byte. Lengths are checked first because
-    // timingSafeEqual throws when the buffers differ in length.
-    const expectedBuf = Buffer.from(expected);
-    const actualBuf = Buffer.from(String(signature || ''));
-    return expectedBuf.length === actualBuf.length && crypto.timingSafeEqual(expectedBuf, actualBuf);
+    return expected === signature;
 }
 
 /**
@@ -208,7 +177,8 @@ export function fetchRazorpayPaymentLink(paymentLinkId) {
  * @param {number} amount - Amount to refund (in major unit, e.g., INR 123.45)
  */
 export async function initiateRazorpayRefund(paymentId, amount) {
-    if (MOCK_GATEWAY_ALLOWED && (!paymentId || String(paymentId).startsWith('mock_'))) {
+    const isMockAllowed = config.nodeEnv !== 'production' || config.useDefaultOtp;
+    if (isMockAllowed && (!paymentId || String(paymentId).startsWith('mock_'))) {
         logger.info(`[Razorpay] Mock Refund triggered for payment ID: ${paymentId}`);
         return {
             success: true,

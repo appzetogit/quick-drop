@@ -1,6 +1,5 @@
 import { config } from '../../../../config/env.js';
 import { getPublicFirebaseConfig, getFirebaseSettings } from '../../../../core/settings/firebaseSettings.service.js';
-import { getGoogleMapsApiKey } from '../../../../core/settings/mapSettings.service.js';
 
 const sanitize = (value) => (value ? String(value).trim().replace(/^['"]|['"]$/g, '') : '');
 
@@ -24,8 +23,9 @@ export const getPublicEnvController = async (_req, res, next) => {
         const fb = await getPublicFirebaseConfig();
         const { source } = await getFirebaseSettings();
 
-        // Database-first (admin panel -> map_apis), env as fallback, same as Firebase.
-        const googleMapsKey = sanitize(await getGoogleMapsApiKey());
+        const googleMapsKey =
+            sanitize(process.env.VITE_GOOGLE_MAPS_API_KEY) ||
+            sanitize(process.env.GOOGLE_MAPS_API_KEY);
 
         return res.status(200).json({
             success: true,

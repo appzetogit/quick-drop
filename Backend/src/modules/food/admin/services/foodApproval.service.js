@@ -112,39 +112,22 @@ export async function approveFoodItem(id) {
     if (updated?.restaurantId) {
         // Single DB update; makes user-facing menu reflect approval immediately.
         await syncMenuItemApprovalStatus(updated.restaurantId, updated._id, 'approved', '');
-
-        // Rs 99 store: a dish becoming approved at or under the cap goes on the
-        // shelf without anyone ticking it. This is the path every restaurant-
-        // created dish takes, and every restaurant price change re-enters it
-        // (a price edit sends the dish back to pending), so it covers both.
-        try {
-            const { shouldAutoMark99 } = await import('../../shared/ninetyNineStore.js');
-            if (shouldAutoMark99(updated) && updated.showIn99Store !== true) {
-                await FoodItem.updateOne({ _id: updated._id }, { $set: { showIn99Store: true } });
-                updated.showIn99Store = true;
-            }
-        } catch (err) {
-            console.error('Rs 99 auto-mark failed after approval:', err);
-        }
         
         try {
-            // Broad on purpose: this changes what public_foods and the menu serve.
-            // The previous key, restaurant_menu:<id>, could never match --
-            // keys are prefix:METHOD:url -- so this cache was never cleared.
-            const { invalidatePriceCaches } = await import('../../../../middleware/cache.js');
-            await invalidatePriceCaches();
+            const { invalidateCache } = await import('../../../../middleware/cache.js');
+            await invalidateCache(`restaurant_menu:${updated.restaurantId}`);
         } catch (cacheErr) {
             console.error('Failed to invalidate cache after food approval:', cacheErr);
         }
 
         try {
-            const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
+            const { notifyOwnersSafely } = await import('../../../core/notifications/firebase.service.js');
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated.restaurantId }],
                 {
                     title: 'Dish Approved! 🍲',
                     body: `Your dish "${updated.name}" has been approved and is now visible to customers.`,
-                    image: updated.image || 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                    image: updated.image || 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                     data: {
                         type: 'food_approved',
                         foodId: String(updated._id),
@@ -176,23 +159,20 @@ export async function rejectFoodItem(id, reason) {
         await syncMenuItemApprovalStatus(updated.restaurantId, updated._id, 'rejected', r);
         
         try {
-            // Broad on purpose: this changes what public_foods and the menu serve.
-            // The previous key, restaurant_menu:<id>, could never match --
-            // keys are prefix:METHOD:url -- so this cache was never cleared.
-            const { invalidatePriceCaches } = await import('../../../../middleware/cache.js');
-            await invalidatePriceCaches();
+            const { invalidateCache } = await import('../../../../middleware/cache.js');
+            await invalidateCache(`restaurant_menu:${updated.restaurantId}`);
         } catch (cacheErr) {
             console.error('Failed to invalidate cache after food rejection:', cacheErr);
         }
 
         try {
-            const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
+            const { notifyOwnersSafely } = await import('../../../core/notifications/firebase.service.js');
             await notifyOwnersSafely(
                 [{ ownerType: 'RESTAURANT', ownerId: updated.restaurantId }],
                 {
                     title: 'Dish Rejected ❌',
                     body: `Your dish "${updated.name}" was rejected. Reason: ${r}`,
-                    image: updated.image || 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                    image: updated.image || 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                     data: {
                         type: 'food_rejected',
                         foodId: String(updated._id),

@@ -17,29 +17,8 @@ const foodSchema = new mongoose.Schema(
         name: { type: String, required: true, trim: true, index: true },
         description: { type: String, trim: true, default: '' },
         price: { type: Number, required: true, min: 0 },
-        /**
-         * Pre-discount sticker price; `price` stays the selling price.
-         * Mirrors the food module -- the admin item screens are shared between
-         * food and quick commerce, so both sides must accept these or a save
-         * made from the quick-commerce panel would silently drop them.
-         * See modules/food/shared/itemDiscountPricing.js.
-         */
-        basePrice: { type: Number, min: 0, default: null },
-        discountPercent: { type: Number, min: 0, max: 100, default: 0 },
         /** Compare-at / other-platform price for strikethrough UI. Existing items stay 0. */
         otherPrice: { type: Number, min: 0, default: 0 },
-        /**
-         * Whether this dish is sold by its variants.
-         *
-         * ON: each variant carries its own price (and add-on pairings), and the
-         * item's price is the cheapest of them -- the "from" figure a listing
-         * shows. OFF: the base price is what is charged, and the variants array
-         * is RETAINED rather than cleared, so switching back on does not mean
-         * retyping every size. The order path ignores a client-sent variantId
-         * while this is off, so a stale cart line is charged the base price
-         * instead of failing the order.
-         */
-        variantsEnabled: { type: Boolean, default: false },
         variants: { type: [foodVariantSchema], default: [] },
         /**
          * The dish's primary image, kept as the first entry of [images].
@@ -85,27 +64,6 @@ const foodSchema = new mongoose.Schema(
          */
         expiryDate: { type: Date, default: null, index: true },
         /**
-         * How perishable the goods are, which is what the return window is derived
-         * from — 7 days ambient, 24 hours chilled, and fresh produce returnable only
-         * as a seller-fault report within 4 hours. See returns/services/
-         * returnPolicy.service.js.
-         *
-         * Deliberately separate from expiryDate: a sealed carton of long-life milk
-         * has an expiry date months out and is still `chilled`, while a loose bunch
-         * of bananas has no printed date and is `fresh`. Shelf life and returnability
-         * are different questions.
-         *
-         * Defaults to ambient because that is what most of a grocery catalogue is,
-         * and because the existing rows predate this field — a stricter default would
-         * silently make every legacy product non-returnable.
-         */
-        perishability: {
-            type: String,
-            enum: ['ambient', 'chilled', 'fresh'],
-            default: 'ambient',
-            index: true,
-        },
-        /**
          * Printed maximum retail price, shown struck through next to `price`.
          *
          * Kept separate from `otherPrice`, which is a compare-at price against
@@ -136,6 +94,8 @@ const foodSchema = new mongoose.Schema(
         stockQty: { type: Number, default: null, min: 0 },
         /** Below this, the item is flagged to the seller. `null` disables the flag. */
         lowStockThreshold: { type: Number, default: null, min: 0 },
+        /** Minimum quantity a customer must order in one line. `null` = no minimum. */
+        minQtyPerOrder: { type: Number, default: null, min: 1 },
         /** Cap per single order, so one buyer cannot clear the shelf. `null` = uncapped. */
         maxQtyPerOrder: { type: Number, default: null, min: 1 },
         /** Running average of per-dish ratings left by customers. */

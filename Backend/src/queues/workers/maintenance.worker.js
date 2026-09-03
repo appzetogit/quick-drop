@@ -60,11 +60,7 @@ const startMaintenanceWorker = async () => {
 
 const worker = await startMaintenanceWorker();
 
-// Standalone entrypoint only. When index.js runs every worker in one process it
-// sets WORKER_BUNDLE and owns shutdown for all of them -- six handlers each
-// calling process.exit(0) would let the first one to finish kill the others
-// mid-job.
-if (worker && !process.env.WORKER_BUNDLE) {
+if (worker) {
     const shutdown = async () => {
         await worker.close();
         process.exit(0);

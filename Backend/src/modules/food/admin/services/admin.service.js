@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import { shouldAutoMark99, crossedInto99Cap } from '../../shared/ninetyNineStore.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
@@ -11,13 +10,6 @@ import { FoodOffer } from '../models/offer.model.js';
 import { FoodOfferUsage } from '../models/offerUsage.model.js';
 import { DeliveryBonusTransaction } from '../models/deliveryBonusTransaction.model.js';
 import { FoodEarningAddon } from '../models/earningAddon.model.js';
-import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
-import { invalidateOrderQuantityCeilingCache } from '../../shared/orderQuantityCeiling.js';
-import { FoodCommissionSchedule } from '../models/commissionSchedule.model.js';
-import { normalizeScheduleInput } from '../../shared/commissionSchedule.js';
-import { invalidateCommissionScheduleCache } from '../../orders/services/foodTransaction.service.js';
-import { resolveItemPricingForWrite } from '../../shared/itemDiscountPricing.js';
-import { normalizeItemOtherPriceInput } from '../../shared/otherPlatformPricing.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
 import { FoodDeliveryCommissionRule } from '../models/deliveryCommissionRule.model.js';
@@ -1603,86 +1595,6 @@ export async function toggleRestaurantCommissionStatus(id) {
     return doc.toObject();
 }
 
-// ----- Scheduled commission rates (festive / promotional periods) -----
-//
-// A dated override of the standing rate above. restaurantId null means every
-// restaurant. The order path resolves these through
-// shared/commissionSchedule.js, which is where "most specific wins" lives.
-
-export async function listCommissionSchedules(query = {}) {
-    const filter = {};
-    if (query.restaurantId && mongoose.Types.ObjectId.isValid(String(query.restaurantId))) {
-        filter.restaurantId = new mongoose.Types.ObjectId(String(query.restaurantId));
-    }
-    if (query.activeOnly === 'true' || query.activeOnly === true) {
-        const now = new Date();
-        filter.status = { $ne: false };
-        filter.startsAt = { $lte: now };
-        filter.endsAt = { $gt: now };
-    }
-
-    const schedules = await FoodCommissionSchedule.find(filter)
-        .sort({ startsAt: -1 })
-        .limit(200)
-        .lean();
-
-    return { schedules };
-}
-
-export async function createCommissionSchedule(body, actor = {}) {
-    const payload = normalizeScheduleInput(body);
-    if (payload.restaurantId && !mongoose.Types.ObjectId.isValid(payload.restaurantId)) {
-        throw new ValidationError('Invalid restaurant');
-    }
-
-    const created = await FoodCommissionSchedule.create({
-        ...payload,
-        restaurantId: payload.restaurantId ? new mongoose.Types.ObjectId(payload.restaurantId) : null,
-        createdBy: actor?.userId || actor?._id || null,
-    });
-    // The order path caches active schedules for a minute; drop it so a rate
-    // created to start now is not ignored for the next sixty seconds.
-    invalidateCommissionScheduleCache();
-    return created.toObject();
-}
-
-export async function updateCommissionSchedule(id, body) {
-    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
-    const doc = await FoodCommissionSchedule.findById(id);
-    if (!doc) return null;
-
-    // Validated as the merged result, so a partial edit that moves only the end
-    // date is still checked against the stored start.
-    const merged = normalizeScheduleInput({
-        restaurantId: body.restaurantId !== undefined ? body.restaurantId : doc.restaurantId,
-        label: body.label !== undefined ? body.label : doc.label,
-        commission: body.commission !== undefined ? body.commission : doc.commission,
-        startsAt: body.startsAt !== undefined ? body.startsAt : doc.startsAt,
-        endsAt: body.endsAt !== undefined ? body.endsAt : doc.endsAt,
-        status: body.status !== undefined ? body.status : doc.status,
-        notes: body.notes !== undefined ? body.notes : doc.notes,
-    });
-
-    doc.restaurantId = merged.restaurantId ? new mongoose.Types.ObjectId(merged.restaurantId) : null;
-    doc.label = merged.label;
-    doc.commission = merged.commission;
-    doc.startsAt = merged.startsAt;
-    doc.endsAt = merged.endsAt;
-    doc.status = merged.status;
-    doc.notes = merged.notes;
-    await doc.save();
-
-    invalidateCommissionScheduleCache();
-    return doc.toObject();
-}
-
-export async function deleteCommissionSchedule(id) {
-    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
-    const deleted = await FoodCommissionSchedule.findByIdAndDelete(id).lean();
-    invalidateCommissionScheduleCache();
-    return deleted ? { id } : null;
-}
-
 // ----- Delivery Boy Commission Rule (admin) -----
 export async function getDeliveryCommissionRules() {
     const list = await FoodDeliveryCommissionRule.find({}).sort({ createdAt: -1 }).lean();
@@ -1823,16 +1735,13 @@ export async function upsertFeeSettings(body) {
     }
     // Single active doc pattern: keep only one active record.
     const existing = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 });
-
-    if (body.platformFee !== undefined && body.platformFee !== null) {
-        if (!Number.isFinite(Number(body.platformFee)) || Number(body.platformFee) < 0) {
-            throw new ValidationError('Platform fee is required and must be 0 or greater');
-        }
+    const nextPlatformFee = body.platformFee !== undefined ? body.platformFee : existing?.platformFee;
+    const nextGstRate = body.gstRate !== undefined ? body.gstRate : existing?.gstRate;
+    if (!Number.isFinite(Number(nextPlatformFee)) || Number(nextPlatformFee) < 0) {
+        throw new ValidationError('Platform fee is required and must be 0 or greater');
     }
-    if (body.gstRate !== undefined && body.gstRate !== null) {
-        if (!Number.isFinite(Number(body.gstRate)) || Number(body.gstRate) < 0 || Number(body.gstRate) > 100) {
-            throw new ValidationError('GST rate is required and must be between 0 and 100');
-        }
+    if (!Number.isFinite(Number(nextGstRate)) || Number(nextGstRate) < 0 || Number(nextGstRate) > 100) {
+        throw new ValidationError('GST rate is required and must be between 0 and 100');
     }
     if (existing) {
         const $set = {};
@@ -1860,15 +1769,6 @@ export async function upsertFeeSettings(body) {
         if (body.codOrderLimit === null) $unset.codOrderLimit = 1;
         else if (body.codOrderLimit !== undefined) $set.codOrderLimit = body.codOrderLimit;
 
-        // Clearing it falls back to the built-in ceiling rather than storing 0,
-        // which would make every item unorderable.
-        if (body.maxOrderQuantityCeiling === null) $unset.maxOrderQuantityCeiling = 1;
-        else if (body.maxOrderQuantityCeiling !== undefined) $set.maxOrderQuantityCeiling = body.maxOrderQuantityCeiling;
-
-        if (body.packagingCharge !== undefined) $set.packagingCharge = body.packagingCharge;
-
-        if (body.otherPlatformPrice !== undefined) $set.otherPlatformPrice = body.otherPlatformPrice;
-
         if (body.isActive !== undefined) $set.isActive = body.isActive;
 
         const update = {};
@@ -1877,9 +1777,6 @@ export async function upsertFeeSettings(body) {
         if (!Object.keys(update).length) return existing.toObject();
 
         const updated = await FoodFeeSettings.findByIdAndUpdate(existing._id, update, { new: true }).lean();
-        // The ceiling is cached for 30s on the order path; drop it so an admin sees
-        // their change take effect immediately rather than on the next window.
-        invalidateOrderQuantityCeilingCache();
         return updated;
     }
 
@@ -1893,19 +1790,15 @@ export async function upsertFeeSettings(body) {
             minOrderAmount: 0,
             incentivePercent: 0
         },
-        platformFee: body.platformFee !== undefined && body.platformFee !== null ? body.platformFee : 0,
-        gstRate: body.gstRate !== undefined && body.gstRate !== null ? body.gstRate : 0,
         isActive: body.isActive !== false
     };
     if (body.deliveryFee !== undefined && body.deliveryFee !== null) payload.deliveryFee = body.deliveryFee;
     if (body.freeDeliveryThreshold !== undefined && body.freeDeliveryThreshold !== null) payload.freeDeliveryThreshold = body.freeDeliveryThreshold;
+    if (body.platformFee !== undefined && body.platformFee !== null) payload.platformFee = body.platformFee;
+    if (body.gstRate !== undefined && body.gstRate !== null) payload.gstRate = body.gstRate;
     if (body.codOrderLimit !== undefined && body.codOrderLimit !== null) payload.codOrderLimit = body.codOrderLimit;
-    if (body.maxOrderQuantityCeiling !== undefined && body.maxOrderQuantityCeiling !== null) payload.maxOrderQuantityCeiling = body.maxOrderQuantityCeiling;
-    if (body.packagingCharge !== undefined) payload.packagingCharge = body.packagingCharge;
-    if (body.otherPlatformPrice !== undefined) payload.otherPlatformPrice = body.otherPlatformPrice;
 
     const created = await FoodFeeSettings.create(payload);
-    invalidateOrderQuantityCeilingCache();
     return created.toObject();
 }
 
@@ -2980,21 +2873,6 @@ export async function updateRestaurantAddonAdmin(addonId, body) {
     return addon.toObject();
 }
 
-/**
- * Soft-delete an add-on from the admin panel.
- * Soft, not hard: approved add-ons may already be referenced by placed orders,
- * and the list queries all filter on `isDeleted`.
- */
-export async function deleteRestaurantAddonAdmin(addonId) {
-    if (!addonId || !mongoose.Types.ObjectId.isValid(String(addonId))) return null;
-    const _id = new mongoose.Types.ObjectId(String(addonId));
-    return FoodAddon.findOneAndUpdate(
-        { _id, isDeleted: { $ne: true } },
-        { $set: { isDeleted: true, isAvailable: false } },
-        { new: true }
-    ).lean();
-}
-
 export async function approveRestaurantAddon(addonId) {
     if (!addonId || !mongoose.Types.ObjectId.isValid(String(addonId))) return null;
     const _id = new mongoose.Types.ObjectId(String(addonId));
@@ -3024,7 +2902,7 @@ export async function approveRestaurantAddon(addonId) {
                 {
                     title: 'Addon Approved! âœ…',
                     body: `Your addon "${updated.published?.name || 'New Addon'}" has been approved and is now live.`,
-                    image: 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                    image: 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                     data: {
                         type: 'addon_approved',
                         addonId: String(updated._id),
@@ -3067,7 +2945,7 @@ export async function rejectRestaurantAddon(addonId, reason) {
                 {
                     title: 'Addon Rejected âŒ',
                     body: `Your addon request for "${updated.draft?.name || 'New Addon'}" was rejected. Reason: ${rejectionReason}`,
-                    image: 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                    image: 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                     data: {
                         type: 'addon_rejected',
                         addonId: String(updated._id),
@@ -3130,20 +3008,7 @@ export async function getFoods(query) {
         name: f.name,
         description: f.description || '',
         price: getFoodDisplayPrice(f),
-        // Everything the admin food form SENDS has to come back here too.
-        // These were written by the form but not returned, so the fields
-        // rendered blank on every edit and the next save cleared whatever the
-        // restaurant had set -- a silent round-trip that destroyed data rather
-        // than merely failing to show it.
-        basePrice: f.basePrice ?? getFoodDisplayPrice(f),
-        discountPercent: Number(f.discountPercent) || 0,
-        otherPrice: Number(f.otherPrice) || 0,
-        availabilitySchedule: f.availabilitySchedule || null,
         variants: serializeFoodVariants(f.variants),
-        // The toggle, tri-state on old rows: absent means "sell by variants if"
-        // "any exist", which is what those rows always did. Serialised as the
-        // resolved boolean so no client re-derives the legacy rule.
-        variantsEnabled: f.variantsEnabled !== false,
         variations: serializeFoodVariants(f.variants),
         image: f.image || '',
         foodType: f.foodType || 'Non-Veg',
@@ -3195,104 +3060,54 @@ const resolveAdminFoodCategory = async ({ categoryId, categoryName, foodType, pu
     };
 };
 
-/**
- * Same toggle semantics as the restaurant service: variantsEnabled decides
- * which price is charged, and the flag falls back to "has variants" for callers
- * that predate it. Duplicated logic here is the price of the two panels having
- * separate write paths; both lean on the same shared validators underneath.
- */
-const resolveAdminVariantsEnabled = (body = {}, existing = null) => {
-    if (body.variantsEnabled !== undefined) {
-        return body.variantsEnabled === true || body.variantsEnabled === 'true';
-    }
-    if (existing && existing.variantsEnabled !== undefined && existing.variantsEnabled !== null) {
-        return existing.variantsEnabled === true;
-    }
-    const touched = body.variants !== undefined || body.variations !== undefined;
-    if (touched) {
-        return normalizeFoodVariantsInput(extractRawFoodVariants(body)).length > 0;
-    }
-    return existing ? hasFoodVariants(existing) : false;
-};
-
 const getAdminFoodCreatePricing = (body = {}) => {
     const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
-    const variantsEnabled = resolveAdminVariantsEnabled(body);
-
-    if (variantsEnabled) {
-        if (variants.length === 0) {
-            throw new ValidationError('Add at least one variant, or switch variants off');
-        }
-        const from = getFoodDisplayPrice({ variants });
-        return { price: from, basePrice: from, discountPercent: 0, variants, variantsEnabled: true };
+    if (variants.length > 0) {
+        return {
+            price: getFoodDisplayPrice({ variants }),
+            variants
+        };
     }
 
-    let pricing;
-    try {
-        pricing = resolveItemPricingForWrite({ body, existing: {}, requirePositive: true });
-    } catch (error) {
-        throw new ValidationError(error.message);
-    }
-    if (!pricing) throw new ValidationError('Price must be greater than 0');
-
+    const price = Number(body.price);
+    if (!Number.isFinite(price) || price <= 0) throw new ValidationError('Price must be greater than 0');
     return {
-        price: pricing.price,
-        basePrice: pricing.basePrice,
-        discountPercent: pricing.discountPercent,
-        variants,
-        variantsEnabled: false,
+        price,
+        variants: []
     };
 };
 
 const getAdminFoodUpdatedPricing = (existing = {}, body = {}) => {
     const variantsTouched = body.variants !== undefined || body.variations !== undefined;
+    const existingHasVariants = hasFoodVariants(existing);
     const update = {};
 
-    const variants = variantsTouched
-        ? normalizeFoodVariantsInput(extractRawFoodVariants(body))
-        : (existing.variants || []);
-    if (variantsTouched) update.variants = variants;
+    if (variantsTouched) {
+        const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
+        update.variants = variants;
 
-    const variantsEnabled = resolveAdminVariantsEnabled(body, existing);
-    if (body.variantsEnabled !== undefined || variantsTouched) {
-        update.variantsEnabled = variantsEnabled;
-    }
-
-    if (variantsEnabled) {
-        if (variants.length === 0) {
-            throw new ValidationError('Add at least one variant, or switch variants off');
+        if (variants.length > 0) {
+            update.price = getFoodDisplayPrice({ variants });
+            return update;
         }
-        const from = getFoodDisplayPrice({ variants });
-        update.price = from;
-        update.basePrice = from;
-        update.discountPercent = 0;
+
+        const nextBasePrice = body.price !== undefined ? Number(body.price) : Number(existingHasVariants ? NaN : existing.price);
+        if (!Number.isFinite(nextBasePrice) || nextBasePrice <= 0) {
+            throw new ValidationError('Base price must be greater than 0 when variants are removed');
+        }
+        update.price = nextBasePrice;
         return update;
     }
 
-    const mentionsPrice = body.price !== undefined || body.basePrice !== undefined || body.discountPercent !== undefined;
-    if (!mentionsPrice && body.variantsEnabled === undefined && !variantsTouched) return update;
+    if (body.price !== undefined) {
+        if (existingHasVariants) {
+            throw new ValidationError('Update variants instead of base price for foods with variants');
+        }
+        const price = Number(body.price);
+        if (!Number.isFinite(price) || price <= 0) throw new ValidationError('Price must be greater than 0');
+        update.price = price;
+    }
 
-    let pricing;
-    try {
-        pricing = resolveItemPricingForWrite({
-            body: {
-                basePrice: body.basePrice !== undefined ? body.basePrice
-                    : body.price !== undefined ? body.price
-                    : (existing.basePrice ?? existing.price),
-                discountPercent: body.discountPercent,
-            },
-            existing,
-            requirePositive: true,
-        });
-    } catch (error) {
-        throw new ValidationError(error.message);
-    }
-    if (!pricing) {
-        throw new ValidationError('Enter a base price, or switch variants on');
-    }
-    update.price = pricing.price;
-    update.basePrice = pricing.basePrice;
-    update.discountPercent = pricing.discountPercent;
     return update;
 };
 
@@ -3313,7 +3128,7 @@ export async function createFood(body) {
     if (restaurant.pureVegRestaurant === true && foodType !== 'Veg') {
         throw new ValidationError('Pure veg restaurants can only use veg foods');
     }
-    const { price, basePrice, discountPercent, variants, variantsEnabled } = getAdminFoodCreatePricing(body);
+    const { price, variants } = getAdminFoodCreatePricing(body);
 
     let categoryName = typeof body.categoryName === 'string' ? body.categoryName.trim() : '';
     if (!categoryName && typeof body.category === 'string') categoryName = body.category.trim();
@@ -3324,8 +3139,6 @@ export async function createFood(body) {
         pureVegRestaurant: restaurant.pureVegRestaurant === true
     });
 
-    const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
-
     const doc = new FoodItem({
         restaurantId,
         categoryId,
@@ -3333,20 +3146,13 @@ export async function createFood(body) {
         name,
         description: typeof body.description === 'string' ? body.description.trim() : '',
         price,
-        basePrice,
-        discountPercent,
-        variantsEnabled,
-        ...(normalizeItemOtherPriceInput(body) || {}),
         variants,
         image: typeof body.image === 'string' ? body.image.trim() : '',
         foodType,
         isAvailable: body.isAvailable !== false,
         preparationTime: typeof body.preparationTime === 'string' ? body.preparationTime.trim() : '',
-        ...(availabilitySchedule ? { availabilitySchedule } : {}),
         approvalStatus: 'approved'
     });
-    // Born approved, so the approval hook never sees it: decide the shelf here.
-    if (shouldAutoMark99(doc)) doc.showIn99Store = true;
     await doc.save();
     return doc.toObject();
 }
@@ -3367,36 +3173,13 @@ export async function updateFood(id, body) {
     if (restaurant.pureVegRestaurant === true && targetFoodType !== 'Veg') {
         throw new ValidationError('Pure veg restaurants can only use veg foods');
     }
-    // Snapshot the effective price before the edit, so a change can be judged
-    // as a transition rather than a state.
-    const priceStateBefore = doc.toObject();
     const pricingUpdate = getAdminFoodUpdatedPricing(doc.toObject(), body);
     if (pricingUpdate.price !== undefined) doc.price = pricingUpdate.price;
-    if (pricingUpdate.basePrice !== undefined) doc.basePrice = pricingUpdate.basePrice;
-    if (pricingUpdate.variantsEnabled !== undefined) doc.variantsEnabled = pricingUpdate.variantsEnabled;
-    if (pricingUpdate.discountPercent !== undefined) doc.discountPercent = pricingUpdate.discountPercent;
-    // Comparison figure only. Global price adjustment moves this; it never
-    // moves what the customer is charged.
-    const otherPriceUpdate = normalizeItemOtherPriceInput(body);
-    if (otherPriceUpdate) doc.otherPrice = otherPriceUpdate.otherPrice;
-    // Rs 99 store shelf. Admin-only: the restaurant panel never sends this, so a
-    // restaurant cannot put its own dish on the shelf.
-    if (body.showIn99Store !== undefined) {
-        doc.showIn99Store = body.showIn99Store === true || body.showIn99Store === 'true';
-    }
-    // Free delivery. Admin-only for the same reason: the platform absorbs it.
-    if (body.freeDelivery !== undefined) {
-        doc.freeDelivery = body.freeDelivery === true || body.freeDelivery === 'true';
-    }
     if (pricingUpdate.variants !== undefined) doc.variants = pricingUpdate.variants;
     if (body.image !== undefined) doc.image = String(body.image || '').trim();
     if (body.foodType !== undefined) doc.foodType = targetFoodType;
     if (body.isAvailable !== undefined) doc.isAvailable = body.isAvailable !== false;
     if (body.preparationTime !== undefined) doc.preparationTime = String(body.preparationTime || '').trim();
-    if (body.availabilitySchedule !== undefined) {
-        doc.availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
-    }
-
     if (body.categoryId !== undefined || body.categoryName !== undefined || body.category !== undefined || body.foodType !== undefined) {
         const nextCategoryName = body.categoryName !== undefined
             ? String(body.categoryName || '').trim()
@@ -3410,21 +3193,7 @@ export async function updateFood(id, body) {
         doc.categoryId = categoryId;
         doc.categoryName = categoryName;
     }
-    // Rs 99 store: only a price crossing INTO the cap auto-ticks the flag.
-    // Checking "is it under 99 now" instead would re-tick a dish the admin had
-    // deliberately cleared, on every unrelated save.
-    if (doc.approvalStatus === 'approved' && crossedInto99Cap(priceStateBefore, doc)) {
-        doc.showIn99Store = true;
-    }
-
     await doc.save();
-
-    // Public menu responses are cached for up to five minutes, so an edited
-    // price stays invisible to the apps for that long without this -- the
-    // same reason a bulk adjustment looked like it had done nothing.
-    const { invalidatePriceCaches } = await import('../../../../middleware/cache.js');
-    await invalidatePriceCaches();
-
     return doc.toObject();
 }
 
@@ -3567,7 +3336,7 @@ export async function approveRestaurant(id) {
                 {
                     title: 'Congratulations! ðŸŽ‰',
                     body: `Your restaurant "${updated.restaurantName}" has been approved. You can now start receiving orders!`,
-                    image: updated.profileImage || 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                    image: updated.profileImage || 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                     data: {
                         type: 'restaurant_approved',
                         restaurantId: String(updated._id)
@@ -3604,7 +3373,7 @@ export async function rejectRestaurant(id, reason) {
                 {
                     title: 'Update on Registration ðŸ“‹',
                     body: `Your restaurant registration for "${updated.restaurantName}" has been rejected. Reason: ${reason || 'Incomplete documents'}.`,
-                    image: 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                    image: 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                     data: {
                         type: 'restaurant_rejected',
                         restaurantId: String(updated._id),
@@ -3700,7 +3469,7 @@ export async function createAdminOffer(body) {
                 {
                     title: 'New Campaign Invitation! ðŸ“¢',
                     body: `You have been invited to join a new campaign: "${doc.couponCode}". Check it out now!`,
-                    image: 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                    image: 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                     data: {
                         type: 'campaign_invitation',
                         offerId: String(doc._id),
@@ -3784,16 +3553,12 @@ export async function getDeliveryJoinRequests(query) {
         .limit(limitNum)
         .lean();
 
-    const { getCapabilitiesForPartners: capsFor } = await import('../../../../core/identity/driverCapabilities.service.js');
-    const requestCaps = await capsFor(list);
-
     const requests = list.map((doc, index) => ({
         _id: doc._id,
         sl: skip + index + 1,
         name: doc.name || '',
         email: doc.email || '',
         phone: doc.phone || '',
-        ...(requestCaps.get(String(doc._id)) || {}),
         zone: doc.city || doc.state || doc.address || '',
         jobType: doc.jobType || '',
         vehicleType: doc.vehicleType || '',
@@ -3933,16 +3698,12 @@ export async function getDeliveryPartners(query) {
         FoodDeliveryPartner.countDocuments(filter)
     ]);
 
-    const { getCapabilitiesForPartners } = await import('../../../../core/identity/driverCapabilities.service.js');
-    const capsById = await getCapabilitiesForPartners(list);
-
     const deliveryPartners = list.map((doc, index) => ({
         _id: doc._id,
         sl: skip + index + 1,
         name: doc.name || '',
         email: doc.email || '',
         phone: doc.phone || '',
-        ...(capsById.get(String(doc._id)) || {}),
         deliveryId: doc._id ? `DP-${doc._id.toString().slice(-8).toUpperCase()}` : null,
         zone: doc.city || doc.state || doc.address || '',
         vehicleType: doc.vehicleType || '',
@@ -4060,7 +3821,7 @@ export async function addDeliveryPartnerBonus(body, adminUser) {
             {
                 title: 'Bonus Credited! ðŸŽŠ',
                 body: `You have received a bonus of \u20B9${body.amount}. ${body.reference || 'Great job!'}`,
-                image: 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                image: 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                 data: {
                     type: 'bonus_credited',
                     amount: String(body.amount),
@@ -4417,7 +4178,7 @@ export async function creditEarningAddonHistory(historyId, notes) {
             {
                 title: 'Incentive Credited! ðŸŽ¯',
                 body: `Your incentive for "${doc.offerId?.title || 'Earning Addon'}" has been approved and moved to your pocket.`,
-                image: 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                image: 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                 data: {
                     type: 'incentive_credited',
                     historyId: String(doc._id),
@@ -4449,7 +4210,7 @@ export async function cancelEarningAddonHistory(historyId, reason) {
             {
                 title: 'Incentive Update ðŸ“‹',
                 body: `Your incentive request for "${doc.offerId?.title || 'Earning Addon'}" was not approved. Reason: ${doc.cancelReason || 'Ineligible'}`,
-                image: 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                image: 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                 data: {
                     type: 'incentive_rejected',
                     historyId: String(doc._id),
@@ -4534,11 +4295,8 @@ export async function getDeliveryPartnerById(id) {
     const partner = await FoodDeliveryPartner.findById(id).lean();
     if (!partner) return null;
     const deliveryId = partner._id ? `DP-${partner._id.toString().slice(-8).toUpperCase()}` : null;
-    const { getCapabilitiesForPartners } = await import('../../../../core/identity/driverCapabilities.service.js');
-    const caps = (await getCapabilitiesForPartners([partner])).get(String(partner._id));
     return {
         ...partner,
-        ...caps,
         email: partner.email || null,
         deliveryId,
         status: partner.status === 'rejected' ? 'blocked' : partner.status,
@@ -4642,22 +4400,9 @@ export async function getDeliverymanReviews(query = {}) {
     return { reviews, total, page, limit };
 }
 
-export async function approveDeliveryPartner(id, { serviceCapabilities } = {}) {
+export async function approveDeliveryPartner(id) {
     const partner = await FoodDeliveryPartner.findById(id);
     if (!partner) return null;
-
-    // Which verticals this driver will be offered -- food, quick-commerce, taxi.
-    // Applied BEFORE the status flips so a rejected capability list leaves the
-    // request untouched rather than approved-but-unconfigured. Defaults to food
-    // only: that is what a food-app signup could always be offered, and the
-    // admin has to opt them into taxi or grocery explicitly.
-    const { applyPartnerCapabilities } = await import('../../../../core/identity/driverCapabilities.service.js');
-    const capabilityResult = await applyPartnerCapabilities(
-        partner,
-        serviceCapabilities ?? ['delivery'],
-        { approved: true },
-    );
-
     partner.status = 'approved';
     partner.approvedAt = new Date();
     partner.rejectedAt = undefined;
@@ -4671,7 +4416,7 @@ export async function approveDeliveryPartner(id, { serviceCapabilities } = {}) {
             {
                 title: 'Welcome Aboard! ðŸš²',
                 body: `Your delivery partner application has been approved. You can now go online and start earning!`,
-                image: 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                image: 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                 data: {
                     type: 'onboarding_approved',
                     partnerId: String(partner._id)
@@ -4726,23 +4471,7 @@ export async function approveDeliveryPartner(id, { serviceCapabilities } = {}) {
         // eslint-disable-next-line no-console
         console.warn('Referral crediting failed (delivery approval):', e?.message || e);
     }
-    return { ...partner.toObject(), ...capabilityResult };
-}
-
-/**
- * Change which verticals an already-approved driver may work. Same mechanism
- * as approval; exists so the admin can correct a choice without re-approving.
- */
-export async function updateDeliveryPartnerCapabilities(id, serviceCapabilities) {
-    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
-    const partner = await FoodDeliveryPartner.findById(id);
-    if (!partner) return null;
-
-    const { applyPartnerCapabilities } = await import('../../../../core/identity/driverCapabilities.service.js');
-    const result = await applyPartnerCapabilities(partner, serviceCapabilities, {
-        approved: partner.status === 'approved',
-    });
-    return { ...partner.toObject(), ...result };
+    return partner.toObject();
 }
 
 export async function rejectDeliveryPartner(id, reason) {
@@ -4768,7 +4497,7 @@ export async function rejectDeliveryPartner(id, reason) {
                 {
                     title: 'Onboarding Update ðŸ“‹',
                     body: `Your application to join as a delivery partner was rejected. Reason: ${reason || 'Incomplete documents'}.`,
-                    image: 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                    image: 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                     data: {
                         type: 'onboarding_rejected',
                         partnerId: String(updated._id),
@@ -5274,7 +5003,7 @@ export async function bulkApproveFoodItems(restaurantId) {
     if (restaurantId && mongoose.Types.ObjectId.isValid(restaurantId)) {
         try {
             const { invalidateCache } = await import('../../../../middleware/cache.js');
-            await invalidateCache('restaurant_menu:*');
+            await invalidateCache(`restaurant_menu:${restaurantId}`);
         } catch (cacheErr) {
             console.error('Failed to invalidate cache after bulk approval:', cacheErr);
         }

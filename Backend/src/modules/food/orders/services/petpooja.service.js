@@ -126,7 +126,7 @@ export async function pushOrderToPetpooja(orderMongoId) {
                 subtotal: order.pricing?.subtotal || 0,
                 packaging_charge: order.pricing?.packagingFee || 0,
                 platform_fee: order.pricing?.platformFee || 0,
-                order_source: 'Quick Drop',
+                order_source: 'K9 Rides',
                 order_time: order.createdAt
             },
             customer: {

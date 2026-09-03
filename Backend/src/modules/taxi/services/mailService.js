@@ -13,7 +13,7 @@ const transporter = nodemailer.createTransport({
 export const sendEmail = async ({ to, subject, text, html }) => {
   try {
     const mailOptions = {
-      from: process.env.EMAIL_FROM || '"Quick Drop" <noreply@example.com>',
+      from: process.env.EMAIL_FROM || '"K9 Rides" <noreply@example.com>',
       to,
       subject,
       text,

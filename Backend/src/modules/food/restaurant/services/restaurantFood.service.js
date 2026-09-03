@@ -14,16 +14,6 @@ import {
     categoryAllowsFoodType,
     GLOBAL_CATEGORY_FILTER
 } from '../../shared/categoryWorkflow.js';
-import {
-    assertOrderQuantityRange,
-    normalizeOrderQuantityInput
-} from '../../shared/orderQuantityRules.js';
-import { normalizeItemPackagingChargeInput } from '../../shared/packagingCharge.js';
-import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
-import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
-import { normalizeDiscountPricingInput } from '../../shared/itemDiscountPricing.js';
-import { FoodAddon } from '../models/foodAddon.model.js';
-import { assertVariantAddonsOwned, normalizeAddonIdsInput } from '../../shared/orderAddons.js';
 
 const toStr = (v) => (v != null ? String(v).trim() : '');
 const APPROVED_CATEGORY_FILTER = [
@@ -44,125 +34,68 @@ const normalizeRecommendedFlag = (value) =>
     value === true || value === 1 || String(value).trim().toLowerCase() === 'true';
 
 /**
- * Resolve what the item costs, from base price and discount.
- *
- * `price` is always the selling price -- what a customer pays and what order
- * subtotals, commission and payouts are computed from. `basePrice` is the
- * pre-discount figure shown struck through beside it.
- *
- * With variants the discount is still a single item-level percentage, applied
- * to each variant's own price at selling time (see order-pricing.service.js).
- * The item's own price is the cheapest variant after discount, which is the
- * "from" price a menu listing shows.
+ * Reads a per-order quantity limit off the request. Same undefined/null split
+ * as the quick-commerce catalog fields this mirrors: not sent means leave
+ * alone, sent empty means clear the limit.
  */
-/**
- * Whether a dish is sold by its variants, resolved from the request.
- *
- * Callers that predate the toggle never send the flag; for them, having
- * variants means selling by variants -- exactly the behaviour they were built
- * against. A caller that does send it is taken at its word, which is what lets
- * the toggle switch a dish to its base price while the variants stay stored.
- */
-const resolveVariantsEnabled = (body = {}, existing = null) => {
-    if (body.variantsEnabled !== undefined) {
-        return body.variantsEnabled === true || body.variantsEnabled === 'true';
+const parseQtyLimit = (value) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 1) {
+        throw new ValidationError('Order quantity limits must be whole numbers of one or more');
     }
-    if (existing && existing.variantsEnabled !== undefined && existing.variantsEnabled !== null) {
-        return existing.variantsEnabled === true;
-    }
-    const touched = body.variants !== undefined || body.variations !== undefined;
-    if (touched) {
-        return normalizeFoodVariantsInput(extractRawFoodVariants(body)).length > 0;
-    }
-    return existing ? hasFoodVariants(existing) : false;
+    return Math.floor(num);
 };
 
 const getCreateFoodPricing = (body = {}) => {
     const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
-    const variantsEnabled = resolveVariantsEnabled(body);
-
-    if (variantsEnabled) {
-        if (variants.length === 0) {
-            throw new ValidationError('Add at least one variant, or switch variants off');
-        }
-        const from = getFoodDisplayPrice({ variants });
-        return { price: from, basePrice: from, discountPercent: 0, variants, variantsEnabled: true };
+    if (variants.length > 0) {
+        return {
+            price: getFoodDisplayPrice({ variants }),
+            variants
+        };
     }
 
-    let pricing;
-    try {
-        pricing = normalizeDiscountPricingInput(body, {});
-    } catch (error) {
-        throw new ValidationError(error.message);
-    }
-    if (!pricing) throw new ValidationError('Price is invalid');
-
-    // Variants typed while the toggle is off are kept, not discarded: the whole
-    // point of the toggle is that switching back on costs nothing.
+    const price = Number(body.price);
+    if (!Number.isFinite(price) || price < 0) throw new ValidationError('Price is invalid');
     return {
-        price: pricing.price,
-        basePrice: pricing.basePrice,
-        discountPercent: pricing.discountPercent,
-        variants,
-        variantsEnabled: false,
+        price,
+        variants: []
     };
 };
 
 const getUpdatedFoodPricing = (existing = {}, body = {}) => {
     const variantsTouched = body.variants !== undefined || body.variations !== undefined;
+    const existingHasVariants = hasFoodVariants(existing);
     const update = {};
 
-    const variants = variantsTouched
-        ? normalizeFoodVariantsInput(extractRawFoodVariants(body))
-        : (existing.variants || []);
-    if (variantsTouched) update.variants = variants;
+    if (variantsTouched) {
+        const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
+        update.variants = variants;
 
-    const variantsEnabled = resolveVariantsEnabled(body, existing);
-    if (body.variantsEnabled !== undefined || variantsTouched) {
-        update.variantsEnabled = variantsEnabled;
-    }
-
-    const applyPricing = (bodyPart) => {
-        try {
-            return normalizeDiscountPricingInput(bodyPart, existing);
-        } catch (error) {
-            throw new ValidationError(error.message);
+        if (variants.length > 0) {
+            update.price = getFoodDisplayPrice({ variants });
+            return update;
         }
-    };
 
-    if (variantsEnabled) {
-        if (variants.length === 0) {
-            throw new ValidationError('Add at least one variant, or switch variants off');
+        const nextBasePrice = body.price !== undefined ? Number(body.price) : Number(existingHasVariants ? NaN : existing.price);
+        if (!Number.isFinite(nextBasePrice) || nextBasePrice < 0) {
+            throw new ValidationError('Base price is required when variants are removed');
         }
-        // Selling by variants: the item's own price is the cheapest option --
-        // the "from" figure a listing shows. The base price inputs are ignored
-        // here rather than rejected, so a form that sends everything it holds
-        // does not have to know which half applies.
-        const from = getFoodDisplayPrice({ variants });
-        update.price = from;
-        update.basePrice = from;
-        update.discountPercent = 0;
+        update.price = nextBasePrice;
         return update;
     }
 
-    // Selling at the base price. Variants, if any, ride along in storage.
-    const mentionsPrice = body.price !== undefined || body.basePrice !== undefined || body.discountPercent !== undefined;
-    const mustReprice = mentionsPrice || body.variantsEnabled !== undefined || variantsTouched;
-    if (!mustReprice) return update;
-
-    const fallbackBase = existing.basePrice ?? existing.price;
-    const pricing = applyPricing({
-        basePrice: body.basePrice !== undefined ? body.basePrice
-            : body.price !== undefined ? body.price
-            : fallbackBase,
-        discountPercent: body.discountPercent,
-    });
-    if (!pricing || pricing.basePrice === null || !(pricing.basePrice > 0)) {
-        throw new ValidationError('Enter a base price, or switch variants on');
+    if (body.price !== undefined) {
+        if (existingHasVariants) {
+            throw new ValidationError('Update variants instead of base price for foods with variants');
+        }
+        const price = Number(body.price);
+        if (!Number.isFinite(price) || price < 0) throw new ValidationError('Price is invalid');
+        update.price = price;
     }
-    update.price = pricing.price;
-    update.basePrice = pricing.basePrice;
-    update.discountPercent = pricing.discountPercent;
+
     return update;
 };
 
@@ -268,7 +201,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     if (!name) throw new ValidationError('Item name is required');
     if (name.length > 200) throw new ValidationError('Item name is too long');
 
-    const { price, basePrice, discountPercent, variants, variantsEnabled } = getCreateFoodPricing(body);
+    const { price, variants } = getCreateFoodPricing(body);
 
     const description = toStr(body.description);
     const image = toStr(body.image);
@@ -277,20 +210,9 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     const isRecommended = normalizeRecommendedFlag(body.isRecommended);
     const foodType = normalizeFoodType(body.foodType);
     const preparationTime = toStr(body.preparationTime);
+    const minQtyPerOrder = parseQtyLimit(body.minQtyPerOrder) ?? undefined;
+    const maxQtyPerOrder = parseQtyLimit(body.maxQtyPerOrder) ?? undefined;
     const { categoryObjectId, categoryName } = await resolveCategoryForRestaurant(context, { ...body, foodType });
-
-    const quantityLimits = normalizeOrderQuantityInput(body, { label: name, ceiling: await getOrderQuantityCeiling() }) || {};
-    assertOrderQuantityRange(quantityLimits, { label: name });
-    const packagingCharge = normalizeItemPackagingChargeInput(body.packagingCharge, { label: name });
-    const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
-    const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
-    await assertVariantAddonsOwned(FoodAddon, restaurantId, variants);
-    // The struck-through comparison figure. Stored per item, and the only thing
-    // a global price adjustment moves -- what we charge stays where the
-    // restaurant set it.
-    // otherPrice is deliberately NOT read here: the comparison figure is
-    // admin-owned, and ignoring it (rather than erroring) keeps older
-    // restaurant clients that still send the key working.
 
     const doc = await FoodItem.create({
         restaurantId,
@@ -299,20 +221,15 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         name,
         description,
         price,
-        basePrice,
-        discountPercent,
         variants,
-        variantsEnabled,
         image,
         foodType,
         isActive,
         isAvailable,
         isRecommended,
         preparationTime,
-        ...quantityLimits,
-        ...(packagingCharge ? { packagingCharge } : {}),
-        ...(availabilitySchedule ? { availabilitySchedule } : {}),
-        ...(addonUpdate || {}),
+        minQtyPerOrder,
+        maxQtyPerOrder,
         approvalStatus: 'pending',
         requestedAt: new Date()
     });
@@ -346,10 +263,7 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     if (!existing) return null;
 
     const providedKeys = Object.keys(body || {});
-    // availabilitySchedule counts as operational: when a dish is served does not
-    // change what the admin approved, and forcing re-approval would pull a live
-    // item off the menu just for a timing tweak.
-    const operationalOnlyKeys = ['isActive', 'isAvailable', 'isRecommended', 'availabilitySchedule'];
+    const operationalOnlyKeys = ['isActive', 'isAvailable', 'isRecommended', 'minQtyPerOrder', 'maxQtyPerOrder'];
     const isOperationalOnlyUpdate =
         providedKeys.length > 0 &&
         providedKeys.every((key) => operationalOnlyKeys.includes(key));
@@ -376,38 +290,10 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
         update.isRecommended = normalizeRecommendedFlag(body.isRecommended);
     }
     if (body.preparationTime !== undefined) update.preparationTime = toStr(body.preparationTime);
-    if (body.availabilitySchedule !== undefined) {
-        update.availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
-    }
-
-    const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
-    if (addonUpdate) update.addonIds = addonUpdate.addonIds;
-    // otherPrice ignored on purpose -- admin-owned; see the create path.
-    // Checked against the variants that will actually be stored, so a partial
-    // update cannot slip in an add-on belonging to another restaurant.
-    await assertVariantAddonsOwned(
-        FoodAddon,
-        restaurantId,
-        update.variants !== undefined ? update.variants : existing.variants
-    );
-
-    const itemLabel = update.name || existing.name || 'This item';
-    const quantityLimits = normalizeOrderQuantityInput(body, { label: itemLabel, ceiling: await getOrderQuantityCeiling() });
-    if (quantityLimits) {
-        // Check the values that will actually be stored, so a partial update
-        // can't slip a max below the stored min.
-        assertOrderQuantityRange(
-            {
-                minOrderQuantity: existing.minOrderQuantity,
-                maxOrderQuantity: existing.maxOrderQuantity,
-                ...quantityLimits
-            },
-            { label: itemLabel }
-        );
-        Object.assign(update, quantityLimits);
-    }
-    const packagingCharge = normalizeItemPackagingChargeInput(body.packagingCharge, { label: itemLabel });
-    if (packagingCharge) update.packagingCharge = packagingCharge;
+    const minQtyPerOrder = parseQtyLimit(body.minQtyPerOrder);
+    if (minQtyPerOrder !== undefined) update.minQtyPerOrder = minQtyPerOrder;
+    const maxQtyPerOrder = parseQtyLimit(body.maxQtyPerOrder);
+    if (maxQtyPerOrder !== undefined) update.maxQtyPerOrder = maxQtyPerOrder;
 
     const targetFoodType = body.foodType !== undefined ? normalizeFoodType(body.foodType) : normalizeFoodType(existing.foodType);
     if (body.foodType !== undefined) update.foodType = targetFoodType;

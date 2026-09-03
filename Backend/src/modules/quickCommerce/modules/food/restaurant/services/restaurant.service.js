@@ -16,13 +16,8 @@ import {
     calculateDistanceKm,
     normalizeRestaurantLocation,
 } from '../../shared/geo.utils.js';
+import { assertMedicalOnboarding } from '../../shared/storeType.js';
 import { getRestaurantSubscriptionSettings } from '../../admin/services/admin.service.js';
-import {
-    assertMedicalOnboarding,
-    mergeStoreTypeUpdate,
-    normalizeDrugLicenceInput,
-    normalizeStoreTypeInput,
-} from '../../shared/storeType.js';
 import { GST_RATE } from './subscriptionPlan.service.js';
 import {
     createRazorpayOrder,
@@ -373,6 +368,10 @@ const toRestaurantProfile = (doc) => {
         fssaiNumber: doc.fssaiNumber || '',
         fssaiExpiry: doc.fssaiExpiry || null,
         fssaiImage: doc.fssaiImage ? { url: doc.fssaiImage } : null,
+        storeType: doc.storeType || 'general',
+        drugLicenseNumber: doc.drugLicenseNumber || '',
+        drugLicenseExpiry: doc.drugLicenseExpiry || null,
+        drugLicenseImage: doc.drugLicenseImage ? { url: doc.drugLicenseImage } : null,
         accountNumber: doc.accountNumber || '',
         ifscCode: doc.ifscCode || '',
         accountHolderName: doc.accountHolderName || '',
@@ -705,6 +704,9 @@ export const registerRestaurant = async (payload, files) => {
         gstAddress,
         fssaiNumber,
         fssaiExpiry,
+        storeType,
+        drugLicenseNumber,
+        drugLicenseExpiry,
         accountNumber,
         ifscCode,
         accountHolderName,
@@ -724,13 +726,8 @@ export const registerRestaurant = async (payload, files) => {
         panImage: preUploadedPanImage,
         gstImage: preUploadedGstImage,
         fssaiImage: preUploadedFssaiImage,
-        menuImages: preUploadedMenuImages,
-        // Medical stores. A pharmacy must produce a drug licence before it may
-        // dispense; assertMedicalOnboarding below refuses one that cannot.
-        storeType: rawStoreType,
-        drugLicenseNumber,
-        drugLicenseExpiry,
         drugLicenseImage: preUploadedDrugLicenseImage,
+        menuImages: preUploadedMenuImages
     } = payload;
 
     if (!ownerPhone) {
@@ -783,6 +780,13 @@ export const registerRestaurant = async (payload, files) => {
         );
     }
 
+    assertMedicalOnboarding({
+        storeType,
+        drugLicenseNumber,
+        drugLicenseExpiry,
+        drugLicenseImage: preUploadedDrugLicenseImage || (files?.drugLicenseImage?.[0] ? 'pending-upload' : ''),
+    });
+
     const images = {
         profileImage: preUploadedProfileImage || '',
         panImage: preUploadedPanImage || '',
@@ -811,7 +815,7 @@ export const registerRestaurant = async (payload, files) => {
             .then(url => { imageMap.fssaiImage = url; }));
     }
     if (files?.drugLicenseImage?.[0]) {
-        uploadTasks.push(uploadImageBuffer(files.drugLicenseImage[0].buffer, 'food/restaurants/drug-licence')
+        uploadTasks.push(uploadImageBuffer(files.drugLicenseImage[0].buffer, 'food/restaurants/drug-license')
             .then(url => { imageMap.drugLicenseImage = url; }));
     }
 
@@ -872,22 +876,6 @@ export const registerRestaurant = async (payload, files) => {
     }
 
     Object.assign(images, imageMap);
-
-    // Medical onboarding, checked here rather than at the top: the licence photo
-    // may arrive as a file that has only just finished uploading, so the rule has
-    // to see the resolved URL. assertMedicalOnboarding is a no-op for every other
-    // store type, and refuses a pharmacy with a missing or expired licence.
-    const storeType = normalizeStoreTypeInput(rawStoreType);
-    const drugLicence = normalizeDrugLicenceInput({
-        drugLicenseNumber,
-        drugLicenseExpiry,
-        drugLicenseImage: images.drugLicenseImage || undefined,
-    });
-    const storeFields = mergeStoreTypeUpdate({}, {
-        ...(storeType !== undefined ? { storeType } : {}),
-        ...(drugLicence || {}),
-    });
-    assertMedicalOnboarding(storeFields);
 
     const normalizedOpeningTime = normalizeRestaurantTime(openingTime);
     const normalizedClosingTime = normalizeRestaurantTime(closingTime);
@@ -987,6 +975,9 @@ export const registerRestaurant = async (payload, files) => {
             gstAddress,
             fssaiNumber,
             fssaiExpiry,
+            storeType: storeType || 'general',
+            drugLicenseNumber,
+            drugLicenseExpiry,
             accountNumber,
             ifscCode,
             accountHolderName,
@@ -999,7 +990,6 @@ export const registerRestaurant = async (payload, files) => {
             coverImages: coverImage ? [coverImage, ...galleryImages] : galleryImages,
             // Postpaid subscription model: monthly invoices from GMV at month end.
             ...onboardingFeeFields,
-            ...storeFields,
             ...images
         });
 
@@ -1948,6 +1938,9 @@ export const listApprovedRestaurants = async (query = {}) => {
 
     const filter = { status: 'approved' };
 
+    if (query.storeType && String(query.storeType).trim()) {
+        filter.storeType = String(query.storeType).trim();
+    }
     if (query.city && String(query.city).trim()) {
         const city = String(query.city).trim().slice(0, 80);
         const rx = { $regex: escapeRegex(city), $options: 'i' };
@@ -1957,12 +1950,6 @@ export const listApprovedRestaurants = async (query = {}) => {
         const area = String(query.area).trim().slice(0, 80);
         const rx = { $regex: escapeRegex(area), $options: 'i' };
         filter.$and = [...(filter.$and || []), { $or: [{ 'location.area': rx }, { area: rx }] }];
-    }
-    // ?storeType=pharmacy — what the Medical tab lists. Validated rather than
-    // passed through, so an unknown value is refused instead of quietly matching
-    // nothing and looking like an empty neighbourhood.
-    if (query.storeType !== undefined && String(query.storeType).trim()) {
-        filter.storeType = normalizeStoreTypeInput(query.storeType);
     }
     if (query.cuisine && String(query.cuisine).trim()) {
         const cuisine = normalizeCuisine(query.cuisine);
@@ -2078,12 +2065,7 @@ export const listApprovedRestaurants = async (query = {}) => {
         location: 1,
         openingTime: 1,
         closingTime: 1,
-        openDays: 1,
-        // The customer app decides which screens a seller gets from this: a
-        // pharmacy takes a photographed prescription, not a cart. Projected here
-        // as well as in PUBLIC_RESTAURANT_SELECT because this listing builds its
-        // own projection rather than using that constant.
-        storeType: 1
+        openDays: 1
     };
 
     // Use $geoNear only when geo is explicitly needed (radius filter or nearest sorting).
@@ -2287,10 +2269,6 @@ export const PUBLIC_RESTAURANT_SELECT = [
     'outletTimings', 'deliveryTimings', 'outsideHoursOverride',
     'pureVegRestaurant', 'diningSettings', 'offer', 'featuredDish',
     'featuredPrice', 'status', 'zoneId', 'createdAt',
-    // What kind of shop this is. Public because the customer app has to be able
-    // to tell a pharmacy from a grocer before it decides which screens to offer:
-    // a medical store takes a photographed prescription, not a cart.
-    'storeType',
 ].join(' ');
 
 export const getApprovedRestaurantByIdOrSlug = async (idOrSlug) => {

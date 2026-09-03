@@ -74,34 +74,8 @@ const toBase64Url = (input) =>
 
 const normalizePrivateKey = (key) => String(key || '').replace(/\\n/g, '\n').trim();
 
-/**
- * The service account this process signs FCM requests with.
- *
- * Database first, env second. The admin panel writes Firebase credentials to the
- * settings document, and the client config served to web and mobile is read from
- * that same document -- so devices register tokens against whichever project the
- * database names. Resolving the sender from env only meant the two halves could
- * disagree, and they did: tokens were minted for the project in the database
- * while every push was signed by the stale project still sitting in .env. FCM
- * rejected all of them with "SenderId mismatch", so no notification was ever
- * delivered while both halves looked individually correct.
- *
- * Env remains the fallback for a deployment that has no settings document yet.
- */
-const resolveServiceAccount = async () => {
+const getServiceAccountFromEnv = () => {
     if (cachedServiceAccount) return cachedServiceAccount;
-
-    try {
-        const { getFirebaseServiceAccount } = await import('../settings/firebaseSettings.service.js');
-        const fromDb = await getFirebaseServiceAccount();
-        if (fromDb?.client_email && fromDb?.private_key) {
-            cachedServiceAccount = fromDb;
-            return cachedServiceAccount;
-        }
-    } catch {
-        // Fall through to env: the settings document is optional, and a database
-        // problem here must not be reported as a missing credential.
-    }
 
     const rawJson = sanitizeString(config.firebaseServiceAccount || process.env.FIREBASE_SERVICE_ACCOUNT);
     if (rawJson) {
@@ -121,27 +95,11 @@ const resolveServiceAccount = async () => {
     throw new Error('Firebase service account is not configured. Set FIREBASE_SERVICE_ACCOUNT or FIREBASE_SERVICE_ACCOUNT_PATH.');
 };
 
-/**
- * Drop the cached credentials and access token.
- *
- * Called when an admin saves new Firebase settings. The OAuth token is minted
- * from the service account, so keeping it after the account changes would keep
- * sending from the old project until it expired an hour later.
- */
-export const invalidateFirebaseSenderCache = () => {
-    cachedServiceAccount = null;
-    cachedAccessToken = null;
-    cachedAccessTokenExpiryMs = 0;
-};
-
-const getFirebaseProjectId = async () => {
-    const account = await resolveServiceAccount();
-    // The account's own project_id leads deliberately. config.firebaseProjectId
-    // comes from env and can name a different project than the key signing the
-    // request, which is the same mismatch this function exists to avoid.
+const getFirebaseProjectId = () => {
+    const account = getServiceAccountFromEnv();
     const projectId =
-        sanitizeString(account.project_id) ||
         sanitizeString(config.firebaseProjectId) ||
+        sanitizeString(account.project_id) ||
         sanitizeString(process.env.FIREBASE_PROJECT_ID);
     if (!projectId) {
         throw new Error('Firebase project ID is not configured.');
@@ -155,7 +113,7 @@ const getFirebaseAccessToken = async () => {
         return cachedAccessToken;
     }
 
-    const account = await resolveServiceAccount();
+    const account = getServiceAccountFromEnv();
     const privateKey = normalizePrivateKey(account.private_key);
     if (!account.client_email || !privateKey) {
         throw new Error('Firebase service account is missing client_email or private_key.');
@@ -419,7 +377,7 @@ export const removeFirebaseDeviceToken = async ({ ownerType, ownerId, token, pla
 };
 
 export const sendPushNotification = async (tokens, payload = {}) => {
-    const projectId = await getFirebaseProjectId();
+    const projectId = getFirebaseProjectId();
     const accessToken = await getFirebaseAccessToken();
     const uniqueTokens = normalizeTokenList(tokens);
 

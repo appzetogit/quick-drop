@@ -155,12 +155,6 @@ export const verifyUserOtpAndLogin = async (
       isVerified: true,
       ...(trimmedName ? { name: trimmedName } : {}),
     });
-
-    // Link to the customer's one platform identity (identity merge, phase 1).
-    // Never blocks the login; an unlinked document is repaired by the backfill.
-    import('../../../../core/identity/identityLink.service.js')
-      .then(({ linkSatellite }) => linkSatellite(FoodUser, userDoc._id, { phone, name: trimmedName }))
-      .catch(() => {});
   } else {
     let needsSave = false;
     if (!userDoc.isVerified) {
@@ -543,9 +537,9 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
 };
 
 export const logout = async (refreshToken, fcmToken, platform) => {
-  // No refresh token is a valid way to log out -- see logout.dto.js. Fall
-  // through so the FCM token is still detached, then report nothing was
-  // invalidated.
+  if (!refreshToken) {
+    throw new ValidationError("Refresh token is required");
+  }
 
   // 1. Remove specific FCM token from ALL collections if provided
   if (fcmToken) {
@@ -559,13 +553,6 @@ export const logout = async (refreshToken, fcmToken, platform) => {
   }
 
   // 2. Invalidate the refresh token (standard logout procedure)
-  // Guarded: deleteOne({ token: undefined }) matches any document with no
-  // token field rather than matching nothing, so it could delete an unrelated
-  // row. Only query when there is actually a token to invalidate.
-  if (!refreshToken) {
-    return { invalidated: false };
-  }
-
   const deleted = await FoodRefreshToken.deleteOne({ token: refreshToken });
   return { invalidated: deleted.deletedCount > 0 };
 };

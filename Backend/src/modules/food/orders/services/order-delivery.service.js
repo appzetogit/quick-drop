@@ -471,24 +471,14 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
         logger.info(`[DeliveryDispatch] Broadcasted order_claimed to ${offeredPartners.length - 1} other partners for order ${order._id.toString()}`);
       }
 
-      // order is populated by the time this runs, so order.userId /
-      // order.restaurantId are full documents rather than ids. The token lookup
-      // only survived that because mongoose casts a document to its _id; passing
-      // the id explicitly is what was meant, and it keeps whole user records out
-      // of the logs.
-      const ownerIdOf = (value) => (value && value._id ? value._id : value);
-
       await notifyOwnersSafely(
         [
-          { ownerType: 'USER', ownerId: ownerIdOf(order.userId) },
-          { ownerType: 'RESTAURANT', ownerId: ownerIdOf(order.restaurantId) },
-          { ownerType: 'DELIVERY_PARTNER', ownerId: ownerIdOf(deliveryPartnerId) },
+          { ownerType: 'USER', ownerId: order.userId },
+          { ownerType: 'RESTAURANT', ownerId: order.restaurantId },
+          { ownerType: 'DELIVERY_PARTNER', ownerId: deliveryPartnerId },
         ],
         {
-          // order_id is the human-readable reference (FOD-1234567) shown
-          // everywhere else. This notification was showing the customer a raw
-          // Mongo ObjectId.
-          title: `Order ${order.order_id || order._id.toString()} accepted`,
+          title: `Order ${order._id.toString()} accepted`,
           body: 'A delivery partner has accepted your order.',
           data: {
             type: 'delivery_accepted',
@@ -930,7 +920,7 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
 
   // Cashback is credited on delivery, never on payment: an order that is paid for
   // and then cancelled must not earn any. Fire-and-forget and idempotent by order
-  // id — a cashback failure must never fail the delivery the driver just completed.
+  // id -- a cashback failure must never fail the delivery the driver just completed.
   // Inert until an admin turns cashback on; the settings document defaults to
   // isEnabled: false.
   import('../../user/services/cashback.service.js')

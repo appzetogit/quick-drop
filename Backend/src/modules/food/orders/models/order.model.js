@@ -11,41 +11,7 @@ const orderItemSchema = new mongoose.Schema(
         quantity: { type: Number, required: true, min: 1 },
         isVeg: { type: Boolean, default: true },
         image: { type: String, default: '' },
-        notes: { type: String, default: '' },
-        /** Per-unit packaging charge at order time (RESTAURANT packaging mode). */
-        foodPackagingCharge: { type: Number, min: 0, default: 0 },
-        /**
-         * Add-ons chosen for this line, snapshotted at order time.
-         *
-         * Name and price are copied rather than referenced: an add-on renamed or
-         * repriced next week must not change what this customer was shown and
-         * charged, and the kitchen needs the name even if the add-on is later
-         * deleted.
-         *
-         * Priced PER UNIT of the item, like foodPackagingCharge above -- two
-         * burgers with extra cheese is two lots of cheese.
-         */
-        addons: {
-            type: [new mongoose.Schema({
-                addonId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodAddon', required: true },
-                name: { type: String, required: true, trim: true },
-                price: { type: Number, required: true, min: 0 },
-            }, { _id: false })],
-            default: [],
-        },
-        /** Per-unit total of the add-ons above, stamped so pricing never re-derives it. */
-        addonsTotal: { type: Number, min: 0, default: 0 },
-        /**
-         * A spend-threshold reward the server added, not something the customer
-         * put in the cart. Stored so the kitchen knows to send it, the invoice
-         * can say why a line costs nothing, and support can tell a genuine
-         * freebie from an item mistakenly priced at zero.
-         */
-        isFreebie: { type: Boolean, default: false },
-        freebie: {
-            minOrderValue: { type: Number, min: 0, default: 0 },
-            rewardType: { type: String, enum: ['item', 'addon'], default: 'item' },
-        }
+        notes: { type: String, default: '' }
     },
     { _id: false }
 );

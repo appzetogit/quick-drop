@@ -18,13 +18,6 @@ const parseOrigins = (value) =>
         .map((origin) => origin.trim())
         .filter(Boolean);
 
-/** Trailing slashes off, and repair the common `https:/host` single-slash typo. */
-const sanitizeUploadBaseUrl = (value) => String(value || '')
-    .trim()
-    .replace(/\\/g, '/')
-    .replace(/^(https?):\/(?!\/)/i, '$1://')
-    .replace(/\/+$/, '');
-
 const fallbackCorsOrigins = [
     ...parseOrigins(process.env.SOCKET_CORS_ORIGIN),
     ...parseOrigins(process.env.FRONTEND_URL),
@@ -74,27 +67,7 @@ export const config = {
     // Security
     bcryptSaltRounds: Number(process.env.BCRYPT_SALT_ROUNDS || 10),
 
-    // Uploads (local disk — served by nginx in production, express.static in dev)
-    //
-    // Food used to push images to Cloudinary. That account is disabled, so every
-    // stored delivery URL 401s; local disk is now the store of record.
-    // Must match the nginx `location /uploads/` alias, which already serves
-    // /var/www/uploads/ for quickCommerce. Food now writes into the same root
-    // under its own folder prefix.
-    uploadStorageRoot: process.env.UPLOAD_STORAGE_ROOT
-        || (process.env.NODE_ENV === 'production' ? '/var/www/uploads' : 'uploads'),
-    /**
-     * Prefix for persisted image URLs. Set this to an ABSOLUTE origin in
-     * production: the Flutter APK has no page origin to resolve `/uploads/...`
-     * against, so a relative prefix renders on the web and breaks in the app.
-     */
-    uploadBaseUrl: sanitizeUploadBaseUrl(process.env.UPLOAD_BASE_URL) || '/uploads',
-    uploadMaxFileSizeBytes: Number(process.env.UPLOAD_MAX_FILE_SIZE_MB || 5) * 1024 * 1024,
-    /** WebP output quality (1–100). */
-    uploadWebpQuality: Number(process.env.UPLOAD_WEBP_QUALITY || 90),
-    /** Max width in px; larger images are resized (aspect ratio kept). */
-    uploadWebpMaxWidth: Number(process.env.UPLOAD_WEBP_MAX_WIDTH || 2560),
-    /** @deprecated Use uploadStorageRoot */
+    // Uploads
     uploadPath: process.env.UPLOAD_PATH || 'uploads/',
     requestJsonLimit: process.env.REQUEST_JSON_LIMIT || '2mb',
     requestUrlencodedLimit: process.env.REQUEST_URLENCODED_LIMIT || '2mb',
@@ -184,7 +157,7 @@ export const env = {
         cloudName: config.cloudinaryCloudName,
         apiKey: config.cloudinaryApiKey,
         apiSecret: config.cloudinaryApiSecret,
-        folder: process.env.CLOUDINARY_FOLDER || 'Quick Drop-taxi',
+        folder: process.env.CLOUDINARY_FOLDER || 'K9 Rides-taxi',
     },
     firebase: {
         databaseURL: config.firebaseDatabaseUrl,

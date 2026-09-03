@@ -12,7 +12,7 @@ import {
 } from '../../../../core/auth/errors.js';
 import { buildPaginatedResult, buildPaginationOptions } from '../../../../utils/helpers.js';
 import { logger } from '../../../../utils/logger.js';
-import { getIO, rooms } from '../../../../config/socket.js';
+import { getIO, rooms } from '../../../../../../config/socket.js';
 import { getFirebaseDB } from '../../../../config/firebase.js';
 import { fetchDrivingRoute } from '../utils/googleMaps.js';
 

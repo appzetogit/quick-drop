@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 import * as adminService from '../services/admin.service.js';
-import * as priceAdjustmentService from '../services/priceAdjustment.service.js';
 import { validateCategoryListQuery, validateCategoryRejectDto, validateCategoryUpsertDto } from '../validators/category.validator.js';
 import { validateCreateOfferDto, validateUpdateOfferCartVisibilityDto } from '../validators/offer.validator.js';
 import { validateAddDeliveryBonusDto } from '../validators/deliveryBonus.validator.js';
@@ -269,58 +268,6 @@ export async function getRestaurantAnalytics(req, res, next) {
             message: 'Restaurant analytics fetched successfully',
             data
         });
-    } catch (error) {
-        next(error);
-    }
-}
-
-/**
- * A restaurant's spend-threshold reward ladder, from the admin panel.
- *
- * Reads and writes the same document the restaurant's own panel edits, rather
- * than an admin-side copy: two ladders for one restaurant would mean the order
- * path has to pick one, and whichever it picked would surprise somebody.
- */
-export async function getRestaurantFreebieOffer(req, res, next) {
-    try {
-        const { id } = req.params;
-        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({ success: false, message: 'Invalid restaurant id' });
-        }
-        const { getFreebieOffer } = await import('../../shared/freebieOffer.service.js');
-        const offer = await getFreebieOffer(id);
-        res.status(200).json({
-            success: true,
-            message: 'Freebie offer fetched successfully',
-            data: { offer: offer || { restaurantId: id, isActive: true, tiers: [] } },
-        });
-    } catch (error) {
-        next(error);
-    }
-}
-
-export async function updateRestaurantFreebieOffer(req, res, next) {
-    try {
-        const { id } = req.params;
-        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-            return res.status(400).json({ success: false, message: 'Invalid restaurant id' });
-        }
-        const { normalizeFreebieTiersInput } = await import('../../shared/freebieRewards.js');
-        const { saveFreebieOffer } = await import('../../shared/freebieOffer.service.js');
-
-        let tiers;
-        try {
-            tiers = normalizeFreebieTiersInput(req.body || {})?.tiers;
-        } catch (validationError) {
-            return res.status(400).json({ success: false, message: validationError.message });
-        }
-
-        const offer = await saveFreebieOffer(id, {
-            tiers,
-            isActive: req.body?.isActive,
-            updatedByRole: 'ADMIN',
-        });
-        res.status(200).json({ success: true, message: 'Freebie offer saved successfully', data: { offer } });
     } catch (error) {
         next(error);
     }
@@ -1269,9 +1216,7 @@ export async function getDeliveryPartnerById(req, res, next) {
 
 export async function approveDeliveryPartner(req, res, next) {
     try {
-        // Optional: which verticals to enable. Omitted means food delivery only.
-        const serviceCapabilities = req.body?.serviceCapabilities;
-        const partner = await adminService.approveDeliveryPartner(req.params.id, { serviceCapabilities });
+        const partner = await adminService.approveDeliveryPartner(req.params.id);
         if (!partner) {
             return res.status(404).json({
                 success: false,
@@ -1282,25 +1227,6 @@ export async function approveDeliveryPartner(req, res, next) {
             success: true,
             message: 'Delivery partner approved successfully',
             data: partner
-        });
-    } catch (error) {
-        next(error);
-    }
-}
-
-export async function updateDeliveryPartnerCapabilities(req, res, next) {
-    try {
-        const partner = await adminService.updateDeliveryPartnerCapabilities(
-            req.params.id,
-            req.body?.serviceCapabilities,
-        );
-        if (!partner) {
-            return res.status(404).json({ success: false, message: 'Delivery partner not found' });
-        }
-        res.status(200).json({
-            success: true,
-            message: 'Driver services updated successfully',
-            data: partner,
         });
     } catch (error) {
         next(error);
@@ -1434,13 +1360,13 @@ export async function processRefund(req, res, next) {
         const order = await mongoose.model('FoodOrder').findById(orderId).lean();
         
         if (order && order.userId) {
-            const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
+            const { notifyOwnersSafely } = await import('../../notifications/firebase.service.js');
             await notifyOwnersSafely(
                 [{ ownerType: 'USER', ownerId: order.userId }],
                 {
                     title: 'Refund Processed! 💸',
                     body: `Your refund of ₹${refundAmount || order.totalAmount || order.total || 0} for Order #${order.orderId} has been processed successfully.`,
-                    image: 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
+                    image: 'https://i.ibb.co/5GzXz7r/K9 Rides-Brand-Image.png',
                     data: {
                         type: 'refund_processed',
                         orderId: String(order.orderId),
@@ -1585,79 +1511,3 @@ export async function bulkApproveFoodItems(req, res, next) {
     }
 }
 
-
-// ----- Global Menu Price Adjustment -----
-export async function getPriceAdjustments(req, res, next) {
-    try {
-        const data = await priceAdjustmentService.listPriceAdjustments(req.query || {});
-        res.status(200).json({ success: true, message: 'Price adjustments fetched successfully', data });
-    } catch (error) {
-        next(error);
-    }
-}
-
-export async function getPriceAdjustmentPreview(req, res, next) {
-    try {
-        const data = await priceAdjustmentService.getPriceAdjustmentPreview(req.query || {});
-        res.status(200).json({ success: true, message: 'Price adjustment preview fetched successfully', data });
-    } catch (error) {
-        next(error);
-    }
-}
-
-export async function applyPriceAdjustment(req, res, next) {
-    try {
-        const data = await priceAdjustmentService.applyPriceAdjustment(req.body || {}, req.user || {});
-        res.status(200).json({ success: true, message: `Updated ${data.itemsUpdated} item(s)`, data });
-    } catch (error) {
-        next(error);
-    }
-}
-
-export async function revertPriceAdjustment(req, res, next) {
-    try {
-        const data = await priceAdjustmentService.revertPriceAdjustment(req.params.id, req.user || {});
-        res.status(200).json({ success: true, message: `Reverted ${data.itemsUpdated} item(s)`, data });
-    } catch (error) {
-        next(error);
-    }
-}
-
-// ----- Scheduled commission rates -----
-export async function listCommissionSchedules(req, res, next) {
-    try {
-        const data = await adminService.listCommissionSchedules(req.query || {});
-        res.status(200).json({ success: true, message: 'Commission schedules fetched successfully', data });
-    } catch (error) {
-        next(error);
-    }
-}
-
-export async function createCommissionSchedule(req, res, next) {
-    try {
-        const data = await adminService.createCommissionSchedule(req.body || {}, req.user || {});
-        res.status(201).json({ success: true, message: 'Commission schedule created successfully', data });
-    } catch (error) {
-        next(error);
-    }
-}
-
-export async function updateCommissionSchedule(req, res, next) {
-    try {
-        const data = await adminService.updateCommissionSchedule(req.params.id, req.body || {});
-        if (!data) return res.status(404).json({ success: false, message: 'Commission schedule not found' });
-        res.status(200).json({ success: true, message: 'Commission schedule updated successfully', data });
-    } catch (error) {
-        next(error);
-    }
-}
-
-export async function deleteCommissionSchedule(req, res, next) {
-    try {
-        const data = await adminService.deleteCommissionSchedule(req.params.id);
-        if (!data) return res.status(404).json({ success: false, message: 'Commission schedule not found' });
-        res.status(200).json({ success: true, message: 'Commission schedule deleted successfully', data });
-    } catch (error) {
-        next(error);
-    }
-}

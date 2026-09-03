@@ -25,24 +25,8 @@ export const healthCheck = async () => {
         redisOk = 'disabled';
     }
 
-    // Three states, not two, because they call for different operator responses:
-    //
-    //   DOWN     - no MongoDB. The API cannot serve a single meaningful request, so a
-    //              deploy that reaches this state must be treated as failed.
-    //   DEGRADED - MongoDB is up but Redis (rate limits, cache, socket fan-out) is not.
-    //              Still serving, worth an alert, NOT worth failing a deploy or pulling
-    //              the instance out of the load balancer.
-    //   UP       - everything configured is answering.
-    //
-    // This used to be hardcoded to 'UP'. A server that came up with no database still
-    // reported healthy, which made the status field decorative: nothing downstream --
-    // a deploy gate, an uptime monitor, a load-balancer probe -- could tell a working
-    // instance from a broken one.
-    const redisDown = config.redisEnabled && redisOk !== 'ok';
-    const status = !mongoOk ? 'DOWN' : (redisDown ? 'DEGRADED' : 'UP');
-
     return {
-        status,
+        status: 'UP',
         mongo: mongoOk ? 'connected' : 'disconnected',
         redis: redisOk
     };

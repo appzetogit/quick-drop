@@ -359,9 +359,6 @@ Address: ${addressStr}`;
           orderMongoId: orderDoc._id?.toString?.() || "",
           orderDisplayId: str(orderDoc.order_id || orderDoc._id),
           link: `/restaurant/orders/${orderDoc._id?.toString?.() || ""}`,
-          // Everything the notification needs to render without a follow-up
-          // API call, which matters when the device is locked or the app was
-          // killed.
           customerName: str(orderDoc.customerName),
           itemCount: str(itemCount),
           itemsList: str(itemsList),

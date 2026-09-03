@@ -82,8 +82,8 @@ export async function getBusinessSettings(req, res, next) {
         if (!settings) {
             // Create default settings if none exist
             settings = await FoodBusinessSettings.create({
-                companyName: 'Quick Drop',
-                email: 'admin@Quick Drop.com'
+                companyName: 'K9 Rides',
+                email: 'admin@K9 Rides.com'
             });
         }
         return sendResponse(res, 200, 'Business settings fetched successfully', settings);

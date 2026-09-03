@@ -147,25 +147,8 @@ export function clearCachedServiceAccount() {
     void reloadServiceAccountFromSettings();
 }
 
-/**
- * Database first, env second -- see the identical resolver in
- * core/notifications/firebase.service.js for why. Devices register tokens
- * against the project named in the settings document, so signing pushes with a
- * stale env key gets every one of them rejected as a SenderId mismatch.
- */
-const resolveServiceAccount = async () => {
+const getServiceAccountFromEnv = () => {
     if (cachedServiceAccount) return cachedServiceAccount;
-
-    try {
-        const { getFirebaseServiceAccount } = await import('../../../../core/settings/firebaseSettings.service.js');
-        const fromDb = await getFirebaseServiceAccount();
-        if (fromDb?.client_email && fromDb?.private_key) {
-            cachedServiceAccount = fromDb;
-            return cachedServiceAccount;
-        }
-    } catch {
-        // The settings document is optional; fall back to env.
-    }
 
     const rawJson = sanitizeString(config.firebaseServiceAccount || process.env.FIREBASE_SERVICE_ACCOUNT);
     if (rawJson) {
@@ -185,19 +168,11 @@ const resolveServiceAccount = async () => {
     throw new Error('Firebase service account is not configured. Set FIREBASE_SERVICE_ACCOUNT or FIREBASE_SERVICE_ACCOUNT_PATH.');
 };
 
-export const invalidateFirebaseSenderCache = () => {
-    cachedServiceAccount = null;
-    cachedAccessToken = null;
-    cachedAccessTokenExpiryMs = 0;
-};
-
-const getFirebaseProjectId = async () => {
-    const account = await resolveServiceAccount();
-    // The signing key's own project leads: an env-configured project id can name
-    // a different project than the key, which is the mismatch being avoided.
+const getFirebaseProjectId = () => {
+    const account = getServiceAccountFromEnv();
     const projectId =
-        sanitizeString(account.project_id) ||
         sanitizeString(config.firebaseProjectId) ||
+        sanitizeString(account.project_id) ||
         sanitizeString(process.env.FIREBASE_PROJECT_ID);
     if (!projectId) {
         throw new Error('Firebase project ID is not configured.');
@@ -211,7 +186,7 @@ const getFirebaseAccessToken = async () => {
         return cachedAccessToken;
     }
 
-    const account = await resolveServiceAccount();
+    const account = getServiceAccountFromEnv();
     const privateKey = normalizePrivateKey(account.private_key);
     if (!account.client_email || !privateKey) {
         throw new Error('Firebase service account is missing client_email or private_key.');
@@ -615,7 +590,7 @@ const sendMessageWithRetry = async (message, { projectId, accessToken }) => {
 };
 
 export const sendPushNotification = async (tokens, payload = {}) => {
-    const projectId = await getFirebaseProjectId();
+    const projectId = getFirebaseProjectId();
     const accessToken = await getFirebaseAccessToken();
     const uniqueTokens = normalizeTokenList(tokens);
 

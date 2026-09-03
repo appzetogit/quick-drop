@@ -26,11 +26,11 @@ const ROLES = {
 
 const isDev = config.nodeEnv !== 'production';
 const DEFAULT_CREDENTIALS = {
-  adminEmail: String(process.env.DEFAULT_ADMIN_EMAIL || (isDev ? "Quick Dropindia@gmail.com" : ""))
+  adminEmail: String(process.env.DEFAULT_ADMIN_EMAIL || (isDev ? "K9 Ridesindia@gmail.com" : ""))
     .trim()
     .toLowerCase(),
   adminPassword: String(
-    process.env.DEFAULT_ADMIN_PASSWORD || (isDev ? "sahin.Quick Drop@2004#" : ""),
+    process.env.DEFAULT_ADMIN_PASSWORD || (isDev ? "sahin.K9 Rides@2004#" : ""),
   ),
   userPhone: String(process.env.DEFAULT_USER_PHONE || (isDev ? "7974161582" : "")),
   restaurantPhone: String(process.env.DEFAULT_RESTAURANT_PHONE || (isDev ? "7974161582" : "")),
@@ -277,7 +277,7 @@ export const adminLogin = async (email, password) => {
     admin = await FoodAdmin.create({
       email: DEFAULT_CREDENTIALS.adminEmail,
       password: DEFAULT_CREDENTIALS.adminPassword,
-      name: "Quick Drop Admin",
+      name: "K9 Rides Admin",
       isActive: true,
       servicesAccess: ["food", "quickCommerce", "taxi", "serviceProvider"],
       adminLevel: "platform_superadmin",
@@ -360,9 +360,9 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
   if (!restaurantDoc && isDefaultPhone(phone, DEFAULT_CREDENTIALS.restaurantPhone)) {
     // Auto-provision default restaurant account for configured default phone.
     restaurantDoc = await FoodRestaurant.create({
-      restaurantName: "Quick Drop Demo Restaurant",
-      ownerName: "Quick Drop Restaurant Owner",
-      ownerEmail: "restaurant@Quick Drop.com",
+      restaurantName: "K9 Rides Demo Restaurant",
+      ownerName: "K9 Rides Restaurant Owner",
+      ownerEmail: "restaurant@K9 Rides.com",
       ownerPhone: normalizePhone10(DEFAULT_CREDENTIALS.restaurantPhone),
       primaryContactNumber: normalizePhone10(DEFAULT_CREDENTIALS.restaurantPhone),
       city: "Bhopal",
@@ -476,7 +476,7 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
   if (!deliveryPartner && isDefaultPhone(phone, DEFAULT_CREDENTIALS.deliveryPhone)) {
     // Auto-provision default delivery account for configured default phone.
     deliveryPartner = await FoodDeliveryPartner.create({
-      name: "Quick Drop Delivery Partner",
+      name: "K9 Rides Delivery Partner",
       phone: normalizePhone10(DEFAULT_CREDENTIALS.deliveryPhone),
       city: "Bhopal",
       state: "Madhya Pradesh",
@@ -553,9 +553,9 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
 };
 
 export const logout = async (refreshToken, fcmToken, platform) => {
-  // No refresh token is a valid way to log out -- see dtos/auth/logout.dto.js.
-  // Fall through so the FCM token below is still detached, then report that
-  // nothing was invalidated.
+  if (!refreshToken) {
+    throw new ValidationError("Refresh token is required");
+  }
 
   // 1. Remove specific FCM token from ALL collections if provided
   if (fcmToken) {
@@ -582,13 +582,6 @@ export const logout = async (refreshToken, fcmToken, platform) => {
   }
 
   // 2. Invalidate the refresh token (standard logout procedure)
-  // Guarded: deleteOne({ token: undefined }) matches any document with no
-  // token field rather than matching nothing, so it could delete an unrelated
-  // row. Only query when there is actually a token to invalidate.
-  if (!refreshToken) {
-    return { invalidated: false };
-  }
-
   const deleted = await FoodRefreshToken.deleteOne({ token: refreshToken });
   return { invalidated: deleted.deletedCount > 0 };
 };
