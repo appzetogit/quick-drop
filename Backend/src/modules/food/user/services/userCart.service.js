@@ -181,7 +181,10 @@ const applyCartQuantityLimits = async (items = []) => {
     if (ids.length === 0) return { items, adjustments: [] };
 
     const [menuItems, ceiling] = await Promise.all([
-        FoodItem.find({ _id: { $in: ids } }).select('_id name minOrderQuantity maxOrderQuantity').lean(),
+        // variants come along because a size may carry limits of its own.
+        FoodItem.find({ _id: { $in: ids } })
+            .select('_id name minOrderQuantity maxOrderQuantity variants variantsEnabled')
+            .lean(),
         getOrderQuantityCeiling(),
     ]);
     const byId = new Map(menuItems.map((m) => [String(m._id), m]));
@@ -191,7 +194,9 @@ const applyCartQuantityLimits = async (items = []) => {
         const menu = byId.get(String(item.itemId || ''));
         if (!menu) return item;
 
-        const rules = resolveOrderQuantityRules(menu, ceiling);
+        // Judged on the size actually in the cart: a family pack capped at two
+        // must not be clamped by the dish-level cap of ten.
+        const rules = resolveOrderQuantityRules(menu, ceiling, item.variantId || null);
         const allowed = clampOrderQuantity(item.quantity, rules);
         if (allowed === item.quantity) return item;
 

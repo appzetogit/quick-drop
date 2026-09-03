@@ -36,15 +36,53 @@ export const resolveCeiling = (ceiling) => {
     return Number.isFinite(value) && value > 0 ? value : ABSOLUTE_MAX_ORDER_QUANTITY;
 };
 
-export function resolveOrderQuantityRules(foodDoc = null, ceiling = ABSOLUTE_MAX_ORDER_QUANTITY) {
-    const cap = resolveCeiling(ceiling);
+/**
+ * A dish's sizes do not sell alike. A half plate may go out in ones while a
+ * family pack is capped at two, and a per-piece size may carry a minimum the
+ * boxed size should not inherit. So a variant may set its own limits.
+ *
+ * Each bound falls back to the dish INDEPENDENTLY: a variant that sets only a
+ * maximum keeps the dish's minimum. All-or-nothing fallback would silently
+ * reset a minimum somebody had deliberately set on the dish.
+ *
+ * null (or absent) means "this size sets none". Zero keeps the meaning it has
+ * everywhere else here -- for a max it means no cap of its own.
+ */
+export function resolveVariantQuantityLimits(foodDoc = null, variantId = null) {
+    const fallback = {
+        minOrderQuantity: foodDoc?.minOrderQuantity,
+        maxOrderQuantity: foodDoc?.maxOrderQuantity,
+    };
+    if (!variantId) return fallback;
 
-    const rawMin = toInt(foodDoc?.minOrderQuantity);
+    // A dish with variants switched off prices and limits from its own fields,
+    // whatever the stored rows still say -- the same rule pricing follows.
+    if (foodDoc?.variantsEnabled === false) return fallback;
+
+    const rows = Array.isArray(foodDoc?.variants) ? foodDoc.variants : [];
+    const variant = rows.find((v) => String(v?._id ?? v?.id ?? '') === String(variantId));
+    if (!variant) return fallback;
+
+    return {
+        minOrderQuantity: variant.minOrderQuantity ?? fallback.minOrderQuantity,
+        maxOrderQuantity: variant.maxOrderQuantity ?? fallback.maxOrderQuantity,
+    };
+}
+
+/**
+ * `variantId` is optional and defaults to the dish-level behaviour, so every
+ * existing caller is unaffected.
+ */
+export function resolveOrderQuantityRules(foodDoc = null, ceiling = ABSOLUTE_MAX_ORDER_QUANTITY, variantId = null) {
+    const cap = resolveCeiling(ceiling);
+    const limits = resolveVariantQuantityLimits(foodDoc, variantId);
+
+    const rawMin = toInt(limits.minOrderQuantity);
     const min = Number.isFinite(rawMin) && rawMin > 0
         ? Math.min(rawMin, cap)
         : DEFAULT_MIN_ORDER_QUANTITY;
 
-    const rawMax = toInt(foodDoc?.maxOrderQuantity);
+    const rawMax = toInt(limits.maxOrderQuantity);
     const hasCap = Number.isFinite(rawMax) && rawMax > 0;
     const max = hasCap
         ? Math.min(Math.max(rawMax, min), cap)
@@ -57,8 +95,8 @@ export function resolveOrderQuantityRules(foodDoc = null, ceiling = ABSOLUTE_MAX
 }
 
 /** Stored shape to hand to clients (0 max = unlimited, so UIs can say so). */
-export function formatOrderQuantityLimits(foodDoc = null, ceiling = ABSOLUTE_MAX_ORDER_QUANTITY) {
-    const { min, max, hasCap } = resolveOrderQuantityRules(foodDoc, ceiling);
+export function formatOrderQuantityLimits(foodDoc = null, ceiling = ABSOLUTE_MAX_ORDER_QUANTITY, variantId = null) {
+    const { min, max, hasCap } = resolveOrderQuantityRules(foodDoc, ceiling, variantId);
     return {
         minOrderQuantity: min,
         maxOrderQuantity: hasCap ? max : 0

@@ -37,6 +37,10 @@ const createVariantDraft = (variant = {}) => ({
   id: String(variant?.id || variant?._id || `variant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
   name: String(variant?.name || ""),
   price: variant?.price != null ? String(variant.price) : "",
+  // Per-size order limits. Blank means "not set for this size", which is not the
+  // same as zero -- the dish's own limit then applies.
+  minOrderQuantity: variant?.minOrderQuantity != null ? String(variant.minOrderQuantity) : "",
+  maxOrderQuantity: variant?.maxOrderQuantity != null ? String(variant.maxOrderQuantity) : "",
   // Per-variant add-on pairings. Dropped here would mean an admin editing any
   // variant silently wipes what the restaurant paired -- the payload replaces
   // the whole variants array on save.
@@ -406,6 +410,8 @@ export default function FoodsList() {
         id: String(variant?.id || variant?._id || "").trim(),
         name: String(variant?.name || "").trim(),
         price: Number(variant?.price),
+        minOrderQuantity: variant?.minOrderQuantity ?? "",
+        maxOrderQuantity: variant?.maxOrderQuantity ?? "",
         addonIds: Array.isArray(variant?.addonIds) ? variant.addonIds : [],
         addonPrices: variant?.addonPrices || {},
       }))
@@ -468,6 +474,16 @@ export default function FoodsList() {
           ...(variant.id && !variant.id.startsWith("variant-") ? { _id: variant.id } : {}),
           name: variant.name,
           price: variant.price,
+          // Blank goes as null, meaning "this size sets none" -- the dish's limit
+          // then applies. Sending 0 for a minimum would be a different claim.
+          minOrderQuantity:
+            variant.minOrderQuantity === "" || variant.minOrderQuantity == null
+              ? null
+              : Number(variant.minOrderQuantity),
+          maxOrderQuantity:
+            variant.maxOrderQuantity === "" || variant.maxOrderQuantity == null
+              ? null
+              : Number(variant.maxOrderQuantity),
           // Priced pairings, same shape the restaurant panel sends. Blank price
           // means the add-on's own, stored as null.
           addons: (variant.addonIds || []).map((addonId) => {
@@ -1145,6 +1161,40 @@ export default function FoodsList() {
                             step="0.01"
                             value={variant.price}
                             onChange={(e) => handleVariantChange(variant.id, "price", e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                          />
+                        </div>
+
+                        {/* Per-size order limits. Sizes do not sell alike: a family
+                            pack may cap at two while a half plate goes out in tens,
+                            and a per-piece size may need a minimum the boxed size
+                            should not inherit. Left blank, this size keeps the
+                            dish's own limit. */}
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">
+                            Min qty <span className="text-slate-400">(optional)</span>
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={variant.minOrderQuantity ?? ""}
+                            onChange={(e) => handleVariantChange(variant.id, "minOrderQuantity", e.target.value)}
+                            placeholder="Uses the item's"
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">
+                            Max qty <span className="text-slate-400">(optional)</span>
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={variant.maxOrderQuantity ?? ""}
+                            onChange={(e) => handleVariantChange(variant.id, "maxOrderQuantity", e.target.value)}
+                            placeholder="Uses the item's"
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                           />
                         </div>

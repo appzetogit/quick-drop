@@ -40,6 +40,20 @@ const foodVariantSchema = new mongoose.Schema(
             )],
             default: [],
         },
+        /**
+         * Optional per-variant order quantity limits.
+         *
+         * Sizes do not sell alike: a half plate might reasonably go out in ones
+         * while a family pack is capped at two, and eggs sold by the piece can
+         * carry a minimum the boxed size should not inherit. Before this, one
+         * pair of limits covered every size of a dish.
+         *
+         * null means "not set for this size" -- the dish's own limit applies.
+         * Each bound falls back independently, so a variant may set only a
+         * maximum and keep the dish's minimum.
+         */
+        minOrderQuantity: { type: Number, min: 1, default: null },
+        maxOrderQuantity: { type: Number, min: 0, default: null },
         petpoojaVariantId: { type: String, trim: true, default: '' }
     },
     { _id: true }

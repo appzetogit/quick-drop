@@ -41,6 +41,42 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
                 price
             };
 
+            // Optional per-size quantity limits. Absent or blank means "not set",
+            // which is different from zero: the dish's own limit then applies.
+            // Send null explicitly to clear one.
+            if (entry?.minOrderQuantity !== undefined) {
+                const raw = entry.minOrderQuantity;
+                if (raw === null || raw === '') variant.minOrderQuantity = null;
+                else {
+                    const min = Math.floor(Number(raw));
+                    if (!Number.isFinite(min) || min < 1) {
+                        throw new ValidationError(`Minimum quantity for "${name}" must be 1 or more`);
+                    }
+                    variant.minOrderQuantity = min;
+                }
+            }
+            if (entry?.maxOrderQuantity !== undefined) {
+                const raw = entry.maxOrderQuantity;
+                if (raw === null || raw === '') variant.maxOrderQuantity = null;
+                else {
+                    const max = Math.floor(Number(raw));
+                    // 0 keeps the meaning it has everywhere else here: no cap of
+                    // its own, so the platform ceiling applies.
+                    if (!Number.isFinite(max) || max < 0) {
+                        throw new ValidationError(`Maximum quantity for "${name}" must be 0 or more`);
+                    }
+                    variant.maxOrderQuantity = max;
+                }
+            }
+            if (
+                variant.minOrderQuantity != null
+                && variant.maxOrderQuantity != null
+                && variant.maxOrderQuantity > 0
+                && variant.maxOrderQuantity < variant.minOrderQuantity
+            ) {
+                throw new ValidationError(`Maximum quantity for "${name}" cannot be below its minimum`);
+            }
+
             // Per-variant add-ons, each pairing optionally carrying its own price
             // for this size. Two accepted shapes:
             //   addons:   [{ addonId, price }]  -- price null means "the add-on's own"
@@ -117,6 +153,9 @@ export const serializeFoodVariants = (value = []) =>
                 _id: variantId ? String(variantId) : '',
                 name,
                 price,
+                // null means this size sets none of its own; the dish's applies.
+                minOrderQuantity: entry?.minOrderQuantity ?? null,
+                maxOrderQuantity: entry?.maxOrderQuantity ?? null,
                 addonIds: (entry?.addonIds || []).map((v) => String(v?._id ?? v?.id ?? v)).filter(Boolean),
                 addons: (entry?.addons || []).map((pair) => ({
                     addonId: String(pair?.addonId ?? ''),

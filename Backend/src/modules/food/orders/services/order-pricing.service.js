@@ -69,9 +69,6 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
     // the restaurant's wall clock, not the server's UTC one.
     assertFoodAvailableNow(menu);
 
-    // Per-item min/max set by the restaurant, with the platform ceiling as fallback.
-    const qty = assertOrderQuantity(it?.quantity, resolveOrderQuantityRules(menu, quantityCeiling), menu.name);
-
     let price = Number(menu.price);
     let variantName = '';
     // A dish switched off variants keeps them stored but sells at its base
@@ -92,6 +89,18 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
       price = computeSellingPrice(variant.price, menu.discountPercent) ?? Number(variant.price);
       variantName = variant.name;
     }
+
+    // Min/max set by the restaurant, with the platform ceiling as fallback.
+    //
+    // Checked AFTER the size is known, because a variant may carry limits of its
+    // own: a family pack capped at two must not be judged by the dish-level cap
+    // of ten. A variant that sets none inherits the dish's, so a dish without
+    // per-size limits behaves exactly as it did before.
+    const qty = assertOrderQuantity(
+      it?.quantity,
+      resolveOrderQuantityRules(menu, quantityCeiling, chosenVariantId),
+      variantName ? `${menu.name} (${variantName})` : menu.name,
+    );
 
     // Add-ons the dish actually offers, priced from the published record. The
     // chosen variant is passed too: an add-on may be attached to one size only,

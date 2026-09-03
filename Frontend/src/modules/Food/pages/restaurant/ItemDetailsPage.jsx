@@ -66,6 +66,10 @@ const createVariantDraft = (variant = {}) => ({
   persistedId: String(variant?.id || variant?._id || ""),
   name: String(variant?.name || ""),
   price: variant?.price != null ? String(variant.price) : "",
+  // Per-size order limits. Blank means "not set for this size", which is not the
+  // same as zero -- the dish's own limit then applies.
+  minOrderQuantity: variant?.minOrderQuantity != null ? String(variant.minOrderQuantity) : "",
+  maxOrderQuantity: variant?.maxOrderQuantity != null ? String(variant.maxOrderQuantity) : "",
   addonIds: Array.isArray(variant?.addonIds) ? variant.addonIds.map(String) : [],
   // Price each pairing charges on THIS size, keyed by addon id. Empty string
   // means "the add-on's own price" -- the server stores that as null.
@@ -714,6 +718,8 @@ export default function ItemDetailsPage() {
           persistedId: String(variant.persistedId || "").trim(),
           name: String(variant.name || "").trim(),
           price: Number(variant.price),
+          minOrderQuantity: variant.minOrderQuantity ?? "",
+          maxOrderQuantity: variant.maxOrderQuantity ?? "",
           addonIds: Array.isArray(variant.addonIds) ? variant.addonIds : [],
           addonPrices: variant.addonPrices || {},
         }))
@@ -726,6 +732,16 @@ export default function ItemDetailsPage() {
         ...(variant.persistedId ? { _id: variant.persistedId } : {}),
         name: variant.name,
         price: variant.price,
+        // Blank goes as null, meaning "this size sets none" -- the dish's limit
+        // then applies. Sending 0 for a minimum would be a different claim.
+        minOrderQuantity:
+          variant.minOrderQuantity === "" || variant.minOrderQuantity == null
+            ? null
+            : Number(variant.minOrderQuantity),
+        maxOrderQuantity:
+          variant.maxOrderQuantity === "" || variant.maxOrderQuantity == null
+            ? null
+            : Number(variant.maxOrderQuantity),
         // Priced pairings: the source of truth the server stores. A blank price
         // means the add-on's own, sent as null.
         addons: (variant.addonIds || []).map((addonId) => {
@@ -1416,6 +1432,50 @@ export default function ItemDetailsPage() {
                                     />
                                   </div>
                                   <FieldError field={`v-${variant.localId}-price`} />
+                                </div>
+
+                                {/* Per-size order limits. Sizes do not sell alike:
+                                    a family pack may cap at two while a half plate
+                                    goes out in tens, and a per-piece size may need a
+                                    minimum the boxed size should not inherit. Left
+                                    blank, this size keeps the item's own limit. */}
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                                    Min qty <span className="font-normal text-gray-400">(optional)</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={variant.minOrderQuantity ?? ""}
+                                    onChange={(e) =>
+                                      handleVariantChange(
+                                        variant.localId,
+                                        "minOrderQuantity",
+                                        e.target.value.replace(/[^0-9]/g, "")
+                                      )
+                                    }
+                                    placeholder="Uses the item's"
+                                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                                    Max qty <span className="font-normal text-gray-400">(optional)</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={variant.maxOrderQuantity ?? ""}
+                                    onChange={(e) =>
+                                      handleVariantChange(
+                                        variant.localId,
+                                        "maxOrderQuantity",
+                                        e.target.value.replace(/[^0-9]/g, "")
+                                      )
+                                    }
+                                    placeholder="Uses the item's"
+                                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                                  />
                                 </div>
 
                                 {/* Variant specific addons */}
