@@ -121,7 +121,11 @@ export async function listPublicFoods(query = {}) {
             // strikePrice is null whenever there is nothing honest to show, so the
             // client can render it unconditionally instead of guessing.
             ...(() => {
-                const display = resolveItemDisplayPricing(food);
+                // Effective price in, as the menu endpoint does: for a dish sold by
+                // variants the raw price is the base, not what it starts from, and
+                // spreading display.price over the effective one put variant
+                // dishes over the Rs 99 cap that their cheapest size was under.
+                const display = resolveItemDisplayPricing({ ...food, price });
                 // Per-item figure wins over the blanket markup; see
                 // shared/otherPlatformPricing.js for why.
                 const otherPlatformPrice = resolveItemOtherPlatformPrice(
