@@ -97,11 +97,17 @@ export function normalizeComboComponents(rows = []) {
  */
 export function validateComboComposition(components = []) {
     const distinctDishes = new Set(components.map((c) => idOf(c.itemId))).size;
-    if (components.length < MIN_COMBO_COMPONENTS) {
-        return { ok: false, reason: 'Pick at least ' + MIN_COMBO_COMPONENTS + ' dishes for a combo.' };
-    }
+
+    // Distinct dishes first, and the word "different" is doing real work here.
+    // normalizeComboComponents merges duplicate rows, so picking the same dish
+    // twice arrives as one row of quantity two. Testing row count first would
+    // then answer "pick at least 2 dishes" to somebody who just picked two --
+    // technically a refusal, but not one that says what is wrong.
     if (distinctDishes < MIN_COMBO_COMPONENTS) {
-        return { ok: false, reason: 'A combo needs at least two different dishes, not more of the same one.' };
+        return {
+            ok: false,
+            reason: 'Pick at least ' + MIN_COMBO_COMPONENTS + ' different dishes for a combo.',
+        };
     }
     if (components.length > MAX_COMBO_COMPONENTS) {
         return { ok: false, reason: 'A combo can hold at most ' + MAX_COMBO_COMPONENTS + ' dishes.' };

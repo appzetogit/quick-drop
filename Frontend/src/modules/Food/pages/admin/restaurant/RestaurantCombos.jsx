@@ -176,7 +176,7 @@ export default function RestaurantCombos() {
 
         const rows = draft.rows.filter((row) => row.itemId)
         if (rows.length < MIN_COMPONENTS) {
-            return toast.error(`Pick at least ${MIN_COMPONENTS} dishes for a combo.`)
+            return toast.error(`Pick at least ${MIN_COMPONENTS} different dishes for a combo.`)
         }
         if (new Set(rows.map((row) => row.itemId)).size < MIN_COMPONENTS) {
             return toast.error("A combo needs at least two different dishes.")

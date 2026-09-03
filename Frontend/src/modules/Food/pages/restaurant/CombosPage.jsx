@@ -80,7 +80,13 @@ export default function CombosPage() {
             // The menu arrives as sections; flatten it into a flat pick list. A
             // combo cannot contain another combo, so those are filtered out here
             // as well as refused by the server.
-            const sections = menuRes?.data?.data?.sections || menuRes?.data?.sections || []
+            // The body is { success, message, data: { menu: { sections } } }, so
+            // the sections sit two levels down. Reading data.data.sections leaves
+            // the picker silently empty, since getMenu is caught and a missing key
+            // just yields an empty list.
+            const menuPayload =
+                menuRes?.data?.data?.menu || menuRes?.data?.menu || menuRes?.data?.data || menuRes?.data || {}
+            const sections = Array.isArray(menuPayload.sections) ? menuPayload.sections : []
             const flat = []
             for (const section of sections) {
                 for (const item of section?.items || []) {
@@ -148,7 +154,7 @@ export default function CombosPage() {
 
         const rows = draft.rows.filter((row) => row.itemId)
         if (rows.length < MIN_COMPONENTS) {
-            return toast.error(`Pick at least ${MIN_COMPONENTS} dishes for a combo.`)
+            return toast.error(`Pick at least ${MIN_COMPONENTS} different dishes for a combo.`)
         }
         if (new Set(rows.map((row) => row.itemId)).size < MIN_COMPONENTS) {
             return toast.error("A combo needs at least two different dishes.")

@@ -59,7 +59,12 @@ export default function FreebieOffersPage() {
         // would offer "Breads" as a dish, and picking it would store a category
         // id that resolves to no item at checkout -- a freebie that silently
         // never arrives.
-        const payload = menuRes?.data?.data || menuRes?.data || {}
+        // The body is { success, message, data: { menu: { sections } } }, so the
+        // sections sit two levels down. Reading data.data.sections instead left
+        // the dish picker permanently empty with no error, because getMenu is
+        // caught and the missing key just yielded an empty list.
+        const payload =
+          menuRes?.data?.data?.menu || menuRes?.data?.menu || menuRes?.data?.data || menuRes?.data || {}
         const sections = Array.isArray(payload.sections) ? payload.sections : []
         const flat = []
         for (const section of sections) {

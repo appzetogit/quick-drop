@@ -71,6 +71,21 @@ assert.equal(
 }
 assert.ok(validateComboComposition([]).reason.length > 0, 'a rejection always explains itself');
 
+// Picking the same dish twice is refused, and the message has to say WHY.
+// normalizeComboComponents merges duplicate rows, so this arrives as one row of
+// quantity two -- and a bare "pick at least 2 dishes" would be baffling to
+// somebody who just picked two. A live run of the flow caught exactly that.
+{
+    const merged = normalizeComboComponents([{ itemId: 'burger' }, { itemId: 'burger' }]);
+    assert.equal(merged.length, 1, 'duplicates merge into one row');
+    const verdict = validateComboComposition(merged);
+    assert.equal(verdict.ok, false);
+    assert.match(verdict.reason, /different dishes/, 'the reason names the actual problem');
+}
+// The empty and single-dish cases get the same honest wording.
+assert.match(validateComboComposition([]).reason, /different dishes/);
+assert.match(validateComboComposition([{ itemId: 'a', quantity: 1 }]).reason, /different dishes/);
+
 // --- computeComponentTotal ---------------------------------------------------
 {
     const components = [{ itemId: 'burger', variantId: null, quantity: 1 }, { itemId: 'fries', variantId: null, quantity: 2 }];
