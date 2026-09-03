@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { shouldAutoMark99, crossedInto99Cap } from '../../shared/ninetyNineStore.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
@@ -3344,6 +3345,8 @@ export async function createFood(body) {
         ...(availabilitySchedule ? { availabilitySchedule } : {}),
         approvalStatus: 'approved'
     });
+    // Born approved, so the approval hook never sees it: decide the shelf here.
+    if (shouldAutoMark99(doc)) doc.showIn99Store = true;
     await doc.save();
     return doc.toObject();
 }
@@ -3364,6 +3367,9 @@ export async function updateFood(id, body) {
     if (restaurant.pureVegRestaurant === true && targetFoodType !== 'Veg') {
         throw new ValidationError('Pure veg restaurants can only use veg foods');
     }
+    // Snapshot the effective price before the edit, so a change can be judged
+    // as a transition rather than a state.
+    const priceStateBefore = doc.toObject();
     const pricingUpdate = getAdminFoodUpdatedPricing(doc.toObject(), body);
     if (pricingUpdate.price !== undefined) doc.price = pricingUpdate.price;
     if (pricingUpdate.basePrice !== undefined) doc.basePrice = pricingUpdate.basePrice;
@@ -3404,6 +3410,13 @@ export async function updateFood(id, body) {
         doc.categoryId = categoryId;
         doc.categoryName = categoryName;
     }
+    // Rs 99 store: only a price crossing INTO the cap auto-ticks the flag.
+    // Checking "is it under 99 now" instead would re-tick a dish the admin had
+    // deliberately cleared, on every unrelated save.
+    if (doc.approvalStatus === 'approved' && crossedInto99Cap(priceStateBefore, doc)) {
+        doc.showIn99Store = true;
+    }
+
     await doc.save();
 
     // Public menu responses are cached for up to five minutes, so an edited
