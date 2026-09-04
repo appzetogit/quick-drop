@@ -11,7 +11,7 @@ app can safely ignore, but shouldn't.
 | **Optional** | Free delivery by distance | The fee can be waived per platform *or* per restaurant. Read the reason and source from the pricing breakdown. |
 
 - API base: `https://quickdropsindia.com/api/v1`
-- Backend commit: `584dfd0`
+- Backend commit: `8f45b87`
 - Every payload below is a real response captured from production, not an example.
 
 ---
@@ -296,11 +296,38 @@ one.
 The last two appear alongside `freeDeliveryApplied: false`, so treat any value
 other than `platform` or `restaurant` as "delivery is not free here".
 
-### Badging a restaurant card
+### The resolved rule on a restaurant
 
-The restaurant list and restaurant detail now carry the offer each restaurant is
-actually running, as `freeDeliveryOffer`, so a card can be badged before the
-customer builds a basket.
+Restaurant detail, the restaurant list and the dish feed all carry the resolved
+rule in the same shape `/orders/calculate` uses, so one model parses a card and a
+checkout response:
+
+```json
+{
+  "freeDeliveryRule": { "maxDistanceKm": 3, "minOrderAmount": 300 },
+  "freeDeliverySource": "restaurant"
+}
+```
+
+`freeDeliveryRule` is **`null` whenever nothing runs here** — no platform rule, or
+this restaurant excluded from one that is running. There is never a rule you have
+to know not to show. `freeDeliverySource` still tells you which case it was, so
+copy can credit the restaurant (`"restaurant"`) rather than the platform.
+
+`distanceKm` is absent, as expected: there is no cart or address at this point.
+
+```dart
+final rule = json['freeDeliveryRule'] as Map<String, dynamic>?;
+if (rule != null) {
+  final threshold = (rule['minOrderAmount'] as num).toDouble();
+  // progress = cartSubtotal / threshold
+}
+```
+
+### A badge with the copy written for you
+
+The restaurant list and detail also carry `freeDeliveryOffer`, the same rule with
+server-written wording, for when you want a badge rather than a progress bar.
 
 ```json
 {
@@ -393,6 +420,10 @@ renamed or removed.
 | `deliveryFeeBreakdown.freeDeliveryApplied` | `bool` | pricing | the fee was waived, by either rule |
 | `deliveryFeeBreakdown.freeDeliveryReason` | `String?` | pricing | `distance_and_order_value` for the new rule |
 | `deliveryFeeBreakdown.freeDeliverySource` | `String?` | pricing | `platform`, `restaurant`, `restaurant_off`, `none` |
+| `freeDeliveryRule` | `object?` | detail, list, dish feed | `null` when no rule runs here |
+| `freeDeliveryRule.minOrderAmount` | `num` | detail, list, dish feed | the progress-bar threshold |
+| `freeDeliveryRule.maxDistanceKm` | `num` | detail, list, dish feed | not evaluable without an address |
+| `freeDeliverySource` | `String` | detail, list, dish feed | `platform`, `restaurant`, `restaurant_off`, `none` |
 | `freeDeliveryOffer.isEnabled` | `bool` | restaurant list, detail | render the badge on this, not on the key |
 | `freeDeliveryOffer.minOrderAmount` | `num` | restaurant list, detail | absent when no offer applies |
 | `freeDeliveryOffer.maxDistanceKm` | `num` | restaurant list, detail | absent when no offer applies |
@@ -432,6 +463,9 @@ The first four are the ones that would reach a customer as a broken order.
       today.
 - [ ] A restaurant with a free-delivery offer shows a badge from
       `freeDeliveryOffer.shortLabel`, and one without shows nothing.
+- [ ] The progress bar reads `freeDeliveryRule.minOrderAmount` and hides entirely
+      when `freeDeliveryRule` is `null` — including a restaurant excluded from a
+      running platform promotion.
 - [ ] The free-delivery rule is read from each pricing response, never cached
       globally — two restaurants can have different rules, and one can be
       excluded while the platform promotion runs.
