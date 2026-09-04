@@ -14,6 +14,7 @@ import {
     normalizeRestaurantFreeDelivery,
     validateRestaurantFreeDelivery,
     resolveEffectiveFreeDeliveryRule,
+    mergeRestaurantFreeDelivery,
 } from '../freeDeliveryRule.js';
 
 const rule = (over = {}) => ({ isEnabled: true, maxDistanceKm: 3, minOrderAmount: 300, ...over });
@@ -139,5 +140,31 @@ assert.equal(validateRestaurantFreeDelivery({ mode: 'custom', maxDistanceKm: 80,
     'a 80 km radius is a typo, not a rule');
 assert.equal(validateRestaurantFreeDelivery({ mode: 'custom', maxDistanceKm: 5, minOrderAmount: 0 }).ok, false);
 assert.equal(validateRestaurantFreeDelivery({ mode: 'custom', maxDistanceKm: 5, minOrderAmount: 250 }).ok, true);
+
+// --- mergeRestaurantFreeDelivery --------------------------------------------
+// A live run caught this: switching a restaurant to 'inherit' reset its custom
+// radius to the module default, so switching back to 'custom' silently lost the
+// numbers the admin had typed.
+{
+    const stored = { mode: 'custom', maxDistanceKm: 7, minOrderAmount: 150 };
+    const merged = mergeRestaurantFreeDelivery({ mode: 'inherit' }, stored);
+    assert.equal(merged.mode, 'inherit', 'the mode change lands');
+    assert.equal(merged.maxDistanceKm, 7, 'the radius survives the switch');
+    assert.equal(merged.minOrderAmount, 150, 'so does the minimum');
+}
+{
+    // A panel that sends 0 for a disabled input means "nothing here", not "zero".
+    const stored = { mode: 'custom', maxDistanceKm: 7, minOrderAmount: 150 };
+    const merged = mergeRestaurantFreeDelivery({ mode: 'off', maxDistanceKm: 0, minOrderAmount: 0 }, stored);
+    assert.equal(merged.maxDistanceKm, 7);
+    assert.equal(merged.minOrderAmount, 150);
+}
+// Real edits still land.
+assert.equal(mergeRestaurantFreeDelivery({ maxDistanceKm: 5 }, { mode: 'custom', maxDistanceKm: 7 }).maxDistanceKm, 5);
+// An unknown mode keeps the stored one rather than silently reverting to inherit.
+assert.equal(mergeRestaurantFreeDelivery({ mode: 'bogus' }, { mode: 'off' }).mode, 'off');
+// Nothing stored: module defaults, which is the first-save case.
+assert.deepEqual(mergeRestaurantFreeDelivery({ mode: 'custom' }, null),
+    { mode: 'custom', maxDistanceKm: 3, minOrderAmount: 300 });
 
 console.log('All free delivery rule checks passed.');

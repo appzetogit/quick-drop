@@ -393,13 +393,23 @@ export async function updateRestaurantFreeDelivery(req, res, next) {
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ success: false, message: 'Invalid restaurant id' });
         }
-        const { validateRestaurantFreeDelivery } = await import('../../shared/freeDeliveryRule.js');
-        const verdict = validateRestaurantFreeDelivery(req.body || {});
+        const { validateRestaurantFreeDelivery, mergeRestaurantFreeDelivery } =
+            await import('../../shared/freeDeliveryRule.js');
+        const { FoodRestaurant } = await import('../../restaurant/models/restaurant.model.js');
+
+        const existing = await FoodRestaurant.findById(id).select('freeDeliveryRule').lean();
+        if (!existing) {
+            return res.status(404).json({ success: false, message: 'Restaurant not found' });
+        }
+
+        // Merge over what is stored, so switching to inherit or off keeps the
+        // radius and minimum the admin typed rather than resetting them.
+        const merged = mergeRestaurantFreeDelivery(req.body || {}, existing.freeDeliveryRule);
+        const verdict = validateRestaurantFreeDelivery(merged);
         if (!verdict.ok) {
             return res.status(400).json({ success: false, message: verdict.reason });
         }
 
-        const { FoodRestaurant } = await import('../../restaurant/models/restaurant.model.js');
         const updated = await FoodRestaurant.findByIdAndUpdate(
             id,
             { $set: { freeDeliveryRule: verdict.setting } },

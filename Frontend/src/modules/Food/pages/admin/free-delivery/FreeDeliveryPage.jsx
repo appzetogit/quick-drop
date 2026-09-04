@@ -154,10 +154,12 @@ export default function FreeDeliveryPage() {
 
         setSavingSetting(true)
         try {
+            // Send the numbers as they stand, never 0 for a disabled field --
+            // the server reads a zero as "nothing here" and keeps what it has.
             await adminAPI.updateRestaurantFreeDelivery(selectedId, {
                 mode: setting.mode,
-                maxDistanceKm: km || 0,
-                minOrderAmount: amount || 0,
+                maxDistanceKm: Number.isFinite(km) && km > 0 ? km : undefined,
+                minOrderAmount: Number.isFinite(amount) && amount > 0 ? amount : undefined,
             })
             toast.success("Restaurant free delivery saved.")
             loadSetting(selectedId)

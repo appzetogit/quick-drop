@@ -133,6 +133,34 @@ export function normalizeRestaurantFreeDelivery(raw = null) {
     };
 }
 
+/**
+ * Merge what an admin just submitted over what is already stored.
+ *
+ * The point is that switching a restaurant to 'inherit' or 'off' must not throw
+ * away the radius and minimum it had, so switching back to 'custom' restores the
+ * numbers instead of silently resetting them to 3 km and Rs 300. Normalising the
+ * incoming body on its own would do exactly that, because an absent field falls
+ * back to the module default rather than to the stored value.
+ *
+ * A non-positive number counts as absent. No valid rule uses zero, so a panel
+ * that sends 0 for a disabled input is saying "nothing here", not "make it zero".
+ */
+export function mergeRestaurantFreeDelivery(incoming = {}, stored = null) {
+    const current = normalizeRestaurantFreeDelivery(stored);
+    const source = incoming && typeof incoming === 'object' ? incoming : {};
+
+    const keep = (value, fallback) => {
+        const n = Number(value);
+        return Number.isFinite(n) && n > 0 ? n : fallback;
+    };
+
+    return {
+        mode: RESTAURANT_FREE_DELIVERY_MODES.includes(source.mode) ? source.mode : current.mode,
+        maxDistanceKm: keep(source.maxDistanceKm, current.maxDistanceKm),
+        minOrderAmount: keep(source.minOrderAmount, current.minOrderAmount),
+    };
+}
+
 export function validateRestaurantFreeDelivery(raw = {}) {
     const setting = normalizeRestaurantFreeDelivery(raw);
     // Only a custom rule has numbers worth checking. Inherit and off carry
