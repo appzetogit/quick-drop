@@ -8,10 +8,10 @@ app can safely ignore, but shouldn't.
 |---|---|---|
 | **Required** | Per-size quantity limits | Read limits from the selected size, not the dish. Checkout is rejecting orders today. |
 | **Recommended** | Combos | Already orderable with no change. Two new fields let you show what's inside. |
-| **Optional** | Free delivery by distance | The fee can now be waived by an admin rule. Read the reason from the pricing breakdown. |
+| **Optional** | Free delivery by distance | The fee can be waived per platform *or* per restaurant. Read the reason and source from the pricing breakdown. |
 
 - API base: `https://quickdropsindia.com/api/v1`
-- Backend commit: `3f5cc74`
+- Backend commit: `aa0b117`
 - Every payload below is a real response captured from production, not an example.
 
 ---
@@ -243,6 +243,13 @@ An admin can set a radius and a minimum order — say within 3 km on orders of �
 or more — and the delivery fee is waived when both hold. **The rule is off until
 an admin enables it**, so nothing changes for you until then.
 
+The rule can be set platform-wide *or* for one restaurant. A restaurant's own
+setting beats the platform rule, including an explicit exclusion, so **there is
+no single global rule the app can fetch and cache**. Two restaurants in the same
+city can have different rules, or one can be excluded entirely while the
+platform promotion runs. Always read it from the pricing response for the cart
+in hand — never from a value you stored earlier.
+
 ### Where it surfaces
 
 In the `pricing` object returned by `POST /food/orders/calculate`, under
@@ -252,6 +259,7 @@ In the `pricing` object returned by `POST /food/orders/calculate`, under
 {
   "freeDeliveryApplied": true,
   "freeDeliveryReason": "distance_and_order_value",
+  "freeDeliverySource": "restaurant",
   "freeDeliveryRule": {
     "maxDistanceKm": 3,
     "minOrderAmount": 300,
@@ -270,6 +278,29 @@ delivery is free.
 > per-dish rule, where every item in the basket is individually marked
 > free-delivery. Check `freeDeliveryReason == 'distance_and_order_value'` to tell
 > the new rule apart, and treat a missing reason as the per-dish case.
+
+### Which rule paid
+
+`freeDeliverySource` says where the applied rule came from. You do not need it
+to price anything — totals are already correct — but it is there for analytics
+and for copy that distinguishes a restaurant's own promotion from a platform
+one.
+
+| Value | Meaning |
+|---|---|
+| `platform` | The platform-wide rule applied. |
+| `restaurant` | This restaurant's own rule applied, overriding the platform. |
+| `restaurant_off` | This restaurant is excluded, even though the platform rule is running. |
+| `none` | No rule is running at all. |
+
+The last two appear alongside `freeDeliveryApplied: false`, so treat any value
+other than `platform` or `restaurant` as "delivery is not free here".
+
+**A note on badges.** The feed and restaurant-detail responses do not currently
+carry a restaurant's free-delivery rule, so the app cannot show a "Free delivery
+over ₹300" badge on a restaurant card — the customer only learns at checkout,
+once the pricing call has run. If that badge is wanted, the backend needs to
+expose the resolved rule per restaurant; ask and it can be added.
 
 ### The nudge, if you want it
 
@@ -324,6 +355,7 @@ renamed or removed.
 | `comboComponents[].allocatedLineTotal` | `num` | order line only | accounting share; don't show it |
 | `deliveryFeeBreakdown.freeDeliveryApplied` | `bool` | pricing | the fee was waived, by either rule |
 | `deliveryFeeBreakdown.freeDeliveryReason` | `String?` | pricing | `distance_and_order_value` for the new rule |
+| `deliveryFeeBreakdown.freeDeliverySource` | `String?` | pricing | `platform`, `restaurant`, `restaurant_off`, `none` |
 | `deliveryFeeBreakdown.freeDeliveryRule` | `object?` | pricing | radius, minimum, and measured distance |
 | `deliveryFeeBreakdown.waivedDeliveryFee` | `num` | pricing | what would otherwise have been charged |
 
@@ -356,6 +388,9 @@ The first four are the ones that would reach a customer as a broken order.
 - [ ] Ordering a combo works end to end without any combo-specific cart logic.
 - [ ] With the free-delivery rule off, the delivery line looks exactly as it does
       today.
+- [ ] The free-delivery rule is read from each pricing response, never cached
+      globally — two restaurants can have different rules, and one can be
+      excluded while the platform promotion runs.
 
 ---
 
