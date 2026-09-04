@@ -12,7 +12,7 @@ wrong. The other two add fields the app can safely ignore, but shouldn't.
 | **Required** | The 99 store price point | The shelf can run at ₹59. Anything hardcoding "99" is now wrong — read the live cap. |
 
 - API base: `https://quickdropsindia.com/api/v1`
-- Backend commit: `6f80fbc`
+- Backend commit: `82fbb17`
 - Every payload below is a real response captured from production, not an example.
 
 ---
@@ -454,6 +454,64 @@ above the new price, but keeps their marking, so putting the cap back restores t
 shelf exactly. Dishes an admin removed by hand stay off through all of it. None of
 this needs app-side handling — the feed simply returns a different set.
 
+### Showing it on the bill
+
+When an order earns free delivery the bill should strike the fee and show it as
+free, rather than quietly omitting the line — a row that disappears reads as a
+missing charge, not as a saving.
+
+Everything needed is already in the pricing response. These are real captured
+values for the same cart at two subtotals, against a restaurant with a 5 km /
+₹300 rule:
+
+```json
+// Rs 200 subtotal - under the minimum, fee stands
+{ "deliveryFee": 25,
+  "deliveryFeeBreakdown": { "appliedDeliveryFee": 25 } }
+
+// Rs 400 subtotal, 0.6 km away - qualifies
+{ "deliveryFee": 0,
+  "deliveryFeeBreakdown": {
+    "freeDeliveryApplied": true,
+    "freeDeliveryReason": "distance_and_order_value",
+    "freeDeliverySource": "restaurant",
+    "waivedDeliveryFee": 25,
+    "appliedDeliveryFee": 0
+  } }
+```
+
+- **`waivedDeliveryFee`** is the number to strike through. It is exactly what
+  the same order would have been charged.
+- **`pricing.deliveryFee`** is what is actually charged — `0` when free.
+- The **total already excludes it**. Do not subtract the waiver again.
+
+```dart
+final breakdown = pricing['deliveryFeeBreakdown'] as Map<String, dynamic>? ?? {};
+final isFree = breakdown['freeDeliveryApplied'] == true;
+final waived = (breakdown['waivedDeliveryFee'] as num?) ?? 0;
+final charged = (pricing['deliveryFee'] as num?) ?? 0;
+
+// Delivery row
+if (isFree && waived > 0) {
+  // ₹25 struck through, then "FREE"
+  return DeliveryRow(struckThrough: waived, label: 'FREE');
+}
+return DeliveryRow(amount: charged);
+```
+
+**Guard on `waived > 0`, not just `isFree`.** A waived fee of zero means the
+order was never going to be charged for delivery in the first place, and
+striking through "₹0" looks broken. Show a plain "Free delivery" line in that
+case, or nothing at all.
+
+`freeDeliveryReason` lets the row explain itself — `distance_and_order_value`
+is the radius rule, and a missing reason means every item in the basket was
+individually marked free-delivery. Both are paid for by the platform, so
+neither changes what the restaurant or the rider receives.
+
+The same breakdown is stored on the order, so a past order's bill can show the
+identical struck-through row without recalculating anything.
+
 ---
 
 ## Field reference
@@ -485,7 +543,8 @@ renamed or removed.
 | `freeDeliveryOffer.shortLabel` | `String` | restaurant list, detail | card-sized copy |
 | `freeDeliveryOffer.label` | `String` | restaurant list, detail | full terms |
 | `deliveryFeeBreakdown.freeDeliveryRule` | `object?` | pricing | radius, minimum, and measured distance |
-| `deliveryFeeBreakdown.waivedDeliveryFee` | `num` | pricing | what would otherwise have been charged |
+| `deliveryFeeBreakdown.waivedDeliveryFee` | `num` | pricing, saved order | the number to strike through |
+| `deliveryFeeBreakdown.appliedDeliveryFee` | `num` | pricing, saved order | what was actually charged |
 | `ninetyNineStoreMaxPrice` | `num` | `/landing/settings/public` | the shelf's price point; never null |
 
 **Endpoints, unchanged.** The cross-restaurant feed is
@@ -525,6 +584,9 @@ The first four are the ones that would reach a customer as a broken order.
 - [ ] The progress bar reads `freeDeliveryRule.minOrderAmount` and hides entirely
       when `freeDeliveryRule` is `null` — including a restaurant excluded from a
       running platform promotion.
+- [ ] A qualifying order strikes through `waivedDeliveryFee` and shows FREE on
+      the delivery row, at checkout and on the past-order bill.
+- [ ] The total is not adjusted a second time — it already excludes the waiver.
 - [ ] The free-delivery rule is read from each pricing response, never cached
       globally — two restaurants can have different rules, and one can be
       excluded while the platform promotion runs.
