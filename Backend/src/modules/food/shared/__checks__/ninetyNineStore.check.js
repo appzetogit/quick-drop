@@ -9,6 +9,9 @@ import {
     isWithin99Cap,
     shouldAutoMark99,
     crossedInto99Cap,
+    resolveNinetyNineCap,
+    shouldBackfillInto99Store,
+    describeCapChange,
 } from '../ninetyNineStore.js';
 
 assert.equal(NINETY_NINE_STORE_MAX_PRICE, 99);
@@ -43,5 +46,55 @@ assert.equal(crossedInto99Cap({ price: 90 }, { price: 120 }), false, 'crossing o
 assert.equal(crossedInto99Cap({ price: 120 }, { price: 150 }), false, 'still out');
 assert.equal(crossedInto99Cap({ price: 120 }, { price: 99 }), true, 'landing exactly on the cap counts');
 assert.equal(crossedInto99Cap({}, { price: 50 }), true, 'from unpriced to cheap counts');
+
+// --- a configurable cap -----------------------------------------------------
+// Every rule defaults to 99, which is what keeps behaviour identical for callers
+// that know nothing about the setting.
+assert.equal(resolveNinetyNineCap(59), 59);
+assert.equal(resolveNinetyNineCap(0), 99, 'zero is not a price point');
+assert.equal(resolveNinetyNineCap(-5), 99);
+assert.equal(resolveNinetyNineCap('abc'), 99);
+assert.equal(resolveNinetyNineCap(null), 99, 'unset falls back to the old constant');
+
+assert.equal(isWithin99Cap({ price: 70 }, 59), false, 'Rs 70 is off a Rs 59 shelf');
+assert.equal(isWithin99Cap({ price: 59 }, 59), true, 'exactly the cap is on it');
+assert.equal(isWithin99Cap({ price: 200 }, 250), true, 'and a raised cap admits more');
+assert.equal(isWithin99Cap({ price: 70 }), true, 'no cap given still means 99');
+
+assert.equal(shouldAutoMark99({ approvalStatus: 'approved', price: 70 }, 59), false);
+assert.equal(shouldAutoMark99({ approvalStatus: 'approved', price: 50 }, 59), true);
+
+// Both sides of a transition are judged against the SAME cap. Judging `before`
+// against the old cap and `after` against a new one would make a cap change look
+// like a price change on every dish at once.
+assert.equal(crossedInto99Cap({ price: 80 }, { price: 50 }, 59), true);
+assert.equal(crossedInto99Cap({ price: 50 }, { price: 55 }, 59), false, 'already inside');
+assert.equal(crossedInto99Cap({ price: 70 }, { price: 70 }, 59), false, 'outside, and unchanged');
+
+// --- describeCapChange ------------------------------------------------------
+// Raising needs a backfill: nothing else is going to touch the newly eligible
+// dishes, so the shelf would fill in only as dishes happened to be saved.
+assert.deepEqual(describeCapChange(99, 250), { direction: 'raised', needsBackfill: true, before: 99, after: 250 });
+// Lowering needs nothing: dishes stop qualifying at read time and leave on their
+// own. Their flags are deliberately left alone so raising it back restores the
+// shelf -- lowering is a reversible experiment, clearing curation is not.
+assert.deepEqual(describeCapChange(99, 59), { direction: 'lowered', needsBackfill: false, before: 99, after: 59 });
+assert.deepEqual(describeCapChange(99, 99), { direction: 'unchanged', needsBackfill: false, before: 99, after: 99 });
+assert.equal(describeCapChange(null, 59).direction, 'lowered', 'unset counts as the default 99');
+
+// --- shouldBackfillInto99Store ----------------------------------------------
+// The reason the exclusion flag exists: a cap rise must not undo curation.
+assert.equal(shouldBackfillInto99Store({ approvalStatus: 'approved', price: 150 }, 250), true,
+    'newly eligible and never touched');
+assert.equal(shouldBackfillInto99Store(
+    { approvalStatus: 'approved', price: 150, ninetyNineStoreExcluded: true }, 250), false,
+    'an admin removed this by hand; a cap rise must not put it back');
+assert.equal(shouldBackfillInto99Store(
+    { approvalStatus: 'approved', price: 150, showIn99Store: true }, 250), false,
+    'already on the shelf, nothing to do');
+assert.equal(shouldBackfillInto99Store({ approvalStatus: 'pending', price: 150 }, 250), false,
+    'unapproved never gets flagged');
+assert.equal(shouldBackfillInto99Store({ approvalStatus: 'approved', price: 300 }, 250), false,
+    'still above the new cap');
 
 console.log('All Rs 99 auto-mark checks passed.');

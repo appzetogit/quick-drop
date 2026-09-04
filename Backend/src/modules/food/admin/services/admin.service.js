@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { shouldAutoMark99, crossedInto99Cap } from '../../shared/ninetyNineStore.js';
+import { getNinetyNineCap } from '../../shared/ninetyNineStoreCap.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
@@ -3368,7 +3369,7 @@ export async function createFood(body) {
         approvalStatus: 'approved'
     });
     // Born approved, so the approval hook never sees it: decide the shelf here.
-    if (shouldAutoMark99(doc)) doc.showIn99Store = true;
+    if (shouldAutoMark99(doc, await getNinetyNineCap())) doc.showIn99Store = true;
     await doc.save();
     return doc.toObject();
 }
@@ -3404,7 +3405,12 @@ export async function updateFood(id, body) {
     // Rs 99 store shelf. Admin-only: the restaurant panel never sends this, so a
     // restaurant cannot put its own dish on the shelf.
     if (body.showIn99Store !== undefined) {
-        doc.showIn99Store = body.showIn99Store === true || body.showIn99Store === 'true';
+        const wanted = body.showIn99Store === true || body.showIn99Store === 'true';
+        doc.showIn99Store = wanted;
+        // Remember the decision itself, not just its result. Taking a dish off
+        // the shelf by hand has to survive a later cap rise, and `false` alone
+        // cannot be told apart from "never been eligible".
+        doc.ninetyNineStoreExcluded = !wanted;
     }
     // Free delivery. Admin-only for the same reason: the platform absorbs it.
     if (body.freeDelivery !== undefined) {
@@ -3435,8 +3441,11 @@ export async function updateFood(id, body) {
     // Rs 99 store: only a price crossing INTO the cap auto-ticks the flag.
     // Checking "is it under 99 now" instead would re-tick a dish the admin had
     // deliberately cleared, on every unrelated save.
-    if (doc.approvalStatus === 'approved' && crossedInto99Cap(priceStateBefore, doc)) {
+    if (doc.approvalStatus === 'approved' && crossedInto99Cap(priceStateBefore, doc, await getNinetyNineCap())) {
         doc.showIn99Store = true;
+        // A price the admin moved into the cap is a fresh decision; it clears an
+        // older exclusion rather than being blocked by it.
+        doc.ninetyNineStoreExcluded = false;
     }
 
     await doc.save();

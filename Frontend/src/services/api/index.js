@@ -525,6 +525,10 @@ export const adminAPI = {
     apiClient.put(`/food/admin/restaurants/${id}/freebie-offer`, body ?? {}, {
       contextModule: "admin",
     }),
+  getLandingSettings: () =>
+    apiClient.get("/food/hero-banners/landing/settings", { contextModule: "admin" }),
+  updateLandingSettings: (body) =>
+    apiClient.patch("/food/hero-banners/landing/settings", body ?? {}, { contextModule: "admin" }),
   getRestaurantFreeDelivery: (id) =>
     apiClient.get(`/food/admin/restaurants/${id}/free-delivery`, { contextModule: "admin" }),
   updateRestaurantFreeDelivery: (id, body) =>

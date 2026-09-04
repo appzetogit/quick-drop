@@ -19,6 +19,16 @@ const foodLandingSettingsSchema = new mongoose.Schema(
             type: Boolean,
             default: true
         },
+        /*
+         * The price point the Rs 99 store runs at. Editable so business can try
+         * Rs 59 without a deploy. 99 is what it was as a constant, so leaving it
+         * alone changes nothing.
+         */
+        ninetyNineStoreMaxPrice: {
+            type: Number,
+            default: 99,
+            min: 1
+        },
         showDining: {
             type: Boolean,
             default: true

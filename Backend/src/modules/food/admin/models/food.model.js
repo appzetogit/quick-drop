@@ -140,6 +140,13 @@ const foodSchema = new mongoose.Schema(
          * shelf on its own rather than needing the flag cleared by hand.
          */
         showIn99Store: { type: Boolean, default: false, index: true },
+        /*
+         * Set when an admin takes a dish OFF the Rs 99 shelf by hand. Without it,
+         * showIn99Store: false would mean both "never been eligible" and "the
+         * admin removed it", and a backfill after the cap rose would quietly
+         * undo curation.
+         */
+        ninetyNineStoreExcluded: { type: Boolean, default: false, index: true },
         /**
          * Admin-set: this dish ships without a delivery charge. Waiving the fee is
          * the platform's cost to bear, not the restaurant's, so the restaurant

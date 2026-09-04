@@ -119,7 +119,13 @@ export async function approveFoodItem(id) {
         // (a price edit sends the dish back to pending), so it covers both.
         try {
             const { shouldAutoMark99 } = await import('../../shared/ninetyNineStore.js');
-            if (shouldAutoMark99(updated) && updated.showIn99Store !== true) {
+            const { getNinetyNineCap } = await import('../../shared/ninetyNineStoreCap.js');
+            const cap = await getNinetyNineCap();
+            // An admin who removed this dish from the shelf keeps that decision
+            // through re-approval; only a price crossing the cap undoes it.
+            if (shouldAutoMark99(updated, cap)
+                && updated.showIn99Store !== true
+                && updated.ninetyNineStoreExcluded !== true) {
                 await FoodItem.updateOne({ _id: updated._id }, { $set: { showIn99Store: true } });
                 updated.showIn99Store = true;
             }

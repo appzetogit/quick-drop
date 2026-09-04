@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { NINETY_NINE_STORE_MAX_PRICE } from '../../shared/ninetyNineStore.js';
+import { getNinetyNineCap } from '../../shared/ninetyNineStoreCap.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
@@ -28,10 +29,10 @@ const buildCategoryKeywords = (categorySlug) => {
  */
 const UNDER_250_MAX_PRICE = 250;
 
-const qualifiesFor99Store = (food, price) =>
+const qualifiesFor99Store = (food, price, cap) =>
     food?.showIn99Store === true
     && Number.isFinite(Number(price))
-    && Number(price) <= NINETY_NINE_STORE_MAX_PRICE;
+    && Number(price) <= cap;
 
 export async function listPublicFoods(query = {}) {
     const limit = Math.min(Math.max(parseInt(query.limit, 10) || 500, 1), 1000);
@@ -44,6 +45,9 @@ export async function listPublicFoods(query = {}) {
     const is99StorePromo = promo === 'switch99' || promo === '99-store' || promo === 'store99';
     const isUnder250Promo = promo === 'under-250' || promo === 'under250';
     const isPromoList = is99StorePromo || isUnder250Promo;
+    // The shelf's price point is configurable. Read once per request, not per
+    // dish, and only when this request is actually the 99 shelf.
+    const ninetyNineCap = is99StorePromo ? await getNinetyNineCap() : NINETY_NINE_STORE_MAX_PRICE;
 
     const restaurantFilter = { status: 'approved' };
     if (zoneIdRaw && mongoose.Types.ObjectId.isValid(zoneIdRaw)) {
@@ -232,7 +236,7 @@ export async function listPublicFoods(query = {}) {
     })
         .filter((food) => {
             if (food.isAvailable === false) return false;
-            if (is99StorePromo) return qualifiesFor99Store(food, food.price);
+            if (is99StorePromo) return qualifiesFor99Store(food, food.price, ninetyNineCap);
             if (isUnder250Promo) {
                 const value = Number(food.price);
                 return Number.isFinite(value) && value <= UNDER_250_MAX_PRICE;

@@ -128,6 +128,12 @@ export const adminSidebarMenu = [
         path: "/admin/food/coupons",
         icon: "Gift",
       },
+      {
+        type: "link",
+        label: "99 Store",
+        path: "/admin/food/99-store",
+        icon: "Tag",
+      },
     ],
   },
   {
