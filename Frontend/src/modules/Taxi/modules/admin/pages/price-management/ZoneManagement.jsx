@@ -42,6 +42,30 @@ const labelClass = "block text-xs font-semibold text-gray-500 mb-1.5";
 const cardClass = "bg-white rounded-xl border border-gray-200 p-6 shadow-sm";
 const ADMIN_LANGUAGE_OPTIONS = ['English', 'Hindi', 'Arabic', 'French', 'Spanish'];
 
+
+/**
+ * Turn a rejected API call into something the admin can act on.
+ *
+ * The axios layer rejects with { message, status }, so the real reason is
+ * already here -- these screens were simply throwing it away. An expired admin
+ * session arrives as 401 "Authorization token has expired", and reporting that
+ * as "Error connecting to server" sent people hunting for an outage when they
+ * only needed to sign in again.
+ */
+const describeApiError = (err, fallback) => {
+  const status = err?.status;
+  const message = String(err?.message || '').trim();
+
+  if (status === 401 || /token has expired|token is invalid|jwt expired/i.test(message)) {
+    return 'Your session has expired. Please sign in again, then retry.';
+  }
+  if (status === 403) {
+    return 'You do not have permission to change zones.';
+  }
+  // The server's own wording is nearly always better than anything generic.
+  return message || fallback;
+};
+
 const ZoneManagement = ({ mode: initialMode = "list" }) => {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -128,7 +152,7 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
       }
     } catch (err) {
       console.error("Fetch error:", err);
-      setFetchError(`Zone data could not be loaded.`);
+      setFetchError(describeApiError(err, 'Zone data could not be loaded.'));
     } finally {
       setLoading(false);
     }
@@ -578,7 +602,7 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
       }
     } catch (err) {
       console.error("Save error:", err);
-      alert("Error connecting to server.");
+      alert(describeApiError(err, "Could not save the zone. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -630,6 +654,9 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
       }
     } catch (err) {
       console.error("Status update error:", err);
+      // Was silent: with an expired session the toggle simply did nothing, and
+      // the admin had no way to tell that from a zone that would not change.
+      alert(describeApiError(err, "Could not change that zone's status."));
     }
   };
 
@@ -642,6 +669,7 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
       }
     } catch (err) {
       console.error("Delete error:", err);
+      alert(describeApiError(err, 'Could not delete that zone.'));
     }
   };
 
