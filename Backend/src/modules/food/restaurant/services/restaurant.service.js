@@ -244,13 +244,32 @@ const attachFreeDeliveryOffer = async (restaurants = []) => {
         await import('../../shared/freeDeliveryRule.js');
 
     return list.map((r) => {
-        const { rule } = resolveEffectiveFreeDeliveryRule({
+        const { rule, source } = resolveEffectiveFreeDeliveryRule({
             restaurant: r?.freeDeliveryRule,
             platform: platformRule,
         });
         const { freeDeliveryRule, ...rest } = r || {};
         return {
             ...rest,
+            /*
+             * Two shapes on purpose, both from this one resolution so they cannot
+             * disagree.
+             *
+             * freeDeliveryRule + freeDeliverySource mirror what
+             * /orders/calculate returns under deliveryFeeBreakdown, so the app
+             * parses a restaurant card and a checkout response with one model.
+             * null means "nothing runs here", which makes rendering an offer
+             * that does not apply impossible rather than merely discouraged --
+             * including the case where this restaurant is excluded from a
+             * running platform promotion.
+             *
+             * freeDeliveryOffer carries server-written copy so the badge wording
+             * stays in step with checkout.
+             */
+            freeDeliveryRule: rule.isEnabled
+                ? { maxDistanceKm: rule.maxDistanceKm, minOrderAmount: rule.minOrderAmount }
+                : null,
+            freeDeliverySource: source,
             freeDeliveryOffer: rule.isEnabled
                 ? {
                     isEnabled: true,

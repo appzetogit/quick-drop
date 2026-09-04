@@ -60,7 +60,7 @@ export async function listPublicFoods(query = {}) {
     const otherPlatform = normalizeOtherPlatformSettings(feeDoc || {});
 
     const restaurants = await FoodRestaurant.find(restaurantFilter)
-        .select('_id restaurantName slug zoneId profileImage rating totalRatings ratingCount estimatedDeliveryTime estimatedDeliveryTimeMinutes location coverImages menuImages isActive isAcceptingOrders outletTimings openDays deliveryTimings openingTime closingTime')
+        .select('_id restaurantName slug zoneId profileImage rating totalRatings ratingCount estimatedDeliveryTime estimatedDeliveryTimeMinutes location coverImages menuImages isActive isAcceptingOrders outletTimings openDays deliveryTimings openingTime closingTime freeDeliveryRule')
         .lean();
 
     if (!restaurants.length) {
@@ -69,6 +69,24 @@ export async function listPublicFoods(query = {}) {
 
     const restaurantMap = new Map(
         restaurants.map((restaurant) => [String(restaurant._id), restaurant])
+    );
+
+    // Resolve each restaurant's free delivery offer once, not once per dish: a
+    // page of 60 dishes from 5 restaurants would otherwise resolve 60 times.
+    const { resolveEffectiveFreeDeliveryRule } = await import('../../shared/freeDeliveryRule.js');
+    const freeDeliveryByRestaurant = new Map(
+        restaurants.map((restaurant) => {
+            const { rule, source } = resolveEffectiveFreeDeliveryRule({
+                restaurant: restaurant?.freeDeliveryRule,
+                platform: feeDoc?.freeDeliveryRule,
+            });
+            return [String(restaurant._id), {
+                freeDeliveryRule: rule.isEnabled
+                    ? { maxDistanceKm: rule.maxDistanceKm, minOrderAmount: rule.minOrderAmount }
+                    : null,
+                freeDeliverySource: source,
+            }];
+        })
     );
     const restaurantIds = restaurants.map((restaurant) => restaurant._id);
 
@@ -189,6 +207,10 @@ export async function listPublicFoods(query = {}) {
             // A combo is an ordinary dish to order, but the app has to be able to
             // say what is inside one. Without these two the customer sees a
             // cheaper dish and no reason why.
+            // The restaurant's free delivery offer, same shape as the restaurant
+            // list and as deliveryFeeBreakdown at checkout. null when none runs.
+            ...(freeDeliveryByRestaurant.get(String(food.restaurantId))
+                || { freeDeliveryRule: null, freeDeliverySource: 'none' }),
             isCombo: food.isCombo === true,
             comboComponents: food.isCombo === true
                 ? (food.comboComponents || []).map((c) => ({

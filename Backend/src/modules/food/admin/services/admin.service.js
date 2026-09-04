@@ -1889,6 +1889,18 @@ export async function upsertFeeSettings(body) {
         // The ceiling is cached for 30s on the order path; drop it so an admin sees
         // their change take effect immediately rather than on the next window.
         invalidateOrderQuantityCeilingCache();
+
+        // The free delivery rule is advertised on restaurant cards and the dish
+        // feed, both cached for minutes. Without this, raising the threshold
+        // would leave the old number on screen advertising an offer that no
+        // longer exists. The per-restaurant save already does this; the
+        // platform-wide one did not.
+        try {
+            const { invalidatePriceCaches } = await import('../../../../middleware/cache.js');
+            await invalidatePriceCaches();
+        } catch (cacheErr) {
+            console.error('Cache clear after fee settings save failed:', cacheErr?.message || cacheErr);
+        }
         return updated;
     }
 
