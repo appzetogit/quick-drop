@@ -103,6 +103,79 @@ export function qualifiesForFreeDelivery({ rule, distanceKm, subtotal } = {}) {
     return km <= normalized.maxDistanceKm && value >= normalized.minOrderAmount;
 }
 
+/**
+ * How a single restaurant relates to the platform-wide rule.
+ *
+ * 'inherit' is the default and what every existing restaurant does, so adding
+ * this field changes nothing until somebody deliberately sets it. 'off' exists
+ * as its own state rather than as a disabled custom rule: an admin excluding one
+ * restaurant from a platform promotion is saying something different from one
+ * who set a custom radius and later switched it off, and squashing the two
+ * together loses the numbers they had typed.
+ */
+export const RESTAURANT_FREE_DELIVERY_MODES = Object.freeze(['inherit', 'off', 'custom']);
+
+export const DEFAULT_RESTAURANT_FREE_DELIVERY = Object.freeze({
+    mode: 'inherit',
+    maxDistanceKm: 3,
+    minOrderAmount: 300,
+});
+
+export function normalizeRestaurantFreeDelivery(raw = null) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const mode = RESTAURANT_FREE_DELIVERY_MODES.includes(source.mode)
+        ? source.mode
+        : DEFAULT_RESTAURANT_FREE_DELIVERY.mode;
+    return {
+        mode,
+        maxDistanceKm: toNonNegative(source.maxDistanceKm, DEFAULT_RESTAURANT_FREE_DELIVERY.maxDistanceKm),
+        minOrderAmount: toNonNegative(source.minOrderAmount, DEFAULT_RESTAURANT_FREE_DELIVERY.minOrderAmount),
+    };
+}
+
+export function validateRestaurantFreeDelivery(raw = {}) {
+    const setting = normalizeRestaurantFreeDelivery(raw);
+    // Only a custom rule has numbers worth checking. Inherit and off carry
+    // whatever was last typed, so validating them would block saving an opt-out.
+    if (setting.mode !== 'custom') return { ok: true, reason: '', setting };
+
+    const verdict = validateFreeDeliveryRule({ ...setting, isEnabled: true });
+    return { ok: verdict.ok, reason: verdict.reason, setting };
+}
+
+/**
+ * Which rule actually governs this order, and where it came from.
+ *
+ * A restaurant's own setting wins outright when it is not 'inherit'. That means
+ * an explicit 'off' beats an enabled platform rule -- an admin excluding one
+ * restaurant expects that exclusion to hold, not to be overridden by the global
+ * switch it was written against.
+ *
+ * `source` is returned so the order can record which rule paid for the trip;
+ * reconciliation needs to tell a platform promotion from a per-restaurant one.
+ */
+export function resolveEffectiveFreeDeliveryRule({ restaurant = null, platform = null } = {}) {
+    const setting = normalizeRestaurantFreeDelivery(restaurant);
+
+    if (setting.mode === 'off') {
+        return { rule: { ...DEFAULT_FREE_DELIVERY_RULE, isEnabled: false }, source: 'restaurant_off' };
+    }
+
+    if (setting.mode === 'custom') {
+        return {
+            rule: {
+                isEnabled: true,
+                maxDistanceKm: setting.maxDistanceKm,
+                minOrderAmount: setting.minOrderAmount,
+            },
+            source: 'restaurant',
+        };
+    }
+
+    const platformRule = normalizeFreeDeliveryRule(platform);
+    return { rule: platformRule, source: platformRule.isEnabled ? 'platform' : 'none' };
+}
+
 /** Menu and checkout copy: "Free delivery within 3 km on orders over ₹300". */
 export function describeFreeDeliveryRule(raw = null) {
     const rule = normalizeFreeDeliveryRule(raw);

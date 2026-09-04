@@ -127,6 +127,12 @@ export const adminSidebarMenu = [
         path: "/admin/food/coupons",
         icon: "Gift",
       },
+      {
+        type: "link",
+        label: "Free Delivery",
+        path: "/admin/food/free-delivery",
+        icon: "Truck",
+      },
     ],
   },
   {

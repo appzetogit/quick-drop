@@ -67,6 +67,8 @@ router.get('/restaurants/:id/freebie-offer', adminController.getRestaurantFreebi
 router.put('/restaurants/:id/freebie-offer', adminController.updateRestaurantFreebieOffer);
 router.get('/restaurants/:id/bogo-offer', adminController.getRestaurantBogoOffer);
 router.put('/restaurants/:id/bogo-offer', adminController.updateRestaurantBogoOffer);
+router.get('/restaurants/:id/free-delivery', adminController.getRestaurantFreeDelivery);
+router.put('/restaurants/:id/free-delivery', adminController.updateRestaurantFreeDelivery);
 router.get('/restaurants/:id/combos', adminController.listRestaurantCombos);
 router.post('/restaurants/:id/combos', adminController.createRestaurantCombo);
 router.put('/restaurants/:id/combos/:comboId', adminController.updateRestaurantCombo);

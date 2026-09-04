@@ -280,6 +280,26 @@ const restaurantSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    /*
+     * Free delivery for this restaurant specifically.
+     *
+     * Absent means 'inherit', which is what every existing restaurant does, so
+     * adding this changes nothing until an admin sets it. 'off' excludes this
+     * restaurant from a platform-wide promotion and beats the global switch;
+     * 'custom' runs its own radius and minimum instead.
+     *
+     * Admin-only, like the platform rule: waiving the fee costs the platform,
+     * not the restaurant, and the rider is still paid in full.
+     */
+    freeDeliveryRule: {
+      mode: {
+        type: String,
+        enum: ["inherit", "off", "custom"],
+        default: "inherit",
+      },
+      maxDistanceKm: { type: Number, min: 0, default: 3 },
+      minOrderAmount: { type: Number, min: 0, default: 300 },
+    },
   },
   {
     collection: "food_restaurants",

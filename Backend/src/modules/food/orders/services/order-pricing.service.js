@@ -216,7 +216,7 @@ async function resolveDistanceRule(distanceKm) {
 
 export async function calculateOrderPricing(userId, dto) {
   const restaurant = await FoodRestaurant.findById(dto.restaurantId)
-    .select("status zoneId location")
+    .select("status zoneId location freeDeliveryRule")
     .lean();
   if (!restaurant) throw new ValidationError("Restaurant not found");
   if (restaurant.status !== "approved")
@@ -416,9 +416,15 @@ export async function calculateOrderPricing(userId, dto) {
    */
   if (deliveryFee > 0 && !allItemsShipFree) {
     try {
-      const { qualifiesForFreeDelivery, normalizeFreeDeliveryRule } =
+      const { qualifiesForFreeDelivery, resolveEffectiveFreeDeliveryRule } =
         await import('../../shared/freeDeliveryRule.js');
-      const rule = normalizeFreeDeliveryRule(feeSettings?.freeDeliveryRule);
+      // A restaurant's own setting wins over the platform rule, including an
+      // explicit opt-out. `source` is recorded so reconciliation can tell a
+      // platform promotion from a per-restaurant one.
+      const { rule, source: freeDeliverySource } = resolveEffectiveFreeDeliveryRule({
+        restaurant: restaurant?.freeDeliveryRule,
+        platform: feeSettings?.freeDeliveryRule,
+      });
       if (qualifiesForFreeDelivery({ rule, distanceKm: measuredDistanceKm, subtotal })) {
         const waivedAmount = deliveryFee;
         deliveryFee = 0;
@@ -426,6 +432,7 @@ export async function calculateOrderPricing(userId, dto) {
           ...(deliveryFeeBreakdown || {}),
           freeDeliveryApplied: true,
           freeDeliveryReason: 'distance_and_order_value',
+          freeDeliverySource,
           freeDeliveryRule: {
             maxDistanceKm: rule.maxDistanceKm,
             minOrderAmount: rule.minOrderAmount,

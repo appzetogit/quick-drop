@@ -11,6 +11,9 @@ import {
     qualifiesForFreeDelivery,
     describeFreeDeliveryRule,
     describeFreeDeliveryGap,
+    normalizeRestaurantFreeDelivery,
+    validateRestaurantFreeDelivery,
+    resolveEffectiveFreeDeliveryRule,
 } from '../freeDeliveryRule.js';
 
 const rule = (over = {}) => ({ isEnabled: true, maxDistanceKm: 3, minOrderAmount: 300, ...over });
@@ -70,5 +73,71 @@ assert.equal(describeFreeDeliveryGap({ rule: rule(), distanceKm: 2, subtotal: 30
 assert.equal(describeFreeDeliveryGap({ rule: rule(), distanceKm: 9, subtotal: 100 }), null,
     'too far, so never nudge toward something unreachable');
 assert.equal(describeFreeDeliveryGap({ rule: rule({ isEnabled: false }), distanceKm: 1, subtotal: 10 }), null);
+
+// --- per-restaurant overrides -----------------------------------------------
+const platformOn = { isEnabled: true, maxDistanceKm: 3, minOrderAmount: 300 };
+const platformOff = { isEnabled: false, maxDistanceKm: 3, minOrderAmount: 300 };
+
+// Default: a restaurant that has never been touched follows the platform.
+assert.equal(normalizeRestaurantFreeDelivery(null).mode, 'inherit');
+assert.equal(normalizeRestaurantFreeDelivery({ mode: 'nonsense' }).mode, 'inherit', 'an unknown mode is not trusted');
+
+{
+    const { rule, source } = resolveEffectiveFreeDeliveryRule({ restaurant: null, platform: platformOn });
+    assert.equal(rule.isEnabled, true, 'inherit picks up the platform rule');
+    assert.equal(rule.maxDistanceKm, 3);
+    assert.equal(source, 'platform');
+}
+{
+    const { rule, source } = resolveEffectiveFreeDeliveryRule({ restaurant: null, platform: platformOff });
+    assert.equal(rule.isEnabled, false);
+    assert.equal(source, 'none', 'nothing is funding this trip');
+}
+
+// An explicit opt-out beats an enabled platform rule. This is the whole point of
+// 'off' existing separately from a disabled custom rule.
+{
+    const { rule, source } = resolveEffectiveFreeDeliveryRule({
+        restaurant: { mode: 'off', maxDistanceKm: 9, minOrderAmount: 900 },
+        platform: platformOn,
+    });
+    assert.equal(rule.isEnabled, false, 'excluded restaurant stays excluded');
+    assert.equal(source, 'restaurant_off');
+}
+
+// A custom rule wins outright, including when the platform rule is off.
+{
+    const { rule, source } = resolveEffectiveFreeDeliveryRule({
+        restaurant: { mode: 'custom', maxDistanceKm: 7, minOrderAmount: 150 },
+        platform: platformOff,
+    });
+    assert.equal(rule.isEnabled, true, 'a restaurant may run its own promotion when the platform runs none');
+    assert.equal(rule.maxDistanceKm, 7);
+    assert.equal(rule.minOrderAmount, 150);
+    assert.equal(source, 'restaurant');
+}
+
+// The resolved rule feeds qualifiesForFreeDelivery unchanged.
+{
+    const { rule } = resolveEffectiveFreeDeliveryRule({
+        restaurant: { mode: 'custom', maxDistanceKm: 7, minOrderAmount: 150 },
+        platform: platformOff,
+    });
+    assert.equal(qualifiesForFreeDelivery({ rule, distanceKm: 6.5, subtotal: 200 }), true);
+    assert.equal(qualifiesForFreeDelivery({ rule, distanceKm: 7.5, subtotal: 200 }), false, 'outside the custom radius');
+    assert.equal(qualifiesForFreeDelivery({ rule, distanceKm: 6.5, subtotal: 149 }), false, 'under the custom minimum');
+    // The unmeasured-distance guard still holds through the override path.
+    assert.equal(qualifiesForFreeDelivery({ rule, distanceKm: null, subtotal: 500 }), false);
+}
+
+// Validation only judges a custom rule; inherit and off save whatever is there.
+assert.equal(validateRestaurantFreeDelivery({ mode: 'inherit', maxDistanceKm: 0 }).ok, true);
+assert.equal(validateRestaurantFreeDelivery({ mode: 'off', minOrderAmount: 0 }).ok, true,
+    'an opt-out saves even with empty numbers beside it');
+assert.equal(validateRestaurantFreeDelivery({ mode: 'custom', maxDistanceKm: 0, minOrderAmount: 300 }).ok, false);
+assert.equal(validateRestaurantFreeDelivery({ mode: 'custom', maxDistanceKm: 80, minOrderAmount: 300 }).ok, false,
+    'a 80 km radius is a typo, not a rule');
+assert.equal(validateRestaurantFreeDelivery({ mode: 'custom', maxDistanceKm: 5, minOrderAmount: 0 }).ok, false);
+assert.equal(validateRestaurantFreeDelivery({ mode: 'custom', maxDistanceKm: 5, minOrderAmount: 250 }).ok, true);
 
 console.log('All free delivery rule checks passed.');

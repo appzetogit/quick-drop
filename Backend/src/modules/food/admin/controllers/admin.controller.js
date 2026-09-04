@@ -333,6 +333,102 @@ export async function updateRestaurantFreebieOffer(req, res, next) {
  * freebie ladder above: one row per restaurant means support can fix a badly
  * configured offer without the restaurant and admin looking at rival copies.
  */
+/**
+ * Per-restaurant free delivery. The stored shape is a mode plus two numbers;
+ * 'inherit' is the default and means "follow the platform rule", so a restaurant
+ * that has never been configured returns that rather than a null the panel would
+ * have to special-case.
+ */
+export async function getRestaurantFreeDelivery(req, res, next) {
+    try {
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid restaurant id' });
+        }
+        const { FoodRestaurant } = await import('../../restaurant/models/restaurant.model.js');
+        const { normalizeRestaurantFreeDelivery, normalizeFreeDeliveryRule, resolveEffectiveFreeDeliveryRule } =
+            await import('../../shared/freeDeliveryRule.js');
+        const { FoodFeeSettings } = await import('../models/feeSettings.model.js');
+
+        const restaurant = await FoodRestaurant.findById(id).select('restaurantName freeDeliveryRule').lean();
+        if (!restaurant) {
+            return res.status(404).json({ success: false, message: 'Restaurant not found' });
+        }
+        // Same query the order path uses, so the panel shows the document that
+        // actually governs pricing rather than an inactive or older one.
+        const feeSettings = await FoodFeeSettings.findOne({ isActive: true })
+            .sort({ createdAt: -1 })
+            .select('freeDeliveryRule')
+            .lean();
+
+        const setting = normalizeRestaurantFreeDelivery(restaurant.freeDeliveryRule);
+        const platform = normalizeFreeDeliveryRule(feeSettings?.freeDeliveryRule);
+        // The panel shows what actually governs orders today, so an admin can see
+        // the effect of 'inherit' without opening the platform page.
+        const effective = resolveEffectiveFreeDeliveryRule({
+            restaurant: restaurant.freeDeliveryRule,
+            platform: feeSettings?.freeDeliveryRule,
+        });
+
+        res.status(200).json({
+            success: true,
+            message: 'Free delivery setting fetched successfully',
+            data: {
+                restaurantId: id,
+                restaurantName: restaurant.restaurantName || '',
+                setting,
+                platform,
+                effective: effective.rule,
+                effectiveSource: effective.source,
+            },
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function updateRestaurantFreeDelivery(req, res, next) {
+    try {
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid restaurant id' });
+        }
+        const { validateRestaurantFreeDelivery } = await import('../../shared/freeDeliveryRule.js');
+        const verdict = validateRestaurantFreeDelivery(req.body || {});
+        if (!verdict.ok) {
+            return res.status(400).json({ success: false, message: verdict.reason });
+        }
+
+        const { FoodRestaurant } = await import('../../restaurant/models/restaurant.model.js');
+        const updated = await FoodRestaurant.findByIdAndUpdate(
+            id,
+            { $set: { freeDeliveryRule: verdict.setting } },
+            { new: true, runValidators: true },
+        ).select('restaurantName freeDeliveryRule').lean();
+
+        if (!updated) {
+            return res.status(404).json({ success: false, message: 'Restaurant not found' });
+        }
+
+        // Menu and checkout responses are cached; a delivery rule change has to
+        // show up on the next order, not five minutes later.
+        try {
+            const { invalidatePriceCaches } = await import('../../../../middleware/cache.js');
+            await invalidatePriceCaches();
+        } catch (cacheErr) {
+            console.error('Cache clear after free delivery change failed:', cacheErr?.message || cacheErr);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Free delivery setting saved successfully',
+            data: { setting: updated.freeDeliveryRule },
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export async function getRestaurantBogoOffer(req, res, next) {
     try {
         const { id } = req.params;

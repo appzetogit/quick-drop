@@ -525,6 +525,10 @@ export const adminAPI = {
     apiClient.put(`/food/admin/restaurants/${id}/freebie-offer`, body ?? {}, {
       contextModule: "admin",
     }),
+  getRestaurantFreeDelivery: (id) =>
+    apiClient.get(`/food/admin/restaurants/${id}/free-delivery`, { contextModule: "admin" }),
+  updateRestaurantFreeDelivery: (id, body) =>
+    apiClient.put(`/food/admin/restaurants/${id}/free-delivery`, body ?? {}, { contextModule: "admin" }),
   getRestaurantBogoOffer: (id) =>
     apiClient.get(`/food/admin/restaurants/${id}/bogo-offer`, { contextModule: "admin" }),
   updateRestaurantBogoOffer: (id, body) =>
