@@ -11,7 +11,7 @@ app can safely ignore, but shouldn't.
 | **Optional** | Free delivery by distance | The fee can be waived per platform *or* per restaurant. Read the reason and source from the pricing breakdown. |
 
 - API base: `https://quickdropsindia.com/api/v1`
-- Backend commit: `549221b`
+- Backend commit: `584dfd0`
 - Every payload below is a real response captured from production, not an example.
 
 ---
