@@ -96,8 +96,15 @@ export const getPublicLandingSettingsController = async (req, res, next) => {
                 .select('restaurantName area city profileImage coverImages menuImages slug rating cuisines pureVegRestaurant')
                 .lean();
         }
+        // Always emit a resolved cap. Mongoose defaults apply when a document is
+        // created, not when an older one is read, so the settings document that
+        // predates this field would otherwise send null and make every client
+        // implement the fallback itself.
+        const { resolveNinetyNineCap } = await import('../../shared/ninetyNineStore.js');
+
         const payload = {
             ...settings,
+            ninetyNineStoreMaxPrice: resolveNinetyNineCap(settings?.ninetyNineStoreMaxPrice),
             recommendedRestaurantIds: undefined,
             recommendedRestaurants
         };
