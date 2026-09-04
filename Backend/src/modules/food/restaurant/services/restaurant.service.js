@@ -203,6 +203,67 @@ const normalizeCuisine = (value) => String(value || '').trim().slice(0, 80);
 
 const MAX_RECOMMENDED_IMAGES_PER_RESTAURANT = 8;
 
+/**
+ * Add the free delivery offer each restaurant is actually running, so the app can
+ * badge a restaurant card instead of leaving the customer to discover it at
+ * checkout.
+ *
+ * The rule resolves per restaurant -- a restaurant's own setting beats the
+ * platform one, including an exclusion -- so this cannot be a single value the
+ * app fetches once. The fee settings are read once per request rather than once
+ * per restaurant.
+ *
+ * The badge states the offer's terms, not a promise for this customer: the list
+ * has no delivery distance to test against, so whether the radius is actually met
+ * is settled at checkout by the pricing call. The copy says "within N km" for
+ * exactly that reason.
+ *
+ * The stored mode enum is deliberately not exposed. 'off' is an internal way of
+ * saying "no offer here", and an app that saw it might render an exclusion as if
+ * it were a promotion.
+ */
+const attachFreeDeliveryOffer = async (restaurants = []) => {
+    const list = Array.isArray(restaurants) ? restaurants : [];
+    if (!list.length) return list;
+
+    let platformRule = null;
+    try {
+        const { FoodFeeSettings } = await import('../../admin/models/feeSettings.model.js');
+        const feeDoc = await FoodFeeSettings.findOne({ isActive: true })
+            .sort({ createdAt: -1 })
+            .select('freeDeliveryRule')
+            .lean();
+        platformRule = feeDoc?.freeDeliveryRule || null;
+    } catch (err) {
+        // A missing fee document must not break the restaurant list; every
+        // restaurant simply reports no offer.
+        console.error('Free delivery badge: fee settings unavailable:', err?.message || err);
+    }
+
+    const { resolveEffectiveFreeDeliveryRule, describeFreeDeliveryRule } =
+        await import('../../shared/freeDeliveryRule.js');
+
+    return list.map((r) => {
+        const { rule } = resolveEffectiveFreeDeliveryRule({
+            restaurant: r?.freeDeliveryRule,
+            platform: platformRule,
+        });
+        const { freeDeliveryRule, ...rest } = r || {};
+        return {
+            ...rest,
+            freeDeliveryOffer: rule.isEnabled
+                ? {
+                    isEnabled: true,
+                    maxDistanceKm: rule.maxDistanceKm,
+                    minOrderAmount: rule.minOrderAmount,
+                    label: describeFreeDeliveryRule(rule),
+                    shortLabel: `Free delivery over ₹${rule.minOrderAmount}`,
+                }
+                : { isEnabled: false },
+        };
+    });
+};
+
 const attachRecommendedImagesToRestaurants = async (restaurants = []) => {
     if (!Array.isArray(restaurants) || restaurants.length === 0) return [];
 
@@ -1442,6 +1503,9 @@ export const listApprovedRestaurants = async (query = {}) => {
 
     const projection = {
         restaurantName: 1,
+        // Needed to resolve the free delivery badge; stripped again before the
+        // response, since the raw mode enum is internal.
+        freeDeliveryRule: 1,
         area: 1,
         city: 1,
         cuisines: 1,
@@ -1514,7 +1578,8 @@ export const listApprovedRestaurants = async (query = {}) => {
 
         const total = totalDocs?.[0]?.count || 0;
         const restaurantsWithRecommendedImages = await attachRecommendedImagesToRestaurants(pageDocs);
-        return { restaurants: restaurantsWithRecommendedImages, total, page, limit };
+        const withOffers = await attachFreeDeliveryOffer(restaurantsWithRecommendedImages);
+        return { restaurants: withOffers, total, page, limit };
     }
 
     // Non-geo path: normal query + sort.
@@ -1538,7 +1603,8 @@ export const listApprovedRestaurants = async (query = {}) => {
     ]);
 
     const restaurantsWithRecommendedImages = await attachRecommendedImagesToRestaurants(restaurantsRaw || []);
-    const restaurants = restaurantsWithRecommendedImages.map((r) => ({
+    const withOffers = await attachFreeDeliveryOffer(restaurantsWithRecommendedImages);
+    const restaurants = withOffers.map((r) => ({
         ...r,
         // Frontend user app expects `name` and often checks `profileImage.url`
         restaurantId: r._id,
@@ -1567,8 +1633,9 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug) => {
     if (/^[0-9a-fA-F]{24}$/.test(value)) {
         const doc = await FoodRestaurant.findOne({ _id: value, status: 'approved' }).lean();
         if (!doc) return null;
+        const [decorated] = await attachFreeDeliveryOffer([doc]);
         return {
-            ...doc,
+            ...decorated,
             rating: normalizeRatingValue(doc.rating),
             totalRatings: normalizeTotalRatingsValue(doc.totalRatings)
         };
@@ -1583,8 +1650,9 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug) => {
         restaurantNameNormalized
     }).lean();
     if (!doc) return null;
+    const [decorated] = await attachFreeDeliveryOffer([doc]);
     return {
-        ...doc,
+        ...decorated,
         rating: normalizeRatingValue(doc.rating),
         totalRatings: normalizeTotalRatingsValue(doc.totalRatings)
     };

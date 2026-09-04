@@ -11,7 +11,7 @@ app can safely ignore, but shouldn't.
 | **Optional** | Free delivery by distance | The fee can be waived per platform *or* per restaurant. Read the reason and source from the pricing breakdown. |
 
 - API base: `https://quickdropsindia.com/api/v1`
-- Backend commit: `aa0b117`
+- Backend commit: `549221b`
 - Every payload below is a real response captured from production, not an example.
 
 ---
@@ -296,11 +296,48 @@ one.
 The last two appear alongside `freeDeliveryApplied: false`, so treat any value
 other than `platform` or `restaurant` as "delivery is not free here".
 
-**A note on badges.** The feed and restaurant-detail responses do not currently
-carry a restaurant's free-delivery rule, so the app cannot show a "Free delivery
-over ₹300" badge on a restaurant card — the customer only learns at checkout,
-once the pricing call has run. If that badge is wanted, the backend needs to
-expose the resolved rule per restaurant; ask and it can be added.
+### Badging a restaurant card
+
+The restaurant list and restaurant detail now carry the offer each restaurant is
+actually running, as `freeDeliveryOffer`, so a card can be badged before the
+customer builds a basket.
+
+```json
+{
+  "name": "Pizza Place",
+  "freeDeliveryOffer": {
+    "isEnabled": true,
+    "maxDistanceKm": 7,
+    "minOrderAmount": 150,
+    "label": "Free delivery within 7 km on orders of ₹150 or more",
+    "shortLabel": "Free delivery over ₹150"
+  }
+}
+```
+
+When no offer applies the object is simply `{ "isEnabled": false }` with no
+numbers, so render the badge on `isEnabled` and never on the presence of the
+key.
+
+```dart
+final offer = json['freeDeliveryOffer'] as Map<String, dynamic>?;
+final hasOffer = offer?['isEnabled'] == true;
+final badge = offer?['shortLabel'] as String? ?? '';
+```
+
+Use `shortLabel` on a card and `label` where there is room for the full terms.
+Both are written server-side so the wording stays consistent with what checkout
+says.
+
+> **The badge states terms, not a promise.** The list has no delivery distance to
+> test against, so it cannot know whether this customer is inside the radius —
+> which is why the copy reads "within 7 km" rather than "you get free delivery".
+> Whether it actually applies is settled by the pricing call at checkout. Do not
+> reword the badge into a guarantee.
+
+The internal mode a restaurant is set to is deliberately not exposed. A
+restaurant excluded from a platform promotion returns `isEnabled: false`, the
+same as one with no offer at all — there is nothing for the app to distinguish.
 
 ### The nudge, if you want it
 
@@ -356,6 +393,11 @@ renamed or removed.
 | `deliveryFeeBreakdown.freeDeliveryApplied` | `bool` | pricing | the fee was waived, by either rule |
 | `deliveryFeeBreakdown.freeDeliveryReason` | `String?` | pricing | `distance_and_order_value` for the new rule |
 | `deliveryFeeBreakdown.freeDeliverySource` | `String?` | pricing | `platform`, `restaurant`, `restaurant_off`, `none` |
+| `freeDeliveryOffer.isEnabled` | `bool` | restaurant list, detail | render the badge on this, not on the key |
+| `freeDeliveryOffer.minOrderAmount` | `num` | restaurant list, detail | absent when no offer applies |
+| `freeDeliveryOffer.maxDistanceKm` | `num` | restaurant list, detail | absent when no offer applies |
+| `freeDeliveryOffer.shortLabel` | `String` | restaurant list, detail | card-sized copy |
+| `freeDeliveryOffer.label` | `String` | restaurant list, detail | full terms |
 | `deliveryFeeBreakdown.freeDeliveryRule` | `object?` | pricing | radius, minimum, and measured distance |
 | `deliveryFeeBreakdown.waivedDeliveryFee` | `num` | pricing | what would otherwise have been charged |
 
@@ -388,6 +430,8 @@ The first four are the ones that would reach a customer as a broken order.
 - [ ] Ordering a combo works end to end without any combo-specific cart logic.
 - [ ] With the free-delivery rule off, the delivery line looks exactly as it does
       today.
+- [ ] A restaurant with a free-delivery offer shows a badge from
+      `freeDeliveryOffer.shortLabel`, and one without shows nothing.
 - [ ] The free-delivery rule is read from each pricing response, never cached
       globally — two restaurants can have different rules, and one can be
       excluded while the platform promotion runs.
