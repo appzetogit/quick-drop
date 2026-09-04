@@ -212,14 +212,35 @@ export default function GlobalPricing() {
           )}
         </div>
 
-        {/* What the percentage moves. The comparison figure is the default:
-            it changes only what is struck through, never what a customer pays. */}
+        {/*
+          What the percentage moves, spelled out because the two options touch
+          entirely different fields and the old copy did not say which:
+
+            otherPrice  -> the struck-through comparison only. basePrice and
+                           price are untouched, so a cut here changes nothing
+                           a customer pays.
+            price       -> basePrice, price and every variant, with
+                           discountPercent held and price re-derived from the
+                           scaled base. otherPrice is left alone, so a cut here
+                           widens the visible saving against other platforms.
+
+          The comparison figure stays the default: a mis-click must not be able
+          to silently reprice a live menu.
+        */}
         <div className="mb-4">
           <label className="block text-sm font-medium text-slate-700 mb-1">Adjust</label>
           <div className="flex flex-wrap gap-2">
             {[
-              { value: "otherPrice", label: "Other platform price", hint: "Only the struck-through figure" },
-              { value: "price", label: "Selling price", hint: "What customers are charged" },
+              {
+                value: "otherPrice",
+                label: "Other platform price",
+                hint: "Only the struck-through comparison. Base price and what customers pay are untouched.",
+              },
+              {
+                value: "price",
+                label: "Selling price",
+                hint: "Base price, selling price and every size. The comparison figure is held.",
+              },
             ].map((option) => (
               <button
                 key={option.value}
@@ -240,7 +261,8 @@ export default function GlobalPricing() {
           </div>
           {target === "price" && (
             <p className="mt-2 text-xs text-amber-700">
-              This changes what customers are charged, not just the comparison figure.
+              This changes what customers are charged. Base price moves with it and the discount percentage is
+              kept, so a cut here lowers the real price while the other-platform comparison stays where it is.
             </p>
           )}
         </div>
