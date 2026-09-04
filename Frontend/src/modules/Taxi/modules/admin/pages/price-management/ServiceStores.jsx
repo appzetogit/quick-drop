@@ -19,6 +19,7 @@ import {
 import { adminService } from '../../services/adminService';
 import { INDIA_CENTER, useAppGoogleMapsLoader } from '../../utils/googleMaps';
 
+import { describeApiError } from '../../../../shared/utils/apiError';
 const inputClass =
   'w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 outline-none transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500';
 const labelClass = 'mb-1.5 block text-xs font-semibold text-gray-500';
@@ -410,7 +411,8 @@ const ServiceStores = ({ mode: initialMode = 'list' }) => {
         );
       }
     } catch (error) {
-      alert('Failed to delete service store.');
+      console.error('Delete service store error:', error);
+      alert(describeApiError(error, 'Failed to delete service store.'));
     }
   };
 

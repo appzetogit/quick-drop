@@ -31,6 +31,7 @@ import {
 } from "@react-google-maps/api";
 import { useAppGoogleMapsLoader } from "../../utils/googleMaps";
 import { adminService } from "../../services/adminService";
+import { describeApiError } from '../../../../shared/utils/apiError';
 import {
   buildCountryBoundaryUrl,
   normalizeBoundaryRings,
@@ -43,28 +44,6 @@ const cardClass = "bg-white rounded-xl border border-gray-200 p-6 shadow-sm";
 const ADMIN_LANGUAGE_OPTIONS = ['English', 'Hindi', 'Arabic', 'French', 'Spanish'];
 
 
-/**
- * Turn a rejected API call into something the admin can act on.
- *
- * The axios layer rejects with { message, status }, so the real reason is
- * already here -- these screens were simply throwing it away. An expired admin
- * session arrives as 401 "Authorization token has expired", and reporting that
- * as "Error connecting to server" sent people hunting for an outage when they
- * only needed to sign in again.
- */
-const describeApiError = (err, fallback) => {
-  const status = err?.status;
-  const message = String(err?.message || '').trim();
-
-  if (status === 401 || /token has expired|token is invalid|jwt expired/i.test(message)) {
-    return 'Your session has expired. Please sign in again, then retry.';
-  }
-  if (status === 403) {
-    return 'You do not have permission to change zones.';
-  }
-  // The server's own wording is nearly always better than anything generic.
-  return message || fallback;
-};
 
 const ZoneManagement = ({ mode: initialMode = "list" }) => {
   const navigate = useNavigate();

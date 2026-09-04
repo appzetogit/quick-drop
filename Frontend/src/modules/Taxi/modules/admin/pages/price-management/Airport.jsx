@@ -24,6 +24,7 @@ import {
 import { adminService } from '../../services/adminService';
 import { DELHI_CENTER, useAppGoogleMapsLoader } from '../../utils/googleMaps';
 
+import { describeApiError } from '../../../../shared/utils/apiError';
 const inputClass = "w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-800 bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors";
 const labelClass = "block text-xs font-semibold text-gray-500 mb-1.5";
 const cardClass = "bg-white rounded-xl border border-gray-200 p-6";
@@ -258,7 +259,7 @@ const Airport = ({ mode: initialMode = "list" }) => {
       try {
         const res = await adminService.deleteAirport(id);
         if (res?.success) setAirports(prev => prev.filter(a => a._id !== id && a.id !== id));
-      } catch (err) { alert('Delete failed'); }
+      } catch (err) { alert(describeApiError(err, 'Delete failed')); }
     }
   };
 

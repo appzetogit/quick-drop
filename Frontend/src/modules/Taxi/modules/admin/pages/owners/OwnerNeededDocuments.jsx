@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Edit2, FileSearch, Loader2, Plus, Trash2 } f
 import { useNavigate } from 'react-router-dom';
 import AdminPageHeader from '../../components/ui/AdminPageHeader';
 
+import { describeApiError } from '../../../../shared/utils/apiError';
 const BASE = `${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin/owner-management`;
 
 const getDocTypeLabel = (value) => {
@@ -60,7 +61,7 @@ const OwnerNeededDocuments = () => {
       else alert(json?.message || 'Delete failed');
     } catch (e) {
       console.error('Failed to delete owner needed document:', e);
-      alert('Delete failed');
+      alert(describeApiError(err, 'Delete failed'));
     }
   };
 

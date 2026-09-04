@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { getUnifiedAdminToken } from '../../services/adminSession';
 
+import { describeApiError } from '../../../../shared/utils/apiError';
 const FormSection = ({ title, subTitle, icon: Icon, children }) => (
   <div className="bg-white rounded-[40px] border border-gray-100 shadow-sm overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-700">
     <div className="px-10 py-8 border-b border-gray-50 flex items-center gap-6 bg-gray-50/30">
@@ -111,7 +112,8 @@ const ReferralSettings = () => {
         setTimeout(() => setSuccess(false), 3000);
       }
     } catch (err) {
-      alert("Update failed");
+      console.error("Referral settings update failed:", err);
+      alert(describeApiError(err, "Update failed"));
     } finally {
       setSaving(false);
     }

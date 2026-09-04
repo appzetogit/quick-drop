@@ -24,6 +24,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
 import countryMetadata from '../../constants/countries.json';
 
+import { describeApiError } from '../../../../shared/utils/apiError';
 const DEFAULT_TIMEZONES = [
   'Asia/Kolkata',
   'Asia/Dubai',
@@ -163,7 +164,10 @@ const ServiceLocation = ({ mode }) => {
     try {
       const res = await adminService.deleteServiceLocation(itemId);
       if (res?.success) fetchData();
-    } catch (err) {}
+    } catch (err) {
+      console.error('Delete service area error:', err);
+      alert(describeApiError(err, 'Could not delete that service area.'));
+    }
   };
 
   if (isList) {

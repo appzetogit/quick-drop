@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronRight, Shield, Edit2, Trash2, Search, UserCheck, Loader2, Plus } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 
+import { describeApiError } from '../../../../shared/utils/apiError';
 const Roles = () => {
   const [roles, setRoles] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,6 +48,7 @@ const Roles = () => {
         fetchRoles();
       } catch (err) {
         console.error('Delete Role Error:', err);
+        alert(describeApiError(err, 'Could not delete that role.'));
       }
     }
   };

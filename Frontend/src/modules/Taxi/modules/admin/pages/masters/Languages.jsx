@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, Globe, Trash2, ChevronRight, Loader2, Edit2 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 
+import { describeApiError } from '../../../../shared/utils/apiError';
 const StatusToggle = ({ active, onToggle }) => (
   <button
     onClick={onToggle}
@@ -40,6 +41,7 @@ const Languages = () => {
       fetchLanguages();
     } catch (err) {
       console.error('Toggle Status Error:', err);
+      alert(describeApiError(err, "Could not change that language's status."));
     }
   };
 
@@ -50,6 +52,7 @@ const Languages = () => {
         fetchLanguages();
       } catch (err) {
         console.error('Delete Error:', err);
+        alert(describeApiError(err, 'Could not delete that language.'));
       }
     }
   };

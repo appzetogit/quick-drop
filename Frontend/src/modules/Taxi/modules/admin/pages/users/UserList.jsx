@@ -19,6 +19,7 @@ const StatusToggle = ({ status, onToggle }) => (
 import UserModal from './UserModal';
 import { adminService } from '../../services/adminService';
 
+import { describeApiError } from '../../../../shared/utils/apiError';
 const GENDER_LABELS = {
   male: 'Male',
   female: 'Female',
@@ -98,6 +99,7 @@ const UserList = () => {
       }
     } catch (err) {
       console.error('Failed to toggle status', err);
+      alert(describeApiError(err, "Could not change that user's status."));
     }
   };
 
@@ -111,6 +113,7 @@ const UserList = () => {
         if (resData.success) setUsers(users.filter(u => u.id !== userId));
       } catch (err) {
         console.error('Failed to delete user', err);
+        alert(describeApiError(err, 'Could not delete that user.'));
       }
     }
   };

@@ -11,6 +11,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import AdminPageHeader from "../../components/ui/AdminPageHeader";
 
+import { describeApiError } from '../../../../shared/utils/apiError';
 const BASE = `${globalThis.__LEGACY_BACKEND_ORIGIN__}/api/v1/taxi/admin`;
 
 const getOwnerName = (owner) =>
@@ -67,7 +68,7 @@ const DeletedOwners = () => {
       else alert(json?.message || "Restore failed");
     } catch (e) {
       console.error("Restore owner failed:", e);
-      alert("Restore failed");
+      alert(describeApiError(e, "Restore failed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -86,7 +87,7 @@ const DeletedOwners = () => {
       else alert(json?.message || "Delete failed");
     } catch (e) {
       console.error("Permanent delete failed:", e);
-      alert("Delete failed");
+      alert(describeApiError(e, "Delete failed"));
     } finally {
       setIsSubmitting(false);
     }

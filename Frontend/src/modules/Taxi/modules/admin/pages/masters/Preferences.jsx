@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ChevronRight, Upload, Plus, Trash2, Edit2, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 
+import { describeApiError } from '../../../../shared/utils/apiError';
 const StatusToggle = ({ active, onToggle }) => (
   <button
     onClick={onToggle}
@@ -67,6 +68,7 @@ const Preferences = () => {
       fetchPreferences();
     } catch (err) {
       console.error('Toggle Error:', err);
+      alert(describeApiError(err, "Could not change that preference's status."));
     }
   };
 
@@ -77,6 +79,7 @@ const Preferences = () => {
         fetchPreferences();
       } catch (err) {
         console.error('Delete Error:', err);
+        alert(describeApiError(err, 'Could not delete that preference.'));
       }
     }
   };

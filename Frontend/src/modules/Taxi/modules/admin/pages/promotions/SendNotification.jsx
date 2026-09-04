@@ -16,6 +16,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
 
+import { describeApiError } from '../../../../shared/utils/apiError';
 const Motion = motion;
 const LIST_PATH = '/taxi/admin/promotions/send-notification';
 const CREATE_PATH = '/taxi/admin/promotions/send-notification/create';
@@ -239,6 +240,7 @@ const SendNotification = () => {
       }
     } catch (error) {
       console.error('Delete notification error:', error);
+      alert(describeApiError(error, 'Could not delete that notification.'));
     }
   };
 
