@@ -1,17 +1,18 @@
 # QuickDrop — Customer App Integration
 
-Three backend changes are live on production. One of them is already returning
-errors to real users on every order that trips it. The other two add fields the
-app can safely ignore, but shouldn't.
+Four backend changes are live on production. One is already returning errors to
+real users on every order that trips it, and one makes a value the app hardcodes
+wrong. The other two add fields the app can safely ignore, but shouldn't.
 
 | | Change | What the app must do |
 |---|---|---|
 | **Required** | Per-size quantity limits | Read limits from the selected size, not the dish. Checkout is rejecting orders today. |
 | **Recommended** | Combos | Already orderable with no change. Two new fields let you show what's inside. |
 | **Optional** | Free delivery by distance | The fee can be waived per platform *or* per restaurant. Read the reason and source from the pricing breakdown. |
+| **Required** | The 99 store price point | The shelf can run at ₹59. Anything hardcoding "99" is now wrong — read the live cap. |
 
 - API base: `https://quickdropsindia.com/api/v1`
-- Backend commit: `8f45b87`
+- Backend commit: `6f80fbc`
 - Every payload below is a real response captured from production, not an example.
 
 ---
@@ -401,6 +402,60 @@ compares too.
 
 ---
 
+## 4. The 99 store price point is configurable — REQUIRED
+
+Business can now run the value shelf at ₹59, or any other price, without a
+deploy. **Everything in the app that says "99" is now a guess** — the home rail
+header, the "View all" screen, the bottom-nav tab, the empty state. All of it has
+to read the live value.
+
+### Where it lives
+
+On `GET /food/landing/settings/public`, beside `showUnder250` as suggested:
+
+```json
+{
+  "showUnder250": true,
+  "ninetyNineStoreMaxPrice": 99
+}
+```
+
+It is **always a usable positive number**. The server resolves it before sending,
+so you will not get `null` even on a settings document written before the field
+existed. Keeping your own fallback of 99 costs nothing and is fine to leave in.
+
+```dart
+final cap = (settings['ninetyNineStoreMaxPrice'] as num?)?.toInt() ?? 99;
+final shelfTitle = '₹$cap Store';       // "₹59 Store" when business changes it
+```
+
+### What you do not need to do
+
+**Do not filter by the cap.** The shelf feed (`promo=switch99`) already applies it
+server-side, so no dish it returns is priced above the cap. Read the number for
+labels and copy only — if you also filter, you are re-implementing a rule that can
+only drift from the server's.
+
+### Freshness
+
+The settings endpoint is **not cached**, so a change is visible on your next
+fetch. The shelf feed itself is cached for 5 minutes, but an admin save clears it,
+so the contents and the label cannot disagree for long.
+
+Read the cap when you fetch settings. Do not bake it into a build constant, or
+changing the price point will need an app release, which is the whole thing this
+change exists to avoid.
+
+### What happens behind it
+
+Worth knowing so the shelf's behaviour is not surprising. Raising the cap adds
+every newly eligible dish to the shelf straight away. Lowering it drops dishes
+above the new price, but keeps their marking, so putting the cap back restores the
+shelf exactly. Dishes an admin removed by hand stay off through all of it. None of
+this needs app-side handling — the feed simply returns a different set.
+
+---
+
 ## Field reference
 
 Everything added, and where it appears. All fields are additive; nothing was
@@ -431,6 +486,7 @@ renamed or removed.
 | `freeDeliveryOffer.label` | `String` | restaurant list, detail | full terms |
 | `deliveryFeeBreakdown.freeDeliveryRule` | `object?` | pricing | radius, minimum, and measured distance |
 | `deliveryFeeBreakdown.waivedDeliveryFee` | `num` | pricing | what would otherwise have been charged |
+| `ninetyNineStoreMaxPrice` | `num` | `/landing/settings/public` | the shelf's price point; never null |
 
 **Endpoints, unchanged.** The cross-restaurant feed is
 `GET /food/restaurant/public/foods`, a single restaurant's menu is
@@ -461,6 +517,9 @@ The first four are the ones that would reach a customer as a broken order.
 - [ ] Ordering a combo works end to end without any combo-specific cart logic.
 - [ ] With the free-delivery rule off, the delivery line looks exactly as it does
       today.
+- [ ] No screen hardcodes "99" — the rail header, "View all", the bottom-nav tab
+      and the empty state all read `ninetyNineStoreMaxPrice`.
+- [ ] The shelf is not filtered client-side by the cap; the feed already is.
 - [ ] A restaurant with a free-delivery offer shows a badge from
       `freeDeliveryOffer.shortLabel`, and one without shows nothing.
 - [ ] The progress bar reads `freeDeliveryRule.minOrderAmount` and hides entirely
