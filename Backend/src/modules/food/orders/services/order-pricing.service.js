@@ -339,6 +339,19 @@ export async function calculateOrderPricing(userId, dto) {
     } else {
       // Fallback: If coordinates are missing, assume base distance (0 km) to apply base delivery fee
       distanceRule = await resolveDistanceRule(0);
+      /*
+       * Worth shouting about. Every order from this restaurant is priced at the
+       * nearest slab whatever the real trip, and free delivery can never apply
+       * because an unmeasured distance does not qualify. Both are invisible from
+       * the outside -- the bill simply looks cheap and the offer simply never
+       * fires -- so the cause is recorded here.
+       */
+      if (!restCoords) {
+        console.warn(
+          `[pricing] Restaurant ${dto?.restaurantId} has no coordinates: `
+          + 'charging the base distance slab, and free delivery cannot apply.',
+        );
+      }
     }
     
     if (distanceRule) {

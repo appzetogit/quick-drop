@@ -222,6 +222,70 @@ const MAX_RECOMMENDED_IMAGES_PER_RESTAURANT = 8;
  * saying "no offer here", and an app that saw it might render an exclusion as if
  * it were a promotion.
  */
+/**
+ * The categories this restaurant's live menu actually uses.
+ *
+ * The app was rendering the platform-wide list -- Burgers, Beverages and so on
+ * -- because that is all any public endpoint offered: /categories/public
+ * returns zone plus global categories with no way to scope to one restaurant,
+ * and the detail response carried none at all. So a restaurant selling Briyani,
+ * Pasta and Sweets showed chips for categories it does not stock.
+ *
+ * Derived from the dishes rather than from what the restaurant once created, so
+ * a category with nothing orderable in it does not appear as an empty tab.
+ * Sorted the way the menu sorts, so the chips and the sections agree.
+ */
+const attachMenuCategories = async (restaurant) => {
+    if (!restaurant?._id) return restaurant;
+    try {
+        const { FoodItem } = await import('../../admin/models/food.model.js');
+        const { FoodCategory } = await import('../../admin/models/category.model.js');
+
+        const foods = await FoodItem.find({
+            restaurantId: restaurant._id,
+            approvalStatus: 'approved',
+            isActive: { $ne: false },
+        }).select('categoryId categoryName').lean();
+
+        const counts = new Map();
+        for (const food of foods) {
+            const id = food?.categoryId ? String(food.categoryId) : '';
+            const key = id || `name:${String(food?.categoryName || 'Menu').toLowerCase()}`;
+            const row = counts.get(key) || { id: id || null, name: food?.categoryName || 'Menu', itemCount: 0 };
+            row.itemCount += 1;
+            counts.set(key, row);
+        }
+        if (!counts.size) return { ...restaurant, menuCategories: [] };
+
+        const ids = [...counts.values()].map((r) => r.id).filter(Boolean);
+        const docs = ids.length
+            ? await FoodCategory.find({ _id: { $in: ids } }).select('name image sortOrder').lean()
+            : [];
+        const byId = new Map(docs.map((d) => [String(d._id), d]));
+
+        const menuCategories = [...counts.values()]
+            .map((row) => {
+                const doc = row.id ? byId.get(row.id) : null;
+                return {
+                    id: row.id,
+                    name: doc?.name || row.name,
+                    image: doc?.image || '',
+                    itemCount: row.itemCount,
+                    sortOrder: Number.isFinite(Number(doc?.sortOrder)) ? Number(doc.sortOrder) : Number.MAX_SAFE_INTEGER,
+                };
+            })
+            .sort((a, b) => (a.sortOrder !== b.sortOrder
+                ? a.sortOrder - b.sortOrder
+                : String(a.name).localeCompare(String(b.name))));
+
+        return { ...restaurant, menuCategories };
+    } catch (err) {
+        // A category lookup must never fail the restaurant page.
+        console.error('Menu categories lookup failed:', err?.message || err);
+        return { ...restaurant, menuCategories: [] };
+    }
+};
+
 const attachFreeDeliveryOffer = async (restaurants = []) => {
     const list = Array.isArray(restaurants) ? restaurants : [];
     if (!list.length) return list;
@@ -244,6 +308,19 @@ const attachFreeDeliveryOffer = async (restaurants = []) => {
         await import('../../shared/freeDeliveryRule.js');
 
     return list.map((r) => {
+        /*
+         * A restaurant with no coordinates can never satisfy a distance rule:
+         * the order path cannot measure the trip, and an unmeasured distance
+         * deliberately does not qualify. Advertising the offer anyway promises
+         * the customer something checkout will never honour, so the badge is
+         * withheld until the location is set.
+         */
+        const coords = r?.location?.coordinates;
+        const canMeasureDistance = Array.isArray(coords)
+            && coords.length === 2
+            && Number.isFinite(Number(coords[0]))
+            && Number.isFinite(Number(coords[1]));
+
         const { rule, source } = resolveEffectiveFreeDeliveryRule({
             restaurant: r?.freeDeliveryRule,
             platform: platformRule,
@@ -266,11 +343,11 @@ const attachFreeDeliveryOffer = async (restaurants = []) => {
              * freeDeliveryOffer carries server-written copy so the badge wording
              * stays in step with checkout.
              */
-            freeDeliveryRule: rule.isEnabled
+            freeDeliveryRule: rule.isEnabled && canMeasureDistance
                 ? { maxDistanceKm: rule.maxDistanceKm, minOrderAmount: rule.minOrderAmount }
                 : null,
             freeDeliverySource: source,
-            freeDeliveryOffer: rule.isEnabled
+            freeDeliveryOffer: rule.isEnabled && canMeasureDistance
                 ? {
                     isEnabled: true,
                     maxDistanceKm: rule.maxDistanceKm,
@@ -1652,7 +1729,8 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug) => {
     if (/^[0-9a-fA-F]{24}$/.test(value)) {
         const doc = await FoodRestaurant.findOne({ _id: value, status: 'approved' }).lean();
         if (!doc) return null;
-        const [decorated] = await attachFreeDeliveryOffer([doc]);
+        const [withOffer] = await attachFreeDeliveryOffer([doc]);
+        const decorated = await attachMenuCategories(withOffer);
         return {
             ...decorated,
             rating: normalizeRatingValue(doc.rating),
@@ -1669,7 +1747,8 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug) => {
         restaurantNameNormalized
     }).lean();
     if (!doc) return null;
-    const [decorated] = await attachFreeDeliveryOffer([doc]);
+    const [withOffer] = await attachFreeDeliveryOffer([doc]);
+    const decorated = await attachMenuCategories(withOffer);
     return {
         ...decorated,
         rating: normalizeRatingValue(doc.rating),
