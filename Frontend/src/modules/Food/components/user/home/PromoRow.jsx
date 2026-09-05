@@ -4,8 +4,12 @@ import discountPromoIcon from "@food/assets/category-icons/discount_promo.png";
 import gourmetPromoIcon from "@food/assets/explore more icons/gourmet.png";
 import pricePromoIcon from "@food/assets/category-icons/price_promo.png";
 import collectionPromoIcon from "@food/assets/explore more icons/collection.png";
+import { useValueShelfCap, valueShelfHeading, valueShelfName } from "@food/utils/valueShelf";
 
 export default function PromoRow({ handleVegModeChange, navigate, isVegMode, toggleRef }) {
+  // Both lines on this card named a price the shelf may no longer run at.
+  const valueShelfCap = useValueShelfCap();
+
   const promoCardsData = [
     {
       id: 'offers',
@@ -21,8 +25,8 @@ export default function PromoRow({ handleVegModeChange, navigate, isVegMode, tog
     },
     {
       id: 'under-250',
-      title: "Under ₹99",
-      value: "Switch 99",
+      title: valueShelfHeading(valueShelfCap),
+      value: valueShelfName(valueShelfCap),
       icon: pricePromoIcon,
     },
     {

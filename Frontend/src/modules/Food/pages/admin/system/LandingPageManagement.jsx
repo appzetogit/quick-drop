@@ -8,6 +8,7 @@ import { Label } from "@food/components/ui/label"
 import { Button } from "@food/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@food/components/ui/dialog"
 import { Checkbox } from "@food/components/ui/checkbox"
+import { useValueShelfCap } from "@food/utils/valueShelf"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -15,6 +16,14 @@ const debugError = (...args) => {}
 
 export default function LandingPageManagement() {
   const [activeTab, setActiveTab] = useState('banners')
+  /*
+   * These banners sit on top of the value shelf, so the tab is named after the
+   * price that shelf actually runs at (99 Store -> Shelf price) rather than the
+   * "250" it was hardcoded to. The routes and state below keep the under-250
+   * names: they are the API's, and renaming them would be a migration, not a
+   * label change.
+   */
+  const valueShelfCap = useValueShelfCap()
   const [exploreMoreSubTab, setExploreMoreSubTab] = useState('icons')
 
   // Hero Banners
@@ -1205,7 +1214,7 @@ export default function LandingPageManagement() {
   // ==================== RENDER ====================
   const tabs = [
     { id: 'banners', label: 'Hero Banners', icon: ImageIcon },
-    { id: 'under-250', label: '250 Banner', icon: Tag },
+    { id: 'under-250', label: `₹${valueShelfCap} Banner`, icon: Tag },
     { id: 'dining', label: 'Dining', icon: UtensilsCrossed },
     { id: 'explore-more', label: 'Explore More', icon: Layout },
   ]
@@ -1414,12 +1423,16 @@ export default function LandingPageManagement() {
           </>
         )}
 
-        {/* Under 250 Banner Tab */}
+        {/* Value shelf banner tab */}
         {activeTab === 'under-250' && (
           <>
             {/* Upload Section */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
               <h2 className="text-lg font-bold text-slate-900 mb-4">Upload New Banner(s)</h2>
+              <p className="text-sm text-slate-600 -mt-2 mb-4">
+                Shown at the top of the &#8377;{valueShelfCap} shelf in the customer app. Change that price under
+                Promotions &rsaquo; 99 Store.
+              </p>
               <div
                 className="border-2 border-dashed border-blue-300 rounded-lg p-8 text-center bg-blue-50/30 cursor-pointer transition-colors hover:border-blue-400 hover:bg-blue-50/50"
                 onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -1487,14 +1500,14 @@ export default function LandingPageManagement() {
               ) : under250Banners.length === 0 ? (
                 <div className="text-center py-12 text-slate-500">
                   <Tag className="w-12 h-12 mx-auto mb-3 text-slate-400" />
-                  <p>No under 250 banners uploaded yet.</p>
+                  <p>No &#8377;{valueShelfCap} shelf banners uploaded yet.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {under250Banners.map((banner, index) => (
                     <div key={banner._id} className="border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
                       <div className="relative aspect-video bg-slate-100">
-                        <img src={banner.imageUrl} alt={`Under 250 Banner ${index + 1}`} className="w-full h-full object-cover" />
+                        <img src={banner.imageUrl} alt={`₹${valueShelfCap} shelf banner ${index + 1}`} className="w-full h-full object-cover" />
                         <div className="absolute top-2 right-2">
                           <span className={`px-2 py-1 rounded text-xs font-medium ${banner.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                             {banner.isActive ? 'Active' : 'Inactive'}

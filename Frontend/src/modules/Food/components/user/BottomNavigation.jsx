@@ -1,11 +1,16 @@
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { Tag, User, Truck, UtensilsCrossed } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
+import { useValueShelfCap, valueShelfName } from "@food/utils/valueShelf"
 
 export default function BottomNavigation() {
   const location = useLocation()
   const navigate = useNavigate()
   const pathname = location.pathname
+  // The shelf names itself after the price it runs at, which business can move
+  // from the admin panel. Hardcoding "Switch 99" meant a shelf set to Rs 59
+  // still called itself 99 in the one place every customer sees.
+  const valueShelfCap = useValueShelfCap()
 
   // active routes
   const isDining = pathname === "/food/dining" || pathname.startsWith("/food/user/dining")
@@ -26,7 +31,7 @@ export default function BottomNavigation() {
   const navItems = [
     { icon: Truck, label: "Delivery", path: "/food/user", isActive: isDelivery },
     { icon: UtensilsCrossed, label: "Dining", path: "/food/user/dining", isActive: isDining },
-    { icon: Tag, label: "Switch 99", path: "/food/user/under-250", isActive: isUnder250 },
+    { icon: Tag, label: valueShelfName(valueShelfCap), path: "/food/user/under-250", isActive: isUnder250, isValueShelf: true },
     { icon: User, label: "Profile", path: "/food/user/profile", isActive: isProfile },
   ]
 
@@ -34,7 +39,7 @@ export default function BottomNavigation() {
     // Floating nav — matches taxi design
     <div className="md:hidden fixed bottom-0 left-0 right-0 max-w-lg mx-auto z-[100] px-6 pb-6 pt-2 pointer-events-none">
       <div className="flex items-center justify-around bg-white rounded-[32px] shadow-[0_12px_40px_rgba(0,0,0,0.15)] border border-gray-100 px-5 py-2 pointer-events-auto relative">
-        {navItems.map(({ icon: Icon, label, path, isActive }) => (
+        {navItems.map(({ icon: Icon, label, path, isActive, isValueShelf }) => (
           <button
             key={label}
             type="button"
@@ -53,7 +58,7 @@ export default function BottomNavigation() {
                       damping: 32,
                       mass: 1,
                     }}
-                    className={`absolute -inset-y-1.5 bg-[#ff3d00] rounded-[18px] shadow-[0_8px_20px_rgba(255,61,0,0.35)] ${label === "Switch 99" ? "-inset-x-2.5" : "-inset-x-3.5"
+                    className={`absolute -inset-y-1.5 bg-[#ff3d00] rounded-[18px] shadow-[0_8px_20px_rgba(255,61,0,0.35)] ${isValueShelf ? "-inset-x-2.5" : "-inset-x-3.5"
                       }`}
                   />
                 )}

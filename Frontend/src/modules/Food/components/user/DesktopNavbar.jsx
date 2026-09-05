@@ -12,6 +12,7 @@ import { AnimatePresence, motion } from "framer-motion"
 import quickSpicyLogo from "@food/assets/k9-logo.jpg"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
 import { useSettings } from "../../../Taxi/shared/context/SettingsContext"
+import { useValueShelfCap, valueShelfName } from "@food/utils/valueShelf"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -52,6 +53,8 @@ export default function DesktopNavbar({ showLogo = true }) {
     // Check active routes - support both /user/* and /* paths
     const isDining = location.pathname === "/food/user/dining" || location.pathname === "/food/dining"
     const isUnder250 = location.pathname === "/food/user/under-250" || location.pathname === "/food/under-250"
+    // Named after the price the shelf actually runs at, not a literal 99.
+    const valueShelfCap = useValueShelfCap()
     const isProfile = location.pathname.startsWith("/food/user/profile") || location.pathname.startsWith("/food/profile")
     const isDelivery = !isDining && !isUnder250 && !isProfile && (location.pathname === "/food/user" || location.pathname === "/food" || (location.pathname.startsWith("/food/user") && !location.pathname.includes("/dining") && !location.pathname.includes("/under-250") && !location.pathname.includes("/profile")))
     const isBannerRoute =
@@ -283,7 +286,7 @@ export default function DesktopNavbar({ showLogo = true }) {
                                 )}
                             </Link>
 
-                            {/* Under 250 Tab */}
+                            {/* Value shelf tab */}
                             <Link
                                 to="/food/user/under-250"
                                 className={`flex flex-col items-center gap-1 px-2 py-1 transition-colors relative group ${isUnder250
@@ -291,7 +294,7 @@ export default function DesktopNavbar({ showLogo = true }) {
                                     : "text-gray-600 dark:text-gray-400 hover:text-accent-orange dark:hover:text-primary-orange/50"
                                     }`}
                             >
-                                <span className="text-sm font-bold tracking-wide uppercase">Switch 99</span>
+                                <span className="text-sm font-bold tracking-wide uppercase">{valueShelfName(valueShelfCap)}</span>
                                 {isUnder250 && (
                                     <motion.div
                                         layoutId="navIndicator"

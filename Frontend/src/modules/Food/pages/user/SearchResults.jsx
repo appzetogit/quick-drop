@@ -6,6 +6,7 @@ import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
 import { RestaurantGridSkeleton } from "@food/components/ui/loading-skeletons"
 import StickyCartCard from "@food/components/user/StickyCartCard"
+import { useValueShelfCap, valueShelfName } from "@food/utils/valueShelf"
 import { useProfile } from "@food/context/ProfileContext"
 import { useLocation } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
@@ -17,11 +18,14 @@ const debugWarn = (...args) => { }
 const debugError = (...args) => { }
 
 // Filter options
-const filterOptions = [
+// A factory rather than a constant: the value shelf's chip is named after the
+// price the shelf runs at, which is a setting and so is not known at module
+// load.
+const buildFilterOptions = (valueShelfCap) => [
   { id: 'under-30-mins', label: 'Under 30 mins' },
   { id: 'price-match', label: 'Price Match', hasIcon: true },
   { id: 'flat-50-off', label: 'Flat 50% OFF', hasIcon: true },
-  { id: 'under-250', label: 'Switch 99' },
+  { id: 'under-250', label: valueShelfName(valueShelfCap) },
   { id: 'rating-4-plus', label: 'Rating 4.0+' },
 ]
 const SEARCH_HISTORY_KEY = "user_recent_searches_v1"
@@ -29,6 +33,8 @@ const SEARCH_HISTORY_KEY = "user_recent_searches_v1"
 // Mock data removed - using backend data only
 
 export default function SearchResults() {
+  const valueShelfCap = useValueShelfCap()
+  const filterOptions = useMemo(() => buildFilterOptions(valueShelfCap), [valueShelfCap])
   const [searchParams, setSearchParams] = useSearchParams()
   const query = searchParams.get("q") || ""
   const navigate = useNavigate()

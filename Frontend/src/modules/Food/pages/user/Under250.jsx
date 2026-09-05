@@ -23,6 +23,7 @@ import { restaurantAPI, adminAPI } from "@food/api"
 import { isModuleAuthenticated } from "@food/utils/auth"
 import { flattenMenuItems, getMenuFromResponse } from "@food/utils/menuItems"
 import { calculateDistance, formatDistance } from "@food/utils/common"
+import { getValueShelfCap, isOnValueShelf, useValueShelfCap, valueShelfName } from "@food/utils/valueShelf"
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
 const debugError = (...args) => { }
@@ -65,6 +66,10 @@ const readUnder250Filters = () => {
 
 
 export default function Under250() {
+  // The shelf's price point, set in the admin panel. Used both to name the page
+  // and to decide what belongs on it.
+  const valueShelfCap = useValueShelfCap()
+  const shelfName = valueShelfName(valueShelfCap)
   const initialFiltersRef = useRef(readUnder250Filters())
   const { location } = useLocation()
   const { openLocationSelector } = useLocationSelector()
@@ -461,6 +466,10 @@ export default function Under250() {
           setUnder250Restaurants([])
           return
         }
+        // Read here rather than from the hook so this effect does not depend on
+        // a value that settles a tick after mount -- that dependency would
+        // refetch every restaurant's menu a second time for the same number.
+        const shelfCap = await getValueShelfCap()
         const response = await restaurantAPI.getRestaurants({ zoneId })
         const restaurantsRaw = Array.isArray(response?.data?.data?.restaurants)
           ? response.data.data.restaurants
@@ -476,11 +485,17 @@ export default function Under250() {
             try {
               const menuResponse = await restaurantAPI.getMenuByRestaurantId(restaurantId)
               const menu = getMenuFromResponse(menuResponse)
+              /*
+               * This used to be `String(item.price).includes("99")`, which is a
+               * string match and not a price rule: it put 199, 299, 1099 and
+               * 1.99 on the shelf while leaving a Rs 49 dish off it, and it
+               * ignored both the admin's curation and the configured price
+               * point entirely. `isOnValueShelf` is the rule the server already
+               * applies -- flagged for the shelf, and at or under the cap --
+               * so the page and the API now agree on what the shelf contains.
+               */
               const menuItems = flattenMenuItems(menu)
-                .filter((item) => {
-                  const priceStr = String(item?.price || "");
-                  return priceStr.includes("99") && item?.isAvailable !== false;
-                })
+                .filter((item) => isOnValueShelf(item, shelfCap) && item?.isAvailable !== false)
                 .map((item) => {
                   const foodType = String(item?.foodType || "").toLowerCase()
                   const isVeg = foodType.includes("veg") && !foodType.includes("non")
@@ -751,7 +766,7 @@ export default function Under250() {
     }))
 
     // Find restaurant name from the item or use provided parameter
-    const restaurant = restaurantName || item.restaurant || "Switch 99"
+    const restaurant = restaurantName || item.restaurant || shelfName
 
     // Prepare cart item with all required properties
     const cartItem = {
@@ -878,7 +893,7 @@ export default function Under250() {
       if (navigator.share) {
         await navigator.share({
           title: item.name || "Dish",
-          text: `Check out ${item.name || "this dish"} from ${item.restaurant || "Switch 99"}`,
+          text: `Check out ${item.name || "this dish"} from ${item.restaurant || shelfName}`,
           url: shareUrl,
         })
         return
@@ -898,7 +913,7 @@ export default function Under250() {
     const shareUrl = restaurantSlug
       ? `${window.location.origin}/user/restaurants/${restaurantSlug}${itemId ? `?dish=${encodeURIComponent(itemId)}` : ""}`
       : window.location.href
-    const shareText = `Check out ${selectedItem.name || "this dish"} from ${selectedItem.restaurant || "Switch 99"}`
+    const shareText = `Check out ${selectedItem.name || "this dish"} from ${selectedItem.restaurant || shelfName}`
     const encodedUrl = encodeURIComponent(shareUrl)
     const encodedText = encodeURIComponent(`${shareText} ${shareUrl}`)
 
@@ -998,7 +1013,7 @@ export default function Under250() {
         </div>
       </div>
 
-      {/* Dynamic Switch 99 Hero Banner Section */}
+      {/* Dynamic value shelf hero banner section */}
       <div
         ref={bannerShellRef}
         data-banner-shell="true"
@@ -1018,7 +1033,7 @@ export default function Under250() {
               <div key={`${bannerSrc}-${index}`} className="relative h-full w-full shrink-0">
                 <OptimizedImage
                   src={bannerSrc}
-                  alt={`Switch 99 Banner ${index + 1}`}
+                  alt={`${shelfName} banner ${index + 1}`}
                   className="w-full h-full"
                   objectFit="contain"
                   priority={index === 0}
@@ -1161,7 +1176,7 @@ export default function Under250() {
           <div className="flex justify-center items-center py-12">
             <div className="text-gray-500 dark:text-gray-400">
               {under250Restaurants.length === 0
-                ? `No restaurants with dishes under ${RUPEE_SYMBOL}99 found.`
+                ? `No restaurants with dishes under ${RUPEE_SYMBOL}${valueShelfCap} found.`
                 : "No restaurants match the selected filters."}
             </div>
           </div>
@@ -1539,7 +1554,7 @@ export default function Under250() {
 
                 {/* Description */}
                 <p className="text-sm md:text-base lg:text-lg text-gray-600 dark:text-gray-400 mb-4 md:mb-6 lg:mb-8 leading-relaxed">
-                  {selectedItem.description || `${selectedItem.name} from ${selectedItem.restaurant || 'Switch 99'}`}
+                  {selectedItem.description || `${selectedItem.name} from ${selectedItem.restaurant || shelfName}`}
                 </p>
 
                 {/* Highly Reordered Progress Bar */}

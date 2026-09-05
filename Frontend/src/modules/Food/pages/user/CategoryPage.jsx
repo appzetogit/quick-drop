@@ -22,15 +22,7 @@ import { useLocation } from "@food/hooks/useLocation"
 import { useZone } from "@food/hooks/useZone"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
 import { getMenuFromResponse } from "@food/utils/menuItems"
-
-// Filter options
-const filterOptions = [
-  { id: 'under-30-mins', label: 'Under 30 mins' },
-  { id: 'price-match', label: 'Price Match', hasIcon: true },
-  { id: 'flat-50-off', label: 'Flat 50% OFF', hasIcon: true },
-  { id: 'under-250', label: 'Switch 99' },
-  { id: 'rating-4-plus', label: 'Rating 4.0+' },
-]
+import { useValueShelfCap, valueShelfName } from "@food/utils/valueShelf"
 
 // Mock data removed - using backend data only
 
@@ -40,6 +32,9 @@ const CATEGORY_PAGE_FILTERS_STORAGE_KEY = "food-category-page-filters-v1"
 
 export default function CategoryPage() {
   const { category } = useParams()
+  // The value shelf is named after the price it runs at, set in the admin
+  // panel. Every chip below used to say 99 regardless.
+  const valueShelfCap = useValueShelfCap()
   const navigate = useNavigate()
   const { vegMode, getDefaultAddress } = useProfile()
   const { location } = useLocation()
@@ -1493,7 +1488,7 @@ export default function CategoryPage() {
                 { id: 'distance-under-1km', label: 'Under 1km', icon: MapPin },
                 { id: 'distance-under-2km', label: 'Under 2km', icon: MapPin },
                 { id: 'flat-50-off', label: 'Flat 50% OFF' },
-                { id: 'under-250', label: 'Switch 99' },
+                { id: 'under-250', label: valueShelfName(valueShelfCap) },
               ].map((filter) => {
                 const Icon = filter.icon
                 const isActive = activeFilters.has(filter.id)
@@ -2026,7 +2021,7 @@ export default function CategoryPage() {
                               : 'border-gray-200 dark:border-gray-700 hover:border-green-600'
                               }`}
                           >
-                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('under-250') ? 'text-[#EB590E]' : 'text-gray-700 dark:text-gray-300'}`}>Switch 99</span>
+                            <span className={`text-sm md:text-base font-medium ${activeFilters.has('under-250') ? 'text-[#EB590E]' : 'text-gray-700 dark:text-gray-300'}`}>{valueShelfName(valueShelfCap)}</span>
                           </button>
                           <button
                             onClick={() => toggleFilter('price-under-500')}
