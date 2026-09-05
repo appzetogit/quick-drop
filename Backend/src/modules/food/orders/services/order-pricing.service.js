@@ -9,6 +9,7 @@ import { FoodDeliverySurgeZone } from '../../admin/models/deliverySurgeZone.mode
 import { FoodDeliveryCommissionRule } from '../../admin/models/deliveryCommissionRule.model.js';
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
+import { FoodUser } from '../../../../core/users/user.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { resolveDeliveryDistanceKm } from './deliveryDistance.service.js';
 import {
@@ -157,6 +158,39 @@ function extractCoords(addressLike) {
   return [Number(lng), Number(lat)];
 }
 
+/**
+ * The address an order is going to, whatever shape the caller sent it in.
+ *
+ * Clients send one of two things. The web sends the whole address object; the
+ * Flutter app sends `deliveryAddressId`, the id of one of the user's saved
+ * addresses. Only the first was ever read, so every cart priced from the app
+ * arrived here with no coordinates at all -- which silently charges the base
+ * distance slab no matter how far the rider goes, and makes free-delivery-by-
+ * radius impossible to qualify for. The bill simply looked cheap and the offer
+ * simply never fired.
+ *
+ * The id is looked up against THIS user's own addresses, so it cannot be used
+ * to price against someone else's location.
+ */
+async function resolveDeliveryAddress(userId, dto = {}) {
+    const inline = dto?.address || dto?.deliveryAddress || null;
+    if (extractCoords(inline)) return inline;
+
+    const addressId = dto?.deliveryAddressId || inline?._id || inline?.id || null;
+    if (!addressId || !mongoose.Types.ObjectId.isValid(String(addressId))) return inline;
+    if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) return inline;
+
+    const user = await FoodUser.findById(userId).select('addresses').lean();
+    const saved = (user?.addresses || []).find(
+        (a) => String(a?._id) === String(addressId),
+    );
+    if (!saved) return inline;
+
+    // Merge rather than replace: a caller that sent a partial address plus an id
+    // keeps whatever it sent, and only gains what it was missing.
+    return { ...(inline || {}), ...saved };
+}
+
 function isPointInPolygon(lat, lng, polygon = []) {
   if (!Array.isArray(polygon) || polygon.length < 3) return false;
   let inside = false;
@@ -223,6 +257,16 @@ export async function calculateOrderPricing(userId, dto) {
   if (!restaurant) throw new ValidationError("Restaurant not found");
   if (restaurant.status !== "approved")
     throw new ValidationError("Restaurant not available");
+
+  /*
+   * Resolve the delivery address before anything measures a distance.
+   * Written back onto the dto so the zone lookup, the distance slab and the
+   * free-delivery radius all judge the same address.
+   */
+  const resolvedAddress = await resolveDeliveryAddress(userId, dto);
+  if (resolvedAddress) {
+    dto = { ...dto, address: resolvedAddress, deliveryAddress: resolvedAddress };
+  }
 
   // Resolve prices from the live menu — never trust client-supplied item prices.
   const resolvedItems = await resolveAuthoritativeItems(dto.restaurantId, dto.items);
