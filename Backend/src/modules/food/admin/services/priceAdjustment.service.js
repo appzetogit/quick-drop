@@ -4,6 +4,8 @@ import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodPriceAdjustment } from '../models/priceAdjustment.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { invalidatePriceCaches } from '../../../../middleware/cache.js';
+import { FoodPriceAdjustmentSnapshot } from '../models/priceAdjustmentSnapshot.model.js';
+import { isMarkdownFactor } from '../../shared/priceMarkdown.js';
 
 /**
  * A single adjustment may not wipe out more than 90% of a price or more than
@@ -190,6 +192,114 @@ const countItemsCappedByMrp = async (filter, factor) => FoodItem.countDocuments(
     $expr: { $gt: [{ $multiply: ['$price', factor] }, '$mrp'] },
 });
 
+/**
+ * Record what every affected dish was priced at, before a markdown touches it.
+ *
+ * A markdown overwrites basePrice with the current selling price, so the old
+ * pre-discount figure is gone and cannot be recovered by arithmetic. This is
+ * the only way the run stays undoable.
+ *
+ * Written BEFORE the update on purpose: a crash between the two leaves a
+ * snapshot describing dishes that were never changed, and restoring a dish to
+ * the price it already has is harmless. The reverse -- changing a dish with no
+ * snapshot -- is not.
+ */
+const snapshotForMarkdown = async (filter, adjustmentId) => {
+    const items = await FoodItem.find(filter)
+        .select('price basePrice discountPercent variants')
+        .lean();
+    if (!items.length) return 0;
+
+    await FoodPriceAdjustmentSnapshot.insertMany(
+        items.map((item) => ({
+            adjustmentId,
+            itemId: item._id,
+            price: Number(item.price) || 0,
+            basePrice: item.basePrice === null || item.basePrice === undefined ? null : Number(item.basePrice),
+            discountPercent: Number(item.discountPercent) || 0,
+            variants: (item.variants || []).map((v) => ({ _id: v._id, price: Number(v.price) || 0 })),
+        })),
+        { ordered: false },
+    );
+    return items.length;
+};
+
+/**
+ * Mark a menu down so the saving shows.
+ *
+ * Today's selling price becomes the struck-through figure and the reduced price
+ * is charged beneath it, so a 10% cut reads as "Rs 180, was Rs 200" instead of
+ * moving both numbers and advertising the same discount as before.
+ *
+ * Two stages, because a later stage in an aggregation-pipeline update sees what
+ * an earlier one wrote: the base has to be captured from the OLD price before
+ * the price itself is reduced.
+ *
+ * No MRP clamp here, unlike the scaling path -- a markdown only ever lowers what
+ * is charged, so it cannot push a dish above its printed maximum.
+ */
+const applyMarkdownToMenu = async (filter, factor) => {
+    const result = await FoodItem.updateMany(
+        { ...filter, price: { $gt: MIN_RESULT_PRICE } },
+        [
+            {
+                // The strike-through is what the dish sells for right now.
+                $set: { basePrice: { $round: ['$price', 2] } },
+            },
+            {
+                $set: {
+                    price: {
+                        $max: [MIN_RESULT_PRICE, { $round: [{ $multiply: ['$basePrice', factor] }, 2] }],
+                    },
+                    variants: {
+                        $map: {
+                            input: { $ifNull: ['$variants', []] },
+                            as: 'variant',
+                            in: {
+                                $mergeObjects: [
+                                    '$$variant',
+                                    {
+                                        price: {
+                                            $max: [
+                                                MIN_RESULT_PRICE,
+                                                { $round: [{ $multiply: ['$$variant.price', factor] }, 2] },
+                                            ],
+                                        },
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                // Derived from the two figures actually stored, so the advertised
+                // percentage always matches the numbers beside it.
+                $set: {
+                    discountPercent: {
+                        $cond: [
+                            { $gt: ['$basePrice', 0] },
+                            {
+                                $round: [
+                                    {
+                                        $multiply: [
+                                            { $divide: [{ $subtract: ['$basePrice', '$price'] }, '$basePrice'] },
+                                            100,
+                                        ],
+                                    },
+                                    2,
+                                ],
+                            },
+                            0,
+                        ],
+                    },
+                },
+            },
+        ],
+    );
+    return result?.modifiedCount || 0;
+};
+
 export async function listPriceAdjustments({ limit = 20 } = {}) {
     const capped = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
     const adjustments = await FoodPriceAdjustment.find({})
@@ -370,21 +480,47 @@ export async function applyPriceAdjustment(body = {}, actor = {}) {
     // Counted before the write, because afterwards the prices have already been
     // held at MRP and the comparison no longer finds them. Only meaningful when
     // selling prices are the thing being moved.
-    const itemsCappedByMrp = target === 'price' ? await countItemsCappedByMrp(filter, factor) : 0;
-    const itemsUpdated = target === 'price'
-        ? await applyFactorToMenu(filter, factor)
-        : await applyFactorToComparison(filter, factor);
+    /*
+     * A decrease on the selling price is a markdown: today's price becomes the
+     * struck-through figure and the reduced one is charged beneath it, so the
+     * cut is visible as a saving. Scaling both together the way an increase does
+     * would move the numbers and advertise the same discount as before.
+     *
+     * Increases keep scaling. Only this branch changes, which is what makes the
+     * run direction-dependent -- and why `strategy` is recorded, because revert
+     * cannot infer from the factor alone which fields were moved.
+     */
+    const isMarkdown = target === 'price' && isMarkdownFactor(factor);
+    const strategy = isMarkdown ? 'markdown' : 'scale';
 
+    const itemsCappedByMrp = target === 'price' && !isMarkdown
+        ? await countItemsCappedByMrp(filter, factor)
+        : 0;
+
+    // The record is created first so the snapshot can point at it, and so a run
+    // that dies partway still leaves a trace of what was attempted.
     const adjustment = await FoodPriceAdjustment.create({
         percent,
         factor,
         target,
+        strategy,
         restaurantId,
         restaurantName,
-        itemsUpdated,
+        itemsUpdated: 0,
         itemsCappedByMrp,
         ...(await resolveActor(actor))
     });
+
+    if (isMarkdown) await snapshotForMarkdown(filter, adjustment._id);
+
+    const itemsUpdated = isMarkdown
+        ? await applyMarkdownToMenu(filter, factor)
+        : target === 'price'
+            ? await applyFactorToMenu(filter, factor)
+            : await applyFactorToComparison(filter, factor);
+
+    adjustment.itemsUpdated = itemsUpdated;
+    await adjustment.save();
 
     // The public endpoints cache for up to five minutes. Without this the new
     // prices sit in Mongo while the apps keep serving the old ones, which reads
@@ -420,9 +556,97 @@ export async function revertPriceAdjustment(id, actor = {}) {
     // deliberately left alone.
     const target = String(original.target || 'otherPrice') === 'price' ? 'price' : 'otherPrice';
     const filter = buildFilter(original.restaurantId);
-    const itemsUpdated = target === 'price'
-        ? await applyFactorToMenu(filter, inverse)
-        : await applyFactorToComparison(filter, inverse);
+
+    /*
+     * A markdown overwrote each dish's base price with its selling price, so
+     * there is nothing to multiply back. Restore what was recorded instead.
+     *
+     * Rows written before `strategy` existed are all scales, which the default
+     * handles.
+     */
+    let itemsUpdated = 0;
+    if (String(original.strategy) === 'markdown') {
+        const snapshots = await FoodPriceAdjustmentSnapshot.find({ adjustmentId: original._id }).lean();
+        if (!snapshots.length) {
+            throw new ValidationError(
+                'This markdown has no saved prices to restore, so it cannot be reverted automatically',
+            );
+        }
+        const ops = snapshots.map((snap) => ({
+            updateOne: {
+                filter: { _id: snap.itemId },
+                update: {
+                    $set: {
+                        price: snap.price,
+                        basePrice: snap.basePrice,
+                        discountPercent: snap.discountPercent,
+                        ...(snap.variants?.length
+                            ? { variants: undefined }
+                            : {}),
+                    },
+                },
+            },
+        }));
+        // Variants are restored per row, since each carries its own prices.
+        for (const snap of snapshots) {
+            if (!snap.variants?.length) continue;
+            await FoodItem.updateOne(
+                { _id: snap.itemId },
+                [{
+                    $set: {
+                        variants: {
+                            $map: {
+                                input: { $ifNull: ['$variants', []] },
+                                as: 'v',
+                                in: {
+                                    $mergeObjects: [
+                                        '$$v',
+                                        {
+                                            price: {
+                                                $let: {
+                                                    vars: {
+                                                        saved: {
+                                                            $first: {
+                                                                $filter: {
+                                                                    input: snap.variants,
+                                                                    as: 's',
+                                                                    cond: { $eq: ['$$s._id', '$$v._id'] },
+                                                                },
+                                                            },
+                                                        },
+                                                    },
+                                                    in: { $ifNull: ['$$saved.price', '$$v.price'] },
+                                                },
+                                            },
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                    },
+                }],
+            );
+        }
+        const res = await FoodItem.bulkWrite(
+            ops.map((op) => ({
+                updateOne: {
+                    filter: op.updateOne.filter,
+                    update: {
+                        $set: {
+                            price: op.updateOne.update.$set.price,
+                            basePrice: op.updateOne.update.$set.basePrice,
+                            discountPercent: op.updateOne.update.$set.discountPercent,
+                        },
+                    },
+                },
+            })),
+        );
+        itemsUpdated = res?.modifiedCount || 0;
+    } else {
+        itemsUpdated = target === 'price'
+            ? await applyFactorToMenu(filter, inverse)
+            : await applyFactorToComparison(filter, inverse);
+    }
 
     original.isReverted = true;
     await original.save();

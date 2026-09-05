@@ -24,6 +24,19 @@ const priceAdjustmentSchema = new mongoose.Schema(
          * Rows written before this default to 'price', which is what they did.
          */
         target: { type: String, enum: ['price', 'otherPrice'], default: 'price' },
+        /*
+         * How the run wrote, and therefore how it must be undone.
+         *
+         * 'scale'    multiplies base and selling together; reverted by replaying
+         *            the inverse factor, which needs nothing stored.
+         * 'markdown' promotes the selling price to the strike-through so the cut
+         *            is visible; this OVERWRITES the previous base price, so it
+         *            is reverted from a snapshot instead.
+         *
+         * Rows written before this field default to 'scale', which is what they
+         * all were.
+         */
+        strategy: { type: String, enum: ['scale', 'markdown'], default: 'scale' },
         /** Null means the adjustment covered every restaurant. */
         restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodRestaurant', default: null },
         restaurantName: { type: String, trim: true, default: 'All restaurants' },

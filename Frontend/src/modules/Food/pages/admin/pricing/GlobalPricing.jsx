@@ -259,10 +259,19 @@ export default function GlobalPricing() {
               </button>
             ))}
           </div>
-          {target === "price" && (
+          {target === "price" && direction === "increase" && (
             <p className="mt-2 text-xs text-amber-700">
-              This changes what customers are charged. Base price moves with it and the discount percentage is
-              kept, so a cut here lowers the real price while the other-platform comparison stays where it is.
+              This changes what customers are charged. Base price rises with it and the discount percentage is
+              kept, so the advertised saving stays where it is.
+            </p>
+          )}
+          {target === "price" && direction === "decrease" && (
+            <p className="mt-2 text-xs text-amber-700">
+              <span className="font-semibold">A decrease marks the menu down.</span> Today&rsquo;s price becomes the
+              struck-through one and the reduced figure is charged beneath it, so the cut shows as a saving &mdash;
+              &#8377;200 becomes &#8377;180 was &#8377;200. Each dish&rsquo;s previous pre-discount price is replaced,
+              so a discount it was already advertising is folded into this one. Prices are saved first, so this can
+              be reverted.
             </p>
           )}
         </div>
