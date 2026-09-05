@@ -301,4 +301,119 @@ for (const inclusive of [false, true]) {
     assert.notEqual(b.discountOnNet, b.discount);
 }
 
+// --- the summary, at the rate production actually charges ------------------
+// The app prints netItemAmountBeforeDiscount, netPackagingFeeBeforeDiscount and
+// gstOnItems as three rows. At 5.6% those rows must come to the menu price for
+// an inclusive menu, and to the menu price plus tax for an exclusive one. These
+// are the exact figures on the screen, so they are pinned here rather than
+// described.
+{
+    const exc = computeBill({ itemAmount: 200, gstRate: 5.6, platformFee: 0 });
+    assert.equal(exc.netItemAmountBeforeDiscount, 200);
+    assert.equal(exc.gstOnItems, 11.2, '5.6% of 200 added on top');
+    assert.equal(round(exc.netItemAmountBeforeDiscount + exc.gstOnItems), 211.2);
+
+    const inc = computeBill({ itemAmount: 200, gstRate: 5.6, platformFee: 0, pricesIncludeGst: true });
+    assert.equal(inc.netItemAmountBeforeDiscount, 189.39, 'the 5.6% inside 200 leaves 189.39');
+    assert.equal(inc.gstOnItems, 10.61);
+    assert.equal(round(inc.netItemAmountBeforeDiscount + inc.gstOnItems), 200,
+        'the inclusive rows come back to the menu price exactly');
+
+    // 5.6% of 200 is 11.20; the 5.6% inside 200 is 10.61. Using the first for an
+    // inclusive menu would overstate the tax by 59 paise on this dish alone.
+    assert.notEqual(inc.gstOnItems, exc.gstOnItems);
+}
+{
+    // The same with the restaurant's own packaging charge in play.
+    const exc = computeBill({ itemAmount: 200, packagingFee: 20, gstRate: 5.6, platformFee: 0 });
+    assert.equal(exc.netPackagingFeeBeforeDiscount, 20);
+    assert.equal(exc.gstOnItems, 12.32, '5.6% of 220');
+    assert.equal(round(200 + 20 + exc.gstOnItems), 232.32);
+
+    const inc = computeBill({
+        itemAmount: 200, packagingFee: 20, gstRate: 5.6, platformFee: 0,
+        pricesIncludeGst: true, packagingBelongsToRestaurant: true,
+    });
+    assert.equal(inc.netItemAmountBeforeDiscount, 189.39);
+    assert.equal(inc.netPackagingFeeBeforeDiscount, 18.94);
+    assert.equal(inc.gstOnItems, 11.67);
+    assert.equal(
+        round(inc.netItemAmountBeforeDiscount + inc.netPackagingFeeBeforeDiscount + inc.gstOnItems),
+        220,
+        'both listed prices, back to the paisa',
+    );
+}
+
+// --- one cart, two tax treatments -------------------------------------------
+// The answer is per dish, so a cart can hold both. The tax is extracted from
+// the half that already contained it and added to the half that did not.
+{
+    // A Rs 200 inclusive dish and a Rs 200 exclusive one, at the live rate.
+    const b = computeBill({
+        itemAmount: 400, gstInclusiveItemAmount: 200,
+        gstRate: 5.6, platformFee: 0,
+    });
+    assert.equal(b.gstInclusiveItemAmount, 200);
+    assert.equal(b.pricesIncludeGst, false, 'not the whole cart, so the wording flag is off');
+    // 200 inclusive -> 189.39 net; 200 exclusive stays 200.
+    assert.equal(b.netItemAmountBeforeDiscount, round(189.39 + 200));
+    // 10.61 out of the first, 11.20 onto the second.
+    assert.equal(b.gstOnItems, round(10.61 + 11.2));
+    // The customer pays the inclusive dish's listed price and the exclusive
+    // dish's price plus tax.
+    assert.equal(b.grandTotal, Math.round(200 + 211.2));
+    assert.ok(billAddsUp(b));
+}
+{
+    // All of it inclusive, expressed the per-dish way, must equal the shorthand.
+    const perDish = computeBill({ itemAmount: 200, gstInclusiveItemAmount: 200, gstRate: 5.6, platformFee: 0 });
+    const whole = computeBill({ itemAmount: 200, pricesIncludeGst: true, gstRate: 5.6, platformFee: 0 });
+    assert.deepEqual(perDish, whole, 'every dish inclusive is the same bill as an inclusive menu');
+}
+{
+    // None of it inclusive must equal plain exclusive.
+    const perDish = computeBill({ itemAmount: 200, gstInclusiveItemAmount: 0, gstRate: 5.6, platformFee: 0 });
+    const whole = computeBill({ itemAmount: 200, gstRate: 5.6, platformFee: 0 });
+    assert.deepEqual(perDish, whole);
+}
+{
+    // A coupon on a mixed cart is shared in proportion, so the tax does not
+    // swing on which half an arbitrary rule decided to discount.
+    const b = computeBill({
+        itemAmount: 400, gstInclusiveItemAmount: 200, discount: 100,
+        gstRate: 5.6, platformFee: 0,
+    });
+    assert.equal(b.discount, 100);
+    // 50 off each half. Inclusive 150 -> 142.05 net, tax 7.95.
+    // Exclusive 150 stays 150, tax 8.40.
+    assert.equal(b.netItemAmount, round(142.05 + 150));
+    assert.equal(b.gstOnItems, round(7.95 + 8.4));
+    assert.equal(b.grandTotal, Math.round(150 + 158.4));
+    assert.ok(billAddsUp(b));
+    // And the printable pair still reconciles.
+    const shown = round(b.netItemAmountBeforeDiscount - b.discountOnNet + b.gstOnItems);
+    assert.equal(shown, b.grandTotal - b.roundOff);
+}
+// A cart that mixes the two still reconciles, whatever the proportions.
+for (const inclusive of [0, 1, 37.5, 200, 399.99, 400]) {
+    for (const gst of [0, 5, 5.6, 18]) {
+        for (const discount of [0, 40, 400, 900]) {
+            const b = computeBill({
+                itemAmount: 400, gstInclusiveItemAmount: inclusive, discount,
+                packagingFee: 21, deliveryFee: 25, surgeAmount: 10,
+                platformFee: 10, tip: 10, gstRate: gst, platformFeeGstRate: 18,
+            });
+            assert.ok(billAddsUp(b),
+                `mixed cart does not reconcile: inclusive ${inclusive} gst ${gst} discount ${discount}`);
+            assert.ok(b.netItemAmount >= 0 && b.gstOnItems >= 0, 'no negative lines');
+        }
+    }
+}
+// More inclusive than there is food is a caller error, not a credit.
+{
+    const b = computeBill({ itemAmount: 100, gstInclusiveItemAmount: 5000, gstRate: 5, platformFee: 0 });
+    assert.equal(b.gstInclusiveItemAmount, 100);
+    assert.ok(billAddsUp(b));
+}
+
 console.log('All billing checks passed.');

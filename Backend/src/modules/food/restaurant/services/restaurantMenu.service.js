@@ -149,6 +149,15 @@ const buildMenuFromFoods = async (foods = []) => {
                 isEnabled: food?.packagingCharge?.isEnabled === true,
                 amount: resolveItemPackagingAmount(food)
             },
+            /*
+             * Whether this dish's price already contains GST. Null, not false,
+             * when the dish never answered -- it then follows the restaurant's
+             * own setting, and the form has to be able to show "inherited"
+             * rather than claiming the restaurant chose exclusive.
+             */
+            priceIncludesGst: typeof food.priceIncludesGst === 'boolean'
+                ? food.priceIncludesGst
+                : null,
             // Serving window, so the menu editor can show what is stored and the
             // dashboard can mark an item as outside its hours right now.
             availabilitySchedule: food.availabilitySchedule || null,

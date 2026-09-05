@@ -88,6 +88,11 @@ export function validateCalculateOrderDto(body) {
         deliveryAddressId: z.string().optional(),
         zoneId: z.string().optional(),
         couponCode: z.string().optional(),
+        // The rider's, and the customer's to choose. Undeclared, zod stripped it
+        // before pricing ever saw it, so the tip line could never be anything but
+        // zero however much the client sent. Bounds are enforced server-side in
+        // shared/billing.js; this only has to let the number through.
+        tip: z.number().min(0).optional(),
         deliveryFleet: z.string().optional()
     });
     const result = schema.safeParse(body);
@@ -122,6 +127,9 @@ export function validateCreateOrderDto(body) {
             z.enum(['cash', 'razorpay', 'razorpay_qr', 'wallet'])
         ),
         couponCode: z.string().optional(),
+        // See the note on the calculate schema: without this the tip is stripped
+        // and the order is placed without the one the customer just agreed to.
+        tip: z.number().min(0).optional(),
         zoneId: z.string().nullable().optional()
     });
     const result = schema.safeParse(body);

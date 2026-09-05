@@ -29,6 +29,7 @@ import { getFirebaseDB } from '../../../../config/firebase.js';
 import * as foodTransactionService from './foodTransaction.service.js';
 import * as userWalletService from '../../user/services/userWallet.service.js';
 import { calculateOrderPricing, resolveOrderZoneId, resolveAuthoritativeItems } from './order-pricing.service.js';
+import { computeBill } from '../../shared/billing.js';
 import * as dispatchService from './order-dispatch.service.js';
 import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
@@ -194,6 +195,7 @@ export async function createOrder(userId, dto) {
       commissionableAmount:
         Number(pricingResult.pricing.commissionableAmount ?? pricingResult.pricing.subtotal ?? 0) || 0,
       pricesIncludeGst: pricingResult.pricing.pricesIncludeGst === true,
+      gstInclusiveItemAmount: Number(pricingResult.pricing.gstInclusiveItemAmount ?? 0) || 0,
       packagingMode: String(pricingResult.pricing.packagingMode || ''),
       netItemAmount: Number(pricingResult.pricing.netItemAmount ?? pricingResult.pricing.subtotal ?? 0) || 0,
       netPackagingFee:
@@ -224,18 +226,38 @@ export async function createOrder(userId, dto) {
     const surgeSnapshot = await getZoneSurgeSnapshot(orderZoneId);
     normalizedPricing.surgeAmount = surgeSnapshot.surgeAmount;
 
-    const computedTotal = Math.max(
-      0,
-      (Number.isFinite(normalizedPricing.subtotal) ? normalizedPricing.subtotal : 0) +
-        (Number.isFinite(normalizedPricing.tax) ? normalizedPricing.tax : 0) +
-        (Number.isFinite(normalizedPricing.packagingFee) ? normalizedPricing.packagingFee : 0) +
-        (Number.isFinite(normalizedPricing.deliveryFee) ? normalizedPricing.deliveryFee : 0) +
-        (Number.isFinite(normalizedPricing.platformFee) ? normalizedPricing.platformFee : 0) +
-        (Number.isFinite(normalizedPricing.surgeAmount) ? normalizedPricing.surgeAmount : 0) -
-        (Number.isFinite(normalizedPricing.discount) ? normalizedPricing.discount : 0),
-    );
+    /*
+     * The surge above is the only figure that can have moved since pricing ran,
+     * so the bill is rebuilt with it rather than the total being re-derived by
+     * hand. A second implementation of this arithmetic is what let the stored
+     * total drift from the stored bill: it forgot the GST on the platform fee,
+     * the tip and the round-off, and on a tax-inclusive menu it added the
+     * listed price AND the tax already inside it.
+     */
+    const settledBill = computeBill({
+      itemAmount: normalizedPricing.subtotal,
+      gstInclusiveItemAmount: normalizedPricing.gstInclusiveItemAmount,
+      packagingFee: normalizedPricing.packagingFee,
+      deliveryFee: normalizedPricing.deliveryFee,
+      platformFee: normalizedPricing.platformFee,
+      surgeAmount: normalizedPricing.surgeAmount,
+      discount: normalizedPricing.discount,
+      tip: normalizedPricing.tip,
+      gstRate: normalizedPricing.gstRate,
+      platformFeeGstRate: normalizedPricing.platformFeeGstRate,
+      pricesIncludeGst: normalizedPricing.pricesIncludeGst === true,
+      packagingBelongsToRestaurant: normalizedPricing.packagingMode === 'RESTAURANT',
+    });
 
-    normalizedPricing.total = Math.round(computedTotal * 100) / 100;
+    normalizedPricing.bill = settledBill;
+    normalizedPricing.tax = settledBill.gstOnItems;
+    normalizedPricing.netItemAmount = settledBill.netItemAmount;
+    normalizedPricing.netPackagingFee = settledBill.netPackagingFee;
+    normalizedPricing.commissionableAmount = settledBill.commissionBase;
+    normalizedPricing.platformFeeGst = settledBill.platformFeeGst;
+    normalizedPricing.roundOff = settledBill.roundOff;
+    normalizedPricing.totalBeforeTip = settledBill.totalBeforeTip;
+    normalizedPricing.total = settledBill.grandTotal;
 
     if (isCash) {
       const { FoodFeeSettings } = await import('../../admin/models/feeSettings.model.js');

@@ -105,6 +105,15 @@ export function computeBill({
      */
     pricesIncludeGst = false,
     /*
+     * How much of `itemAmount` is priced inclusive of GST.
+     *
+     * The answer belongs to the dish -- the restaurant is asked when it adds
+     * one -- so a cart can hold both kinds at once and this is the part that
+     * already contains its tax. Undefined means "use `pricesIncludeGst` for the
+     * whole amount", which is what every caller did before dishes could differ.
+     */
+    gstInclusiveItemAmount = undefined,
+    /*
      * Whether the packaging charge is the restaurant's own per-item charge
      * rather than the platform's flat one.
      *
@@ -136,8 +145,34 @@ export function computeBill({
     const deTax = (gross) => round2(gross / (1 + gstFraction));
     const packagingIsInclusive = pricesIncludeGst && packagingBelongsToRestaurant;
 
+    /*
+     * The two halves of the food, and the coupon shared between them.
+     *
+     * A cart can hold dishes priced inclusive of GST alongside dishes priced
+     * exclusive of it. The coupon is split in proportion to what each half
+     * contributed, because it was earned by the order as a whole and there is
+     * no principled reason it should land entirely on one tax treatment --
+     * doing so would change the tax the customer pays depending on which half
+     * an arbitrary rule picked.
+     */
+    const inclusiveItems = gstInclusiveItemAmount === undefined
+        ? (pricesIncludeGst ? items : 0)
+        : Math.min(nonNegative(gstInclusiveItemAmount), items);
+    const exclusiveItems = round2(Math.max(0, items - inclusiveItems));
+
+    const inclusiveShare = items > 0 ? inclusiveItems / items : 0;
+    const discountOnInclusive = round2(Math.min(inclusiveItems, appliedDiscount * inclusiveShare));
+    const discountOnExclusive = round2(
+        Math.min(exclusiveItems, Math.min(appliedDiscount, items) - discountOnInclusive),
+    );
+
+    const inclusiveAfterDiscount = round2(Math.max(0, inclusiveItems - discountOnInclusive));
+    const exclusiveAfterDiscount = round2(Math.max(0, exclusiveItems - discountOnExclusive));
+
     // Extracting a tax is not the same sum as adding one -- see the note above.
-    const netItemAmount = pricesIncludeGst ? deTax(itemsAfterDiscount) : itemsAfterDiscount;
+    // The inclusive half has it taken out; the exclusive half keeps its price
+    // and the tax is added below.
+    const netItemAmount = round2(deTax(inclusiveAfterDiscount) + exclusiveAfterDiscount);
     const netPackagingFee = packagingIsInclusive ? deTax(packagingAfterDiscount) : packagingAfterDiscount;
 
     /*
@@ -151,7 +186,7 @@ export function computeBill({
      *     item - discount + tax
      * and land exactly on the total.
      */
-    const netItemAmountBeforeDiscount = pricesIncludeGst ? deTax(items) : round2(items);
+    const netItemAmountBeforeDiscount = round2(deTax(inclusiveItems) + exclusiveItems);
     const netPackagingFeeBeforeDiscount = packagingIsInclusive ? deTax(packaging) : round2(packaging);
     const discountOnNet = round2(
         (netItemAmountBeforeDiscount + netPackagingFeeBeforeDiscount)
@@ -164,9 +199,11 @@ export function computeBill({
      * the two -- an inclusive restaurant under a platform-set packaging charge
      * -- still reconciles.
      */
-    const taxOnItems = pricesIncludeGst
-        ? itemsAfterDiscount - netItemAmount
-        : netItemAmount * gstFraction;
+    const taxOnItems =
+        // taken out of the prices that already contained it...
+        (inclusiveAfterDiscount - deTax(inclusiveAfterDiscount))
+        // ...and added to the prices that did not.
+        + (exclusiveAfterDiscount * gstFraction);
     const taxOnPackaging = pricesIncludeGst && packagingBelongsToRestaurant
         ? packagingAfterDiscount - netPackagingFee
         : netPackagingFee * gstFraction;
@@ -193,7 +230,14 @@ export function computeBill({
         /** The packaging as listed, before any coupon. */
         packagingFee: round2(packaging),
         discount: appliedDiscount,
-        pricesIncludeGst: pricesIncludeGst === true,
+        /**
+         * True when the WHOLE food total was priced inclusive of GST. False for
+         * a cart that mixes the two, which is why the figures above are the
+         * ones to print and this is only good for wording.
+         */
+        pricesIncludeGst: items > 0 ? inclusiveItems >= items - 0.005 : pricesIncludeGst === true,
+        /** How much of `itemAmount` already contained its tax. */
+        gstInclusiveItemAmount: round2(inclusiveItems),
         /** What the customer sees against the food and its packaging, before tax is separated out. */
         listedFoodAmount: round2(itemsAfterDiscount + packagingAfterDiscount),
         /** The "Item amount" line: food after any coupon, net of GST. */

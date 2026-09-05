@@ -19,6 +19,26 @@ import {
     normalizeOrderQuantityInput
 } from '../../shared/orderQuantityRules.js';
 import { normalizeItemPackagingChargeInput } from '../../shared/packagingCharge.js';
+
+/**
+ * Is this dish's price inclusive of GST?
+ *
+ * Three answers, not two. `undefined` -- the field was never sent -- means the
+ * dish defers to its restaurant's setting, which is what every dish written
+ * before this question existed does. Only an explicit answer is stored, so a
+ * partial update cannot silently pin a dish to a treatment nobody chose.
+ */
+const normalizePriceIncludesGst = (raw, { label = 'This item' } = {}) => {
+    if (raw === undefined || raw === null || raw === '') return undefined;
+    if (typeof raw === 'boolean') return raw;
+    const value = String(raw).trim().toLowerCase();
+    if (['true', '1', 'yes', 'inclusive'].includes(value)) return true;
+    if (['false', '0', 'no', 'exclusive'].includes(value)) return false;
+    throw new ValidationError(
+        `Say whether the price for "${label}" includes GST or not`,
+    );
+};
+
 import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { normalizeDiscountPricingInput } from '../../shared/itemDiscountPricing.js';
@@ -283,6 +303,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     const quantityLimits = normalizeOrderQuantityInput(body, { label: name, ceiling: await getOrderQuantityCeiling() }) || {};
     assertOrderQuantityRange(quantityLimits, { label: name });
     const packagingCharge = normalizeItemPackagingChargeInput(body.packagingCharge, { label: name });
+    const priceIncludesGst = normalizePriceIncludesGst(body.priceIncludesGst, { label: name });
     const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
     const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
     await assertVariantAddonsOwned(FoodAddon, restaurantId, variants);
@@ -323,6 +344,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         preparationTime,
         ...quantityLimits,
         ...(packagingCharge ? { packagingCharge } : {}),
+        ...(priceIncludesGst === undefined ? {} : { priceIncludesGst }),
         ...(availabilitySchedule ? { availabilitySchedule } : {}),
         ...(addonUpdate || {}),
         approvalStatus: 'pending',
@@ -420,6 +442,9 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     }
     const packagingCharge = normalizeItemPackagingChargeInput(body.packagingCharge, { label: itemLabel });
     if (packagingCharge) update.packagingCharge = packagingCharge;
+
+    const priceIncludesGst = normalizePriceIncludesGst(body.priceIncludesGst, { label: itemLabel });
+    if (priceIncludesGst !== undefined) update.priceIncludesGst = priceIncludesGst;
 
     const targetFoodType = body.foodType !== undefined ? normalizeFoodType(body.foodType) : normalizeFoodType(existing.foodType);
     if (body.foodType !== undefined) update.foodType = targetFoodType;

@@ -164,6 +164,8 @@ const pricingSchema = new mongoose.Schema(
          */
         commissionableAmount: { type: Number, default: 0, min: 0 },
         pricesIncludeGst: { type: Boolean, default: false },
+        /** How much of the food total already contained its tax, per dish. */
+        gstInclusiveItemAmount: { type: Number, default: 0, min: 0 },
         /**
          * Who the packaging charge belongs to: 'RESTAURANT' for a per-item
          * charge the restaurant set, 'ADMIN' for the platform's flat one.

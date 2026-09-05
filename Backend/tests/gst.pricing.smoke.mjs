@@ -36,6 +36,7 @@ const { FoodFeeSettings } = await import("../src/modules/food/admin/models/feeSe
 const pricing = await import("../src/modules/food/orders/services/order-pricing.service.js");
 const { billAddsUp } = await import("../src/modules/food/shared/billing.js");
 const { FoodOrder } = await import("../src/modules/food/orders/models/order.model.js");
+const { FoodUser } = await import("../src/core/users/user.model.js");
 const { createInitialTransaction, getRestaurantCommissionSnapshot } = await import(
   "../src/modules/food/orders/services/foodTransaction.service.js"
 );
@@ -260,6 +261,58 @@ try {
   console.log("    stored couponCode  :", coupon.pricing?.couponCode ?? "DROPPED");
   check("the coupon survives the save, so a discount can be attributed",
     coupon.pricing?.couponCode === "SAVE50", `${coupon.pricing?.couponCode}`);
+
+  // =====================================================================
+  console.log("");
+  console.log("  ===== the order is CHARGED what the bill says =====");
+  // createOrder re-derives pricing.total after pricing has run. Anything that
+  // sum forgets is money the customer is not charged -- or is charged twice.
+  const { createOrder } = await import("../src/modules/food/orders/services/order.service.js");
+  // COD is refused with nobody online to collect the cash.
+  const { FoodDeliveryPartner } = await import(
+    "../src/modules/food/delivery/models/deliveryPartner.model.js"
+  );
+  await FoodDeliveryPartner.create({
+    name: "Rider", phone: "9000000099", availabilityStatus: "online",
+  });
+  // The rider's cash limit comes from codOrderLimit; without one, COD is refused.
+  await FoodFeeSettings.updateOne({ _id: settings._id }, { $set: { codOrderLimit: 5000 } });
+  const buyer = await FoodUser.create({
+    phone: "9000000009", name: "Buyer",
+    addresses: [{ label: "Home", street: "1 Test Rd", city: "Palampur", state: "HP",
+      location: { type: "Point", coordinates: [76.5390, 32.1150] } }],
+  });
+
+  for (const [label, r] of [["EXCLUSIVE", exc], ["INCLUSIVE", inc]]) {
+    const quoted = await pricing.calculateOrderPricing(String(buyer._id), {
+      restaurantId: String(r.r._id),
+      items: [{ itemId: String(r.dish._id), quantity: 1 }],
+      deliveryAddress: { address: "T", location: { type: "Point", coordinates: [76.5390, 32.1150] } },
+      orderType: "delivery", paymentMethod: "cod", tip: 10,
+    });
+    const created = await createOrder(String(buyer._id), {
+      restaurantId: String(r.r._id),
+      items: [{ itemId: String(r.dish._id), quantity: 1 }],
+      address: { label: "Home", street: "1 Test Rd", city: "Palampur", state: "HP",
+        location: { type: "Point", coordinates: [76.5390, 32.1150] } },
+      customerName: "Buyer", customerPhone: "9000000009",
+      paymentMethod: "cash", pricing: quoted.pricing, tip: 10,
+    });
+    const order = created?.order || created;
+    const sp = order.pricing || {};
+    console.log(`    ${label.padEnd(12)} quoted ${String(quoted.pricing.bill.grandTotal).padStart(8)}` +
+      `   saved ${String(sp.total).padStart(8)}   amountDue ${order.payment?.amountDue}`);
+    check(`${label}: the saved total is the quoted grand total`,
+      near(sp.total, quoted.pricing.bill.grandTotal),
+      `${sp.total} vs ${quoted.pricing.bill.grandTotal}`);
+    check(`${label}: the customer is asked for that same amount`,
+      near(order.payment?.amountDue, quoted.pricing.bill.grandTotal),
+      `${order.payment?.amountDue}`);
+    check(`${label}: the stored bill agrees with the stored total`,
+      near(sp.bill?.grandTotal, sp.total), `${sp.bill?.grandTotal} vs ${sp.total}`);
+    check(`${label}: the tip the customer chose survives to the order`,
+      near(sp.tip, 10), `${sp.tip}`);
+  }
 
 } catch (err) {
   fail++;

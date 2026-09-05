@@ -119,6 +119,14 @@ export default function ItemDetailsPage() {
   const [preparationTime, setPreparationTime] = useState("")
   const [minOrderQuantity, setMinOrderQuantity] = useState("1")
   const [maxOrderQuantity, setMaxOrderQuantity] = useState("0")
+  /*
+   * "inherit" | "inclusive" | "exclusive".
+   *
+   * "inherit" is a real answer, not a missing one: the dish follows whatever
+   * the restaurant has set, so a restaurant pricing its whole menu one way
+   * changes it in one place rather than on every dish.
+   */
+  const [gstMode, setGstMode] = useState("inherit")
   const [packagingEnabled, setPackagingEnabled] = useState(false)
   const [packagingAmount, setPackagingAmount] = useState("")
   const [availabilitySchedule, setAvailabilitySchedule] = useState(() => buildScheduleState(null))
@@ -284,6 +292,14 @@ export default function ItemDetailsPage() {
     setMinOrderQuantity(String(item.minOrderQuantity ?? 1))
     setMaxOrderQuantity(String(item.maxOrderQuantity ?? 0))
     setAvailabilitySchedule(buildScheduleState(item.availabilitySchedule))
+    // null means the dish never answered and follows the restaurant.
+    setGstMode(
+      item.priceIncludesGst === true
+        ? "inclusive"
+        : item.priceIncludesGst === false
+          ? "exclusive"
+          : "inherit"
+    )
     setPackagingEnabled(item.packagingCharge?.isEnabled === true)
     setPackagingAmount(
       item.packagingCharge?.amount ? String(item.packagingCharge.amount) : ""
@@ -528,10 +544,14 @@ export default function ItemDetailsPage() {
      * restaurant's money to take a cut of.
      */
     const gstFraction = Math.max(0, Number(taxSettings.gstRate) || 0) / 100
-    const netPrice = taxSettings.priceIncludesGst ? price / (1 + gstFraction) : price
-    const gstAmount = taxSettings.priceIncludesGst
-      ? price - netPrice
-      : price * gstFraction
+    // The dish's own answer wins; "inherit" falls back to the restaurant's.
+    const includesGst = gstMode === "inclusive"
+      ? true
+      : gstMode === "exclusive"
+        ? false
+        : taxSettings.priceIncludesGst === true
+    const netPrice = includesGst ? price / (1 + gstFraction) : price
+    const gstAmount = includesGst ? price - netPrice : price * gstFraction
     const customerPays = round2(netPrice + gstAmount)
 
     const commissionAmount =
@@ -546,7 +566,7 @@ export default function ItemDetailsPage() {
       netPrice: round2(netPrice),
       gstAmount: round2(gstAmount),
       gstRate: Number(taxSettings.gstRate) || 0,
-      priceIncludesGst: taxSettings.priceIncludesGst,
+      priceIncludesGst: includesGst,
       customerPays,
       commissionAmount,
       takeHome: round2(netPrice - commissionAmount),
@@ -557,7 +577,7 @@ export default function ItemDetailsPage() {
             ? `\u20B9${commission.value}`
             : `${commission.value}%`,
     }
-  }, [variants, basePrice, variantsEnabled, commission, taxSettings])
+  }, [variants, basePrice, variantsEnabled, commission, taxSettings, gstMode])
 
   // Track visual viewport for mobile keyboard
   useEffect(() => {
@@ -804,6 +824,9 @@ export default function ItemDetailsPage() {
           isEnabled: packagingEnabled,
           amount: Number(packagingAmount) || 0,
         },
+        // Omitted entirely on "inherit", so the dish keeps deferring to the
+        // restaurant rather than being pinned to whatever it resolves to today.
+        ...(gstMode === "inherit" ? {} : { priceIncludesGst: gstMode === "inclusive" }),
         availabilitySchedule,
         discountPercent: 0,
         variantsEnabled,
@@ -1694,6 +1717,50 @@ export default function ItemDetailsPage() {
                         className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 shadow-sm"
                       />
                       <FieldError field="maxQty" />
+                    </div>
+                  </div>
+
+                  {/* GST on this price */}
+                  <div className="pt-3 border-t border-gray-100">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Is this price inclusive of GST?</p>
+                      <p className="text-xs text-gray-500">
+                        Inclusive means the tax comes out of the price you typed and the
+                        customer pays exactly that. Exclusive means GST is added on top at
+                        the rate the platform has set
+                        {Number(taxSettings.gstRate) > 0 ? `, currently ${taxSettings.gstRate}%` : ""}.
+                      </p>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {[
+                        {
+                          value: "inherit",
+                          label: "Same as my menu",
+                          hint: taxSettings.priceIncludesGst ? "Inclusive" : "Exclusive",
+                        },
+                        { value: "inclusive", label: "Inclusive", hint: "Tax is inside the price" },
+                        { value: "exclusive", label: "Exclusive", hint: "Tax is added on top" },
+                      ].map((option) => {
+                        const active = gstMode === option.value
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setGstMode(option.value)}
+                            className={`text-left px-3.5 py-2.5 rounded-xl border transition-colors ${
+                              active
+                                ? "border-gray-900 bg-gray-900 text-white shadow-sm"
+                                : "border-gray-300 bg-white text-gray-900 hover:bg-gray-50"
+                            }`}
+                          >
+                            <span className="block text-sm font-semibold">{option.label}</span>
+                            <span className={`block text-xs ${active ? "text-gray-300" : "text-gray-500"}`}>
+                              {option.hint}
+                            </span>
+                          </button>
+                        )
+                      })}
                     </div>
                   </div>
 

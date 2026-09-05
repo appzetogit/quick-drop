@@ -84,6 +84,22 @@ const foodSchema = new mongoose.Schema(
         basePrice: { type: Number, min: 0, default: null },
         discountPercent: { type: Number, min: 0, max: 100, default: 0 },
         /**
+         * Whether the price above already contains GST.
+         *
+         * Asked of the restaurant when it adds the dish. Inclusive means the
+         * tax is taken OUT of the price -- a Rs 200 dish stays Rs 200 to the
+         * customer and the restaurant earns Rs 189.39 of it at 5.6%. Exclusive
+         * means the tax is added on top at the rate the admin panel sets, which
+         * is what every dish did before this field existed.
+         *
+         * Undefined, not false, when unanswered: that means "use the
+         * restaurant's own setting", so a restaurant that prices everything
+         * inclusive sets it once instead of on every dish, and the thousands of
+         * rows written before this existed are not silently declared exclusive
+         * by a schema default.
+         */
+        priceIncludesGst: { type: Boolean, default: undefined },
+        /**
          * Printed maximum retail price, shown struck through next to `price`.
          * Selling above it is illegal, so it is a constraint the server enforces,
          * not a marketing number. null means "not recorded", which is what every

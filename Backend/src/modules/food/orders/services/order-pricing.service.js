@@ -128,6 +128,14 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
       // Read from the menu, never the request: a client that could send
       // this would waive its own delivery fee.
       freeDelivery: menu.freeDelivery === true,
+      /*
+       * Whether this line's price already contains GST. Undefined means the
+       * dish never answered, and the restaurant's own setting decides -- which
+       * is resolved below, where the restaurant document is in scope.
+       */
+      priceIncludesGst: typeof menu.priceIncludesGst === 'boolean'
+        ? menu.priceIncludesGst
+        : undefined,
       // Snapshotted per unit, same as the packaging charge above.
       addons,
       addonsTotal,
@@ -301,6 +309,30 @@ export async function calculateOrderPricing(userId, dto) {
   const subtotal = items.reduce(
     (sum, it) => sum
       + ((Number(it.price) || 0) + (Number(it.addonsTotal) || 0)) * (Number(it.quantity) || 1),
+    0,
+  );
+
+  /*
+   * How much of that subtotal is priced inclusive of GST.
+   *
+   * The answer is per dish, because a restaurant can price some items one way
+   * and some the other. A dish that never answered inherits the restaurant's
+   * setting, and a restaurant that never answered is exclusive -- which is what
+   * every menu on the platform did before any of this existed.
+   *
+   * Add-ons follow the dish they are attached to: they are part of the same
+   * line and the same listed price the customer agreed to.
+   */
+  const restaurantDefaultIncludesGst = restaurant?.priceIncludesGst === true;
+  const lineIncludesGst = (it) =>
+    typeof it?.priceIncludesGst === 'boolean'
+      ? it.priceIncludesGst
+      : restaurantDefaultIncludesGst;
+
+  const gstInclusiveItemAmount = items.reduce(
+    (sum, it) => lineIncludesGst(it)
+      ? sum + ((Number(it.price) || 0) + (Number(it.addonsTotal) || 0)) * (Number(it.quantity) || 1)
+      : sum,
     0,
   );
 
@@ -655,7 +687,12 @@ export async function calculateOrderPricing(userId, dto) {
     platformFeeGstRate: Number.isFinite(Number(feeSettings.platformFeeGstRate))
       ? Number(feeSettings.platformFeeGstRate)
       : DEFAULT_PLATFORM_FEE_GST_RATE,
-    pricesIncludeGst: restaurant?.priceIncludesGst === true,
+    pricesIncludeGst: restaurantDefaultIncludesGst,
+    /*
+     * The per-dish answer. A cart can mix the two, so the bill is told how much
+     * of the food already contained its tax rather than a single yes/no.
+     */
+    gstInclusiveItemAmount,
     packagingBelongsToRestaurant,
   });
 
@@ -710,6 +747,7 @@ export async function calculateOrderPricing(userId, dto) {
        */
       commissionableAmount: bill.commissionBase,
       pricesIncludeGst: bill.pricesIncludeGst,
+      gstInclusiveItemAmount: bill.gstInclusiveItemAmount,
       packagingMode: packagingMode || '',
       /*
        * The food and packaging lines the bill prints, net of the GST shown
