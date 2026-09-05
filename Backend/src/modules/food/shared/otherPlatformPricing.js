@@ -177,3 +177,57 @@ export function normalizeItemOtherPriceInput(body = {}) {
 
     return { otherPrice: round2(value) };
 }
+
+/**
+ * The comparison figure a newly created dish should start with.
+ *
+ * Global price adjustments move the STORED otherPrice, and only on dishes that
+ * exist when the run happens. So a menu accumulates its comparison figures by
+ * history: on one live restaurant every dish sits at exactly 1.3068x its price,
+ * on another the ratios run 1.60, 1.21, 1.21 and 1.07 depending on which
+ * adjustments each dish was around for.
+ *
+ * A dish added afterwards carries nothing, so it falls back to the blanket
+ * markup -- 20% where its neighbours are at 30% or 70% -- and shows a visibly
+ * smaller saving than everything around it. That is the bug this fixes.
+ *
+ * The median of its siblings is used rather than the mean, because these ratios
+ * cluster tightly with the odd outlier (the 2.11 above) and a mean would let one
+ * oddity drag every future dish with it.
+ *
+ * Returns 0 when there is nothing honest to seed -- no priced siblings, or a
+ * result that would not exceed the price and so would strike nothing through.
+ * The blanket markup then applies as before, which is the correct fallback for
+ * a restaurant that has never been adjusted.
+ */
+export function resolveSeedOtherPrice({ price, siblingRatios = [] } = {}) {
+    const selling = toFiniteNumber(price);
+    if (selling === null || selling <= 0) return 0;
+
+    const ratios = (Array.isArray(siblingRatios) ? siblingRatios : [])
+        .map((r) => toFiniteNumber(r))
+        .filter((r) => r !== null && r > 1)
+        .sort((a, b) => a - b);
+
+    if (!ratios.length) return 0;
+
+    const mid = Math.floor(ratios.length / 2);
+    const median = ratios.length % 2
+        ? ratios[mid]
+        : (ratios[mid - 1] + ratios[mid]) / 2;
+
+    const seeded = round2(selling * median);
+    return seeded > selling ? seeded : 0;
+}
+
+/** otherPrice / price for each sibling that carries a usable pair. */
+export function collectOtherPriceRatios(items = []) {
+    return (Array.isArray(items) ? items : [])
+        .map((item) => {
+            const price = toFiniteNumber(item?.price);
+            const other = toFiniteNumber(item?.otherPrice);
+            if (price === null || price <= 0 || other === null || other <= price) return null;
+            return other / price;
+        })
+        .filter((r) => r !== null);
+}

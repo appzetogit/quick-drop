@@ -25,6 +25,7 @@ import { normalizeDiscountPricingInput } from '../../shared/itemDiscountPricing.
 import { FoodAddon } from '../models/foodAddon.model.js';
 import { assertVariantAddonsOwned, normalizeAddonIdsInput } from '../../shared/orderAddons.js';
 
+import { resolveSeedOtherPriceForRestaurant } from '../../shared/otherPlatformSeed.service.js';
 const toStr = (v) => (v != null ? String(v).trim() : '');
 const APPROVED_CATEGORY_FILTER = [
     { approvalStatus: 'approved' },
@@ -292,8 +293,19 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     // admin-owned, and ignoring it (rather than erroring) keeps older
     // restaurant clients that still send the key working.
 
+    /*
+     * Start the comparison figure where this restaurant's other dishes sit.
+     *
+     * Global adjustments move the stored otherPrice only on dishes that exist
+     * when they run, so a dish added later would fall back to the blanket
+     * markup and advertise a smaller saving than everything beside it. Seeded
+     * only when the caller supplied none -- an explicit figure always wins.
+     */
+    const seededOtherPrice = await resolveSeedOtherPriceForRestaurant(restaurantId, price);
+
     const doc = await FoodItem.create({
         restaurantId,
+        ...(seededOtherPrice > 0 && { otherPrice: seededOtherPrice }),
         categoryId: categoryObjectId,
         categoryName: categoryName || '',
         name,

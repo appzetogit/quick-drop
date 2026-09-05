@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { shouldAutoMark99, crossedInto99Cap } from '../../shared/ninetyNineStore.js';
+import { resolveSeedOtherPriceForRestaurant } from '../../shared/otherPlatformSeed.service.js';
 import { getNinetyNineCap } from '../../shared/ninetyNineStoreCap.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
@@ -3349,8 +3350,21 @@ export async function createFood(body) {
 
     const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
 
+    /*
+     * Start the comparison figure where this restaurant's other dishes sit.
+     *
+     * Global adjustments move the stored otherPrice only on dishes that exist
+     * when they run, so a dish added later would fall back to the blanket
+     * markup and advertise a smaller saving than everything beside it. Seeded
+     * only when the caller supplied none -- an explicit figure always wins.
+     */
+    const seededOtherPrice = normalizeItemOtherPriceInput(body)
+        ? undefined
+        : await resolveSeedOtherPriceForRestaurant(restaurantId, price);
+
     const doc = new FoodItem({
         restaurantId,
+        ...(seededOtherPrice > 0 && { otherPrice: seededOtherPrice }),
         categoryId,
         categoryName: resolvedCategoryName,
         name,
