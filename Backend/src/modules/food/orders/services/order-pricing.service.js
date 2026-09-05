@@ -176,14 +176,24 @@ async function resolveDeliveryAddress(userId, dto = {}) {
     const inline = dto?.address || dto?.deliveryAddress || null;
     if (extractCoords(inline)) return inline;
 
-    const addressId = dto?.deliveryAddressId || inline?._id || inline?.id || null;
-    if (!addressId || !mongoose.Types.ObjectId.isValid(String(addressId))) return inline;
     if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) return inline;
 
     const user = await FoodUser.findById(userId).select('addresses').lean();
-    const saved = (user?.addresses || []).find(
-        (a) => String(a?._id) === String(addressId),
-    );
+    const addresses = Array.isArray(user?.addresses) ? user.addresses : [];
+    if (!addresses.length) return inline;
+
+    const wantedId = String(dto?.deliveryAddressId || inline?._id || inline?.id || '').trim();
+    /*
+     * The chosen address wins; failing that, the one the customer would be
+     * offered by default. The cart summary sends no address at all, and quoting
+     * it a flat base-slab fee that placement then contradicts is worse than
+     * quoting the default address it is almost certainly going to.
+     * This mirrors what quick commerce already does.
+     */
+    const saved =
+        (wantedId && addresses.find((a) => String(a?._id) === wantedId))
+        || addresses.find((a) => a?.isDefault)
+        || addresses[0];
     if (!saved) return inline;
 
     // Merge rather than replace: a caller that sent a partial address plus an id

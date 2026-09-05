@@ -137,12 +137,23 @@ try {
     appFar.deliveryFee === atPlacement.deliveryFee,
     `${appFar.deliveryFee} vs ${atPlacement.deliveryFee}`);
 
+  console.log("\n  ===== no address chosen yet: the default one, not nowhere =====");
+  // The cart summary sends no address at all. Quoting a flat base-slab fee that
+  // placement then contradicts is worse than quoting the address the customer
+  // is almost certainly going to. This user's first address is the near one.
+  const noAddress = await priceIt("no address at all", {});
+  console.log("");
+  check("an addressless cart is priced from the default address",
+    noAddress.deliveryFee === appNear.deliveryFee, `${noAddress.deliveryFee}`);
+  check("and its distance is measured, not zero",
+    Number(noAddress.deliveryFeeBreakdown?.distanceKm) > 0,
+    `${noAddress.deliveryFeeBreakdown?.distanceKm} km`);
+
   console.log("\n  ===== an id is not a way to price from someone else's door =====");
   const stranger = await priceIt("another user's address id", { deliveryAddressId: othersAddressId });
   console.log("");
-  check("an id that is not this user's is ignored",
-    stranger.deliveryFeeBreakdown?.distanceKm === 0 || !stranger.deliveryFeeBreakdown?.distanceKm,
-    `${stranger.deliveryFeeBreakdown?.distanceKm} km`);
+  check("a stranger's id falls back to this user's own address",
+    stranger.deliveryFee === appNear.deliveryFee, `${stranger.deliveryFee}`);
   check("and a junk id does not throw",
     (await priceIt("junk id", { deliveryAddressId: "not-an-id" })).deliveryFee >= 0);
 

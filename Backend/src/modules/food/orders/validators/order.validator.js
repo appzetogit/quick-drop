@@ -81,11 +81,11 @@ export function validateCalculateOrderDto(body) {
     const schema = z.object({
         items: z.array(orderItemSchema).min(1, 'At least one item required'),
         restaurantId: z.string().min(1, 'Restaurant id required'),
-        address: addressSchema.optional(),
-        deliveryAddress: addressSchema.optional(),
-        deliveryAddressId: z.string().optional(),
-        deliveryAddress: calculateAddressSchema.optional(),
+        // Either shape of address: the object, or the id of one of the user's
+        // saved addresses. Pricing resolves whichever arrives.
         address: calculateAddressSchema.optional(),
+        deliveryAddress: calculateAddressSchema.optional(),
+        deliveryAddressId: z.string().optional(),
         zoneId: z.string().optional(),
         couponCode: z.string().optional(),
         deliveryFleet: z.string().optional()
