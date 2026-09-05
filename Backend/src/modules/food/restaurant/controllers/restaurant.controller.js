@@ -135,7 +135,14 @@ export const getRestaurantTaxSettingsController = async (req, res, next) => {
         }
 
         const gstRate = Number(feeSettings?.gstRate);
-        const platformFeeGstRate = Number(feeSettings?.platformFeeGstRate);
+        // Same null-reads-as-a-finite-0 hole as the pricing path: without this
+        // a cleared setting reports 0% to the restaurant AND charges 0%, so the
+        // two agree and are both wrong.
+        const platformFeeGstRateRaw = feeSettings?.platformFeeGstRate;
+        const platformFeeGstRate =
+            platformFeeGstRateRaw == null || platformFeeGstRateRaw === ''
+                ? NaN
+                : Number(platformFeeGstRateRaw);
 
         return sendResponse(res, 200, 'Tax settings fetched successfully', {
             priceIncludesGst: restaurant.priceIncludesGst === true,

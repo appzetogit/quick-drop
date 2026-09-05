@@ -684,9 +684,18 @@ export async function calculateOrderPricing(userId, dto) {
     discount,
     tip: normalizeTip(dto?.tip ?? dto?.tipAmount),
     gstRate: validGstRate,
-    platformFeeGstRate: Number.isFinite(Number(feeSettings.platformFeeGstRate))
-      ? Number(feeSettings.platformFeeGstRate)
-      : DEFAULT_PLATFORM_FEE_GST_RATE,
+    /*
+     * `Number(null)` and `Number('')` are both 0, and 0 is finite -- so an
+     * admin who cleared this field, or a document holding an empty string,
+     * would silently stop the platform fee being taxed at all. Absence has to
+     * be tested before the number is.
+     */
+    platformFeeGstRate:
+      feeSettings.platformFeeGstRate != null
+      && feeSettings.platformFeeGstRate !== ''
+      && Number.isFinite(Number(feeSettings.platformFeeGstRate))
+        ? Number(feeSettings.platformFeeGstRate)
+        : DEFAULT_PLATFORM_FEE_GST_RATE,
     pricesIncludeGst: restaurantDefaultIncludesGst,
     /*
      * The per-dish answer. A cart can mix the two, so the bill is told how much

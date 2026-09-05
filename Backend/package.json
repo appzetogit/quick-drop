@@ -23,7 +23,7 @@
     "migrate:unify-drivers": "node scripts/migrate-unify-drivers.js",
     "cleanup:legacy-collections": "node scripts/cleanup-legacy-collections.js",
     "verify-cancel": "node verify_cancellation.js",
-    "test": "npm run test:security && npm run test:signature && npm run test:upload && npm run test:flow && npm run test:unify && npm run test:assignment && npm run test:workmode && npm run test:api && npm run test:otp-ratelimit && npm run test:otp-static && npm run test:idempotency && npm run test:payments && npm run test:notifications && npm run test:platform-modules && npm run test:serviceaccess && npm run test:identity && npm run test:activity && npm run test:qc && npm run test:qc-returns && npm run test:sp && npm run test:sp-runtime && npm run test:sp-endpoints && npm run test:sp-migration && npm run test:sp-unit && npm run test:gst && npm run test:delivery-distance",
+    "test": "npm run test:security && npm run test:signature && npm run test:upload && npm run test:flow && npm run test:unify && npm run test:assignment && npm run test:workmode && npm run test:api && npm run test:otp-ratelimit && npm run test:otp-static && npm run test:idempotency && npm run test:payments && npm run test:notifications && npm run test:platform-modules && npm run test:serviceaccess && npm run test:identity && npm run test:activity && npm run test:qc && npm run test:qc-returns && npm run test:sp && npm run test:sp-runtime && npm run test:sp-endpoints && npm run test:sp-migration && npm run test:sp-unit && npm run test:gst && npm run test:delivery-distance && npm run test:backfill",
     "test:sp": "node tests/sp.smoke.mjs",
     "test:sp-runtime": "node tests/sp.runtime.smoke.mjs",
     "test:sp-endpoints": "node tests/sp.endpoints.smoke.mjs",
@@ -52,7 +52,9 @@
     "test:signature": "node tests/signature.smoke.mjs",
     "test:upload": "node tests/upload.smoke.mjs",
     "test:gst": "node tests/gst.pricing.smoke.mjs",
-    "test:delivery-distance": "node tests/delivery-distance.smoke.mjs"
+    "test:delivery-distance": "node tests/delivery-distance.smoke.mjs",
+    "migrate:bill-fields": "node scripts/backfill-bill-fields.js",
+    "test:backfill": "node tests/backfill.smoke.mjs"
   },
   "keywords": [],
   "author": "",

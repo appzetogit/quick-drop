@@ -162,7 +162,15 @@ const pricingSchema = new mongoose.Schema(
          * tax inside those prices is collected for the government and taking a
          * commission percentage of it would be taking a cut of tax.
          */
-        commissionableAmount: { type: Number, default: 0, min: 0 },
+        /*
+         * No default, deliberately. The payout job reads this as
+         * `commissionableAmount ?? subtotal` so an order placed before the
+         * field existed still gets commissioned on its food. A `default: 0`
+         * would hand a hydrated legacy order a 0 that is not nullish, kill the
+         * fallback, and charge that restaurant commission on nothing -- while
+         * crediting it nothing too.
+         */
+        commissionableAmount: { type: Number, min: 0 },
         pricesIncludeGst: { type: Boolean, default: false },
         /** How much of the food total already contained its tax, per dish. */
         gstInclusiveItemAmount: { type: Number, default: 0, min: 0 },
@@ -174,17 +182,42 @@ const pricingSchema = new mongoose.Schema(
          * charge the platform had kept.
          */
         packagingMode: { type: String, default: '', trim: true },
-        /** The food and packaging lines as printed, net of the GST beside them. */
-        netItemAmount: { type: Number, default: 0, min: 0 },
-        netPackagingFee: { type: Number, default: 0, min: 0 },
-        gstRate: { type: Number, default: 0, min: 0, max: 100 },
+        /*
+         * The food and packaging lines as printed, net of the GST beside them.
+         *
+         * No defaults, for the same reason as commissionableAmount above.
+         * netPackagingFee is read as `?? packagingFee` on the payout path, and
+         * netItemAmount decides the printed food line -- a hydrated 0 would
+         * serialise a legacy order with a Rs 0 item row where a lean read of the
+         * same document omits the field and lets the client fall back.
+         */
+        netItemAmount: { type: Number, min: 0 },
+        netPackagingFee: { type: Number, min: 0 },
+        /*
+         * No default: legacy orders WERE taxed, at a rate resolved from fee
+         * settings long before this field existed. A hydrated 0 would assert a
+         * zero-rated order that never happened, and a bill would print it.
+         */
+        gstRate: { type: Number, min: 0, max: 100 },
+        /*
+         * These four keep `default: 0`, and the difference is worth stating:
+         * for them 0 is the true historical value rather than a guess. A legacy
+         * order's charged total was built from six terms that included none of
+         * the platform-fee GST, the tip or the round-off, so it genuinely had
+         * none of them.
+         */
         platformFeeGst: { type: Number, default: 0, min: 0 },
         platformFeeGstRate: { type: Number, default: 0, min: 0, max: 100 },
         /** The rider's money, never taxed and never commissioned. */
         tip: { type: Number, default: 0, min: 0 },
         /** Signed: the grand total is rounded up as often as down. */
         roundOff: { type: Number, default: 0 },
-        totalBeforeTip: { type: Number, default: 0, min: 0 },
+        /*
+         * No default. Here 0 would not merely be unknown, it would be false: a
+         * legacy order had no tip and no round-off, so its true totalBeforeTip
+         * is its total.
+         */
+        totalBeforeTip: { type: Number, min: 0 },
         total: { type: Number, required: true, min: 0 },
         currency: { type: String, default: 'INR' },
         /**
