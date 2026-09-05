@@ -19,12 +19,20 @@ const toNonNegativeNumber = (value, fallback = 0) => {
     return parsed;
 };
 
+/*
+ * GST on the delivery fee -- which nobody charges.
+ *
+ * This used to invent 18% of the fee whenever none was stored, so the cart
+ * quoted a total that checkout would never ask for: the delivery fee is the
+ * rider's money and the bill does not tax it. The recalculating branch below
+ * already read a real deliveryFeeGst, which pricing has never produced, so the
+ * two halves of this file disagreed with each other as well.
+ *
+ * The field stays so a client reading it still gets a number.
+ */
 const resolveStoredDeliveryFeeGst = (deliveryFee, deliveryFeeGst) => {
-    const base = toNonNegativeNumber(deliveryFee, 0);
-    if (base <= 0) return 0;
-    const stored = toNonNegativeNumber(deliveryFeeGst, 0);
-    if (stored > 0) return stored;
-    return Math.round(base * 0.18 * 100) / 100;
+    if (toNonNegativeNumber(deliveryFee, 0) <= 0) return 0;
+    return toNonNegativeNumber(deliveryFeeGst, 0);
 };
 
 const normalizeCartItems = (items = []) => {
@@ -144,13 +152,25 @@ async function enrichStoredCartPricing(cart, storedPricing) {
         );
         const tax = toNonNegativeNumber(storedPricing.tax, toNonNegativeNumber(recalc.tax, 0));
         const discount = toNonNegativeNumber(storedPricing.discount, 0);
-        const total = Math.max(0, subtotal + recalcDelivery + recalcDeliveryGst + platformFee + tax - discount);
+        /*
+         * The recalculated total, not a sum assembled here.
+         *
+         * We have just priced this cart for real, and that price accounts for
+         * lines this function never sees -- packaging, surge, the GST on the
+         * platform fee, the round-off. Adding up the handful of fields in scope
+         * quotes the customer a number checkout will not match.
+         */
+        const recalcTotal = Number(recalc.total);
+        const total = Number.isFinite(recalcTotal) && recalcTotal >= 0
+            ? recalcTotal
+            : Math.max(0, subtotal + recalcDelivery + recalcDeliveryGst + platformFee + tax - discount);
 
         return {
             ...storedPricing,
             deliveryFee: recalcDelivery,
             deliveryFeeGst: recalcDeliveryGst,
             deliveryFeeBreakdown: recalc.deliveryFeeBreakdown || storedPricing.deliveryFeeBreakdown || null,
+            bill: recalc.bill || storedPricing.bill || null,
             total,
         };
     } catch {
