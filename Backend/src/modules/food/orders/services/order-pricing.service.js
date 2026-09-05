@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { FoodOrder } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
+import { computeBill, normalizeTip, DEFAULT_PLATFORM_FEE_GST_RATE } from '../../shared/billing.js';
 import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
@@ -488,7 +489,6 @@ export async function calculateOrderPricing(userId, dto) {
 
   const gstRate = Number(feeSettings.gstRate);
   const validGstRate = (!Number.isFinite(gstRate) || gstRate < 0) ? 0 : gstRate;
-  const tax = Math.round(subtotal * (validGstRate / 100));
 
   let discount = 0;
   let appliedCoupon = null;
@@ -577,10 +577,31 @@ export async function calculateOrderPricing(userId, dto) {
     }
   }
 
-  const total = Math.max(
-    0,
-    subtotal + packagingFee + deliveryFee + platformFee + tax + surgeAmount - discount,
-  );
+  /*
+   * The bill, built in one place so the printed lines reconcile with the
+   * printed total. See shared/billing.js for the shape and the two rules that
+   * matter: paise everywhere with a single rounding at the end, and GST on the
+   * food and the platform fee only -- never on the delivery fee or the tip,
+   * which are the rider's money.
+   */
+  const bill = computeBill({
+    itemAmount: subtotal,
+    packagingFee,
+    deliveryFee,
+    platformFee,
+    surgeAmount,
+    discount,
+    tip: normalizeTip(dto?.tip ?? dto?.tipAmount),
+    gstRate: validGstRate,
+    platformFeeGstRate: Number.isFinite(Number(feeSettings.platformFeeGstRate))
+      ? Number(feeSettings.platformFeeGstRate)
+      : DEFAULT_PLATFORM_FEE_GST_RATE,
+  });
+
+  // Kept under their existing names so every reader that predates the bill --
+  // the app's summary, the order record, the POS payload -- keeps working.
+  const tax = bill.gstOnItems;
+  const total = bill.grandTotal;
 
   return {
     /**
@@ -608,6 +629,17 @@ export async function calculateOrderPricing(userId, dto) {
       surgeAmount,
       discount,
       total,
+      /*
+       * The bill line by line, for a summary that shows its working. `tax` and
+       * `total` above are the same numbers under their old names.
+       */
+      bill,
+      gstRate: bill.gstRate,
+      platformFeeGst: bill.platformFeeGst,
+      platformFeeGstRate: bill.platformFeeGstRate,
+      tip: bill.tip,
+      roundOff: bill.roundOff,
+      totalBeforeTip: bill.totalBeforeTip,
       currency: "INR",
       couponCode: appliedCoupon?.code || codeRaw || null,
       appliedCoupon,

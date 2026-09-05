@@ -92,6 +92,13 @@ const feeSettingsSchema = new mongoose.Schema(
         },
         platformFee: { type: Number, min: 0 },
         gstRate: { type: Number, min: 0, max: 100 },
+        /*
+         * GST on the platform fee, which is a service charge and taxed
+         * separately from the food. 18% is the Indian rate; unset falls back to
+         * that rather than to zero, because a platform fee is taxable whether or
+         * not anyone has filled this in.
+         */
+        platformFeeGstRate: { type: Number, min: 0, max: 100 },
         codOrderLimit: { type: Number, min: 0 },
         /**
          * Platform-wide ceiling on how many of one item may be in a single order.
