@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Boxes, Check, Pencil, Plus, Search, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 
-import { adminAPI } from "@food/api"
+import { adminAPI, uploadAPI } from "@food/api"
 
 /**
  * Combos, admin side: pick dishes a restaurant already sells and offer them
@@ -38,6 +38,7 @@ const emptyDraft = () => ({
     comboId: null,
     name: "",
     description: "",
+    image: "",
     comboPrice: "",
     // A combo is a pair at minimum, so an empty form already looks like one.
     rows: [emptyRow(), emptyRow()],
@@ -47,6 +48,7 @@ const draftFromCombo = (combo) => ({
     comboId: combo._id || combo.id,
     name: combo.name || "",
     description: combo.description || "",
+    image: combo.image || "",
     comboPrice: combo.price != null ? String(combo.price) : "",
     rows: (combo.comboComponents || []).map((c, index) => ({
         localId: `row-${index}-${String(c.itemId)}`,
@@ -68,6 +70,10 @@ export default function RestaurantCombos() {
     const [combos, setCombos] = useState([])
     const [dishes, setDishes] = useState([])
     const [draft, setDraft] = useState(null)
+    // Held beside the draft: uploaded only on save, so abandoning a half-filled
+    // form leaves no orphaned upload.
+    const [imageFile, setImageFile] = useState(null)
+    const [imagePreview, setImagePreview] = useState("")
 
     useEffect(() => {
         let cancelled = false
@@ -162,6 +168,18 @@ export default function RestaurantCombos() {
             : 0
     const savingPercent = componentTotal > 0 ? Math.round((savingAmount / componentTotal) * 100) : 0
 
+    /**
+     * Open or close the editor.
+     *
+     * Always clears the picked file. Without that, choosing a photo, cancelling,
+     * then editing a different combo would upload the first file onto the second.
+     */
+    const openDraft = (next) => {
+        setDraft(next)
+        setImageFile(null)
+        setImagePreview("")
+    }
+
     const patchRow = (localId, patch) =>
         setDraft((d) => ({
             ...d,
@@ -203,6 +221,13 @@ export default function RestaurantCombos() {
 
         setSaving(true)
         try {
+            let image = draft.image || ""
+            if (imageFile) {
+                const uploaded = await uploadAPI.uploadMedia(imageFile, { folder: "admin/combos" })
+                image = uploaded?.data?.data?.url || uploaded?.data?.url || image
+            }
+            body.image = image
+
             if (draft.comboId) {
                 await adminAPI.updateRestaurantCombo(selectedId, draft.comboId, body)
                 toast.success("Combo updated and live.")
@@ -211,6 +236,8 @@ export default function RestaurantCombos() {
                 toast.success("Combo created and live.")
             }
             setDraft(null)
+            setImageFile(null)
+            setImagePreview("")
             await loadCombos(selectedId)
         } catch (error) {
             toast.error(error?.response?.data?.message || "Could not save that combo.")
@@ -298,7 +325,7 @@ export default function RestaurantCombos() {
                             {!draft && !loadingCombos && (
                                 <button
                                     type="button"
-                                    onClick={() => setDraft(emptyDraft())}
+                                    onClick={() => openDraft(emptyDraft())}
                                     className="inline-flex items-center gap-1.5 rounded-xl bg-primary-orange px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-95"
                                 >
                                     <Plus className="h-4 w-4" />
@@ -317,7 +344,7 @@ export default function RestaurantCombos() {
                                 </h2>
                                 <button
                                     type="button"
-                                    onClick={() => setDraft(null)}
+                                    onClick={() => openDraft(null)}
                                     className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
                                     aria-label="Cancel"
                                 >
@@ -348,6 +375,49 @@ export default function RestaurantCombos() {
                                         className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-primary-orange"
                                     />
                                 </label>
+                            </div>
+
+                            <div className="space-y-2">
+                                <span className="text-xs font-semibold text-gray-700">Photo (optional)</span>
+                                <div className="flex items-center gap-3">
+                                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+                                        {(imagePreview || draft.image) ? (
+                                            <img src={imagePreview || draft.image} alt="" className="h-full w-full object-cover" />
+                                        ) : (
+                                            <div className="flex h-full w-full items-center justify-center text-[10px] text-gray-400">
+                                                No photo
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0] || null
+                                                setImageFile(file)
+                                                setImagePreview(file ? URL.createObjectURL(file) : "")
+                                            }}
+                                            className="block w-full text-xs text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-gray-700 hover:file:bg-gray-200"
+                                        />
+                                        <p className="mt-1 text-[11px] text-gray-500">
+                                            Leave empty and the combo uses the first dish&rsquo;s photo.
+                                        </p>
+                                        {(imagePreview || draft.image) && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setImageFile(null)
+                                                    setImagePreview("")
+                                                    setDraft((d) => ({ ...d, image: "" }))
+                                                }}
+                                                className="mt-1 text-[11px] font-semibold text-gray-500 hover:text-gray-700"
+                                            >
+                                                Remove photo
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="space-y-2">
@@ -488,7 +558,7 @@ export default function RestaurantCombos() {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setDraft(null)}
+                                    onClick={() => openDraft(null)}
                                     className="rounded-xl px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
                                 >
                                     Cancel
@@ -567,7 +637,7 @@ export default function RestaurantCombos() {
                                     <div className="flex shrink-0 items-center gap-1">
                                         <button
                                             type="button"
-                                            onClick={() => setDraft(draftFromCombo(combo))}
+                                            onClick={() => openDraft(draftFromCombo(combo))}
                                             className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
                                             aria-label="Edit combo"
                                         >

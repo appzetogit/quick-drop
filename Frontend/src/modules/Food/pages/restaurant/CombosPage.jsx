@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { ArrowLeft, Boxes, Check, Pencil, Plus, Trash2, X } from "lucide-react"
 import toast from "react-hot-toast"
 
-import { restaurantAPI } from "@food/api"
+import { restaurantAPI, uploadAPI } from "@food/api"
 import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 
 /**
@@ -38,6 +38,7 @@ const emptyDraft = () => ({
     comboId: null,
     name: "",
     description: "",
+    image: "",
     comboPrice: "",
     // Two rows from the start: a combo is a pair at minimum, so an empty form
     // should already look like the thing being made.
@@ -48,6 +49,7 @@ const draftFromCombo = (combo) => ({
     comboId: combo._id || combo.id,
     name: combo.name || "",
     description: combo.description || "",
+    image: combo.image || "",
     comboPrice: combo.price != null ? String(combo.price) : "",
     rows: (combo.comboComponents || []).map((c, index) => ({
         localId: `row-${index}-${String(c.itemId)}`,
@@ -65,6 +67,10 @@ export default function CombosPage() {
     const [combos, setCombos] = useState([])
     const [dishes, setDishes] = useState([])
     const [draft, setDraft] = useState(null)
+    // Held separately from the draft: the file is only uploaded on save, so
+    // abandoning a half-filled form does not leave an orphaned upload behind.
+    const [imageFile, setImageFile] = useState(null)
+    const [imagePreview, setImagePreview] = useState("")
 
     const load = useCallback(async () => {
         setLoading(true)
@@ -140,6 +146,19 @@ export default function CombosPage() {
             : 0
     const savingPercent = componentTotal > 0 ? Math.round((savingAmount / componentTotal) * 100) : 0
 
+
+    /**
+     * Open or close the editor.
+     *
+     * Always clears the picked file. Without that, choosing a photo, cancelling,
+     * then editing a different combo would upload the first file onto the second.
+     */
+    const openDraft = (next) => {
+        setDraft(next)
+        setImageFile(null)
+        setImagePreview("")
+    }
+
     const patchRow = (localId, patch) =>
         setDraft((d) => ({
             ...d,
@@ -181,6 +200,13 @@ export default function CombosPage() {
 
         setSaving(true)
         try {
+            let image = draft.image || ""
+            if (imageFile) {
+                const uploaded = await uploadAPI.uploadMedia(imageFile, { folder: "restaurant/combos" })
+                image = uploaded?.data?.data?.url || uploaded?.data?.url || image
+            }
+            body.image = image
+
             if (draft.comboId) {
                 await restaurantAPI.updateCombo(draft.comboId, body)
                 toast.success("Combo updated. It goes live once approved.")
@@ -189,6 +215,8 @@ export default function CombosPage() {
                 toast.success("Combo created. It goes live once approved.")
             }
             setDraft(null)
+            setImageFile(null)
+            setImagePreview("")
             await load()
         } catch (error) {
             toast.error(error?.response?.data?.message || "Could not save that combo.")
@@ -231,7 +259,7 @@ export default function CombosPage() {
                 {!draft && !loading && (
                     <button
                         type="button"
-                        onClick={() => setDraft(emptyDraft())}
+                        onClick={() => openDraft(emptyDraft())}
                         className="inline-flex items-center gap-1.5 px-4 sm:px-6 py-2 rounded-xl text-sm font-semibold text-white bg-primary-orange hover:brightness-95 transition-all shadow-sm"
                     >
                         <Plus className="h-4 w-4" />
@@ -252,7 +280,7 @@ export default function CombosPage() {
                             </h2>
                             <button
                                 type="button"
-                                onClick={() => setDraft(null)}
+                                onClick={() => openDraft(null)}
                                 className="rounded-lg p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100"
                                 aria-label="Cancel"
                             >
@@ -281,6 +309,54 @@ export default function CombosPage() {
                                     className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-primary-orange"
                                 />
                             </label>
+                        </div>
+
+                        <div className="space-y-2">
+                            <span className="text-xs font-semibold text-gray-700">Photo (optional)</span>
+                            <div className="flex items-center gap-3">
+                                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+                                    {(imagePreview || draft.image) ? (
+                                        <img
+                                            src={imagePreview || draft.image}
+                                            alt=""
+                                            className="h-full w-full object-cover"
+                                        />
+                                    ) : (
+                                        <div className="flex h-full w-full items-center justify-center text-[10px] text-gray-400">
+                                            No photo
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0] || null
+                                            setImageFile(file)
+                                            setImagePreview(file ? URL.createObjectURL(file) : "")
+                                        }}
+                                        className="block w-full text-xs text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-gray-700 hover:file:bg-gray-200"
+                                    />
+                                    <p className="mt-1 text-[11px] text-gray-500">
+                                        Leave this empty and the combo uses the first dish&rsquo;s photo. A picture of
+                                        the whole meal sells it better.
+                                    </p>
+                                    {(imagePreview || draft.image) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setImageFile(null)
+                                                setImagePreview("")
+                                                setDraft((d) => ({ ...d, image: "" }))
+                                            }}
+                                            className="mt-1 text-[11px] font-semibold text-gray-500 hover:text-gray-700"
+                                        >
+                                            Remove photo
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
 
                         {/* dish picker */}
@@ -415,7 +491,7 @@ export default function CombosPage() {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setDraft(null)}
+                                onClick={() => openDraft(null)}
                                 className="px-4 py-2 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100"
                             >
                                 Cancel
@@ -439,7 +515,7 @@ export default function CombosPage() {
                         </p>
                         <button
                             type="button"
-                            onClick={() => setDraft(emptyDraft())}
+                            onClick={() => openDraft(emptyDraft())}
                             className="mt-4 inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-sm font-semibold text-white bg-primary-orange hover:brightness-95"
                         >
                             <Plus className="h-4 w-4" />
@@ -499,7 +575,7 @@ export default function CombosPage() {
                                 <div className="flex shrink-0 items-center gap-1">
                                     <button
                                         type="button"
-                                        onClick={() => setDraft(draftFromCombo(combo))}
+                                        onClick={() => openDraft(draftFromCombo(combo))}
                                         className="rounded-lg p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100"
                                         aria-label="Edit combo"
                                     >
