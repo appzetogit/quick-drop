@@ -41,6 +41,8 @@ const foodTransactionSchema = new mongoose.Schema({
         surgeAmount: { type: Number, default: 0, min: 0 },
         restaurantCommission: { type: Number, default: 0, min: 0 },
         discount: { type: Number, default: 0, min: 0 },
+        /** The rider's, in full: never taxed, never commissioned. */
+        tip: { type: Number, default: 0, min: 0 },
         total: { type: Number, default: 0, min: 0 },
         currency: { type: String, default: 'INR', trim: true },
     },
@@ -76,6 +78,7 @@ const foodTransactionSchema = new mongoose.Schema({
         riderBasePay: { type: Number, default: 0, min: 0 },
         riderSurgePay: { type: Number, default: 0, min: 0 },
         riderIncentivePay: { type: Number, default: 0, min: 0 },
+        riderTipPay: { type: Number, default: 0, min: 0 },
         riderTotalPayout: { type: Number, default: 0, min: 0 },
         platformNetProfit: { type: Number, required: true, min: 0 },
         taxAmount: { type: Number, default: 0, min: 0 }

@@ -194,6 +194,10 @@ export async function createOrder(userId, dto) {
       commissionableAmount:
         Number(pricingResult.pricing.commissionableAmount ?? pricingResult.pricing.subtotal ?? 0) || 0,
       pricesIncludeGst: pricingResult.pricing.pricesIncludeGst === true,
+      packagingMode: String(pricingResult.pricing.packagingMode || ''),
+      netItemAmount: Number(pricingResult.pricing.netItemAmount ?? pricingResult.pricing.subtotal ?? 0) || 0,
+      netPackagingFee:
+        Number(pricingResult.pricing.netPackagingFee ?? pricingResult.pricing.packagingFee ?? 0) || 0,
       gstRate: Number(pricingResult.pricing.gstRate ?? 0) || 0,
       platformFeeGst: Number(pricingResult.pricing.platformFeeGst ?? 0) || 0,
       platformFeeGstRate: Number(pricingResult.pricing.platformFeeGstRate ?? 0) || 0,

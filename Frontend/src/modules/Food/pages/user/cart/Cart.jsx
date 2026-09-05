@@ -976,10 +976,48 @@ export default function Cart() {
   const bogoNext = Array.isArray(pricing?.bogo?.next) ? pricing.bogo.next : []
   const surgeAmount = Number(pricing?.surgeAmount || 0)
   const gstCharges = Number(pricing?.tax ?? 0)
+
+  /*
+   * The bill, line by line, exactly as the server computed it.
+   *
+   * Read rather than re-derived: `To Pay` is the server's grand total, so any
+   * line computed differently here would print a summary that disagrees with
+   * the amount actually charged. Absent on an older server, in which case the
+   * lines fall back to the flat fields and the two extra rows simply do not
+   * render.
+   */
+  const bill = pricing?.bill || null
+  /*
+   * The item and packaging lines BEFORE the coupon, because the coupon gets its
+   * own row below. Printing the discounted line beside a coupon row would show
+   * the same money coming off twice; printing the full line beside the raw
+   * `discount` would take off too much, since on an inclusive menu the coupon
+   * came off a price that still had tax in it. `discountOnNet` is what it
+   * actually removed from these two lines.
+   */
+  const billItemAmount = Number(bill?.netItemAmountBeforeDiscount ?? bill?.netItemAmount ?? subtotal)
+  const billPackagingFee = Number(
+    bill?.netPackagingFeeBeforeDiscount ?? bill?.netPackagingFee ?? pricing?.packagingFee ?? 0,
+  )
+  const billGst = Number(bill?.gstOnItems ?? gstCharges)
+  const billGstRate = Number(bill?.gstRate ?? 0)
+  const billPlatformFeeGst = Number(bill?.platformFeeGst ?? 0)
+  const billPlatformFeeGstRate = Number(bill?.platformFeeGstRate ?? 0)
+  const billTip = Number(bill?.tip ?? 0)
+  const billRoundOff = Number(bill?.roundOff ?? 0)
   const discount = pricing?.discount ?? (appliedCoupon ? Math.min(appliedCoupon.discount, subtotal * 0.5) : 0)
+  const billDiscount = Number(bill?.discountOnNet ?? discount ?? 0) || 0
   const totalBeforeDiscount = subtotal + deliveryFee + platformFee + gstCharges + surgeAmount
   const total = pricing?.total ?? (subtotal + deliveryFee + platformFee + gstCharges + surgeAmount - (pricing?.discount ?? discount))
-  const savings = pricing?.savings ?? Math.max(0, totalBeforeDiscount - total)
+  /*
+   * What the customer actually saved: the coupon plus any free buy-one-get-one
+   * units. Derived from those two directly rather than from
+   * (totalBeforeDiscount - total), which stopped meaning anything once the
+   * total gained lines -- packaging, the govt fee, the tip -- that
+   * totalBeforeDiscount does not carry. That subtraction went negative on a
+   * tipped order and quietly hid a real discount.
+   */
+  const savings = Number(pricing?.savings ?? (Number(discount || 0) + bogoSavings)) || 0
 
   const showCodOption = useMemo(() => {
     if (feeSettings?.codOrderLimit !== undefined && feeSettings?.codOrderLimit !== null && total >= feeSettings.codOrderLimit) {
@@ -2609,8 +2647,14 @@ export default function Cart() {
                     )}
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600 dark:text-gray-400">Item Total</span>
-                      <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{subtotal.toFixed(2)}</span>
+                      <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{billItemAmount.toFixed(2)}</span>
                     </div>
+                    {billPackagingFee > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">Packaging Charges</span>
+                        <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{billPackagingFee.toFixed(2)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600 dark:text-gray-400">Delivery Fee</span>
                       <span className={isPricingAvailable && deliveryFee === 0 ? "text-[#EB590E] font-medium" : "text-gray-800 dark:text-gray-200 font-medium"}>
@@ -2621,6 +2665,14 @@ export default function Cart() {
                       <span className="text-gray-600 dark:text-gray-400">Platform Fee</span>
                       <span className="text-gray-800 dark:text-gray-200 font-medium">{isPricingAvailable ? `${RUPEE_SYMBOL}${platformFee.toFixed(2)}` : "-"}</span>
                     </div>
+                    {billPlatformFeeGst > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">
+                          Govt. Fee{billPlatformFeeGstRate > 0 ? ` @ ${billPlatformFeeGstRate}%` : ""}
+                        </span>
+                        <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{billPlatformFeeGst.toFixed(2)}</span>
+                      </div>
+                    )}
                     {surgeAmount > 0 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600 dark:text-gray-400">Surge Amount</span>
@@ -2628,13 +2680,29 @@ export default function Cart() {
                       </div>
                     )}
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600 dark:text-gray-400">GST and Restaurant Charges</span>
-                      <span className="text-gray-800 dark:text-gray-200 font-medium">{isPricingAvailable ? `${RUPEE_SYMBOL}${gstCharges.toFixed(2)}` : "-"}</span>
+                      <span className="text-gray-600 dark:text-gray-400">
+                        GST{billGstRate > 0 ? ` @ ${billGstRate}%` : ""}
+                      </span>
+                      <span className="text-gray-800 dark:text-gray-200 font-medium">{isPricingAvailable ? `${RUPEE_SYMBOL}${billGst.toFixed(2)}` : "-"}</span>
                     </div>
-                    {discount > 0 && (
+                    {billDiscount > 0 && (
                       <div className="flex justify-between text-sm text-[#EB590E] font-medium">
                         <span>Coupon Discount</span>
-                        <span>-{RUPEE_SYMBOL}{discount.toFixed(2)}</span>
+                        <span>-{RUPEE_SYMBOL}{billDiscount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {billTip > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">Tip for delivery partner</span>
+                        <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{billTip.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {Math.abs(billRoundOff) >= 0.01 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">Round Off</span>
+                        <span className="text-gray-800 dark:text-gray-200 font-medium">
+                          {billRoundOff < 0 ? "-" : "+"}{RUPEE_SYMBOL}{Math.abs(billRoundOff).toFixed(2)}
+                        </span>
                       </div>
                     )}
                     <div className="flex justify-between text-base font-bold pt-3 mt-1 border-t border-gray-100 dark:border-gray-800 text-gray-900 dark:text-white">

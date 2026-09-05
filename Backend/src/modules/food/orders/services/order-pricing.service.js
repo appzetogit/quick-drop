@@ -18,7 +18,8 @@ import {
 import {
     computeFoodPackagingFee,
     normalizePackagingConfig,
-    resolveItemPackagingAmount
+    resolveItemPackagingAmount,
+    PACKAGING_MODES
 } from '../../shared/packagingCharge.js';
 import { assertFoodAvailableNow } from '../../shared/itemAvailability.js';
 import { resolveFreebieForOrder } from '../../shared/freebieOffer.service.js';
@@ -283,10 +284,14 @@ export async function calculateOrderPricing(userId, dto) {
     }
   };
 
-  const { packagingFee } = computeFoodPackagingFee({
+  // The mode decides who keeps the packaging money, which in turn decides
+  // whether an inclusive restaurant's GST setting reaches that line and whether
+  // the payout ledger credits it to the restaurant.
+  const { packagingFee, packagingMode } = computeFoodPackagingFee({
     items,
     config: normalizePackagingConfig(feeDoc),
   });
+  const packagingBelongsToRestaurant = packagingMode === PACKAGING_MODES.RESTAURANT;
   const configuredPlatformFee = Number(feeSettings.platformFee);
   const platformFee = (!Number.isFinite(configuredPlatformFee) || configuredPlatformFee < 0)
     ? 0
@@ -597,6 +602,7 @@ export async function calculateOrderPricing(userId, dto) {
       ? Number(feeSettings.platformFeeGstRate)
       : DEFAULT_PLATFORM_FEE_GST_RATE,
     pricesIncludeGst: restaurant?.priceIncludesGst === true,
+    packagingBelongsToRestaurant,
   });
 
   // Kept under their existing names so every reader that predates the bill --
@@ -648,8 +654,16 @@ export async function calculateOrderPricing(userId, dto) {
        * because free-delivery minimums and coupon thresholds are measured on
        * what the customer thinks they are spending.
        */
-      commissionableAmount: bill.taxableAmount,
+      commissionableAmount: bill.commissionBase,
       pricesIncludeGst: bill.pricesIncludeGst,
+      packagingMode: packagingMode || '',
+      /*
+       * The food and packaging lines the bill prints, net of the GST shown
+       * beside them. `subtotal` and `packagingFee` above stay as listed, which
+       * is what free-delivery minimums and coupon thresholds are measured on.
+       */
+      netItemAmount: bill.netItemAmount,
+      netPackagingFee: bill.netPackagingFee,
       gstRate: bill.gstRate,
       platformFeeGst: bill.platformFeeGst,
       platformFeeGstRate: bill.platformFeeGstRate,

@@ -164,6 +164,17 @@ const pricingSchema = new mongoose.Schema(
          */
         commissionableAmount: { type: Number, default: 0, min: 0 },
         pricesIncludeGst: { type: Boolean, default: false },
+        /**
+         * Who the packaging charge belongs to: 'RESTAURANT' for a per-item
+         * charge the restaurant set, 'ADMIN' for the platform's flat one.
+         *
+         * The payout ledger reads it. Without it the restaurant was credited a
+         * charge the platform had kept.
+         */
+        packagingMode: { type: String, default: '', trim: true },
+        /** The food and packaging lines as printed, net of the GST beside them. */
+        netItemAmount: { type: Number, default: 0, min: 0 },
+        netPackagingFee: { type: Number, default: 0, min: 0 },
         gstRate: { type: Number, default: 0, min: 0, max: 100 },
         platformFeeGst: { type: Number, default: 0, min: 0 },
         platformFeeGstRate: { type: Number, default: 0, min: 0, max: 100 },

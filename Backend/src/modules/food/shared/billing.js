@@ -9,17 +9,19 @@
  * The shape of the bill:
  *
  *     Item amount                                200.00
- *     Add: GST @ 5%                               10.00   on the food only
+ *     Packaging charges                           15.00   the restaurant's, or the platform's
+ *     Add: GST @ 5%                               10.75   on the food and the packaging
  *     Delivery fee                                25.00   goes to the rider, untaxed
+ *     Surge fee                                   10.00   goes to the rider, untaxed
  *     Platform fee                                10.00
  *       Govt. fee @ 18% on the platform fee        1.80
  *     Tip                                         10.00   goes to the rider, untaxed
  *     ------------------------------------------------
- *     Total                                      256.80
- *     Round off                                  + 0.20
- *     Grand total                                257.00
+ *     Total                                      272.55
+ *     Round off                                  + 0.45
+ *     Grand total                                273.00
  *
- * Two rules worth stating because they are easy to get wrong:
+ * Four rules worth stating because they are all easy to get wrong:
  *
  * Everything is computed to PAISE and only the grand total is rounded to a
  * rupee. Rounding each line to a rupee as it is computed, which is what the tax
@@ -27,10 +29,22 @@
  * -- and a bill whose own arithmetic is visibly wrong is worse than one that is
  * a paisa out.
  *
- * GST applies to the food and to the platform fee, at different rates, and to
- * nothing else. The delivery fee is the rider's money and the tip is the
- * rider's money; taxing either would be charging the customer for something the
- * platform never receives.
+ * WHAT IS TAXED, AND AT WHAT RATE. The food and the packaging are one supply
+ * and carry the food's GST rate. The platform fee is a service charge and
+ * carries its own, higher rate. The delivery fee, the surge and the tip are the
+ * rider's money: taxing them would charge the customer for something the
+ * platform never receives, and they are not the platform's to tax.
+ *
+ * WHAT COMMISSION IS CHARGED ON. `commissionBase` -- the listed food, before
+ * any coupon and net of any GST inside it. Not the packaging, which the
+ * restaurant is reimbursed for rather than earning; not the discount, which is
+ * settled separately in the payout ledger; and never the tax, which is
+ * collected for the government.
+ *
+ * INCLUSIVE PRICES ARE A DIFFERENT SUM. Adding a tax and extracting one do not
+ * give the same figure: 200 x 0.05 is 10, but 200 - 200/1.05 is 9.52. Using
+ * the first for an inclusive price overstates the tax and understates what the
+ * restaurant earns, on every single dish.
  */
 
 const round2 = (value) => {
@@ -65,9 +79,10 @@ export function normalizeTip(raw) {
 /**
  * Build the bill.
  *
- * `discount` is applied to the food, before tax, because that is what a coupon
- * reduces -- taxing the pre-discount amount would charge GST on money nobody
- * paid. Surge and packaging are platform charges and sit alongside the food.
+ * `discount` is applied to the food and the packaging, before tax, because that
+ * is what a coupon reduces -- taxing the pre-discount amount would charge GST
+ * on money nobody paid. It cannot reach the delivery fee, the surge or the tip,
+ * which are the rider's.
  */
 export function computeBill({
     itemAmount = 0,
@@ -89,6 +104,16 @@ export function computeBill({
      * the customer still pays Rs 200.
      */
     pricesIncludeGst = false,
+    /*
+     * Whether the packaging charge is the restaurant's own per-item charge
+     * rather than the platform's flat one.
+     *
+     * It decides whether an inclusive restaurant's setting reaches the
+     * packaging line. The restaurant typed that figure alongside its prices, so
+     * "my prices include GST" covers it; a charge the admin set platform-wide
+     * is not the restaurant's to declare inclusive.
+     */
+    packagingBelongsToRestaurant = false,
 } = {}) {
     const items = nonNegative(itemAmount);
     const packaging = nonNegative(packagingFee);
@@ -97,33 +122,63 @@ export function computeBill({
     const surge = nonNegative(surgeAmount);
     const tipAmount = normalizeTip(tip);
 
-    // A coupon cannot take more than the food is worth.
-    const appliedDiscount = round2(Math.min(nonNegative(discount), items + packaging + surge));
+    // A coupon cannot take more than the food and its packaging are worth.
+    const appliedDiscount = round2(Math.min(nonNegative(discount), items + packaging));
 
-    const foodAfterDiscount = round2(Math.max(0, items + packaging + surge - appliedDiscount));
+    // The coupon comes off the food first; only an unusually large one reaches
+    // the packaging, and it can never make either line negative.
+    const itemsAfterDiscount = round2(Math.max(0, items - appliedDiscount));
+    const packagingAfterDiscount = round2(
+        Math.max(0, packaging - Math.max(0, appliedDiscount - items)),
+    );
+
     const gstFraction = rate(gstRate) / 100;
+    const deTax = (gross) => round2(gross / (1 + gstFraction));
+    const packagingIsInclusive = pricesIncludeGst && packagingBelongsToRestaurant;
+
+    // Extracting a tax is not the same sum as adding one -- see the note above.
+    const netItemAmount = pricesIncludeGst ? deTax(itemsAfterDiscount) : itemsAfterDiscount;
+    const netPackagingFee = packagingIsInclusive ? deTax(packagingAfterDiscount) : packagingAfterDiscount;
 
     /*
-     * Extracting a tax is not the same sum as adding one. Adding: 200 x 0.05 is
-     * 10. Extracting: 200 - 200/1.05 is 9.52, not 10 -- taking 5% off the
-     * gross would over-report the tax and under-report the restaurant's
-     * revenue on every inclusive dish.
+     * The same two lines before the coupon, and what the coupon actually took
+     * off them.
+     *
+     * A bill that prints the discounted line AND the coupon deducts the same
+     * money twice on screen; one that prints the full line and the full coupon
+     * over-deducts, because for an inclusive menu the coupon comes off a price
+     * that still had tax in it. These three figures let a summary print
+     *     item - discount + tax
+     * and land exactly on the total.
      */
-    const netFood = pricesIncludeGst
-        ? round2(foodAfterDiscount / (1 + gstFraction))
-        : foodAfterDiscount;
-    const gstOnItems = pricesIncludeGst
-        ? round2(foodAfterDiscount - netFood)
-        : round2(foodAfterDiscount * gstFraction);
+    const netItemAmountBeforeDiscount = pricesIncludeGst ? deTax(items) : round2(items);
+    const netPackagingFeeBeforeDiscount = packagingIsInclusive ? deTax(packaging) : round2(packaging);
+    const discountOnNet = round2(
+        (netItemAmountBeforeDiscount + netPackagingFeeBeforeDiscount)
+        - (netItemAmount + netPackagingFee),
+    );
 
-    // The line the bill prints as "Item amount", and the figure commission is
-    // charged on: what the restaurant actually earns, never the tax inside it.
-    const taxableFood = netFood;
+    /*
+     * The tax, line by line: taken out of a line whose price already contained
+     * it, added on top of one that did not. Summed once so a bill that mixes
+     * the two -- an inclusive restaurant under a platform-set packaging charge
+     * -- still reconciles.
+     */
+    const taxOnItems = pricesIncludeGst
+        ? itemsAfterDiscount - netItemAmount
+        : netItemAmount * gstFraction;
+    const taxOnPackaging = pricesIncludeGst && packagingBelongsToRestaurant
+        ? packagingAfterDiscount - netPackagingFee
+        : netPackagingFee * gstFraction;
+
+    const taxableAmount = round2(netItemAmount + netPackagingFee);
+    const gstOnItems = round2(taxOnItems + taxOnPackaging);
+
     const platformFeeGst = round2(platform * (rate(platformFeeGstRate) / 100));
 
     // What the bill shows above the tip line.
     const totalBeforeTip = round2(
-        taxableFood + gstOnItems + delivery + platform + platformFeeGst,
+        taxableAmount + gstOnItems + delivery + surge + platform + platformFeeGst,
     );
     const payableBeforeRounding = round2(totalBeforeTip + tipAmount);
 
@@ -133,17 +188,35 @@ export function computeBill({
     const roundOff = round2(grandTotal - payableBeforeRounding);
 
     return {
+        /** The food as listed, before any coupon. */
         itemAmount: round2(items),
+        /** The packaging as listed, before any coupon. */
         packagingFee: round2(packaging),
-        surgeAmount: round2(surge),
         discount: appliedDiscount,
         pricesIncludeGst: pricesIncludeGst === true,
-        /** What the customer sees against the food, before tax is separated out. */
-        listedFoodAmount: foodAfterDiscount,
-        taxableAmount: taxableFood,
+        /** What the customer sees against the food and its packaging, before tax is separated out. */
+        listedFoodAmount: round2(itemsAfterDiscount + packagingAfterDiscount),
+        /** The "Item amount" line: food after any coupon, net of GST. */
+        netItemAmount,
+        /** The "Packaging charges" line, net of GST. */
+        netPackagingFee,
+        /** The same two before the coupon, for a summary that shows it as its own line. */
+        netItemAmountBeforeDiscount,
+        netPackagingFeeBeforeDiscount,
+        /** What the coupon took off those two. Never print `discount` beside them. */
+        discountOnNet,
+        /** Both of the above together -- the base the food GST is charged on. */
+        taxableAmount,
         gstRate: rate(gstRate),
         gstOnItems,
+        /**
+         * What restaurant commission is charged on: the listed food, before any
+         * coupon and net of any GST inside it. Equal to the food subtotal for a
+         * restaurant that prices net, which is every restaurant by default.
+         */
+        commissionBase: netItemAmountBeforeDiscount,
         deliveryFee: round2(delivery),
+        surgeAmount: round2(surge),
         platformFee: round2(platform),
         platformFeeGstRate: rate(platformFeeGstRate),
         platformFeeGst,
@@ -158,12 +231,18 @@ export function computeBill({
 /**
  * Does the bill add up? Used by the checks, and safe to call in a test or a
  * script that wants to assert a real order rather than trust it.
+ *
+ * Every line the customer is shown, summed. If this is false the bill on screen
+ * contradicts the amount being charged, which is the one failure a customer
+ * always notices.
  */
 export function billAddsUp(bill = {}) {
     const sum = round2(
-        Number(bill.taxableAmount || 0)
+        Number(bill.netItemAmount ?? bill.taxableAmount ?? 0)
+        + Number(bill.netPackagingFee || 0)
         + Number(bill.gstOnItems || 0)
         + Number(bill.deliveryFee || 0)
+        + Number(bill.surgeAmount || 0)
         + Number(bill.platformFee || 0)
         + Number(bill.platformFeeGst || 0)
         + Number(bill.tip || 0)

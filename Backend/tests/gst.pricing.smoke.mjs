@@ -1,19 +1,24 @@
 /**
- * GST-inclusive pricing, through the real pricing, order and payout path.
+ * The customer's bill, end to end: pricing, the saved order, and the payout ledger.
  *
- * A restaurant can say its menu prices already contain GST. That one flag moves
- * three numbers that are easy to get wrong and expensive when they are:
+ * The bill is the one screen an arithmetic slip is visible on to every customer
+ * on every order, so this drives the real pricing call rather than the pure
+ * maths, and then a real save, because several of the figures only survive if
+ * the order schema declares them -- it is strict, and silently drops what it
+ * does not know.
  *
- *   - the tax, which is EXTRACTED from the price rather than added to it --
- *     5% of 200 is 10, but the 5% inside 200 is 9.52, and using the first
- *     figure overstates tax on every inclusive dish;
- *   - the commission base, which is the food net of tax, because tax collected
- *     for the government was never the restaurant's money to take a cut of;
- *   - what the restaurant is actually credited in the payout ledger.
+ * What it holds to account:
  *
- * The middle two only survive if the order document carries them, which is why
- * this drives a real save rather than stopping at the pricing call: the order
- * schema is strict, and a field it does not declare is dropped without a word.
+ *   - every line printed adds up to the total charged;
+ *   - the food and its packaging are taxed; the delivery fee, the surge and the
+ *     tip are the rider's money and are not;
+ *   - a GST-inclusive restaurant has its tax EXTRACTED from the listed price
+ *     rather than added to it -- 5% of 200 is 10, but the 5% inside 200 is
+ *     9.52, and the wrong one of those overstates tax on every dish;
+ *   - commission is charged on the listed food net of that tax, and never on
+ *     the packaging or the rider's money;
+ *   - the payout ledger credits the restaurant only what it actually earned,
+ *     including not crediting it a packaging charge the platform kept.
  *
  * Run:  node tests/gst.pricing.smoke.mjs
  */
@@ -24,7 +29,6 @@ const mem = await MongoMemoryServer.create();
 process.env.MONGODB_URI = mem.getUri("gsttest");
 process.env.NODE_ENV = "test";
 await mongoose.connect(mem.getUri("gsttest"));
-const db = mongoose.connection.db;
 
 const { FoodItem } = await import("../src/modules/food/admin/models/food.model.js");
 const { FoodRestaurant } = await import("../src/modules/food/restaurant/models/restaurant.model.js");
@@ -32,16 +36,20 @@ const { FoodFeeSettings } = await import("../src/modules/food/admin/models/feeSe
 const pricing = await import("../src/modules/food/orders/services/order-pricing.service.js");
 const { billAddsUp } = await import("../src/modules/food/shared/billing.js");
 const { FoodOrder } = await import("../src/modules/food/orders/models/order.model.js");
+const { createInitialTransaction, getRestaurantCommissionSnapshot } = await import(
+  "../src/modules/food/orders/services/foodTransaction.service.js"
+);
 
 let pass = 0, fail = 0;
 const check = (n, c, d = "") => {
-  if (c) { pass++; console.log("    PASS  " + n.padEnd(52) + d); }
-  else { fail++; console.log("    FAIL  " + n.padEnd(52) + d); }
+  if (c) { pass++; console.log(`    PASS  ${n.padEnd(54)}${d}`); }
+  else { fail++; console.log(`    FAIL  ${n.padEnd(54)}${d}`); }
 };
+const near = (a, b) => Math.abs(Number(a) - Number(b)) < 0.005;
 
 const GST = 5;
 
-await FoodFeeSettings.create({
+const settings = await FoodFeeSettings.create({
   deliveryFeeComputationMode: "distance_order_value",
   deliveryFee: 25,
   platformFee: 10,
@@ -50,7 +58,10 @@ await FoodFeeSettings.create({
   isActive: true,
 });
 
-const make = async (label, priceIncludesGst) => {
+const setPackaging = (packagingCharge) =>
+  FoodFeeSettings.updateOne({ _id: settings._id }, { $set: { packagingCharge } });
+
+const make = async (label, priceIncludesGst, itemPackaging = 0) => {
   const r = await FoodRestaurant.create({
     restaurantName: `T ${label}`,
     ownerName: "Test Owner",
@@ -63,34 +74,67 @@ const make = async (label, priceIncludesGst) => {
     name: `dish ${label}`, price: 200, basePrice: 200, discountPercent: 0,
     variantsEnabled: false, variants: [], foodType: "Veg", isAvailable: true,
     approvalStatus: "approved",
+    packagingCharge: itemPackaging > 0 ? { isEnabled: true, amount: itemPackaging } : undefined,
   });
   return { r, dish };
 };
 
-const priceIt = async (label, x) => {
+const priceIt = async (label, x, extra = {}) => {
   const out = await pricing.calculateOrderPricing(String(new mongoose.Types.ObjectId()), {
     restaurantId: String(x.r._id),
     items: [{ itemId: String(x.dish._id), quantity: 1 }],
     deliveryAddress: { address: "T", location: { type: "Point", coordinates: [76.5390, 32.1150] } },
     orderType: "delivery", paymentMethod: "cod", tip: 10,
+    ...extra,
   });
   const p = out.pricing;
   const b = p.bill;
   console.log(`\n  --- ${label} ---`);
   console.log("    prices include GST :", b.pricesIncludeGst);
-  console.log("    listed food        :", b.listedFoodAmount);
-  console.log("    Item amount (net)  :", b.taxableAmount);
+  console.log("    Item amount        :", b.netItemAmount);
+  console.log("    Packaging charges  :", b.netPackagingFee, `(${p.packagingMode || "off"})`);
   console.log(`    GST @ ${b.gstRate}%           :`, b.gstOnItems);
-  console.log("    delivery           :", b.deliveryFee);
-  console.log("    platform + govt fee:", b.platformFee, "+", b.platformFeeGst);
-  console.log("    tip                :", b.tip);
-  console.log("    round off          :", b.roundOff);
+  console.log("    Delivery fee       :", b.deliveryFee);
+  console.log("    Surge fee          :", b.surgeAmount);
+  console.log("    Platform fee       :", b.platformFee, "+", b.platformFeeGst, "govt");
+  console.log("    Tip                :", b.tip);
+  console.log("    Round off          :", b.roundOff);
   console.log("    GRAND TOTAL        :", b.grandTotal);
-  console.log("    commissionable     :", p.commissionableAmount, " subtotal:", p.subtotal);
+  console.log("    commission base    :", p.commissionableAmount, " subtotal:", p.subtotal);
   return p;
 };
 
+/** Save an order the way order.service.js does, and read it back. */
+const saveAndReload = async (r, p, overrides = {}) => {
+  const doc = await FoodOrder.create({
+    userId: new mongoose.Types.ObjectId(),
+    restaurantId: r._id,
+    items: [{ itemId: "x", name: "dish", price: 200, quantity: 1 }],
+    deliveryAddress: { street: "1 Test Rd", city: "Palampur", state: "HP" },
+    pricing: {
+      subtotal: p.subtotal, tax: p.tax, total: p.total,
+      packagingFee: p.packagingFee, deliveryFee: p.deliveryFee,
+      platformFee: p.platformFee, surgeAmount: p.surgeAmount, discount: p.discount,
+      bill: p.bill,
+      commissionableAmount: p.commissionableAmount,
+      pricesIncludeGst: p.pricesIncludeGst,
+      packagingMode: p.packagingMode,
+      netItemAmount: p.netItemAmount,
+      netPackagingFee: p.netPackagingFee,
+      gstRate: p.gstRate,
+      platformFeeGst: p.platformFeeGst,
+      platformFeeGstRate: p.platformFeeGstRate,
+      tip: p.tip, roundOff: p.roundOff, totalBeforeTip: p.totalBeforeTip,
+      ...overrides,
+    },
+    payment: { method: "cash", status: "cod_pending" },
+  });
+  return FoodOrder.findById(doc._id).lean();
+};
+
 try {
+  // =====================================================================
+  console.log("\n  ===== 1. inclusive vs exclusive, no packaging =====");
   const exc = await make("exclusive", false);
   const inc = await make("inclusive", true);
 
@@ -98,95 +142,124 @@ try {
   const i = await priceIt("INCLUSIVE", inc);
 
   console.log("");
-  check("exclusive: tax added on top", e.bill.taxableAmount === 200 && e.bill.gstOnItems === 10,
-    `${e.bill.taxableAmount} + ${e.bill.gstOnItems}`);
-  check("inclusive: tax taken out of the price", i.bill.taxableAmount === 190.48 && i.bill.gstOnItems === 9.52,
-    `${i.bill.taxableAmount} + ${i.bill.gstOnItems}`);
-  check("inclusive: net + tax is the listed 200",
-    Math.abs(i.bill.taxableAmount + i.bill.gstOnItems - 200) < 0.005);
-  check("extraction is not 5% of the gross", i.bill.gstOnItems !== e.bill.gstOnItems,
-    `9.52 vs 10`);
+  check("exclusive: tax added on top", e.bill.netItemAmount === 200 && e.bill.gstOnItems === 10,
+    `${e.bill.netItemAmount} + ${e.bill.gstOnItems}`);
+  check("inclusive: tax taken out of the price",
+    i.bill.netItemAmount === 190.48 && i.bill.gstOnItems === 9.52,
+    `${i.bill.netItemAmount} + ${i.bill.gstOnItems}`);
+  check("inclusive: net + tax is the listed 200", near(i.bill.netItemAmount + i.bill.gstOnItems, 200));
+  check("extraction is not 5% of the gross", i.bill.gstOnItems !== e.bill.gstOnItems, "9.52 vs 10");
   check("the inclusive customer pays the tax less",
     e.bill.grandTotal - i.bill.grandTotal === 10, `${e.bill.grandTotal} - ${i.bill.grandTotal}`);
   check("both bills reconcile", billAddsUp(e.bill) && billAddsUp(i.bill));
   check("subtotal keeps its old meaning for both", e.subtotal === 200 && i.subtotal === 200);
-  check("commission base: gross when exclusive", e.commissionableAmount === 200, `${e.commissionableAmount}`);
-  check("commission base: net when inclusive", i.commissionableAmount === 190.48, `${i.commissionableAmount}`);
+  check("commission base: the listed food when exclusive", e.commissionableAmount === 200,
+    `${e.commissionableAmount}`);
+  check("commission base: the net when inclusive", i.commissionableAmount === 190.48,
+    `${i.commissionableAmount}`);
 
-  // --- and it survives being saved ---------------------------------------
-  console.log("\n  --- what the order actually stores ---");
-  const saved = await FoodOrder.create({
-    userId: new mongoose.Types.ObjectId(),
-    restaurantId: inc.r._id,
-    items: [{ itemId: inc.dish._id, name: "dish inclusive", price: 200, quantity: 1 }],
-    pricing: {
-      subtotal: i.subtotal, tax: i.tax, total: i.total,
-      bill: i.bill,
-      commissionableAmount: i.commissionableAmount,
-      pricesIncludeGst: i.pricesIncludeGst,
-      gstRate: i.gstRate,
-      platformFeeGst: i.platformFeeGst,
-      platformFeeGstRate: i.platformFeeGstRate,
-      tip: i.tip, roundOff: i.roundOff, totalBeforeTip: i.totalBeforeTip,
-    },
-    deliveryAddress: { street: "1 Test Rd", city: "Palampur", state: "HP" },
-    payment: { method: "cash", status: "cod_pending" },
-  });
-  const back = await FoodOrder.findById(saved._id).lean();
+  // =====================================================================
+  console.log("\n  ===== 2. the restaurant's own packaging charge =====");
+  await setPackaging({ isEnabled: true, mode: "RESTAURANT", adminChargePerOrder: 0 });
+  const excPack = await make("exclusive+pack", false, 20);
+  const incPack = await make("inclusive+pack", true, 21);
+
+  const ep = await priceIt("EXCLUSIVE, Rs 20 packaging", excPack);
+  const ip = await priceIt("INCLUSIVE, Rs 21 packaging", incPack);
+
+  console.log("");
+  check("packaging is its own line, not folded into the food",
+    ep.bill.netItemAmount === 200 && ep.bill.netPackagingFee === 20,
+    `${ep.bill.netItemAmount} + ${ep.bill.netPackagingFee}`);
+  check("food and packaging are one supply: 5% of 220", ep.bill.gstOnItems === 11,
+    `${ep.bill.gstOnItems}`);
+  check("an inclusive restaurant's packaging is inclusive too",
+    ip.bill.netPackagingFee === 20, `${ip.bill.netPackagingFee} out of 21`);
+  check("the inclusive customer pays exactly what was listed",
+    near(ip.bill.netItemAmount + ip.bill.netPackagingFee + ip.bill.gstOnItems, 221),
+    "200 + 21");
+  check("commission is NOT charged on the packaging",
+    ep.commissionableAmount === 200 && ip.commissionableAmount === 190.48,
+    `${ep.commissionableAmount} / ${ip.commissionableAmount}`);
+  check("both packaging bills reconcile", billAddsUp(ep.bill) && billAddsUp(ip.bill));
+
+  // =====================================================================
+  console.log("\n  ===== 3. the platform's flat packaging charge =====");
+  await setPackaging({ isEnabled: true, mode: "ADMIN", adminChargePerOrder: 21 });
+  const ap = await priceIt("INCLUSIVE restaurant, ADMIN packaging", incPack);
+  console.log("");
+  check("an admin-set charge is not the restaurant's to call inclusive",
+    ap.bill.netPackagingFee === 21, `${ap.bill.netPackagingFee}`);
+  check("so the tax is extracted from the food and added to the packaging",
+    near(ap.bill.gstOnItems, 9.52 + 1.05), `${ap.bill.gstOnItems}`);
+  check("a bill that mixes the two still reconciles", billAddsUp(ap.bill));
+
+  // =====================================================================
+  console.log("\n  ===== 4. what the order actually stores =====");
+  await setPackaging({ isEnabled: true, mode: "RESTAURANT", adminChargePerOrder: 0 });
+  const ip2 = await priceIt("INCLUSIVE, Rs 21 packaging (again)", incPack);
+  const back = await saveAndReload(incPack.r, ip2);
   const sp = back.pricing || {};
+  console.log("");
   console.log("    stored bill        :", sp.bill ? "yes" : "MISSING");
-  console.log("    commissionable     :", sp.commissionableAmount);
-  console.log("    pricesIncludeGst   :", sp.pricesIncludeGst);
+  console.log("    commission base    :", sp.commissionableAmount);
+  console.log("    packaging mode     :", sp.packagingMode);
+  console.log("    net item / packing :", sp.netItemAmount, "/", sp.netPackagingFee);
   console.log("    tip / roundOff     :", sp.tip, "/", sp.roundOff);
   console.log("");
-
-  check("the bill survives the save", sp.bill && sp.bill.grandTotal === i.bill.grandTotal,
+  check("the bill survives the save", sp.bill?.grandTotal === ip2.bill.grandTotal,
     `grandTotal ${sp.bill?.grandTotal}`);
-  check("commissionableAmount survives the save", sp.commissionableAmount === 190.48,
+  check("the stored bill still reconciles", billAddsUp(sp.bill || {}));
+  check("the commission base survives the save", sp.commissionableAmount === 190.48,
     `${sp.commissionableAmount}`);
   check("pricesIncludeGst survives the save", sp.pricesIncludeGst === true);
-  check("the stored bill still reconciles", billAddsUp(sp.bill || {}));
+  check("packagingMode survives the save", sp.packagingMode === "RESTAURANT", `${sp.packagingMode}`);
+  check("the printed net lines survive the save",
+    sp.netItemAmount === 190.48 && sp.netPackagingFee === 20,
+    `${sp.netItemAmount} / ${sp.netPackagingFee}`);
 
-  // --- the commission the restaurant is actually charged ------------------
-  const { getRestaurantCommissionSnapshot } = await import(
-    "../src/modules/food/orders/services/foodTransaction.service.js"
-  );
-  const snap = await getRestaurantCommissionSnapshot({
-    restaurantId: inc.r._id,
-    pricing: sp,
-  });
-  console.log("  commission snapshot base:", snap.baseAmount ?? "(not exposed)",
-    " amount:", snap.commissionAmount);
-  check("commission is charged on the net, not the gross",
-    Math.abs((snap.baseAmount ?? 190.48) - 190.48) < 0.005,
+  const snap = await getRestaurantCommissionSnapshot({ restaurantId: incPack.r._id, pricing: sp });
+  check("commission is charged on the net, not the gross", near(snap.baseAmount, 190.48),
     `base ${snap.baseAmount}`);
 
-  // --- the payout ledger --------------------------------------------------
-  console.log("");
-  console.log("  --- the payout ledger ---");
-  const { createInitialTransaction } = await import(
-    "../src/modules/food/orders/services/foodTransaction.service.js"
-  );
+  // =====================================================================
+  console.log("\n  ===== 5. the payout ledger =====");
   const txn = await createInitialTransaction(back);
-  const rShare = txn?.amounts?.restaurantShare;
-  console.log("    restaurant share   :", rShare);
-  check("the restaurant is credited the net, not the gross",
-    Math.abs((Number(rShare) || 0) - 190.48) < 0.005, `${rShare}`);
+  console.log("    restaurant share   :", txn?.amounts?.restaurantShare);
+  check("the restaurant is credited the net food plus its own packaging",
+    near(txn?.amounts?.restaurantShare, 190.48 + 20), `${txn?.amounts?.restaurantShare}`);
 
-  // --- the coupon the ledger needs to attribute a discount ----------------
-  const withCoupon = await FoodOrder.create({
-    userId: new mongoose.Types.ObjectId(),
-    restaurantId: exc.r._id,
-    items: [{ itemId: String(exc.dish._id), name: "dish exclusive", price: 200, quantity: 1 }],
-    deliveryAddress: { street: "1 Test Rd", city: "Palampur", state: "HP" },
-    pricing: { subtotal: 200, total: 150, discount: 50, couponCode: "SAVE50",
-               appliedCoupon: { code: "SAVE50" } },
-    payment: { method: "cash", status: "cod_pending" },
+  const adminPacked = await saveAndReload(incPack.r, ip2, { packagingMode: "ADMIN" });
+  const adminTxn = await createInitialTransaction(adminPacked);
+  console.log("    with ADMIN packing :", adminTxn?.amounts?.restaurantShare);
+  check("a platform-kept packaging charge is not credited to the restaurant",
+    near(adminTxn?.amounts?.restaurantShare, 190.48), `${adminTxn?.amounts?.restaurantShare}`);
+  console.log("    platform profit    :", txn?.amounts?.platformNetProfit,
+    " (admin packing:", adminTxn?.amounts?.platformNetProfit, ")");
+  check("the platform keeps the packaging only in admin mode",
+    near(adminTxn?.amounts?.platformNetProfit - txn?.amounts?.platformNetProfit, 20),
+    `${adminTxn?.amounts?.platformNetProfit} vs ${txn?.amounts?.platformNetProfit}`);
+  // Every rupee the customer paid is credited to somebody: the restaurant, the
+  // rider, the platform, or the government. A split that does not add back up
+  // to what was charged is money the ledger has invented or lost.
+  const a = txn?.amounts || {};
+  const b = ip2.bill;
+  const accounted = a.restaurantShare + a.riderShare + a.platformNetProfit
+    + b.gstOnItems + b.platformFeeGst + b.roundOff;
+  console.log("    rider share (tip)  :", a.riderShare);
+  console.log("    accounted for      :", Math.round(accounted * 100) / 100,
+    "of", b.grandTotal);
+  check("the tip reaches the rider", near(a.riderTipPay, 10), `${a.riderTipPay}`);
+  check("every rupee charged is credited to somebody",
+    near(accounted, b.grandTotal), `${Math.round(accounted * 100) / 100} vs ${b.grandTotal}`);
+
+  // The coupon the ledger needs before it can attribute a discount to anyone.
+  const coupon = await saveAndReload(exc.r, e, {
+    discount: 50, couponCode: "SAVE50", appliedCoupon: { code: "SAVE50" },
   });
-  const cb = await FoodOrder.findById(withCoupon._id).lean();
-  console.log("    stored couponCode  :", cb.pricing?.couponCode ?? "DROPPED");
+  console.log("    stored couponCode  :", coupon.pricing?.couponCode ?? "DROPPED");
   check("the coupon survives the save, so a discount can be attributed",
-    cb.pricing?.couponCode === "SAVE50", `${cb.pricing?.couponCode}`);
+    coupon.pricing?.couponCode === "SAVE50", `${coupon.pricing?.couponCode}`);
 
 } catch (err) {
   fail++;

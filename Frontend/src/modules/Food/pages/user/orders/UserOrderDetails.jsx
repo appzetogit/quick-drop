@@ -449,14 +449,49 @@ export default function UserOrderDetails() {
                   </span>
                 )}
                 <span className="text-gray-800 dark:text-gray-200">
-                  ₹{Number(pricing.subtotal || pricing.total || 0).toFixed(2)}
+                  ₹{Number(
+                    pricing.bill?.netItemAmountBeforeDiscount
+                      ?? pricing.bill?.netItemAmount
+                      ?? pricing.subtotal
+                      ?? pricing.total
+                      ?? 0,
+                  ).toFixed(2)}
                 </span>
               </div>
             </div>
+            {Number(
+              pricing.bill?.netPackagingFeeBeforeDiscount
+                ?? pricing.bill?.netPackagingFee
+                ?? pricing.packagingFee
+                ?? 0,
+            ) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">Packaging charges</span>
+                <span className="text-gray-800 dark:text-gray-200">
+                  ₹{Number(
+                    pricing.bill?.netPackagingFeeBeforeDiscount
+                      ?? pricing.bill?.netPackagingFee
+                      ?? pricing.packagingFee
+                      ?? 0,
+                  ).toFixed(2)}
+                </span>
+              </div>
+            )}
+            {/* The coupon gets its own line, so the two above are shown before it. */}
+            {Number(pricing.bill?.discountOnNet ?? pricing.discount ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-[#EB590E] font-medium">Coupon discount</span>
+                <span className="text-[#EB590E] font-medium">
+                  -₹{Number(pricing.bill?.discountOnNet ?? pricing.discount ?? 0).toFixed(2)}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">GST (govt. taxes)</span>
+              <span className="text-gray-500 dark:text-gray-400">
+                GST{Number(pricing.bill?.gstRate || 0) > 0 ? ` @ ${pricing.bill.gstRate}%` : " (govt. taxes)"}
+              </span>
               <span className="text-gray-800 dark:text-gray-200">
-                ₹{Number(pricing.tax || 0).toFixed(2)}
+                ₹{Number(pricing.bill?.gstOnItems ?? pricing.tax ?? 0).toFixed(2)}
               </span>
             </div>
             <div className="flex justify-between">
@@ -484,12 +519,43 @@ export default function UserOrderDetails() {
                 </span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">Subscription / other fees</span>
-              <span className="text-gray-800 dark:text-gray-200">
-                ₹{Number(pricing.subscriptionFee || 0).toFixed(2)}
-              </span>
-            </div>
+            {Number(pricing.bill?.platformFeeGst ?? pricing.platformFeeGst ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">
+                  Govt. fee{Number(pricing.bill?.platformFeeGstRate || 0) > 0
+                    ? ` @ ${pricing.bill.platformFeeGstRate}%`
+                    : ""}
+                </span>
+                <span className="text-gray-800 dark:text-gray-200">
+                  ₹{Number(pricing.bill?.platformFeeGst ?? pricing.platformFeeGst ?? 0).toFixed(2)}
+                </span>
+              </div>
+            )}
+            {Number(pricing.bill?.tip ?? pricing.tip ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">Tip for delivery partner</span>
+                <span className="text-gray-800 dark:text-gray-200">
+                  ₹{Number(pricing.bill?.tip ?? pricing.tip ?? 0).toFixed(2)}
+                </span>
+              </div>
+            )}
+            {Number(pricing.subscriptionFee || 0) > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">Subscription / other fees</span>
+                <span className="text-gray-800 dark:text-gray-200">
+                  ₹{Number(pricing.subscriptionFee || 0).toFixed(2)}
+                </span>
+              </div>
+            )}
+            {Math.abs(Number(pricing.bill?.roundOff ?? pricing.roundOff ?? 0)) >= 0.01 && (
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">Round off</span>
+                <span className="text-gray-800 dark:text-gray-200">
+                  {Number(pricing.bill?.roundOff ?? pricing.roundOff ?? 0) < 0 ? "-" : "+"}
+                  ₹{Math.abs(Number(pricing.bill?.roundOff ?? pricing.roundOff ?? 0)).toFixed(2)}
+                </span>
+              </div>
+            )}
 
             <div className="border-t border-gray-100 dark:border-zinc-800 my-2 pt-2 flex justify-between items-center">
               <span className="font-bold text-gray-800 dark:text-white">Paid</span>

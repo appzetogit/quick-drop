@@ -198,10 +198,20 @@ export async function createInitialTransaction(order) {
     const riderDeliveryFeeShare = Number(order.riderDeliveryFeeShare) || riderDeliveryEarningAfterAdminCommission;
     const riderSurgePay = Number(order.riderSurgePay) || surgeAmount;
     const riderIncentivePay = Number(order.riderIncentivePay) || deliveryPartnerIncentiveAmount;
-    const riderTotalPayout =
+    /*
+     * The tip is the rider's in full.
+     *
+     * The bill charges it and the customer pays it, so leaving it out of the
+     * payout collected money on the rider's behalf and credited it to nobody.
+     * It is added on top of a stored riderTotalPayout as well, because that
+     * figure was computed before tips existed.
+     */
+    const riderTipPay = Number(order.pricing?.tip) || 0;
+    const riderPayoutBeforeTip =
         Number(order.riderTotalPayout) ||
         Number(order.riderEarning) ||
         Math.round((riderBasePay + riderDeliveryFeeShare + riderSurgePay + riderIncentivePay) * 100) / 100;
+    const riderTotalPayout = Math.round((riderPayoutBeforeTip + riderTipPay) * 100) / 100;
 
     /*
      * What the restaurant keeps: the food net of GST, not the listed total.
@@ -214,10 +224,50 @@ export async function createInitialTransaction(order) {
      */
     const restaurantFoodEarnings =
         Number(order.pricing?.commissionableAmount ?? subtotal) || 0;
-    let restaurantNet = restaurantFoodEarnings + packagingFee - restaurantCommission;
-    let platformNetProfit = platformFee + deliveryFee + surgeAmount + restaurantCommission - riderShare;
 
-    // Handle discount attribution
+    /*
+     * Packaging is only the restaurant's when the restaurant set it.
+     *
+     * Admin mode is one flat charge per order that the platform keeps, so
+     * crediting it here paid the restaurant money it never received. Orders
+     * placed before packagingMode was stored fall back to the old behaviour
+     * rather than retroactively docking a restaurant that was already paid.
+     */
+    const packagingMode = String(order.pricing?.packagingMode || '');
+    // Net of GST for the same reason the food is: an inclusive restaurant does
+    // not keep the tax inside its own packaging charge either.
+    const netPackagingFee = Number(order.pricing?.netPackagingFee ?? packagingFee) || 0;
+    const restaurantPackagingEarnings =
+        packagingMode === '' || packagingMode === 'RESTAURANT' ? netPackagingFee : 0;
+
+    let restaurantNet =
+        restaurantFoodEarnings + restaurantPackagingEarnings - restaurantCommission;
+    /*
+     * The platform keeps the packaging charge only in admin mode, and only net
+     * of its tax. The difference between the listed packagingFee and the net is
+     * GST: it belongs to the government, so it is neither side's profit.
+     */
+    const platformPackagingEarnings = packagingMode === 'ADMIN' ? netPackagingFee : 0;
+
+    let platformNetProfit =
+        platformFee
+        + deliveryFee
+        + surgeAmount
+        + restaurantCommission
+        + platformPackagingEarnings
+        - riderShare;
+
+    /*
+     * Whoever funded the coupon wears it.
+     *
+     * The figure deducted is what the coupon actually took off the net lines,
+     * not its face value: on a GST-inclusive menu the coupon came off a price
+     * that still had tax in it, so part of its face value was tax the
+     * restaurant was never going to keep anyway. Falls back to the face value
+     * for orders placed before the bill carried the distinction.
+     */
+    const fundedDiscount = Number(order.pricing?.bill?.discountOnNet ?? discount) || 0;
+
     const couponCode = order.pricing?.couponCode;
     if (discount > 0 && couponCode) {
         try {
@@ -225,14 +275,14 @@ export async function createInitialTransaction(order) {
             const { FoodOffer } = await import('../../admin/models/offer.model.js');
             const offer = await FoodOffer.findOne({ couponCode: String(couponCode).toUpperCase() }).lean();
             if (offer?.createdByRole === 'RESTAURANT') {
-                restaurantNet -= discount;
+                restaurantNet -= fundedDiscount;
             } else {
                 // Admin created (default) or not found
-                platformNetProfit -= discount;
+                platformNetProfit -= fundedDiscount;
             }
         } catch (err) {
             // Log but don't fail, default to admin attribution
-            platformNetProfit -= discount;
+            platformNetProfit -= fundedDiscount;
         }
     }
 
@@ -283,6 +333,7 @@ export async function createInitialTransaction(order) {
             surgeAmount: surgeAmount,
             restaurantCommission: restaurantCommission,
             discount: discount,
+            tip: riderTipPay,
             total: totalCustomerPaid,
             currency: String(order.pricing?.currency || order.currency || 'INR'),
         },
@@ -296,6 +347,7 @@ export async function createInitialTransaction(order) {
             riderBasePay: riderBasePay,
             riderSurgePay: riderSurgePay,
             riderIncentivePay: riderIncentivePay,
+            riderTipPay: riderTipPay,
             riderTotalPayout: riderTotalPayout,
             platformNetProfit: platformNetProfit,
             taxAmount: tax
