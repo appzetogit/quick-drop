@@ -1,8 +1,9 @@
 # QuickDrop — Customer App Integration
 
-Four backend changes are live on production. One is already returning errors to
-real users on every order that trips it, and one makes a value the app hardcodes
-wrong. The other two add fields the app can safely ignore, but shouldn't.
+Five backend changes are live on production. One is already returning errors to
+real users on every order that trips it, one makes a value the app hardcodes
+wrong, and one restructures the bill. The rest add fields the app can safely
+ignore, but shouldn't.
 
 | | Change | What the app must do |
 |---|---|---|
@@ -10,9 +11,10 @@ wrong. The other two add fields the app can safely ignore, but shouldn't.
 | **Recommended** | Combos | Already orderable with no change. Two new fields let you show what's inside. |
 | **Optional** | Free delivery by distance | The fee can be waived per platform *or* per restaurant. Read the reason and source from the pricing breakdown. |
 | **Required** | The 99 store price point | The shelf can run at ₹59. Anything hardcoding "99" is now wrong — read the live cap. |
+| **Required** | The itemised bill | Three new lines, and tax is no longer whole rupees. Totals still work, but the summary is now wrong without them. |
 
 - API base: `https://quickdropsindia.com/api/v1`
-- Backend commit: `82fbb17`
+- Backend commit: `63e11d9`
 - Every payload below is a real response captured from production, not an example.
 
 ---
@@ -514,6 +516,112 @@ identical struck-through row without recalculating anything.
 
 ---
 
+## 5. The bill is itemised, and it adds up — REQUIRED
+
+The checkout summary gained three lines and lost a rounding bug. `tax` and
+`total` keep their old names and values, so **nothing breaks if you ship
+nothing** — but the summary will show a total that its own visible lines do not
+add up to, which reads as a billing error to a customer.
+
+### What the bill looks like now
+
+```
+Item amount                                200.00
+Add: GST @ 5%                               10.00   ← food only
+Delivery fee                                25.00   ← rider's money, untaxed
+Platform fee                                10.00
+  Govt. fee @ 18%                            1.80   ← NEW: the platform fee is taxed
+Tip                                         10.00   ← NEW: rider's money, untaxed
+─────────────────────────────────────────────────
+Total                                      246.80   ← totalBeforeTip
+Round off                                  + 0.20   ← NEW
+Grand total                                257.00
+```
+
+### Where it comes from
+
+`POST /food/orders/calculate` now returns `pricing.bill`, every line already
+computed:
+
+```json
+{
+  "pricing": {
+    "tax": 10,                  // unchanged name, now paise-accurate
+    "total": 257,               // unchanged name, the grand total
+    "bill": {
+      "itemAmount": 200,
+      "packagingFee": 0,
+      "surgeAmount": 0,
+      "discount": 0,
+      "taxableAmount": 200,     // food after any coupon — what GST is charged on
+      "gstRate": 5,
+      "gstOnItems": 10,
+      "deliveryFee": 25,
+      "platformFee": 10,
+      "platformFeeGstRate": 18,
+      "platformFeeGst": 1.8,
+      "tip": 10,
+      "totalBeforeTip": 246.8,
+      "payableBeforeRounding": 256.8,
+      "roundOff": 0.2,
+      "grandTotal": 257
+    }
+  }
+}
+```
+
+### Render it, don't recompute it
+
+```dart
+final bill = pricing['bill'] as Map<String, dynamic>;
+num n(String k) => (bill[k] as num?) ?? 0;
+
+// Show a row only when it carries a value — an order with no tip should not
+// show an empty Tip line, and most orders round off to nothing.
+final rows = <BillRow>[
+  BillRow('Item amount', n('itemAmount')),
+  if (n('discount') > 0)       BillRow('Discount', -n('discount')),
+  if (n('packagingFee') > 0)   BillRow('Packaging', n('packagingFee')),
+  BillRow('GST @ ${n('gstRate')}%', n('gstOnItems')),
+  BillRow('Delivery fee', n('deliveryFee')),
+  BillRow('Platform fee', n('platformFee')),
+  if (n('platformFeeGst') > 0)
+    BillRow('Govt. fee @ ${n('platformFeeGstRate')}%', n('platformFeeGst')),
+  if (n('tip') > 0)            BillRow('Tip', n('tip')),
+  if (n('roundOff') != 0)      BillRow('Round off', n('roundOff')),
+];
+final grandTotal = n('grandTotal');
+```
+
+> **Never add the lines up yourself.** `grandTotal` is the number the customer
+> is charged and the number the order is created with. A client-side sum that
+> disagrees — by a paisa, by a rounding rule, by a line you forgot — shows one
+> price and charges another.
+
+### What is taxed, and what is not
+
+GST applies to **the food and the platform fee only**, at two different rates.
+The delivery fee and the tip are the rider's money; taxing either would charge
+the customer for something the platform never receives. A coupon comes off the
+food **before** GST, so the tax follows what was actually paid.
+
+### The tip needs a control
+
+`tip` is read from the request body as `tip` on `POST /food/orders/calculate`
+and `POST /food/orders`. There is no tip UI yet — until one exists the line is
+always 0 and simply won't render. Send a number; it is capped server-side, and
+the bill comes back with it applied.
+
+### One behaviour change to know about
+
+Tax used to be rounded to whole rupees as it was computed, so 5.6% of ₹357
+printed as ₹20 when it is ₹19.99, and the lines did not reconcile with the
+total. Every figure is now carried to paise and **only the grand total is
+rounded**, with the difference shown as `roundOff`. If you were formatting
+`tax` as an integer, it will now have decimals.
+
+---
+
 ## Field reference
 
 Everything added, and where it appears. All fields are additive; nothing was
@@ -545,6 +653,12 @@ renamed or removed.
 | `deliveryFeeBreakdown.freeDeliveryRule` | `object?` | pricing | radius, minimum, and measured distance |
 | `deliveryFeeBreakdown.waivedDeliveryFee` | `num` | pricing, saved order | the number to strike through |
 | `deliveryFeeBreakdown.appliedDeliveryFee` | `num` | pricing, saved order | what was actually charged |
+| `bill` | object | pricing | every line of the summary |
+| `bill.gstOnItems` / `bill.gstRate` | `num` | pricing | GST on the food, after any coupon |
+| `bill.platformFeeGst` | `num` | pricing | **new** — 18% on the platform fee |
+| `bill.tip` | `num` | pricing | **new** — untaxed, needs a UI control |
+| `bill.roundOff` | `num` | pricing | **new** — may be negative |
+| `bill.grandTotal` | `num` | pricing | the charged amount; never recompute it |
 | `ninetyNineStoreMaxPrice` | `num` | `/landing/settings/public` | the shelf's price point; never null |
 
 **Endpoints, unchanged.** The cross-restaurant feed is
@@ -584,6 +698,10 @@ The first four are the ones that would reach a customer as a broken order.
 - [ ] The progress bar reads `freeDeliveryRule.minOrderAmount` and hides entirely
       when `freeDeliveryRule` is `null` — including a restaurant excluded from a
       running platform promotion.
+- [ ] The bill shows the govt-fee line, and the round-off line when it is not
+      zero, and its visible lines add up to `grandTotal`.
+- [ ] `grandTotal` is displayed as-is, never summed client-side.
+- [ ] `tax` is formatted with decimals — it is no longer a whole rupee.
 - [ ] A qualifying order strikes through `waivedDeliveryFee` and shows FREE on
       the delivery row, at checkout and on the past-order bill.
 - [ ] The total is not adjusted a second time — it already excludes the waiver.
