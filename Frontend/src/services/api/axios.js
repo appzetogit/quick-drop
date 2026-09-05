@@ -127,8 +127,39 @@ function isTokenForModule(token, module) {
   return true;
 }
 
+/**
+ * The shared upload endpoint is used by every panel, so no single module owns
+ * it. Classifying it (it has no /admin/ or /restaurant/ segment) landed it on
+ * "user", which meant an admin session attached no token at all -- fine while
+ * the endpoint was open to anyone, and immediately broken once it was not.
+ *
+ * Whichever panel the operator is signed into is the right token, so try them
+ * in turn and send the first real one.
+ */
+const UPLOAD_TOKEN_ORDER = ["admin", "restaurant", "delivery", "user"];
+
+function getUploadToken() {
+  for (const module of UPLOAD_TOKEN_ORDER) {
+    try {
+      const token = localStorage.getItem(`${module}_accessToken`);
+      if (token && isTokenForModule(token, module)) return token;
+    } catch {
+      // localStorage can throw in a private window; just try the next one.
+    }
+  }
+  try {
+    return localStorage.getItem("accessToken") || null;
+  } catch {
+    return null;
+  }
+}
+
 function getAccessToken(config) {
   const module = getModuleFromConfig(config);
+  if (!config?.contextModule && /\/uploads\//.test(String(config?.url || ""))) {
+    const uploadToken = getUploadToken();
+    if (uploadToken) return uploadToken;
+  }
   const key = `${module}_accessToken`;
   try {
     // 1. Try module-specific token first

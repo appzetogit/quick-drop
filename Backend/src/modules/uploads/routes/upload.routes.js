@@ -1,4 +1,5 @@
 import express from 'express';
+import { authMiddleware } from '../../../core/auth/auth.middleware.js';
 import multer from 'multer';
 import { config } from '../../../config/env.js';
 import { saveImageFile } from '../../../services/storage.service.js';
@@ -72,7 +73,19 @@ const normalizeFolder = (raw) => {
 };
 
 // POST /v1/uploads/image
-router.post('/image', runUpload, async (req, res, next) => {
+/*
+ * Authenticated, but deliberately not role-restricted: admins, restaurants and
+ * delivery partners all legitimately upload here, and the endpoint only ever
+ * writes an image.
+ *
+ * It was open to anyone. Image-only and capped, so not a route to compromise --
+ * but an anonymous 5 MB write with no rate limit is a disk waiting to fill, and
+ * it let the domain host arbitrary pictures.
+ *
+ * No registration flow uses this: restaurant signup posts to
+ * /food/restaurant/upload-attachment, which stays open on purpose.
+ */
+router.post('/image', authMiddleware, runUpload, async (req, res, next) => {
     try {
         if (!req.file || !req.file.buffer) {
             return res.status(400).json({
