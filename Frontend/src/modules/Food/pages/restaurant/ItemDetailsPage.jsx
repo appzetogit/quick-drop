@@ -122,7 +122,6 @@ export default function ItemDetailsPage() {
   const [packagingEnabled, setPackagingEnabled] = useState(false)
   const [packagingAmount, setPackagingAmount] = useState("")
   const [availabilitySchedule, setAvailabilitySchedule] = useState(() => buildScheduleState(null))
-  const [gst, setGst] = useState("5.0")
   const [isRecommended, setIsRecommended] = useState(false)
 
   /**
@@ -289,7 +288,6 @@ export default function ItemDetailsPage() {
     setPackagingAmount(
       item.packagingCharge?.amount ? String(item.packagingCharge.amount) : ""
     )
-    setGst(item.gst?.toString() || "5.0")
     setIsRecommended(item.isRecommended || false)
     setIsInStock(item.isAvailable !== false)
     setSelectedTags(item.tags || [])
