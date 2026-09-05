@@ -50,6 +50,17 @@ jobs:
       # arithmetic all pass.
       - name: Test
         working-directory: Backend
+        # Dummy values, not secrets. The suite signs and verifies its own tokens
+        # within the run, so any stable string works -- but it has to be a stable
+        # one. `.env` is gitignored, so on a runner JWT_ACCESS_SECRET is unset;
+        # master's config quietly generates a random fallback while the
+        # serviceProvider module reads process.env directly and gets undefined.
+        # The two halves then sign and verify with different keys, and seven
+        # cross-module access checks fail with 401 where they assert 403. Pinning
+        # them here makes both halves agree, which is all the suite needs.
+        env:
+          JWT_ACCESS_SECRET: ci-test-access-secret
+          JWT_REFRESH_SECRET: ci-test-refresh-secret
         run: npm test
 
   deploy:
