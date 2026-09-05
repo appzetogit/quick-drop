@@ -1,4 +1,6 @@
 import express from 'express';
+import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
+import { requireRoles } from '../../../../core/roles/role.middleware.js';
 import { upload } from '../../../../middleware/upload.js';
 import {
     listHeroBannersController,
@@ -63,6 +65,23 @@ import {
 import { getPublicPageController } from '../../admin/controllers/pageContent.controller.js';
 import { getPublicReferralSettingsController } from '../controllers/publicReferralSettings.controller.js';
 
+
+/*
+ * Banner and landing management, guarded.
+ *
+ * Every write here was reachable with no authentication at all: creating,
+ * deleting and reordering the banners on the customer app's home screen, and
+ * changing the landing settings -- including the Rs 99 store cap, which now
+ * triggers a write across every dish on the platform.
+ *
+ * The frontend already assumed this guard existed and has been attaching an
+ * admin token to these calls all along (see the comment in services/api/axios.js).
+ * Only the backend half was missing.
+ *
+ * Applied per route rather than with router.use, because the public reads the
+ * customer app depends on are registered in the same router and must stay open.
+ */
+const adminOnly = [authMiddleware, requireRoles('ADMIN')];
 const router = express.Router();
 
 // Public CMS pages (About + legal). No auth required.
@@ -71,73 +90,79 @@ router.get('/pages/:key', getPublicPageController);
 router.get('/referral-settings', getPublicReferralSettingsController);
 
 // Admin hero banner management
-router.get('/hero-banners', listHeroBannersController);
+router.get('/hero-banners', adminOnly, listHeroBannersController);
 router.post(
     '/hero-banners/multiple',
+    adminOnly,
     upload.array('files'),
     uploadHeroBannersController
 );
-router.delete('/hero-banners/:id', deleteHeroBannerController);
-router.patch('/hero-banners/:id/order', updateHeroBannerOrderController);
-router.patch('/hero-banners/:id/status', toggleHeroBannerStatusController);
-router.patch('/hero-banners/:id/link-restaurants', linkHeroBannerRestaurantsController);
+router.delete('/hero-banners/:id', adminOnly, deleteHeroBannerController);
+router.patch('/hero-banners/:id/order', adminOnly, updateHeroBannerOrderController);
+router.patch('/hero-banners/:id/status', adminOnly, toggleHeroBannerStatusController);
+router.patch('/hero-banners/:id/link-restaurants', adminOnly, linkHeroBannerRestaurantsController);
 
 // Admin under 250 banners
-router.get('/hero-banners/under-250', listUnder250BannersController);
+router.get('/hero-banners/under-250', adminOnly, listUnder250BannersController);
 router.post(
     '/hero-banners/under-250/multiple',
+    adminOnly,
     upload.array('files'),
     uploadUnder250BannersController
 );
-router.delete('/hero-banners/under-250/:id', deleteUnder250BannerController);
-router.patch('/hero-banners/under-250/:id/order', updateUnder250BannerOrderController);
-router.patch('/hero-banners/under-250/:id/status', toggleUnder250BannerStatusController);
+router.delete('/hero-banners/under-250/:id', adminOnly, deleteUnder250BannerController);
+router.patch('/hero-banners/under-250/:id/order', adminOnly, updateUnder250BannerOrderController);
+router.patch('/hero-banners/under-250/:id/status', adminOnly, toggleUnder250BannerStatusController);
 
 // Admin dining banners
-router.get('/hero-banners/dining', listDiningBannersController);
+router.get('/hero-banners/dining', adminOnly, listDiningBannersController);
 router.post(
     '/hero-banners/dining/multiple',
+    adminOnly,
     upload.array('files'),
     uploadDiningBannersController
 );
-router.delete('/hero-banners/dining/:id', deleteDiningBannerController);
-router.patch('/hero-banners/dining/:id/order', updateDiningBannerOrderController);
-router.patch('/hero-banners/dining/:id/status', toggleDiningBannerStatusController);
+router.delete('/hero-banners/dining/:id', adminOnly, deleteDiningBannerController);
+router.patch('/hero-banners/dining/:id/order', adminOnly, updateDiningBannerOrderController);
+router.patch('/hero-banners/dining/:id/status', adminOnly, toggleDiningBannerStatusController);
 
 // Admin Home Promotion banners
-router.get('/hero-banners/home-promotion', listHomePromotionBannersController);
+router.get('/hero-banners/home-promotion', adminOnly, listHomePromotionBannersController);
 router.post(
     '/hero-banners/home-promotion',
+    adminOnly,
     upload.single('file'),
     createHomePromotionBannerController
 );
-router.patch('/hero-banners/home-promotion/:id', updateHomePromotionBannerController);
-router.delete('/hero-banners/home-promotion/:id', deleteHomePromotionBannerController);
-router.patch('/hero-banners/home-promotion/:id/status', toggleHomePromotionBannerStatusController);
-router.patch('/hero-banners/home-promotion/:id/order', updateHomePromotionBannerOrderController);
+router.patch('/hero-banners/home-promotion/:id', adminOnly, updateHomePromotionBannerController);
+router.delete('/hero-banners/home-promotion/:id', adminOnly, deleteHomePromotionBannerController);
+router.patch('/hero-banners/home-promotion/:id/status', adminOnly, toggleHomePromotionBannerStatusController);
+router.patch('/hero-banners/home-promotion/:id/order', adminOnly, updateHomePromotionBannerOrderController);
 
 // Admin Explore More (icons)
-router.get('/hero-banners/landing/explore-more', listExploreMoreController);
+router.get('/hero-banners/landing/explore-more', adminOnly, listExploreMoreController);
 router.post(
     '/hero-banners/landing/explore-more',
+    adminOnly,
     upload.single('image'),
     createExploreMoreController
 );
-router.delete('/hero-banners/landing/explore-more/:id', deleteExploreMoreController);
-router.patch('/hero-banners/landing/explore-more/:id/status', toggleExploreMoreStatusController);
-router.patch('/hero-banners/landing/explore-more/:id/order', updateExploreMoreOrderController);
+router.delete('/hero-banners/landing/explore-more/:id', adminOnly, deleteExploreMoreController);
+router.patch('/hero-banners/landing/explore-more/:id/status', adminOnly, toggleExploreMoreStatusController);
+router.patch('/hero-banners/landing/explore-more/:id/order', adminOnly, updateExploreMoreOrderController);
 router.patch(
     '/hero-banners/landing/explore-more/:id',
+    adminOnly,
     upload.single('image'),
     updateExploreMoreController
 );
 
 // Admin Gourmet (hero-banners)
-router.get('/hero-banners/gourmet', listGourmetAdmin);
-router.post('/hero-banners/gourmet', createGourmetAdmin);
-router.delete('/hero-banners/gourmet/:id', deleteGourmetAdmin);
-router.patch('/hero-banners/gourmet/:id/order', updateGourmetOrderAdmin);
-router.patch('/hero-banners/gourmet/:id/status', toggleGourmetStatusAdmin);
+router.get('/hero-banners/gourmet', adminOnly, listGourmetAdmin);
+router.post('/hero-banners/gourmet', adminOnly, createGourmetAdmin);
+router.delete('/hero-banners/gourmet/:id', adminOnly, deleteGourmetAdmin);
+router.patch('/hero-banners/gourmet/:id/order', adminOnly, updateGourmetOrderAdmin);
+router.patch('/hero-banners/gourmet/:id/status', adminOnly, toggleGourmetStatusAdmin);
 
 // Public landing endpoints (Food user app)
 router.get('/hero-banners/public', getPublicHeroBannersController);
@@ -152,7 +177,7 @@ router.get('/zones/nearby', listZonesNearbyPublicController);
 router.get('/zones/public', listZonesPublicController);
 router.get('/public/env', getPublicEnvController);
 // Admin landing settings
-router.get('/hero-banners/landing/settings', getAdminLandingSettingsController);
-router.patch('/hero-banners/landing/settings', updateAdminLandingSettingsController);
+router.get('/hero-banners/landing/settings', adminOnly, getAdminLandingSettingsController);
+router.patch('/hero-banners/landing/settings', adminOnly, updateAdminLandingSettingsController);
 
 export default router;
