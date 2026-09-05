@@ -138,8 +138,15 @@ function isTokenForModule(token, module) {
  */
 const UPLOAD_TOKEN_ORDER = ["admin", "restaurant", "delivery", "user"];
 
-function getUploadToken() {
-  for (const module of UPLOAD_TOKEN_ORDER) {
+function getUploadToken(preferred) {
+  // Try the module this request was classified as first, then the rest. A
+  // restaurant uploading a dish photo holds only restaurant_accessToken, an
+  // admin only admin_accessToken, and the endpoint accepts either.
+  const order = UPLOAD_TOKEN_ORDER.includes(preferred)
+    ? [preferred, ...UPLOAD_TOKEN_ORDER.filter((m) => m !== preferred)]
+    : UPLOAD_TOKEN_ORDER;
+
+  for (const module of order) {
     try {
       const token = localStorage.getItem(`${module}_accessToken`);
       if (token && isTokenForModule(token, module)) return token;
@@ -156,8 +163,18 @@ function getUploadToken() {
 
 function getAccessToken(config) {
   const module = getModuleFromConfig(config);
-  if (!config?.contextModule && /\/uploads\//.test(String(config?.url || ""))) {
-    const uploadToken = getUploadToken();
+
+  /*
+   * Uploads take whichever panel token the operator holds.
+   *
+   * This was previously gated on `!config.contextModule`, meaning "the caller
+   * did not name a module" -- but the request interceptor assigns
+   * contextModule before calling this, so the guard was never true. The
+   * fallback never ran, /uploads/image classified as "user", and a restaurant
+   * adding a dish photo sent no token at all: "Authentication token missing".
+   */
+  if (/\/uploads\//.test(String(config?.url || ""))) {
+    const uploadToken = getUploadToken(module);
     if (uploadToken) return uploadToken;
   }
   const key = `${module}_accessToken`;
