@@ -61,6 +61,12 @@ jobs:
         env:
           JWT_ACCESS_SECRET: ci-test-access-secret
           JWT_REFRESH_SECRET: ci-test-refresh-secret
+          # Same reason, different fallback. With neither SOCKET_CORS_ORIGIN nor
+          # FRONTEND_URL set, resolvedCorsOrigin becomes '*' (src/config/env.js:33)
+          # and isOriginAllowed then returns true for EVERY origin -- so the check
+          # asserting an unrelated origin is rejected fails. Any concrete origin
+          # restores a real allow-list.
+          SOCKET_CORS_ORIGIN: https://superapp.appzeto.com
         run: npm test
 
   deploy:
