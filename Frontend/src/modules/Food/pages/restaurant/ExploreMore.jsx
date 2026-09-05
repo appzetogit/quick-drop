@@ -782,6 +782,7 @@ export default function ExploreMore() {
 
   const settingsItems = [
     { id: 3, label: "Delivery settings", icon: Truck, route: "/restaurant/delivery-settings" },
+    { id: "gst-nav", label: "GST on menu prices", icon: Receipt, route: "/restaurant/gst-settings" },
     { id: 4, label: "Zone Setup", icon: MapPin, route: "/restaurant/zone-setup" },
   ]
 

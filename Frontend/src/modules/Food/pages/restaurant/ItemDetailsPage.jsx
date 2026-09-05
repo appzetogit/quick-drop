@@ -107,6 +107,12 @@ export default function ItemDetailsPage() {
   // customers are charged.
   const [variantsEnabled, setVariantsEnabled] = useState(false)
   const [commission, setCommission] = useState(null)
+  /*
+   * How this restaurant's prices are taxed. Without it the preview below
+   * would tell a GST-inclusive restaurant it earns the whole price, when
+   * the tax inside that price is never theirs to keep.
+   */
+  const [taxSettings, setTaxSettings] = useState({ priceIncludesGst: false, gstRate: 0 })
   const [addonIds, setAddonIds] = useState([])
   const [availableAddons, setAvailableAddons] = useState([])
   const [variants, setVariants] = useState([])
@@ -470,6 +476,25 @@ export default function ItemDetailsPage() {
       }
     }
     fetchCommission()
+
+    const fetchTaxSettings = async () => {
+      try {
+        const response = await restaurantAPI.getTaxSettings()
+        const data = response?.data?.data || response?.data || null
+        if (!cancelled && data) {
+          setTaxSettings({
+            priceIncludesGst: data.priceIncludesGst === true,
+            gstRate: Number(data.gstRate) || 0,
+          })
+        }
+      } catch (error) {
+        // The preview falls back to prices-are-net, which is the default and
+        // what almost every restaurant is on.
+        debugError('Error fetching tax settings:', error)
+      }
+    }
+    fetchTaxSettings()
+
     return () => {
       cancelled = true
     }
@@ -493,17 +518,40 @@ export default function ItemDetailsPage() {
 
     if (!Number.isFinite(price) || price <= 0) return null
 
+    /*
+     * What the restaurant actually earns before commission, and what the
+     * customer pays for the dish.
+     *
+     * Inclusive: the typed price is the whole price and the tax comes out of
+     * it -- 5% inside 200 is 9.52, not 10 -- so the restaurant earns 190.48 and
+     * the customer still pays 200. Exclusive: the typed price is net, the tax
+     * is added on top, and the customer pays 210. Commission is charged on the
+     * net either way, because tax collected for the government was never the
+     * restaurant's money to take a cut of.
+     */
+    const gstFraction = Math.max(0, Number(taxSettings.gstRate) || 0) / 100
+    const netPrice = taxSettings.priceIncludesGst ? price / (1 + gstFraction) : price
+    const gstAmount = taxSettings.priceIncludesGst
+      ? price - netPrice
+      : price * gstFraction
+    const customerPays = round2(netPrice + gstAmount)
+
     const commissionAmount =
       commission === null
         ? 0
         : commission.type === 'flat'
-          ? round2(Math.min(commission.value, price))
-          : round2((price * commission.value) / 100)
+          ? round2(Math.min(commission.value, netPrice))
+          : round2((netPrice * commission.value) / 100)
 
     return {
       price: round2(price),
+      netPrice: round2(netPrice),
+      gstAmount: round2(gstAmount),
+      gstRate: Number(taxSettings.gstRate) || 0,
+      priceIncludesGst: taxSettings.priceIncludesGst,
+      customerPays,
       commissionAmount,
-      takeHome: round2(price - commissionAmount),
+      takeHome: round2(netPrice - commissionAmount),
       commissionLabel:
         commission === null
           ? ''
@@ -511,7 +559,7 @@ export default function ItemDetailsPage() {
             ? `\u20B9${commission.value}`
             : `${commission.value}%`,
     }
-  }, [variants, basePrice, variantsEnabled, commission])
+  }, [variants, basePrice, variantsEnabled, commission, taxSettings])
 
   // Track visual viewport for mobile keyboard
   useEffect(() => {
@@ -1231,6 +1279,21 @@ export default function ItemDetailsPage() {
                         <span>Commission rate:</span>
                         <span>{pricePreview.commissionLabel || "0%"} (₹{pricePreview.commissionAmount})</span>
                       </div>
+                      {pricePreview.gstRate > 0 && (
+                        <div className="flex items-center justify-between text-gray-500">
+                          <span>
+                            GST @ {pricePreview.gstRate}%
+                            {pricePreview.priceIncludesGst ? " (inside your price)" : " (added on top)"}:
+                          </span>
+                          <span>₹{pricePreview.gstAmount}</span>
+                        </div>
+                      )}
+                      {pricePreview.gstRate > 0 && (
+                        <div className="flex items-center justify-between text-gray-500 pt-1.5 border-t border-gray-200">
+                          <span>Customer pays for this dish:</span>
+                          <span>₹{pricePreview.customerPays}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

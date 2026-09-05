@@ -182,6 +182,24 @@ export async function createOrder(userId, dto) {
       discount: Number(pricingResult.pricing.discount ?? 0) || 0,
       // Recorded, not deducted -- the free units are already out of the subtotal.
       bogoSavings: Number(pricingResult.pricing.bogo?.savings ?? 0) || 0,
+      /*
+       * The bill as shown, and the figures downstream reads off it.
+       *
+       * commissionableAmount in particular: the payout job reads it to charge
+       * commission on the food net of GST, and falls back to `subtotal` when it
+       * is absent -- which would quietly charge a GST-inclusive restaurant
+       * commission on tax it never keeps.
+       */
+      bill: pricingResult.pricing.bill || null,
+      commissionableAmount:
+        Number(pricingResult.pricing.commissionableAmount ?? pricingResult.pricing.subtotal ?? 0) || 0,
+      pricesIncludeGst: pricingResult.pricing.pricesIncludeGst === true,
+      gstRate: Number(pricingResult.pricing.gstRate ?? 0) || 0,
+      platformFeeGst: Number(pricingResult.pricing.platformFeeGst ?? 0) || 0,
+      platformFeeGstRate: Number(pricingResult.pricing.platformFeeGstRate ?? 0) || 0,
+      tip: Number(pricingResult.pricing.tip ?? 0) || 0,
+      roundOff: Number(pricingResult.pricing.roundOff ?? 0) || 0,
+      totalBeforeTip: Number(pricingResult.pricing.totalBeforeTip ?? 0) || 0,
       total: Number(pricingResult.pricing.total ?? 0) || 0,
       currency: String(pricingResult.pricing.currency || "INR"),
       couponCode: pricingResult.pricing.couponCode || null,

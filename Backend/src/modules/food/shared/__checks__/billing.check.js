@@ -6,6 +6,8 @@
 import assert from 'node:assert/strict';
 import { computeBill, billAddsUp, normalizeTip, MAX_TIP, DEFAULT_PLATFORM_FEE_GST_RATE } from '../billing.js';
 
+const round = (v) => Math.round((v + Number.EPSILON) * 100) / 100;
+
 // --- the agreed bill, line for line -----------------------------------------
 {
     const b = computeBill({
@@ -108,5 +110,73 @@ assert.equal(DEFAULT_PLATFORM_FEE_GST_RATE, 18);
 }
 // A rate above 100 is a typo, not a tax.
 assert.equal(computeBill({ itemAmount: 100, gstRate: 5000 }).gstOnItems, 100);
+
+// --- GST-inclusive menus -----------------------------------------------------
+// The customer still pays the listed price; the tax comes out of it.
+{
+    const b = computeBill({
+        itemAmount: 200, deliveryFee: 25, platformFee: 10, tip: 10,
+        gstRate: 5, platformFeeGstRate: 18, pricesIncludeGst: true,
+    });
+    assert.equal(b.listedFoodAmount, 200, 'the menu price is unchanged');
+    assert.equal(b.taxableAmount, 190.48, 'the restaurant earns the net');
+    assert.equal(b.gstOnItems, 9.52, 'the tax was inside the 200');
+    assert.equal(round(b.taxableAmount + b.gstOnItems), 200, 'net + tax is the listed price');
+    assert.ok(billAddsUp(b));
+}
+
+// Extracting is NOT the same sum as adding. Taking 5% off the gross would give
+// 10.00 and overstate the tax on every inclusive dish.
+{
+    const inc = computeBill({ itemAmount: 200, gstRate: 5, pricesIncludeGst: true, platformFee: 0 });
+    const exc = computeBill({ itemAmount: 200, gstRate: 5, pricesIncludeGst: false, platformFee: 0 });
+    assert.equal(inc.gstOnItems, 9.52);
+    assert.equal(exc.gstOnItems, 10);
+    assert.notEqual(inc.gstOnItems, exc.gstOnItems, 'extraction and addition must differ');
+    // And the customer pays a different total for the same listed price.
+    assert.equal(inc.grandTotal, 200);
+    assert.equal(exc.grandTotal, 210);
+}
+
+// The default is exclusive, so nothing that predates the flag moves.
+{
+    const withFlag = computeBill({ itemAmount: 200, gstRate: 5, platformFee: 0, pricesIncludeGst: false });
+    const without = computeBill({ itemAmount: 200, gstRate: 5, platformFee: 0 });
+    assert.deepEqual(without, withFlag, 'omitting the flag behaves exactly as exclusive');
+}
+
+// A coupon comes off before the tax is extracted, so the customer is not taxed
+// on money nobody paid.
+{
+    const b = computeBill({ itemAmount: 200, discount: 100, gstRate: 5, pricesIncludeGst: true, platformFee: 0 });
+    assert.equal(b.listedFoodAmount, 100);
+    assert.equal(round(b.taxableAmount + b.gstOnItems), 100);
+    assert.equal(b.grandTotal, 100);
+}
+
+// Zero rate: inclusive and exclusive are the same thing.
+{
+    const inc = computeBill({ itemAmount: 200, gstRate: 0, pricesIncludeGst: true, platformFee: 0 });
+    assert.equal(inc.gstOnItems, 0);
+    assert.equal(inc.taxableAmount, 200);
+}
+
+// The reconciliation property has to hold for inclusive menus too.
+for (const item of [1, 99.99, 200, 357, 1234.56]) {
+    for (const gst of [0, 5, 5.6, 12, 18]) {
+        for (const tip of [0, 10]) {
+            const b = computeBill({
+                itemAmount: item, deliveryFee: 25, platformFee: 10, tip,
+                gstRate: gst, platformFeeGstRate: 18, pricesIncludeGst: true,
+            });
+            assert.ok(billAddsUp(b), `inclusive bill does not reconcile: ${item} @ ${gst}% tip ${tip}`);
+            // The food half always sums back to what was listed, within a paisa
+            // of rounding.
+            const food = round(b.taxableAmount + b.gstOnItems);
+            assert.ok(Math.abs(food - b.listedFoodAmount) < 0.02,
+                `net + tax ${food} should be the listed ${b.listedFoodAmount}`);
+        }
+    }
+}
 
 console.log('All billing checks passed.');

@@ -1868,6 +1868,11 @@ export async function upsertFeeSettings(body) {
         if (body.gstRate === null) $unset.gstRate = 1;
         else if (body.gstRate !== undefined) $set.gstRate = body.gstRate;
 
+        // Clearing it falls back to the statutory 18% rather than storing 0,
+        // which would silently stop charging a tax that is still owed.
+        if (body.platformFeeGstRate === null) $unset.platformFeeGstRate = 1;
+        else if (body.platformFeeGstRate !== undefined) $set.platformFeeGstRate = body.platformFeeGstRate;
+
         if (body.codOrderLimit === null) $unset.codOrderLimit = 1;
         else if (body.codOrderLimit !== undefined) $set.codOrderLimit = body.codOrderLimit;
 
@@ -1927,6 +1932,9 @@ export async function upsertFeeSettings(body) {
     if (body.maxOrderQuantityCeiling !== undefined && body.maxOrderQuantityCeiling !== null) payload.maxOrderQuantityCeiling = body.maxOrderQuantityCeiling;
     if (body.packagingCharge !== undefined) payload.packagingCharge = body.packagingCharge;
     if (body.otherPlatformPrice !== undefined) payload.otherPlatformPrice = body.otherPlatformPrice;
+    if (body.platformFeeGstRate !== undefined && body.platformFeeGstRate !== null) {
+        payload.platformFeeGstRate = body.platformFeeGstRate;
+    }
 
     const created = await FoodFeeSettings.create(payload);
     invalidateOrderQuantityCeilingCache();

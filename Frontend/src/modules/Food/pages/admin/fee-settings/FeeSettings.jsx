@@ -25,6 +25,7 @@ export default function FeeSettings() {
     },
     platformFee: "",
     gstRate: "",
+    platformFeeGstRate: "",
     codOrderLimit: "",
     maxOrderQuantityCeiling: "",
   })
@@ -113,6 +114,7 @@ export default function FeeSettings() {
           },
           platformFee: saved.platformFee ?? "",
           gstRate: saved.gstRate ?? "",
+          platformFeeGstRate: saved.platformFeeGstRate ?? "",
           codOrderLimit: saved.codOrderLimit ?? "",
           maxOrderQuantityCeiling: saved.maxOrderQuantityCeiling ?? "",
         })
@@ -132,6 +134,7 @@ export default function FeeSettings() {
           },
           platformFee: "",
           gstRate: "",
+          platformFeeGstRate: "",
           codOrderLimit: "",
           maxOrderQuantityCeiling: "",
         })
@@ -330,6 +333,17 @@ export default function FeeSettings() {
         toast.error("GST rate must be between 0 and 100")
         return
       }
+      // Blank is allowed here and means the statutory 18%, so an admin who
+      // never touches this field is not blocked from saving the rest.
+      const platformFeeGstRate = Number(feeSettings.platformFeeGstRate)
+      if (
+        feeSettings.platformFeeGstRate !== "" &&
+        (!Number.isFinite(platformFeeGstRate) || platformFeeGstRate < 0 || platformFeeGstRate > 100)
+      ) {
+        toast.error("Govt. fee on the platform fee must be between 0 and 100")
+        return
+      }
+
       const codOrderLimit = Number(feeSettings.codOrderLimit)
       if (feeSettings.codOrderLimit !== "" && (!Number.isFinite(codOrderLimit) || codOrderLimit < 0)) {
         toast.error("COD Order Limit must be 0 or greater")
@@ -362,6 +376,7 @@ export default function FeeSettings() {
         },
         platformFee,
         gstRate,
+        platformFeeGstRate: feeSettings.platformFeeGstRate === "" ? null : platformFeeGstRate,
         codOrderLimit: feeSettings.codOrderLimit === "" ? null : codOrderLimit,
         maxOrderQuantityCeiling: feeSettings.maxOrderQuantityCeiling === "" ? null : maxOrderQuantityCeiling,
         isActive: true,
@@ -720,6 +735,23 @@ export default function FeeSettings() {
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
                     placeholder="5"
                   />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-700">Govt. Fee on Platform Fee (%)</label>
+                  <input
+                    type="number"
+                    value={feeSettings.platformFeeGstRate}
+                    onChange={(e) => setFeeSettings((s) => ({ ...s, platformFeeGstRate: e.target.value }))}
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
+                    placeholder="18"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    GST charged on the platform fee, shown as its own line on the customer&apos;s bill.
+                    Leave blank for the statutory 18%.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <label className="block text-sm font-semibold text-slate-700">COD Order Limit (₹)</label>

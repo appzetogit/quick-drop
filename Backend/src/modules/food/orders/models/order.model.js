@@ -144,8 +144,47 @@ const pricingSchema = new mongoose.Schema(
          * order against offers that may since have changed.
          */
         bogoSavings: { type: Number, default: 0, min: 0 },
+        /**
+         * The customer's bill, line by line, exactly as it was shown.
+         *
+         * Stored rather than recomputed because every input can move -- the GST
+         * rate, the platform fee, the restaurant's inclusive/exclusive setting.
+         * A bill re-derived months later from today's settings would not be the
+         * bill anyone agreed to. Mixed because its shape belongs to
+         * shared/billing.js, which is where it is checked.
+         */
+        bill: { type: mongoose.Schema.Types.Mixed, default: null },
+        /**
+         * What restaurant commission is charged on: the food net of GST.
+         *
+         * Equal to `subtotal` for a restaurant that prices net, which is the
+         * default. Smaller for one whose menu prices include GST, because the
+         * tax inside those prices is collected for the government and taking a
+         * commission percentage of it would be taking a cut of tax.
+         */
+        commissionableAmount: { type: Number, default: 0, min: 0 },
+        pricesIncludeGst: { type: Boolean, default: false },
+        gstRate: { type: Number, default: 0, min: 0, max: 100 },
+        platformFeeGst: { type: Number, default: 0, min: 0 },
+        platformFeeGstRate: { type: Number, default: 0, min: 0, max: 100 },
+        /** The rider's money, never taxed and never commissioned. */
+        tip: { type: Number, default: 0, min: 0 },
+        /** Signed: the grand total is rounded up as often as down. */
+        roundOff: { type: Number, default: 0 },
+        totalBeforeTip: { type: Number, default: 0, min: 0 },
         total: { type: Number, required: true, min: 0 },
-        currency: { type: String, default: 'INR' }
+        currency: { type: String, default: 'INR' },
+        /**
+         * Which coupon paid for the discount.
+         *
+         * Set by order.service.js since coupons existed, but never declared
+         * here -- so the strict schema dropped both on every save, and the
+         * payout ledger's attribution branch, which keys off couponCode, could
+         * never fire. Without it a restaurant-funded discount came out of
+         * nobody's share.
+         */
+        couponCode: { type: String, default: null, trim: true },
+        appliedCoupon: { type: mongoose.Schema.Types.Mixed, default: null }
     },
     { _id: false }
 );

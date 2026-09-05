@@ -7,6 +7,8 @@ import {
     listPublicOffersController,
     getCurrentRestaurantController,
     getRestaurantCommissionRateController,
+    getRestaurantTaxSettingsController,
+    updateRestaurantTaxSettingsController,
     getFreebieOfferController,
     updateFreebieOfferController,
     getBogoOfferController,
@@ -130,6 +132,15 @@ router.patch('/availability', authMiddleware, requireRestaurant, async (req, res
     next();
 }, updateRestaurantAcceptingOrdersController);
 router.get('/commission', authMiddleware, requireRestaurant, getRestaurantCommissionRateController);
+router.get('/tax-settings', authMiddleware, requireRestaurant, getRestaurantTaxSettingsController);
+// The flag changes what every dish costs the customer, so the menu and
+// restaurant caches have to go with it.
+router.put('/tax-settings', authMiddleware, requireRestaurant, async (req, res, next) => {
+    await invalidateCache('restaurants:*');
+    await invalidateCache('restaurant_detail:*');
+    await invalidateCache('public_foods:*');
+    next();
+}, updateRestaurantTaxSettingsController);
 router.get('/freebie-offer', authMiddleware, requireRestaurant, getFreebieOfferController);
 router.put('/freebie-offer', authMiddleware, requireRestaurant, updateFreebieOfferController);
 router.get('/bogo-offer', authMiddleware, requireRestaurant, getBogoOfferController);

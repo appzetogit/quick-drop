@@ -291,6 +291,16 @@ const restaurantSchema = new mongoose.Schema(
      * Admin-only, like the platform rule: waiving the fee costs the platform,
      * not the restaurant, and the rider is still paid in full.
      */
+    /*
+     * Whether this restaurant's menu prices already contain GST.
+     *
+     * False is what every restaurant did before this existed -- the stored
+     * price is net and tax is added on top -- so leaving it alone changes no
+     * bill. Set per restaurant rather than per dish: a kitchen prices one way
+     * or the other, and a 500-dish menu should not carry 500 chances to get it
+     * wrong.
+     */
+    priceIncludesGst: { type: Boolean, default: false },
     freeDeliveryRule: {
       mode: {
         type: String,

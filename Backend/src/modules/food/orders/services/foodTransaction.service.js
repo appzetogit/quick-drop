@@ -101,7 +101,20 @@ async function getActiveCommissionSchedules(at = new Date()) {
  * was not the restaurant's usual one.
  */
 export async function getRestaurantCommissionSnapshot(orderDoc, at = new Date()) {
-  const baseAmount = Number(orderDoc?.pricing?.subtotal ?? 0) || 0;
+  /*
+   * Commission is charged on the food net of GST.
+   *
+   * commissionableAmount equals subtotal for a restaurant that prices net,
+   * which is every restaurant by default, so this changes nothing for them.
+   * For one whose menu prices include GST it is the smaller figure: the tax
+   * inside the price is collected for the government and the restaurant never
+   * keeps it, so a commission percentage of it would be a cut of tax.
+   *
+   * Falls back to subtotal for orders placed before the field existed.
+   */
+  const baseAmount = Number(
+    orderDoc?.pricing?.commissionableAmount ?? orderDoc?.pricing?.subtotal ?? 0,
+  ) || 0;
   const restaurantIdRaw =
     orderDoc?.restaurantId?._id ?? orderDoc?.restaurantId ?? null;
 
@@ -190,7 +203,18 @@ export async function createInitialTransaction(order) {
         Number(order.riderEarning) ||
         Math.round((riderBasePay + riderDeliveryFeeShare + riderSurgePay + riderIncentivePay) * 100) / 100;
 
-    let restaurantNet = subtotal + packagingFee - restaurantCommission;
+    /*
+     * What the restaurant keeps: the food net of GST, not the listed total.
+     *
+     * Identical to subtotal for a restaurant that prices net -- the tax is a
+     * separate line the customer pays on top. For one whose menu prices
+     * include GST the tax is inside the subtotal and is owed to the
+     * government, so crediting the whole subtotal would pay the restaurant its
+     * own tax liability.
+     */
+    const restaurantFoodEarnings =
+        Number(order.pricing?.commissionableAmount ?? subtotal) || 0;
+    let restaurantNet = restaurantFoodEarnings + packagingFee - restaurantCommission;
     let platformNetProfit = platformFee + deliveryFee + surgeAmount + restaurantCommission - riderShare;
 
     // Handle discount attribution

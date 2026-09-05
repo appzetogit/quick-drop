@@ -217,7 +217,7 @@ async function resolveDistanceRule(distanceKm) {
 
 export async function calculateOrderPricing(userId, dto) {
   const restaurant = await FoodRestaurant.findById(dto.restaurantId)
-    .select("status zoneId location freeDeliveryRule")
+    .select("status zoneId location freeDeliveryRule priceIncludesGst")
     .lean();
   if (!restaurant) throw new ValidationError("Restaurant not found");
   if (restaurant.status !== "approved")
@@ -596,6 +596,7 @@ export async function calculateOrderPricing(userId, dto) {
     platformFeeGstRate: Number.isFinite(Number(feeSettings.platformFeeGstRate))
       ? Number(feeSettings.platformFeeGstRate)
       : DEFAULT_PLATFORM_FEE_GST_RATE,
+    pricesIncludeGst: restaurant?.priceIncludesGst === true,
   });
 
   // Kept under their existing names so every reader that predates the bill --
@@ -634,6 +635,21 @@ export async function calculateOrderPricing(userId, dto) {
        * `total` above are the same numbers under their old names.
        */
       bill,
+      /*
+       * What restaurant commission is charged on: the food net of GST.
+       *
+       * Identical to `subtotal` for a restaurant that prices net, which is all
+       * of them by default. For one whose prices include GST it is the smaller
+       * figure, because the tax inside the price is collected for the
+       * government and the restaurant never keeps it -- taking a commission
+       * percentage of it would be taking a cut of tax.
+       *
+       * `subtotal` deliberately keeps its old meaning, the listed food total,
+       * because free-delivery minimums and coupon thresholds are measured on
+       * what the customer thinks they are spending.
+       */
+      commissionableAmount: bill.taxableAmount,
+      pricesIncludeGst: bill.pricesIncludeGst,
       gstRate: bill.gstRate,
       platformFeeGst: bill.platformFeeGst,
       platformFeeGstRate: bill.platformFeeGstRate,

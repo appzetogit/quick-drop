@@ -79,6 +79,16 @@ export function computeBill({
     tip = 0,
     gstRate = 0,
     platformFeeGstRate = DEFAULT_PLATFORM_FEE_GST_RATE,
+    /*
+     * Whether the menu prices already contain GST.
+     *
+     * Off by default, which is what every restaurant did before this existed:
+     * the stored price is net and tax is added on top, so a Rs 200 dish costs
+     * the customer Rs 210. On, the Rs 200 is the whole price and the tax is
+     * extracted from inside it -- Rs 190.48 of food and Rs 9.52 of tax -- so
+     * the customer still pays Rs 200.
+     */
+    pricesIncludeGst = false,
 } = {}) {
     const items = nonNegative(itemAmount);
     const packaging = nonNegative(packagingFee);
@@ -90,8 +100,25 @@ export function computeBill({
     // A coupon cannot take more than the food is worth.
     const appliedDiscount = round2(Math.min(nonNegative(discount), items + packaging + surge));
 
-    const taxableFood = round2(Math.max(0, items + packaging + surge - appliedDiscount));
-    const gstOnItems = round2(taxableFood * (rate(gstRate) / 100));
+    const foodAfterDiscount = round2(Math.max(0, items + packaging + surge - appliedDiscount));
+    const gstFraction = rate(gstRate) / 100;
+
+    /*
+     * Extracting a tax is not the same sum as adding one. Adding: 200 x 0.05 is
+     * 10. Extracting: 200 - 200/1.05 is 9.52, not 10 -- taking 5% off the
+     * gross would over-report the tax and under-report the restaurant's
+     * revenue on every inclusive dish.
+     */
+    const netFood = pricesIncludeGst
+        ? round2(foodAfterDiscount / (1 + gstFraction))
+        : foodAfterDiscount;
+    const gstOnItems = pricesIncludeGst
+        ? round2(foodAfterDiscount - netFood)
+        : round2(foodAfterDiscount * gstFraction);
+
+    // The line the bill prints as "Item amount", and the figure commission is
+    // charged on: what the restaurant actually earns, never the tax inside it.
+    const taxableFood = netFood;
     const platformFeeGst = round2(platform * (rate(platformFeeGstRate) / 100));
 
     // What the bill shows above the tip line.
@@ -110,6 +137,9 @@ export function computeBill({
         packagingFee: round2(packaging),
         surgeAmount: round2(surge),
         discount: appliedDiscount,
+        pricesIncludeGst: pricesIncludeGst === true,
+        /** What the customer sees against the food, before tax is separated out. */
+        listedFoodAmount: foodAfterDiscount,
         taxableAmount: taxableFood,
         gstRate: rate(gstRate),
         gstOnItems,

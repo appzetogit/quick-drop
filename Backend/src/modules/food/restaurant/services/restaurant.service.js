@@ -165,6 +165,7 @@ const toRestaurantProfile = (doc) => {
         upiId: doc.upiId || '',
         upiQrImage: doc.upiQrImage ? { url: doc.upiQrImage } : null,
         pureVegRestaurant: Boolean(doc.pureVegRestaurant),
+        priceIncludesGst: doc.priceIncludesGst === true,
         profileImage: doc.profileImage ? { url: doc.profileImage } : null,
         menuImages,
         coverImages,
@@ -733,6 +734,7 @@ export const getCurrentRestaurantProfile = async (restaurantId) => {
                 'upiId',
                 'upiQrImage',
                 'pureVegRestaurant',
+                'priceIncludesGst',
                 'profileImage',
                 'coverImages',
                 'menuImages',
@@ -785,6 +787,7 @@ export const updateRestaurantAcceptingOrders = async (restaurantId, isAcceptingO
                 'upiId',
                 'upiQrImage',
                 'pureVegRestaurant',
+                'priceIncludesGst',
                 'profileImage',
                 'coverImages',
                 'menuImages',
@@ -873,6 +876,7 @@ export const updateCurrentRestaurantDiningSettings = async (restaurantId, body =
                 'upiId',
                 'upiQrImage',
                 'pureVegRestaurant',
+                'priceIncludesGst',
                 'profileImage',
                 'coverImages',
                 'menuImages',
@@ -983,6 +987,33 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
             }
         } else {
             throw new ValidationError('pureVegRestaurant must be a boolean');
+        }
+    }
+
+    /*
+     * Whether the menu prices the restaurant types already contain GST.
+     *
+     * Off means the stored price is net and tax is added on top at checkout,
+     * which is what every restaurant did before this setting existed. On means
+     * the listed price is the whole price and the tax is extracted from inside
+     * it, so the customer pays exactly what the menu says and the restaurant
+     * earns the net.
+     */
+    if (body.priceIncludesGst !== undefined) {
+        const raw = body.priceIncludesGst;
+        if (typeof raw === 'boolean') {
+            update.priceIncludesGst = raw;
+        } else if (typeof raw === 'string') {
+            const normalized = raw.trim().toLowerCase();
+            if (['true', '1', 'yes'].includes(normalized)) {
+                update.priceIncludesGst = true;
+            } else if (['false', '0', 'no'].includes(normalized)) {
+                update.priceIncludesGst = false;
+            } else {
+                throw new ValidationError('priceIncludesGst must be a boolean');
+            }
+        } else {
+            throw new ValidationError('priceIncludesGst must be a boolean');
         }
     }
 
@@ -1272,6 +1303,7 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
             'isAcceptingOrders',
             'diningSettings',
             'pureVegRestaurant',
+            'priceIncludesGst',
             'cuisines',
             'petpoojaEnabled',
             'petpoojaOutletId'
@@ -1322,6 +1354,7 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
                     'ownerPhone',
                     'primaryContactNumber',
                 'pureVegRestaurant',
+                'priceIncludesGst',
                 'profileImage',
                 'coverImages',
                 'menuImages',

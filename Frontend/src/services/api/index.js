@@ -1471,6 +1471,19 @@ export const restaurantAPI = {
       contextModule: "restaurant",
     }),
   /**
+   * Whether this restaurant's menu prices already contain GST, together with
+   * the platform's GST rate -- the flag alone tells the panel nothing it can
+   * show the restaurant.
+   */
+  getTaxSettings: () =>
+    apiClient.get("/food/restaurant/tax-settings", { contextModule: "restaurant" }),
+  updateTaxSettings: (priceIncludesGst) =>
+    apiClient.put(
+      "/food/restaurant/tax-settings",
+      { priceIncludesGst: Boolean(priceIncludesGst) },
+      { contextModule: "restaurant" },
+    ),
+  /**
    * The restaurant's "spend this much, get this free" ladder. The admin panel
    * edits the same document, so both sides always show the offer that is
    * actually being applied.

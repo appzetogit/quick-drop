@@ -107,6 +107,67 @@ export const getRestaurantCommissionRateController = async (req, res, next) => {
     }
 };
 
+
+/**
+ * How the restaurant's own menu prices are taxed.
+ *
+ * Returned together with the platform's GST rate because the setting is
+ * meaningless without it: a restaurant deciding whether its Rs 200 is inclusive
+ * needs to see the Rs 190.48 and Rs 9.52 that decision produces. The rate is
+ * the admin's to set; only the flag is the restaurant's.
+ */
+export const getRestaurantTaxSettingsController = async (req, res, next) => {
+    try {
+        const restaurantId = req.user?.userId;
+        const [{ FoodRestaurant }, { FoodFeeSettings }] = await Promise.all([
+            import('../models/restaurant.model.js'),
+            import('../../admin/models/feeSettings.model.js'),
+        ]);
+        const { DEFAULT_PLATFORM_FEE_GST_RATE } = await import('../../shared/billing.js');
+
+        const [restaurant, feeSettings] = await Promise.all([
+            FoodRestaurant.findById(restaurantId).select('priceIncludesGst').lean(),
+            FoodFeeSettings.findOne({ isActive: true }).lean(),
+        ]);
+
+        if (!restaurant) {
+            return sendResponse(res, 404, 'Restaurant not found', null);
+        }
+
+        const gstRate = Number(feeSettings?.gstRate);
+        const platformFeeGstRate = Number(feeSettings?.platformFeeGstRate);
+
+        return sendResponse(res, 200, 'Tax settings fetched successfully', {
+            priceIncludesGst: restaurant.priceIncludesGst === true,
+            gstRate: Number.isFinite(gstRate) && gstRate >= 0 ? gstRate : 0,
+            platformFeeGstRate: Number.isFinite(platformFeeGstRate) && platformFeeGstRate >= 0
+                ? platformFeeGstRate
+                : DEFAULT_PLATFORM_FEE_GST_RATE,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateRestaurantTaxSettingsController = async (req, res, next) => {
+    try {
+        const restaurantId = req.user?.userId;
+        if (req.body?.priceIncludesGst === undefined) {
+            return sendResponse(res, 400, 'priceIncludesGst is required', null);
+        }
+        // Goes through the profile service so the one place that validates this
+        // flag stays the one place that writes it.
+        const profile = await updateRestaurantProfile(restaurantId, {
+            priceIncludesGst: req.body.priceIncludesGst,
+        });
+        return sendResponse(res, 200, 'Tax settings updated successfully', {
+            priceIncludesGst: profile?.priceIncludesGst === true,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 /**
  * The restaurant's own "spend this much, get this free" ladder.
  *
