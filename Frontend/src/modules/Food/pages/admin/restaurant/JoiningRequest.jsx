@@ -3,6 +3,7 @@ import {
   Search, Filter, Eye, Check, X, UtensilsCrossed, ArrowUpDown, Loader2,
   FileText, Image as ImageIcon, ExternalLink, CreditCard, Calendar, Star, Building2, User, Phone, Mail, MapPin, Clock
 } from "lucide-react"
+import { toast } from "sonner"
 import { adminAPI, restaurantAPI } from "@food/api"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -27,6 +28,7 @@ export default function JoiningRequest() {
   const [error, setError] = useState(null)
   const [processing, setProcessing] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState(null)
+  const [showApproveDialog, setShowApproveDialog] = useState(false)
   const [showRejectDialog, setShowRejectDialog] = useState(false)
   const [rejectionReason, setRejectionReason] = useState("")
   const [showDetailsModal, setShowDetailsModal] = useState(false)
@@ -139,22 +141,46 @@ export default function JoiningRequest() {
 
   const hasActiveFilters = filters.zone || filters.dateFrom || filters.dateTo
 
-  const handleApprove = async (request) => {
-    if (window.confirm(`Are you sure you want to approve "${request.restaurantName}" restaurant request?`)) {
-      try {
-        setProcessing(true)
-        await adminAPI.approveRestaurant(request._id)
-        
-        // Refresh the list
-        await fetchRequests()
-        
-        alert(`Successfully approved ${request.restaurantName}'s join request!`)
-      } catch (err) {
-        debugError("Error approving request:", err)
-        alert(err.response?.data?.message || "Failed to approve request. Please try again.")
-      } finally {
-        setProcessing(false)
-      }
+  /*
+   * Approve was the one action on this page gated behind window.confirm, and
+   * every outcome here was reported with alert(). Both are native dialogs, and
+   * a browser that has stopped showing them -- Chrome's "prevent this page from
+   * creating additional dialogs", which a tab keeps for the rest of its life
+   * once ticked, and which a few alerts in a row is exactly how you get offered
+   * -- makes confirm() return false immediately and forever. Approve then does
+   * nothing on every click, silently, while Reject keeps working because it
+   * asks through a React dialog.
+   *
+   * The silence is the worse half: with alert() suppressed too, a real API
+   * failure looked identical to a dead button. Confirming in a dialog this page
+   * renders itself, and reporting through the toaster that is already mounted
+   * app-wide, means the click cannot be swallowed and an error cannot go
+   * unseen.
+   */
+  const handleApprove = (request) => {
+    setSelectedRequest(request)
+    setShowApproveDialog(true)
+  }
+
+  const confirmApprove = async () => {
+    if (!selectedRequest) return
+    const request = selectedRequest
+    try {
+      setProcessing(true)
+      await adminAPI.approveRestaurant(request._id)
+
+      // Refresh the list
+      await fetchRequests()
+
+      setShowApproveDialog(false)
+      setSelectedRequest(null)
+
+      toast.success(`${request.restaurantName} approved. They can start receiving orders.`)
+    } catch (err) {
+      debugError("Error approving request:", err)
+      toast.error(err.response?.data?.message || "Failed to approve request. Please try again.")
+    } finally {
+      setProcessing(false)
     }
   }
 
@@ -166,13 +192,17 @@ export default function JoiningRequest() {
 
   const confirmReject = async () => {
     if (!selectedRequest || !rejectionReason.trim()) {
-      alert("Please provide a rejection reason")
+      toast.error("Please provide a rejection reason")
       return
     }
 
+    // Captured before the state is cleared below, so the toast can still name
+    // the restaurant it is reporting on.
+    const request = selectedRequest
+
     try {
       setProcessing(true)
-      await adminAPI.rejectRestaurant(selectedRequest._id, rejectionReason)
+      await adminAPI.rejectRestaurant(request._id, rejectionReason)
       
       // Refresh the list
       await fetchRequests()
@@ -181,10 +211,10 @@ export default function JoiningRequest() {
       setSelectedRequest(null)
       setRejectionReason("")
       
-      alert(`Successfully rejected ${selectedRequest.restaurantName}'s join request!`)
+      toast.success(`${request.restaurantName}'s join request was rejected.`)
     } catch (err) {
       debugError("Error rejecting request:", err)
-      alert(err.response?.data?.message || "Failed to reject request. Please try again.")
+      toast.error(err.response?.data?.message || "Failed to reject request. Please try again.")
     } finally {
       setProcessing(false)
     }
@@ -578,6 +608,56 @@ export default function JoiningRequest() {
                   className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
                 >
                   Apply Filters
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approve Confirmation Dialog */}
+      {showApproveDialog && selectedRequest && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => !processing && setShowApproveDialog(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                  <Check className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Approve Restaurant Request</h3>
+                  <p className="text-sm text-slate-600">{selectedRequest.restaurantName}</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-700 mb-4">
+                Approving this outlet lets it start receiving orders straight away, and notifies the owner.
+              </p>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setShowApproveDialog(false)
+                    setSelectedRequest(null)
+                  }}
+                  disabled={processing}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmApprove}
+                  disabled={processing}
+                  className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {processing ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Approving...
+                    </span>
+                  ) : (
+                    "Approve Request"
+                  )}
                 </button>
               </div>
             </div>
