@@ -2,6 +2,22 @@ import { FoodItem } from '../admin/models/food.model.js';
 import { collectOtherPriceRatios } from './otherPlatformPricing.js';
 
 /**
+ * The most a seeded comparison may claim.
+ *
+ * A seed copies what the rest of the platform is already advertising, which
+ * only helps while that is sane. It was not: the live median sits at 2.28x and
+ * the worst dish struck Rs 289 against Rs 73, a claimed 75% saving, from an
+ * increase applied repeatedly and compounding each time. Copying that onto
+ * every new restaurant would spread it.
+ *
+ * 1.5 -- a third off -- is the most a seeded figure will claim without someone
+ * deciding it deliberately. A real per-dish figure an admin or an adjustment
+ * set is untouched by this; the cap applies only where a number is being
+ * INVENTED for a dish that has none.
+ */
+const MAX_SEED_RATIO = Number(process.env.MAX_SEED_COMPARISON_RATIO) || 1.5;
+
+/**
  * The comparison figure a dish should be created with, read from its siblings.
  *
  * A global price adjustment moves the stored otherPrice on the dishes that
@@ -103,5 +119,8 @@ function medianRatio(ratios) {
         .sort((a, b) => a - b);
     if (!usable.length) return 0;
     const mid = Math.floor(usable.length / 2);
-    return usable.length % 2 ? usable[mid] : (usable[mid - 1] + usable[mid]) / 2;
+    const median = usable.length % 2 ? usable[mid] : (usable[mid - 1] + usable[mid]) / 2;
+    // Capped, not discarded: a distorted neighbourhood should still seed
+    // something, just not the distortion. See MAX_SEED_RATIO.
+    return Math.min(median, MAX_SEED_RATIO);
 }
