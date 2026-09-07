@@ -7,6 +7,7 @@ import { FoodCategory } from '../../admin/models/category.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { config } from '../../../../config/env.js';
+import { resolveSeedRatioForRestaurant } from '../../shared/otherPlatformSeed.service.js';
 
 const PREP_TIME_OPTIONS = [
     '5-10 mins', '10-15 mins', '15-20 mins', '20-25 mins', 
@@ -413,6 +414,23 @@ export async function processBulkMenuUpload(restaurantId, fileBuffer) {
 
     const bulkOps = [];
 
+    /*
+     * The comparison figure new dishes start from, resolved once for the whole
+     * upload.
+     *
+     * A global price adjustment writes the stored otherPrice on the dishes that
+     * exist when it runs, so a menu uploaded afterwards carried nothing and fell
+     * back to the blanket markup -- a restaurant onboarding today advertised a
+     * smaller saving than every established one, and no past adjustment reached
+     * it. A bulk upload is the usual way a new restaurant's whole menu arrives,
+     * which made it the widest version of that gap.
+     *
+     * A ratio rather than a price, because each row multiplies its own. 0 means
+     * there is nothing to go on, and the seeding stage is then left out
+     * entirely rather than writing a figure nobody derived.
+     */
+    const seedRatio = await resolveSeedRatioForRestaurant(restaurant._id);
+
     for (const chunk of itemChunks) {
         const chunkPromises = chunk.map(async (item) => {
             try {
@@ -507,10 +525,32 @@ export async function processBulkMenuUpload(restaurantId, fileBuffer) {
                         },
                     };
 
+                /*
+                 * Seed the comparison figure from the resolved ratio, but only
+                 * where the dish does not already carry one -- this write is an
+                 * upsert, so it also lands on dishes that already exist, and
+                 * overwriting their figure would undo whatever an adjustment or
+                 * the admin had set. Runs after priceStage because it multiplies
+                 * the price that stage has just computed.
+                 */
+                const seedStages = seedRatio > 1
+                    ? [{
+                        $set: {
+                            otherPrice: {
+                                $cond: [
+                                    { $gt: [{ $ifNull: ['$otherPrice', 0] }, 0] },
+                                    '$otherPrice',
+                                    { $round: [{ $multiply: ['$price', seedRatio] }, 2] },
+                                ],
+                            },
+                        },
+                    }]
+                    : [];
+
                 bulkOps.push({
                     updateOne: {
                         filter: { name: data.name, restaurantId: restaurant._id },
-                        update: [{ $set: setStage }, { $set: priceStage }],
+                        update: [{ $set: setStage }, { $set: priceStage }, ...seedStages],
                         upsert: true
                     }
                 });
