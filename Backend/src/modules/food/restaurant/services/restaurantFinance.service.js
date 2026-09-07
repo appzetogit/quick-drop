@@ -130,21 +130,37 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         0
     );
 
-    // Block only pending withdrawals from available balance.
-    // Approved/rejected requests are processed records and should not keep locking payout.
-    const pendingWithdrawalsAgg = await FoodRestaurantWithdrawal.aggregate([
+    /*
+     * Money already paid out has to stay deducted.
+     *
+     * globalEstimatedPayout above is every unsettled transaction the restaurant
+     * has ever earned on -- nothing marks a transaction settled, so it only
+     * grows. Deducting pending requests alone meant the balance dropped while a
+     * request sat in the queue and sprang back the moment an admin approved it:
+     * a restaurant paid Rs 3000 saw Rs 3000 available again and could request
+     * the same earnings indefinitely.
+     *
+     * Rejected requests are correctly excluded -- no money left, so nothing is
+     * owed against them. This mirrors deliveryFinance.service.js, which has
+     * always subtracted approved and pending separately.
+     */
+    const status = { $toLower: { $trim: { input: '$status' } } };
+    const withdrawalsAgg = await FoodRestaurantWithdrawal.aggregate([
+        { $match: { restaurantId: rid } },
         {
-            $match: {
-                restaurantId: rid,
-                $expr: {
-                    $eq: [{ $toLower: { $trim: { input: '$status' } } }, 'pending']
-                }
+            $group: {
+                _id: null,
+                pending: { $sum: { $cond: [{ $eq: [status, 'pending'] }, '$amount', 0] } },
+                approved: { $sum: { $cond: [{ $eq: [status, 'approved'] }, '$amount', 0] } },
             }
-        },
-        { $group: { _id: null, total: { $sum: '$amount' } } }
+        }
     ]);
-    const totalPendingWithdrawals = Number(pendingWithdrawalsAgg?.[0]?.total || 0);
-    const availableBalance = Math.max(0, globalEstimatedPayout - totalPendingWithdrawals);
+    const totalPendingWithdrawals = Number(withdrawalsAgg?.[0]?.pending || 0);
+    const totalApprovedWithdrawals = Number(withdrawalsAgg?.[0]?.approved || 0);
+    const availableBalance = Math.max(
+        0,
+        globalEstimatedPayout - totalPendingWithdrawals - totalApprovedWithdrawals,
+    );
     const withdrawalSettings = await getRestaurantWithdrawalSettings();
     const minimumWithdrawalAmount = Number(withdrawalSettings?.minimumWithdrawalAmount) || 0;
 
@@ -152,7 +168,9 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         start: { ...nowWindow.startMeta },
         end: { ...nowWindow.endMeta },
         totalEarnings: currentCycleEstimatedPayout, // We still show current cycle earnings label
-        totalWithdrawn: totalPendingWithdrawals,
+        // Money actually paid out, not money queued for payout -- those are
+        // opposite things and this line is labelled "withdrawn".
+        totalWithdrawn: totalApprovedWithdrawals,
         estimatedPayout: availableBalance,
         netAvailable: availableBalance,
         minimumWithdrawalAmount,
