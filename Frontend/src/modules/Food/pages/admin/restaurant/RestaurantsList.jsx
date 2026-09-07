@@ -173,6 +173,14 @@ export default function RestaurantsList() {
   })
   const locationSearchInputRef = useRef(null)
   const placesAutocompleteRef = useRef(null)
+  // The pin. Autocomplete alone could set coordinates, so a restaurant whose
+  // address was typed rather than picked from the dropdown was saved with none
+  // -- and a restaurant without coordinates gets no distance, which silently
+  // disables free delivery and distance-based delivery fees for it entirely.
+  const locationMapRef = useRef(null)
+  const locationMapNodeRef = useRef(null)
+  const locationMarkerRef = useRef(null)
+  const locationGeocoderRef = useRef(null)
 
   // Format Restaurant ID to REST format (e.g., REST422829)
   const formatRestaurantId = (id) => {
@@ -538,31 +546,6 @@ export default function RestaurantsList() {
       }
     )
 
-    const parsePlace = (place) => {
-      const formattedAddress = place?.formatted_address || ""
-      const comps = Array.isArray(place?.address_components) ? place.address_components : []
-      const get = (types) => comps.find((c) => types.some((t) => c.types?.includes(t)))?.long_name || ""
-      const area =
-        get(["sublocality_level_1", "sublocality", "neighborhood"]) ||
-        get(["locality"])
-      const city =
-        get(["locality"]) ||
-        get(["administrative_area_level_2"])
-      const state = get(["administrative_area_level_1"])
-      const pincode = get(["postal_code"])
-      const lat = place?.geometry?.location?.lat?.()
-      const lng = place?.geometry?.location?.lng?.()
-      return {
-        formattedAddress,
-        area,
-        city,
-        state,
-        pincode,
-        latitude: Number.isFinite(lat) ? Number(lat.toFixed(6)) : "",
-        longitude: Number.isFinite(lng) ? Number(lng.toFixed(6)) : "",
-      }
-    }
-
     placesAutocompleteRef.current.addListener("place_changed", () => {
       const place = placesAutocompleteRef.current.getPlace()
       const parsed = parsePlace(place)
@@ -577,7 +560,131 @@ export default function RestaurantsList() {
         latitude: parsed.latitude !== "" ? parsed.latitude : prev.latitude,
         longitude: parsed.longitude !== "" ? parsed.longitude : prev.longitude,
       }))
+      // Follow the search with the pin, so the two never disagree about where
+      // the restaurant is.
+      if (parsed.latitude !== "" && parsed.longitude !== "") {
+        placePin(parsed.latitude, parsed.longitude, { pan: true })
+      }
     })
+  }
+
+  /** A Google place (or geocoder result) reduced to the fields this form holds. */
+  const parsePlace = (place) => {
+    const formattedAddress = place?.formatted_address || ""
+    const comps = Array.isArray(place?.address_components) ? place.address_components : []
+    const get = (types) => comps.find((c) => types.some((t) => c.types?.includes(t)))?.long_name || ""
+    const area =
+      get(["sublocality_level_1", "sublocality", "neighborhood"]) ||
+      get(["locality"])
+    const city =
+      get(["locality"]) ||
+      get(["administrative_area_level_2"])
+    const state = get(["administrative_area_level_1"])
+    const pincode = get(["postal_code"])
+    const lat = place?.geometry?.location?.lat?.()
+    const lng = place?.geometry?.location?.lng?.()
+    return {
+      formattedAddress,
+      area,
+      city,
+      state,
+      pincode,
+      latitude: Number.isFinite(lat) ? Number(lat.toFixed(6)) : "",
+      longitude: Number.isFinite(lng) ? Number(lng.toFixed(6)) : "",
+    }
+  }
+
+  /**
+   * Put the pin somewhere and record it.
+   *
+   * The coordinates are the point of this control, so they are written first
+   * and unconditionally. The address that comes back from reverse geocoding
+   * only fills fields the operator has left blank -- someone who typed
+   * "Shop 4, behind the temple" should not have it replaced by whatever Google
+   * calls that building.
+   */
+  const placePin = (lat, lng, { pan = false, reverseGeocode = false } = {}) => {
+    const latitude = Number(Number(lat).toFixed(6))
+    const longitude = Number(Number(lng).toFixed(6))
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return
+
+    setLocationForm((prev) => ({ ...prev, latitude, longitude }))
+
+    const map = locationMapRef.current
+    const marker = locationMarkerRef.current
+    if (map && marker) {
+      const pos = { lat: latitude, lng: longitude }
+      marker.setPosition(pos)
+      if (pan) map.panTo(pos)
+    }
+
+    if (!reverseGeocode || !window.google?.maps?.Geocoder) return
+    if (!locationGeocoderRef.current) locationGeocoderRef.current = new window.google.maps.Geocoder()
+    locationGeocoderRef.current.geocode({ location: { lat: latitude, lng: longitude } }, (results, status) => {
+      if (status !== "OK" || !results?.[0]) return
+      const parsed = parsePlace(results[0])
+      setLocationForm((prev) => ({
+        ...prev,
+        formattedAddress: prev.formattedAddress || parsed.formattedAddress,
+        addressLine1: prev.addressLine1 || parsed.formattedAddress,
+        area: prev.area || parsed.area,
+        city: prev.city || parsed.city,
+        state: prev.state || parsed.state,
+        pincode: prev.pincode || parsed.pincode,
+      }))
+    })
+  }
+
+  /**
+   * The map the pin sits on.
+   *
+   * Opens on the restaurant's saved coordinates where it has them. Where it does
+   * not -- the case this control exists for -- it opens on the middle of India
+   * zoomed out, rather than on a default city that would look like an answer.
+   */
+  const initLocationMap = async () => {
+    if (!locationMapNodeRef.current || locationMapRef.current) return
+    const loaded = await loadGoogleMapsScript()
+    if (!loaded || !window.google?.maps?.Map) {
+      setLocationEditError("Unable to load the map. You can still search for an address above.")
+      return
+    }
+
+    const lat = Number(locationForm.latitude)
+    const lng = Number(locationForm.longitude)
+    const hasSaved = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)
+    const center = hasSaved ? { lat, lng } : { lat: 22.9734, lng: 78.6569 }
+
+    const map = new window.google.maps.Map(locationMapNodeRef.current, {
+      center,
+      zoom: hasSaved ? 17 : 5,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: false,
+      clickableIcons: false,
+    })
+    const marker = new window.google.maps.Marker({
+      map,
+      position: center,
+      draggable: true,
+      // Hidden until there is a real position, so an unplaced restaurant does
+      // not show a pin in the middle of the country as though that were its
+      // address.
+      visible: hasSaved,
+    })
+
+    marker.addListener("dragend", () => {
+      const p = marker.getPosition()
+      marker.setVisible(true)
+      placePin(p.lat(), p.lng(), { reverseGeocode: true })
+    })
+    map.addListener("click", (e) => {
+      marker.setVisible(true)
+      placePin(e.latLng.lat(), e.latLng.lng(), { reverseGeocode: true })
+    })
+
+    locationMapRef.current = map
+    locationMarkerRef.current = marker
   }
 
   // Handle view restaurant details
@@ -725,11 +832,18 @@ export default function RestaurantsList() {
       .catch(() => setZones([]))
       .finally(() => setZonesLoading(false))
 
-    // Init dropdown autocomplete after mount.
-    requestAnimationFrame(() => initPlacesAutocomplete())
+    // Init dropdown autocomplete and the pin map after mount.
+    requestAnimationFrame(() => {
+      initPlacesAutocomplete()
+      initLocationMap()
+    })
 
     return () => {
       placesAutocompleteRef.current = null
+      // Dropped with the panel: a Map bound to a node React has unmounted keeps
+      // the node and its tiles alive, and the next open would build a second one.
+      locationMapRef.current = null
+      locationMarkerRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditingLocation, selectedRestaurant, restaurantDetails?._id])
@@ -2258,6 +2372,29 @@ export default function RestaurantsList() {
                             />
                             <p className="text-[11px] text-slate-500 mt-1">
                               Select from dropdown to auto-fill address and coordinates.
+                            </p>
+                          </div>
+
+                          <div className="md:col-span-2">
+                            <label className="block text-xs text-slate-600 mb-1 font-semibold">
+                              Pin the exact location*
+                            </label>
+                            <div
+                              ref={locationMapNodeRef}
+                              className="w-full h-64 rounded-lg border border-slate-300 bg-slate-100"
+                            />
+                            <p className="text-[11px] text-slate-500 mt-1">
+                              Click the map or drag the pin to place the restaurant.
+                              {locationForm.latitude !== "" && locationForm.longitude !== "" ? (
+                                <span className="ml-1 font-medium text-slate-700">
+                                  Pinned at {locationForm.latitude}, {locationForm.longitude}
+                                </span>
+                              ) : (
+                                <span className="ml-1 font-medium text-amber-700">
+                                  Not pinned yet &mdash; without coordinates this restaurant gets no
+                                  delivery distance, so free delivery and distance-based fees will not apply.
+                                </span>
+                              )}
                             </p>
                           </div>
 
