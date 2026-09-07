@@ -178,9 +178,19 @@ export default function RestaurantsList() {
   // -- and a restaurant without coordinates gets no distance, which silently
   // disables free delivery and distance-based delivery fees for it entirely.
   const locationMapRef = useRef(null)
-  const locationMapNodeRef = useRef(null)
   const locationMarkerRef = useRef(null)
   const locationGeocoderRef = useRef(null)
+  /*
+   * The map's container, held in STATE rather than a ref, so mounting it can
+   * trigger the map to be built.
+   *
+   * Building it from the same effect that opens the panel does not work: that
+   * effect runs when isEditingLocation flips, and on the path through "Edit
+   * Details" the panel is still hidden at that moment, so there is no node to
+   * attach to and the map is never built -- a permanently blank frame. A
+   * callback ref fires exactly when the node exists, whichever path got there.
+   */
+  const [locationMapNode, setLocationMapNode] = useState(null)
 
   // Format Restaurant ID to REST format (e.g., REST422829)
   const formatRestaurantId = (id) => {
@@ -642,20 +652,27 @@ export default function RestaurantsList() {
    * not -- the case this control exists for -- it opens on the middle of India
    * zoomed out, rather than on a default city that would look like an answer.
    */
-  const initLocationMap = async () => {
-    if (!locationMapNodeRef.current || locationMapRef.current) return
+  const initLocationMap = async (node, initial = null) => {
+    if (!node || locationMapRef.current) return
     const loaded = await loadGoogleMapsScript()
     if (!loaded || !window.google?.maps?.Map) {
       setLocationEditError("Unable to load the map. You can still search for an address above.")
       return
     }
 
-    const lat = Number(locationForm.latitude)
-    const lng = Number(locationForm.longitude)
+    /*
+     * Coordinates are passed in, not read from locationForm: the effect that
+     * opens this panel sets that state and calls here in the same tick, so the
+     * value in scope is the previous render's -- empty on first open, which
+     * centred the map on the country for a restaurant that had a location all
+     * along.
+     */
+    const lat = Number(initial?.latitude ?? locationForm.latitude)
+    const lng = Number(initial?.longitude ?? locationForm.longitude)
     const hasSaved = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)
     const center = hasSaved ? { lat, lng } : { lat: 22.9734, lng: 78.6569 }
 
-    const map = new window.google.maps.Map(locationMapNodeRef.current, {
+    const map = new window.google.maps.Map(node, {
       center,
       zoom: hasSaved ? 17 : 5,
       mapTypeControl: false,
@@ -832,11 +849,8 @@ export default function RestaurantsList() {
       .catch(() => setZones([]))
       .finally(() => setZonesLoading(false))
 
-    // Init dropdown autocomplete and the pin map after mount.
-    requestAnimationFrame(() => {
-      initPlacesAutocomplete()
-      initLocationMap()
-    })
+    // The map is built by the effect below, when its container mounts.
+    requestAnimationFrame(() => initPlacesAutocomplete())
 
     return () => {
       placesAutocompleteRef.current = null
@@ -847,6 +861,24 @@ export default function RestaurantsList() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditingLocation, selectedRestaurant, restaurantDetails?._id])
+
+  /*
+   * Build the map once its container is on the page.
+   *
+   * Keyed on the node rather than on the panel flag, because the two do not
+   * happen at the same moment: opening via "Edit Details" flips the flag while
+   * the panel is still hidden. Also waits on the coordinates, so the map opens
+   * on the restaurant's real location instead of the country -- the form is
+   * populated by the effect above, one render later.
+   */
+  useEffect(() => {
+    if (!isEditingLocation || !locationMapNode) return
+    initLocationMap(locationMapNode, {
+      latitude: locationForm.latitude,
+      longitude: locationForm.longitude,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditingLocation, locationMapNode, locationForm.latitude, locationForm.longitude])
 
   const getDetailsEditSource = () => {
     return restaurantDetails || selectedRestaurant?.originalData || selectedRestaurant || null
@@ -1602,6 +1634,21 @@ export default function RestaurantsList() {
                 const profileImgUrl = getPrimaryRestaurantImage(r)
                 const coverImages = Array.isArray(r?.coverImages) ? r.coverImages.map(normalizeImageUrl).filter(Boolean) : []
                 const hasFlatAddress = r?.addressLine1 || r?.area || r?.city || r?.state || r?.pincode
+                /*
+                 * Read from the saved restaurant, not from locationForm: the
+                 * form is the editor's working copy and is populated whether or
+                 * not anything was ever pinned, so it would report a location
+                 * for a restaurant that has none. Coordinates live either as a
+                 * GeoJSON pair or as latitude/longitude, depending on when the
+                 * record was written. 0,0 is treated as unset -- it is the
+                 * Atlantic, not a restaurant.
+                 */
+                const rawLat = Number(r?.location?.latitude ?? (Array.isArray(r?.location?.coordinates) ? r.location.coordinates[1] : NaN))
+                const rawLng = Number(r?.location?.longitude ?? (Array.isArray(r?.location?.coordinates) ? r.location.coordinates[0] : NaN))
+                const hasPinnedLocation =
+                  Number.isFinite(rawLat) && Number.isFinite(rawLng) && !(rawLat === 0 && rawLng === 0)
+                const pinnedLat = hasPinnedLocation ? rawLat.toFixed(6) : ""
+                const pinnedLng = hasPinnedLocation ? rawLng.toFixed(6) : ""
                 const flatAddress = [r?.addressLine1, r?.addressLine2, r?.area, r?.city, r?.state, r?.pincode, r?.landmark].filter(Boolean).join(", ")
                 const menuImages = Array.isArray(r?.menuImages) ? r.menuImages.map(normalizeImageUrl).filter(Boolean) : []
                 const cuisinesList =
@@ -2338,12 +2385,58 @@ export default function RestaurantsList() {
                     </div>
                   )}
 
+                  {/*
+                    Its own control. The editor used to open only as a side
+                    effect of starting an edit and then cancelling it -- the
+                    block lives in this not-editing branch, so entering edit mode
+                    hid it again. A restaurant nobody could see how to pin is a
+                    restaurant that gets saved without coordinates, and without
+                    coordinates it has no delivery distance and free delivery
+                    silently never applies to it.
+                  */}
+                  <div className="pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <h4 className="text-lg font-semibold text-slate-900">Location</h4>
+                        <p className="text-xs mt-0.5">
+                          {hasPinnedLocation ? (
+                            <span className="text-slate-500">
+                              Pinned at {pinnedLat}, {pinnedLng}
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 font-medium">
+                              Not pinned &mdash; free delivery and distance-based fees cannot apply
+                              to this restaurant until it is.
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingLocation((open) => !open)}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold ${
+                          isEditingLocation
+                            ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                            : hasPinnedLocation
+                              ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                              : "bg-amber-600 text-white hover:bg-amber-700"
+                        }`}
+                      >
+                        {isEditingLocation
+                          ? "Close"
+                          : hasPinnedLocation
+                            ? "Edit Location"
+                            : "Set Location"}
+                      </button>
+                    </div>
+                  </div>
+
                   {isEditingLocation && (
-                    <div className="pt-6 border-t border-slate-200">
-                      <h4 className="text-lg font-semibold text-slate-900 mb-4">Location Editor</h4>
+                    <div className="pt-4">
                       <div className="space-y-3 border border-indigo-100 bg-indigo-50/40 rounded-xl p-4">
                         <p className="text-xs text-indigo-700 font-semibold">
-                          Update restaurant location using dropdown (accurate) + select service zone.
+                          Pin the restaurant on the map, or pick an address from the dropdown, then
+                          choose its service zone.
                         </p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div className="md:col-span-2">
@@ -2380,7 +2473,7 @@ export default function RestaurantsList() {
                               Pin the exact location*
                             </label>
                             <div
-                              ref={locationMapNodeRef}
+                              ref={setLocationMapNode}
                               className="w-full h-64 rounded-lg border border-slate-300 bg-slate-100"
                             />
                             <p className="text-[11px] text-slate-500 mt-1">
