@@ -608,6 +608,10 @@ export default function RestaurantOnboarding() {
     gstLegalName: "",
     gstAddress: "",
     gstImage: null,
+    // Whether the menu prices this restaurant is about to enter already contain
+    // GST. Defaults to exclusive, which is how every menu on the platform
+    // behaved before the question was asked.
+    priceIncludesGst: false,
     fssaiNumber: "",
     fssaiExpiry: "",
     fssaiImage: null,
@@ -933,6 +937,7 @@ export default function RestaurantOnboarding() {
               gstNumber: localData.step3.gstNumber || "",
               gstLegalName: localData.step3.gstLegalName || "",
               gstAddress: localData.step3.gstAddress || "",
+              priceIncludesGst: localData.step3.priceIncludesGst === true,
               gstImage: restoredGstImage || localData.step3.gstImage || null,
               fssaiNumber: localData.step3.fssaiNumber || "",
               fssaiExpiry: localData.step3.fssaiExpiry || "",
@@ -2425,6 +2430,45 @@ export default function RestaurantOnboarding() {
             No
           </button>
         </div>
+
+        {/*
+          Asked of every restaurant, registered or not, because it describes the
+          prices they are about to type rather than their tax status. Getting it
+          wrong is invisible on the menu and wrong on every bill: an inclusive
+          menu answered "No" has tax added on top of a price that already
+          contained it, and the customer pays it twice.
+        */}
+        <div className="pt-2 border-t border-gray-100">
+          <div className="flex gap-4 items-center text-sm">
+            <span className="text-gray-700">Do your menu prices include GST?</span>
+            <button
+              type="button"
+              onClick={() => setStep3({ ...step3, priceIncludesGst: true })}
+              className={`px-3 py-1.5 text-xs rounded-full ${step3.priceIncludesGst ? "bg-black text-white" : "bg-gray-100 text-gray-800"
+                }`}
+            >
+              Yes
+            </button>
+            <button
+              type="button"
+              onClick={() => setStep3({ ...step3, priceIncludesGst: false })}
+              className={`px-3 py-1.5 text-xs rounded-full ${!step3.priceIncludesGst ? "bg-black text-white" : "bg-gray-100 text-gray-800"
+                }`}
+            >
+              No
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            {step3.priceIncludesGst
+              ? "Inclusive — a dish listed at ₹200 is billed at ₹200, and the GST inside it is shown separately on the bill. You are paid the amount net of that tax."
+              : "Exclusive — a dish listed at ₹200 has GST added on top at checkout, so the customer is billed ₹210 at the current 5% rate."}
+          </p>
+          <p className="mt-1 text-xs text-gray-400">
+            You can change this later in GST Settings. It applies to your whole menu; individual
+            dishes can override it.
+          </p>
+        </div>
+
         {step3.gstRegistered && (
           <div className="space-y-3">
             <Input
@@ -2757,6 +2801,10 @@ export default function RestaurantOnboarding() {
       }
 
       formData.append('gstRegistered', step3.gstRegistered ? 'true' : 'false')
+      // Always sent, so a restaurant onboarded from here always has an explicit
+      // answer on record. The ones with no value at all are the ones onboarded
+      // before the question existed.
+      formData.append('priceIncludesGst', step3.priceIncludesGst ? 'true' : 'false')
       if (step3.gstRegistered) {
         formData.append('gstNumber', step3.gstNumber || '')
         formData.append('gstLegalName', step3.gstLegalName || '')

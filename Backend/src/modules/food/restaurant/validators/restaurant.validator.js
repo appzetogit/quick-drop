@@ -95,6 +95,23 @@ const restaurantRegisterSchema = z.object({
     gstNumber: z.string().optional(),
     gstLegalName: z.string().optional(),
     gstAddress: z.string().optional(),
+    /**
+     * Whether the menu prices this restaurant is about to enter already contain
+     * GST. Asked at onboarding because it decides what every future order
+     * charges: inclusive extracts the tax from the listed price, exclusive adds
+     * it on top at the platform rate.
+     *
+     * Multipart, so it arrives as a string like gstRegistered above. Left
+     * undefined when absent rather than coerced, so the restaurant schema's own
+     * default decides -- which is exclusive, the behaviour every menu had before
+     * the question existed. Anything unrecognised reads as exclusive for the
+     * same reason: adding tax that was already in the price overcharges the
+     * customer, so a malformed answer must not land on "inclusive".
+     */
+    priceIncludesGst: z
+        .string()
+        .optional()
+        .transform((val) => (val === undefined ? undefined : val === 'true' || val === '1')),
     fssaiNumber: z.string().optional(),
     fssaiExpiry: z.string().optional(),
     accountNumber: z.string().optional(),

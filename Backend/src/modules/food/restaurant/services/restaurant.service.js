@@ -511,6 +511,7 @@ export const registerRestaurant = async (payload, files) => {
         gstNumber,
         gstLegalName,
         gstAddress,
+        priceIncludesGst,
         fssaiNumber,
         fssaiExpiry,
         accountNumber,
@@ -673,6 +674,13 @@ export const registerRestaurant = async (payload, files) => {
             gstNumber,
             gstLegalName,
             gstAddress,
+            // Set only when the form asked. When it did not, the field is left
+            // to the schema default (false, i.e. exclusive) rather than being
+            // written here -- the same outcome, but it keeps this path from
+            // asserting a choice the restaurant never made. Restaurants
+            // onboarded before the question existed have no value stored at
+            // all, which is how they can still be found and asked.
+            ...(priceIncludesGst !== undefined ? { priceIncludesGst: priceIncludesGst === true } : {}),
             fssaiNumber,
             fssaiExpiry,
             accountNumber,
