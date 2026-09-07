@@ -798,6 +798,8 @@ const AdminLayout = () => {
               { label: 'Airport', path: '/taxi/admin/pricing/airport', permission: 'airports.view' },
               { label: 'App Modules', path: '/taxi/admin/pricing/app-modules', permission: 'settings.view' },
               { label: 'Vehicle Type', path: '/taxi/admin/pricing/vehicle-type', permission: 'vehicle_types.view' },
+              // Rental is intentionally hidden from the admin sidebar (not removed).
+              // The routes/pages still exist and stay reachable by URL - uncomment to restore.
               /*{
                 label: 'Rental',
                 subItems: [
@@ -814,7 +816,9 @@ const AdminLayout = () => {
               { label: 'Goods Types', path: '/taxi/admin/pricing/goods-types', permission: 'goods_types.view' },
             ],
           },
-          {
+          // Bus Service is intentionally hidden from the admin sidebar (not removed).
+          // The routes/pages still exist and stay reachable by URL - uncomment to restore.
+          /*{
             icon: Bus,
             label: 'Bus Service',
             subItems: [
@@ -822,7 +826,7 @@ const AdminLayout = () => {
               { label: 'Bus Commission', path: '/taxi/admin/bus-service/commission', permission: 'bus_service.view' },
               { label: 'Bus Bookings', path: '/taxi/admin/bus-service/bookings', permission: 'bus_service.view' },
             ],
-          },
+          },*/
           {
             icon: Share2,
             label: 'Car Pooling',
