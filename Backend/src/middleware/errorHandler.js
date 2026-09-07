@@ -1,9 +1,35 @@
 import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
+import { MAX_UPLOAD_MB, MAX_UPLOAD_FILES } from './upload.js';
 
 const errorHandler = (err, req, res, next) => {
-    const statusCode = err.statusCode || 500;
-    const message = err.message || 'Server Error';
+    let statusCode = err.statusCode || 500;
+    let message = err.message || 'Server Error';
+
+    /*
+     * A MulterError carries no statusCode, so it would fall through as a 500 and
+     * then be masked below as "Internal server error" -- telling someone whose
+     * phone photo was simply too big that the server broke. Every route sharing
+     * the upload middleware is covered here, rather than each wrapping its own
+     * callback.
+     *
+     * The message names the actual number: "file is too large" leaves someone
+     * holding a 40MB video with no idea whether to shrink it a little or a lot.
+     */
+    if (err.name === 'MulterError') {
+        statusCode = 400;
+        if (err.code === 'LIMIT_FILE_SIZE') {
+            statusCode = 413;
+            message = `That file is too large. The limit is ${MAX_UPLOAD_MB}MB per file.`;
+        } else if (err.code === 'LIMIT_FILE_COUNT') {
+            message = `Too many files. Please upload at most ${MAX_UPLOAD_FILES} at a time.`;
+        } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+            message = `Unexpected file field "${err.field}".`;
+        } else {
+            message = err.message || 'Invalid upload';
+        }
+    }
+
     const requestId = req.requestId || '-';
 
     logger.error(
