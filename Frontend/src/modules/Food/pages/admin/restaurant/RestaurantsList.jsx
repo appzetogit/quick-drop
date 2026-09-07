@@ -180,6 +180,13 @@ export default function RestaurantsList() {
   const locationMapRef = useRef(null)
   const locationMarkerRef = useRef(null)
   const locationGeocoderRef = useRef(null)
+  // The drawn service-zone boundary, kept so it can be removed when the zone
+  // changes -- a Google overlay is not React-managed and survives re-renders.
+  const zoneOverlayRef = useRef(null)
+  // The zone the boundary was last drawn for. Distinguishes the first draw from
+  // an operator actually changing the dropdown, which is the only case that
+  // should move the viewport out from under them.
+  const drawnZoneIdRef = useRef(null)
   /*
    * The map's container, held in STATE rather than a ref, so mounting it can
    * trigger the map to be built.
@@ -191,6 +198,15 @@ export default function RestaurantsList() {
    * callback ref fires exactly when the node exists, whichever path got there.
    */
   const [locationMapNode, setLocationMapNode] = useState(null)
+  /*
+   * Flipped once the Map object exists.
+   *
+   * initLocationMap awaits the SDK, so anything that draws onto the map has to
+   * wait for more than the container being mounted -- a boundary drawn against
+   * a map that does not exist yet is dropped, and the effect that tried has no
+   * reason to run again.
+   */
+  const [locationMapReady, setLocationMapReady] = useState(false)
 
   // Format Restaurant ID to REST format (e.g., REST422829)
   const formatRestaurantId = (id) => {
@@ -646,6 +662,66 @@ export default function RestaurantsList() {
   }
 
   /**
+   * Draw the service zone the restaurant is being assigned to.
+   *
+   * The pin has to land inside its zone or the restaurant will not be found by
+   * customers in it, and until now the operator was pinning blind -- there was
+   * nothing on screen saying where the zone ends. Drawn as an outline rather
+   * than a solid fill so the map underneath stays readable while placing a pin.
+   *
+   * Zones are stored either as a polygon of points or as a centre and a radius;
+   * both are drawn, and both report bounds the viewport can be fitted to.
+   */
+  const drawZoneBoundary = (zone, { fit = false } = {}) => {
+    const map = locationMapRef.current
+    if (!map || !window.google?.maps) return
+
+    if (zoneOverlayRef.current) {
+      zoneOverlayRef.current.setMap(null)
+      zoneOverlayRef.current = null
+    }
+    if (!zone) return
+
+    const style = {
+      strokeColor: "#4f46e5",
+      strokeOpacity: 0.9,
+      strokeWeight: 2,
+      fillColor: "#4f46e5",
+      fillOpacity: 0.08,
+      // Not clickable: a click on the boundary must still place the pin, which
+      // is the whole point of the map being here.
+      clickable: false,
+    }
+
+    let bounds = null
+    const centerLat = Number(zone?.circle_center?.lat)
+    const centerLng = Number(zone?.circle_center?.lng)
+    const radius = Number(zone?.circle_radius_meters)
+
+    if (zone?.boundary_mode === "circle" && Number.isFinite(centerLat) && Number.isFinite(centerLng) && radius > 0) {
+      const circle = new window.google.maps.Circle({
+        ...style, map, center: { lat: centerLat, lng: centerLng }, radius,
+      })
+      zoneOverlayRef.current = circle
+      bounds = circle.getBounds()
+    } else {
+      const path = (Array.isArray(zone?.coordinates) ? zone.coordinates : [])
+        .map((c) => ({ lat: Number(c?.latitude), lng: Number(c?.longitude) }))
+        .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+      // A polygon needs three points to enclose anything; fewer is a zone that
+      // was never finished, and drawing a line across the map would suggest a
+      // boundary that does not exist.
+      if (path.length < 3) return
+      const polygon = new window.google.maps.Polygon({ ...style, map, paths: path })
+      zoneOverlayRef.current = polygon
+      bounds = new window.google.maps.LatLngBounds()
+      path.forEach((p) => bounds.extend(p))
+    }
+
+    if (fit && bounds) map.fitBounds(bounds, 24)
+  }
+
+  /**
    * The map the pin sits on.
    *
    * Opens on the restaurant's saved coordinates where it has them. Where it does
@@ -702,6 +778,7 @@ export default function RestaurantsList() {
 
     locationMapRef.current = map
     locationMarkerRef.current = marker
+    setLocationMapReady(true)
   }
 
   // Handle view restaurant details
@@ -856,8 +933,20 @@ export default function RestaurantsList() {
       placesAutocompleteRef.current = null
       // Dropped with the panel: a Map bound to a node React has unmounted keeps
       // the node and its tiles alive, and the next open would build a second one.
+      if (zoneOverlayRef.current) {
+        zoneOverlayRef.current.setMap(null)
+        zoneOverlayRef.current = null
+      }
       locationMapRef.current = null
       locationMarkerRef.current = null
+      // So the next open counts as a first draw again and does not jump the
+      // viewport off a pin the operator came back to look at.
+      drawnZoneIdRef.current = null
+      // Must be cleared, not left true: the next open sets it true again, and
+      // setting state to the value it already holds re-renders nothing -- the
+      // boundary effect would never re-run and the second open would show no
+      // zone at all.
+      setLocationMapReady(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditingLocation, selectedRestaurant, restaurantDetails?._id])
@@ -879,6 +968,28 @@ export default function RestaurantsList() {
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditingLocation, locationMapNode, locationForm.latitude, locationForm.longitude])
+
+  /*
+   * Keep the drawn boundary matching the selected zone.
+   *
+   * Fits the viewport to the zone when the operator PICKS one, which is what
+   * makes choosing a zone useful -- the map jumps to it instead of leaving them
+   * to find it. It deliberately does not fit on the first draw for a restaurant
+   * that is already pinned: that would zoom away from the pin they opened the
+   * panel to look at. An unpinned one has nothing to lose, so it does fit, and
+   * the operator lands on the area they are about to pin in.
+   */
+  useEffect(() => {
+    if (!isEditingLocation || !locationMapReady || !locationMapRef.current) return
+    const zoneId = String(locationForm.zoneId || "")
+    const zone = zones.find((z) => String(z?._id || z?.id || "") === zoneId) || null
+
+    const isFirstDraw = drawnZoneIdRef.current === null
+    const pinned = locationForm.latitude !== "" && locationForm.longitude !== ""
+    drawZoneBoundary(zone, { fit: !isFirstDraw || !pinned })
+    drawnZoneIdRef.current = zoneId
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditingLocation, locationMapReady, locationForm.zoneId, zones])
 
   const getDetailsEditSource = () => {
     return restaurantDetails || selectedRestaurant?.originalData || selectedRestaurant || null
