@@ -157,13 +157,25 @@ export default function RestaurantOTP() {
 
   const handleVerify = async (otpValue = null) => {
     const code = otpValue || otp.join("")
-    if (hasSubmittedRef.current && !otpValue) return
+    /*
+     * One verification per code, whichever path asks for it.
+     *
+     * The ref was never set to true anywhere, so this guard could not block
+     * anything, and the auto-submit effect below was additionally exempted by
+     * `&& !otpValue` -- which is the path it actually fires through. A verified
+     * OTP is deleted server-side, being single-use, so the first request
+     * succeeded and every repeat came back 401 "OTP not found". The logs show
+     * three calls for one login: a 200 from the OTP screen, then two 401s
+     * referred from the page it had already navigated to.
+     */
+    if (hasSubmittedRef.current) return
     if (code.length !== 4) {
       setError("Please enter the complete 4-digit code")
       hasSubmittedRef.current = false
       return
     }
 
+    hasSubmittedRef.current = true
     setIsLoading(true)
     setError("")
 
@@ -263,6 +275,10 @@ export default function RestaurantOTP() {
       setResendTimer(60)
     } catch (err) { setError("Failed to resend OTP.") }
     setIsLoading(false)
+    // A resend issues a new code, so the one-submission-per-code guard has to
+    // reopen -- otherwise the first attempt latches it and the fresh code can
+    // never be submitted.
+    hasSubmittedRef.current = false
     setOtp(["", "", "", ""])
     inputRefs.current[0]?.focus()
   }

@@ -315,6 +315,22 @@ apiClient.interceptors.response.use(
     if (err?.response?.status !== 401 || !original || original._retry) {
       return Promise.reject(err);
     }
+    /*
+     * Never refresh-and-replay a credential being presented.
+     *
+     * A 401 from request-otp / verify-otp / login means the credential was
+     * wrong, expired or already spent -- not that the access token needs
+     * refreshing -- so the replay cannot succeed and is not free: verify-otp
+     * counts every call against otpMaxAttempts, so five permitted tries became
+     * two or three, and each duplicate submission was logged as a pair of
+     * 401s rather than one.
+     *
+     * Other /auth/ routes (me, logout) are ordinary authenticated calls and
+     * still refresh normally.
+     */
+    if (/\/auth\/[^?]*(request-otp|verify-otp|login)/.test(String(original.url || ""))) {
+      return Promise.reject(err);
+    }
     const module = original.contextModule || getModuleFromUrl(original.url);
     const refreshToken = getRefreshToken(module);
     if (!refreshToken) {
