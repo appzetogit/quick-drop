@@ -76,6 +76,7 @@ export const adminSidebarMenu = [
         subItems: [
           { label: "Restaurants List", path: "/admin/food/restaurants" },
           { label: "New Joining Request", path: "/admin/food/restaurants/joining-request" },
+          { label: "Monetization Mode", path: "/admin/food/restaurants/monetization-mode" },
           { label: "Restaurant Commission", path: "/admin/food/restaurants/commission" },
           { label: "Free Item Offers", path: "/admin/food/restaurants/free-item-offers" },
           { label: "Buy One Get One", path: "/admin/food/restaurants/bogo-offers" },

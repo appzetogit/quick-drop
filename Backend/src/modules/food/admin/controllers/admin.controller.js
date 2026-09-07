@@ -1227,6 +1227,24 @@ export async function getFeeSettings(req, res, next) {
     }
 }
 
+export async function getMonetizationMode(req, res, next) {
+    try {
+        const data = await adminService.getMonetizationMode();
+        res.status(200).json({ success: true, message: 'Monetization mode fetched successfully', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
+export async function updateMonetizationMode(req, res, next) {
+    try {
+        const data = await adminService.setMonetizationMode(req.body || {});
+        res.status(200).json({ success: true, message: 'Monetization mode updated', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export async function createOrUpdateFeeSettings(req, res, next) {
     try {
         const body = validateFeeSettingsUpsertDto(req.body || {});

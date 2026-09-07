@@ -319,17 +319,24 @@ export async function createOrder(userId, dto) {
     
     // Calculate restaurant commission from subtotal
     let restaurantCommission = 0;
+    // Stamped alongside the amount so this order stays billed the way it was
+    // taken, whatever the platform switches to afterwards. Left unset if the
+    // lookup failed, so the payout path falls back to the live setting rather
+    // than recording a mode that was never resolved.
+    let monetizationMode = null;
     try {
       const snapshot = await foodTransactionService.getRestaurantCommissionSnapshot({
         pricing: normalizedPricing,
         restaurantId: restaurantId
       });
       restaurantCommission = Number(snapshot?.commissionAmount) || 0;
+      monetizationMode = snapshot?.monetizationMode || null;
     } catch (err) {
       logger.error(`Commission calculation failed for order: ${err.message}`);
     }
 
     normalizedPricing.restaurantCommission = restaurantCommission;
+    if (monetizationMode) normalizedPricing.monetizationMode = monetizationMode;
 
     const platformProfit = Math.max(
       0,

@@ -1,12 +1,56 @@
 import { FoodTransaction } from '../models/foodTransaction.model.js';
 import { FoodRestaurantCommission } from '../../admin/models/restaurantCommission.model.js';
 import { FoodCommissionSchedule } from '../../admin/models/commissionSchedule.model.js';
+import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
 import {
   COMMISSION_SOURCES,
   computeCommissionAmount,
   resolveCommissionRate,
 } from '../../shared/commissionSchedule.js';
 import mongoose from 'mongoose';
+
+export const MONETIZATION_MODES = Object.freeze({ COMMISSION: 'commission', PLAN: 'plan' });
+
+/**
+ * Which model the platform is billing restaurants under right now.
+ *
+ * Cached for the same reason and the same minute as the commission rules below:
+ * it is read on every order, and a switch taking effect within a minute rather
+ * than on the instant is acceptable for a setting an admin changes by hand.
+ *
+ * Falls back to commission whenever the settings row is missing or unreadable.
+ * That is the safe direction: failing into commission bills the restaurant its
+ * configured rate, while failing into plan mode would silently hand every
+ * restaurant a 0% cut until someone noticed the revenue gap.
+ */
+const MONETIZATION_MODE_CACHE_MS = 60 * 1000;
+let monetizationModeCache = null;
+let monetizationModeLoadedAt = 0;
+
+export const invalidateMonetizationModeCache = () => {
+  monetizationModeCache = null;
+  monetizationModeLoadedAt = 0;
+};
+
+export async function getActiveMonetizationMode() {
+  const now = Date.now();
+  if (monetizationModeCache && now - monetizationModeLoadedAt < MONETIZATION_MODE_CACHE_MS) {
+    return monetizationModeCache;
+  }
+  let mode = MONETIZATION_MODES.COMMISSION;
+  try {
+    const doc = await FoodFeeSettings.findOne({ isActive: true })
+      .sort({ createdAt: -1 })
+      .select('monetizationMode')
+      .lean();
+    if (doc?.monetizationMode === MONETIZATION_MODES.PLAN) mode = MONETIZATION_MODES.PLAN;
+  } catch {
+    mode = MONETIZATION_MODES.COMMISSION;
+  }
+  monetizationModeCache = mode;
+  monetizationModeLoadedAt = now;
+  return mode;
+}
 
 const RESTAURANT_COMMISSION_CACHE_MS = 60 * 1000;
 let restaurantCommissionRulesCache = null;
@@ -118,6 +162,21 @@ export async function getRestaurantCommissionSnapshot(orderDoc, at = new Date())
   const restaurantIdRaw =
     orderDoc?.restaurantId?._id ?? orderDoc?.restaurantId ?? null;
 
+  /*
+   * The order's own mode wins over the live setting.
+   *
+   * An order placed under plan mode must still read as plan mode after an admin
+   * switches back to commission, or settling last week's orders would bill
+   * commission that was never charged at the time. The stamp is absent on
+   * orders predating this field and on the synthetic order the rate-preview
+   * endpoints pass in, and both correctly want today's setting.
+   */
+  const mode =
+    orderDoc?.pricing?.monetizationMode === MONETIZATION_MODES.PLAN ||
+    orderDoc?.pricing?.monetizationMode === MONETIZATION_MODES.COMMISSION
+      ? orderDoc.pricing.monetizationMode
+      : await getActiveMonetizationMode();
+
   const none = {
     commissionAmount: 0,
     commissionType: 'percentage',
@@ -126,7 +185,14 @@ export async function getRestaurantCommissionSnapshot(orderDoc, at = new Date())
     commissionLabel: '',
     commissionScheduleId: null,
     baseAmount,
+    monetizationMode: mode,
   };
+
+  // Plan mode: the restaurant pays a recurring fee, so no per-order cut. Said
+  // explicitly rather than as an unexplained zero -- see COMMISSION_SOURCES.
+  if (mode === MONETIZATION_MODES.PLAN) {
+    return { ...none, commissionSource: COMMISSION_SOURCES.PLAN_MODE };
+  }
 
   if (!restaurantIdRaw) return none;
 
@@ -156,6 +222,7 @@ export async function getRestaurantCommissionSnapshot(orderDoc, at = new Date())
     commissionLabel: rate.label,
     commissionScheduleId: rate.scheduleId,
     baseAmount,
+    monetizationMode: mode,
   };
 }
 

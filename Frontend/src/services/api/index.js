@@ -917,6 +917,16 @@ export const adminAPI = {
       contextModule: "admin",
     }),
 
+  /** How the platform bills restaurants: commission per order, or a recurring plan. */
+  getMonetizationMode: () =>
+    apiClient.get("/food/admin/monetization-mode", { contextModule: "admin" }),
+  updateMonetizationMode: (monetizationMode) =>
+    apiClient.patch(
+      "/food/admin/monetization-mode",
+      { monetizationMode },
+      { contextModule: "admin" },
+    ),
+
   /** Referral Settings (admin) */
   getReferralSettings: () =>
     apiClient.get("/food/admin/referral-settings", { contextModule: "admin" }),

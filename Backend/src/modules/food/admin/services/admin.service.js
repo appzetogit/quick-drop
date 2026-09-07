@@ -1813,6 +1813,65 @@ export async function getFeeSettings() {
     return { feeSettings: doc || null };
 }
 
+/**
+ * How the platform currently bills restaurants, and how many it affects.
+ *
+ * Reported as 'commission' when nothing is configured, matching the schema
+ * default and what the order path falls back to, so the screen cannot show a
+ * mode the billing does not actually use.
+ */
+export async function getMonetizationMode() {
+    const [doc, restaurantCount] = await Promise.all([
+        FoodFeeSettings.findOne({ isActive: true })
+            .sort({ createdAt: -1 })
+            .select('monetizationMode updatedAt')
+            .lean(),
+        FoodRestaurant.countDocuments({ status: 'approved' }),
+    ]);
+    return {
+        monetizationMode: doc?.monetizationMode === 'plan' ? 'plan' : 'commission',
+        restaurantCount,
+        updatedAt: doc?.updatedAt || null,
+    };
+}
+
+/**
+ * Switch every restaurant between commission billing and plan billing.
+ *
+ * Writes onto the single active fee-settings row, creating it if the platform
+ * has none yet -- there is nowhere else for a platform-wide money setting to
+ * live, and the row is created empty so no fee defaults are invented as a side
+ * effect of flipping this.
+ *
+ * Existing per-restaurant commission rates are deliberately left untouched:
+ * switching to plan billing stops them being charged, and switching back
+ * restores exactly what was configured before rather than losing it.
+ */
+export async function setMonetizationMode(body = {}) {
+    const mode = String(body?.monetizationMode || '').trim().toLowerCase();
+    if (mode !== 'commission' && mode !== 'plan') {
+        throw new ValidationError('Mode must be either "commission" or "plan"');
+    }
+
+    // Single active doc pattern, as in upsertFeeSettings.
+    let doc = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 });
+    if (!doc) doc = new FoodFeeSettings({ isActive: true });
+
+    const previous = doc.monetizationMode === 'plan' ? 'plan' : 'commission';
+    doc.monetizationMode = mode;
+    await doc.save();
+
+    // The order path caches this for a minute; without this the switch appears
+    // not to have taken, and an admin who reads that as a failed save flips it
+    // again.
+    const { invalidateMonetizationModeCache } = await import(
+        '../../orders/services/foodTransaction.service.js'
+    );
+    invalidateMonetizationModeCache();
+
+    return { monetizationMode: mode, previous, changed: previous !== mode };
+}
+
 export async function upsertFeeSettings(body) {
     if (Array.isArray(body.distanceSlabAdminDeliveryCommission) && body.distanceSlabAdminDeliveryCommission.length) {
         const ids = body.distanceSlabAdminDeliveryCommission.map((r) => r.distanceRuleId);

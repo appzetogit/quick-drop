@@ -31,6 +31,7 @@ const RestaurantsList = lazy(() => import("@food/pages/admin/restaurant/Restaura
 const AddRestaurant = lazy(() => import("@food/pages/admin/restaurant/AddRestaurant"));
 const JoiningRequest = lazy(() => import("@food/pages/admin/restaurant/JoiningRequest"));
 const RestaurantCommission = lazy(() => import("@food/pages/admin/restaurant/RestaurantCommission"));
+const MonetizationMode = lazy(() => import("@food/pages/admin/settings/MonetizationMode"));
 const RestaurantFreebieOffers = lazy(() => import("@food/pages/admin/restaurant/RestaurantFreebieOffers"));
 const RestaurantBogoOffers = lazy(() => import("@food/pages/admin/restaurant/RestaurantBogoOffers"));
 const RestaurantCombos = lazy(() => import("@food/pages/admin/restaurant/RestaurantCombos"));
@@ -190,6 +191,7 @@ const verticalAdminRoutes = (
             <Route path="restaurants/edit/:id" element={<EditRestaurant />} />
             <Route path="restaurants/joining-request" element={<JoiningRequest />} />
             <Route path="restaurants/commission" element={<RestaurantCommission />} />
+            <Route path="restaurants/monetization-mode" element={<MonetizationMode />} />
             <Route path="restaurants/free-item-offers" element={<RestaurantFreebieOffers />} />
             <Route path="restaurants/bogo-offers" element={<RestaurantBogoOffers />} />
           <Route path="restaurants/combos" element={<RestaurantCombos />} />

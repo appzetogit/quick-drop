@@ -154,6 +154,13 @@ router.delete('/feedback-experiences/:id', feedbackExperienceController.deleteFe
 router.get('/fee-settings', adminController.getFeeSettings);
 router.put('/fee-settings', adminController.createOrUpdateFeeSettings);
 
+// ----- Monetization mode (commission vs plan, platform-wide) -----
+// Its own endpoints rather than a field on the fee-settings PUT: that PUT
+// replaces the whole settings body, so flipping this through it would make a
+// one-field switch depend on the screen having loaded every other fee first.
+router.get('/monetization-mode', adminController.getMonetizationMode);
+router.patch('/monetization-mode', adminController.updateMonetizationMode);
+
 // ----- Referral Settings -----
 router.get('/referral-settings', adminController.getReferralSettings);
 router.put('/referral-settings', adminController.createOrUpdateReferralSettings);

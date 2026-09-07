@@ -28,6 +28,14 @@ export const COMMISSION_SOURCES = Object.freeze({
     SCHEDULE_RESTAURANT: 'schedule_restaurant',
     SCHEDULE_PLATFORM: 'schedule_platform',
     RESTAURANT_DEFAULT: 'restaurant_default',
+    /**
+     * No commission because the platform is billing restaurants a recurring
+     * plan instead. Distinct from NONE, which means commission applies and
+     * nobody configured a rate -- the two look identical on an invoice and are
+     * opposite problems: NONE on a live order is usually a misconfiguration,
+     * PLAN_MODE is the system working.
+     */
+    PLAN_MODE: 'plan_mode',
     NONE: 'none',
 });
 

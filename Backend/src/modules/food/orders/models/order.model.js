@@ -133,6 +133,18 @@ const pricingSchema = new mongoose.Schema(
         platformFee: { type: Number, default: 0, min: 0 },
         surgeAmount: { type: Number, default: 0, min: 0 },
         restaurantCommission: { type: Number, default: 0, min: 0 },
+        /**
+         * Which model this order was billed under, captured when it was placed.
+         *
+         * No default, for the same reason as commissionableAmount below: an
+         * order written before this field existed must fall through to the live
+         * setting, and a `default: 'commission'` would be indistinguishable from
+         * one deliberately stamped as commission. The payout path reads it in
+         * preference to the platform setting, so switching the platform to plan
+         * billing cannot retroactively zero the commission on orders already
+         * placed -- nor charge commission on orders taken while it was off.
+         */
+        monetizationMode: { type: String, enum: ['commission', 'plan'] },
         discount: { type: Number, default: 0, min: 0 },
         /**
          * What the buy-one-get-one units were worth.

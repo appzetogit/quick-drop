@@ -145,6 +145,29 @@ const feeSettingsSchema = new mongoose.Schema(
             ),
             default: () => ({})
         },
+        /**
+         * How the platform earns from restaurants, for every restaurant at once.
+         *
+         * 'commission' charges each restaurant its own rate per order -- the
+         * standing FoodRestaurantCommission plus any dated FoodCommissionSchedule.
+         * 'plan' charges nothing per order, because the restaurant is billed a
+         * recurring fee instead.
+         *
+         * Deliberately one platform-wide switch rather than a per-restaurant
+         * flag: the two models are alternatives, and a restaurant that is on a
+         * plan AND paying commission is double-charged. A per-restaurant
+         * override can be layered on later without moving this, because what an
+         * order is actually billed under is stamped on the order itself.
+         *
+         * Changing this must never re-price an order that already exists, which
+         * is why pricing.monetizationMode is written at order creation and read
+         * back in preference to this setting.
+         */
+        monetizationMode: {
+            type: String,
+            enum: ['commission', 'plan'],
+            default: 'commission'
+        },
         isActive: { type: Boolean, default: true, index: true }
     },
     { collection: 'food_fee_settings', timestamps: true }
