@@ -81,8 +81,11 @@ export default function GlobalPricing() {
       try {
         const response = await adminAPI.getPriceAdjustmentPreview({
           ...(restaurantId ? { restaurantId } : {}),
-          // Sent so the preview can say how many would be held at their MRP.
-          percent: Number(percent) || 0,
+          // Signed, not the raw box. Sending the unsigned number previewed every
+          // decrease as an increase: the samples showed 500 -> 550 and the
+          // "nothing struck through" warning was computed for the wrong
+          // direction, which is the one case that warning exists to catch.
+          percent: signedPercent ?? 0,
           target,
         })
         if (!cancelled) {
@@ -104,10 +107,13 @@ export default function GlobalPricing() {
     return () => {
       cancelled = true
     }
-    // percent is a dependency because the preview now reports how many items
-    // that percentage would push into their MRP; without it the warning would
-    // stay stale as the admin types a bigger increase.
-  }, [restaurantId, percent])
+    // signedPercent covers both the number and the increase/decrease toggle, and
+    // target decides which figure is being moved. Both were missing: flipping to
+    // Decrease, or switching what the run targets, left the previous preview on
+    // screen -- so the samples described a run the admin was no longer about to
+    // make. percent alone is not enough for the same reason it is a dependency
+    // at all: the MRP and no-comparison warnings are computed from it.
+  }, [restaurantId, signedPercent, target])
 
   const scopeLabel = restaurantId
     ? restaurants.find((r) => String(r?._id || r?.id) === restaurantId)?.restaurantName ||

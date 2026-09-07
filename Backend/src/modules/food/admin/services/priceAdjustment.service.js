@@ -43,6 +43,40 @@ const buildFilter = (restaurantId) => {
     return filter;
 };
 
+/**
+ * What a dish with no comparison figure of its own is currently showing.
+ *
+ * resolveItemOtherPlatformPrice falls back to the blanket markup for those
+ * dishes, so the number on screen is price x (1 + markup), not price. An
+ * adjustment has to move THAT, or the first run at a restaurant where no dish
+ * carries a figure yet moves the comparison somewhere the customer never was.
+ *
+ * 1 when the markup is off, which makes the seed the selling price -- the
+ * previous behaviour, and still correct when no fallback is in play.
+ */
+const resolveComparisonSeedMultiplier = async () => {
+    const { FoodFeeSettings } = await import('../models/feeSettings.model.js');
+    const { normalizeOtherPlatformSettings } = await import('../../shared/otherPlatformPricing.js');
+    const feeDoc = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
+    const { isEnabled, markupPercent } = normalizeOtherPlatformSettings(feeDoc || {});
+    if (!isEnabled || !(markupPercent > 0)) return 1;
+    return 1 + markupPercent / 100;
+};
+
+/**
+ * The figure a run starts from: the dish's own stored comparison, or the
+ * markup-derived one it is currently displaying. Shared by the preview and the
+ * write so the two cannot drift -- the preview existing at all is because a run
+ * that silently did nothing was indistinguishable from one that worked.
+ */
+const comparisonSeedExpr = (seedMultiplier) => ({
+    $cond: [
+        { $gt: [{ $ifNull: ['$otherPrice', 0] }, 0] },
+        '$otherPrice',
+        { $multiply: ['$price', seedMultiplier] },
+    ],
+});
+
 const resolveRestaurant = async (restaurantId) => {
     if (!restaurantId) return { restaurantId: null, restaurantName: 'All restaurants' };
     if (!mongoose.Types.ObjectId.isValid(String(restaurantId))) {
@@ -336,11 +370,17 @@ export async function getPriceAdjustmentPreview({ restaurantId, percent, target 
         .limit(5)
         .lean();
 
+    // The same seed the write uses, so "current" is the figure actually on the
+    // menu today rather than one the preview invented.
+    const seedMultiplier = field === 'price' ? 1 : await resolveComparisonSeedMultiplier();
+
     const samples = sampleDocs.map((doc) => {
-        // An item with no comparison figure yet is seeded from its price, which
-        // is exactly what the run itself will do.
+        // An item with no comparison figure yet is seeded the way the run seeds
+        // it: from the markup-derived figure it is already displaying.
         const stored = Number(doc?.[field]);
-        const current = Number.isFinite(stored) && stored > 0 ? stored : Number(doc?.price) || 0;
+        const current = Number.isFinite(stored) && stored > 0
+            ? stored
+            : (Number(doc?.price) || 0) * seedMultiplier;
         return {
             name: doc?.name || '',
             current: Math.round(current * 100) / 100,
@@ -360,12 +400,7 @@ export async function getPriceAdjustmentPreview({ restaurantId, percent, target 
     const newPriceExpr = field === 'price' ? { $multiply: ['$price', factor] } : '$price';
     const newOtherExpr = field === 'price'
         ? { $ifNull: ['$otherPrice', 0] }
-        : {
-            $multiply: [
-                { $cond: [{ $gt: [{ $ifNull: ['$otherPrice', 0] }, 0] }, '$otherPrice', '$price'] },
-                factor,
-            ],
-        };
+        : { $multiply: [comparisonSeedExpr(seedMultiplier), factor] };
 
     const itemsWithoutComparison = await FoodItem.countDocuments({
         ...filter,
@@ -416,9 +451,18 @@ export async function getPriceAdjustmentPreview({ restaurantId, percent, target 
  * price is charged as typed; the comparison is presentational". A bulk run is
  * the same operation at a different scale, so it must move the same field.
  *
- * Rows with no figure are seeded from their price rather than skipped. Skipping
- * them is the original bug -- 8 dishes of 70 carried a figure, so a run moved
- * those 8, compounded them absurdly, and looked like it had done nothing.
+ * Rows with no figure are seeded rather than skipped. Skipping them is the
+ * original bug -- 8 dishes of 70 carried a figure, so a run moved those 8,
+ * compounded them absurdly, and looked like it had done nothing.
+ *
+ * The seed is the comparison the customer is ALREADY being shown, which for a
+ * dish with no stored figure is the blanket markup, not the bare selling price.
+ * Seeding from the price was the next bug: at a 20% markup a Rs 500 dish shows
+ * Rs 600, so a +10% run wrote 550 and the struck-through figure went DOWN on an
+ * increase, while a -10% run wrote 450 -- below what we charge, which
+ * resolveItemOtherPlatformPrice reports as no comparison at all, blanking the
+ * menu. Both directions therefore looked broken, but only at restaurants new
+ * enough that no dish had a figure of its own yet.
  *
  * basePrice and discountPercent are deliberately untouched. An earlier fix
  * scaled those instead, which does make the strike-through move, but it does it
@@ -427,7 +471,7 @@ export async function getPriceAdjustmentPreview({ restaurantId, percent, target 
  * discount into 37.9%. That is the restaurant's number, not the platform's, and
  * a comparison price is not a discount.
  */
-const applyFactorToComparison = async (filter, factor) => {
+const applyFactorToComparison = async (filter, factor, seedMultiplier = 1) => {
     const result = await FoodItem.updateMany(filter, [
         {
             $set: {
@@ -438,13 +482,7 @@ const applyFactorToComparison = async (filter, factor) => {
                             $round: [
                                 {
                                     $multiply: [
-                                        {
-                                            $cond: [
-                                                { $gt: [{ $ifNull: ['$otherPrice', 0] }, 0] },
-                                                '$otherPrice',
-                                                '$price',
-                                            ],
-                                        },
+                                        comparisonSeedExpr(seedMultiplier),
                                         factor,
                                     ],
                                 },
@@ -517,7 +555,7 @@ export async function applyPriceAdjustment(body = {}, actor = {}) {
         ? await applyMarkdownToMenu(filter, factor)
         : target === 'price'
             ? await applyFactorToMenu(filter, factor)
-            : await applyFactorToComparison(filter, factor);
+            : await applyFactorToComparison(filter, factor, await resolveComparisonSeedMultiplier());
 
     adjustment.itemsUpdated = itemsUpdated;
     await adjustment.save();
@@ -643,9 +681,14 @@ export async function revertPriceAdjustment(id, actor = {}) {
         );
         itemsUpdated = res?.modifiedCount || 0;
     } else {
+        // Same seed as the forward run. Every dish the original touched now
+        // carries a stored figure, so the seed is unused for those and the
+        // revert stays exact; it only decides what happens to a dish added
+        // between the run and the undo, where seeding from the bare price would
+        // write a figure below the selling price and strike nothing through.
         itemsUpdated = target === 'price'
             ? await applyFactorToMenu(filter, inverse)
-            : await applyFactorToComparison(filter, inverse);
+            : await applyFactorToComparison(filter, inverse, await resolveComparisonSeedMultiplier());
     }
 
     original.isReverted = true;
