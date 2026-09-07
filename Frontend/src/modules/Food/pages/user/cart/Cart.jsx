@@ -1028,9 +1028,25 @@ export default function Cart() {
    * false and lands here too, which is what bill.js intends: there is no single
    * honest gross line to print.
    */
+  /*
+   * Compared BEFORE the coupon, deliberately.
+   *
+   * netPackagingFee is computed after the discount, so a coupon large enough to
+   * spill past the food onto the packaging makes it smaller for a reason that
+   * has nothing to do with tax. Reading that as "packaging is inclusive" picked
+   * the gross layout on a platform-owned packaging line and suppressed a GST
+   * line that held real packaging tax, leaving the printed bill several rupees
+   * short of the amount charged. Both figures here are pre-coupon, so a
+   * difference between them can only be the tax.
+   *
+   * An older order without the pre-coupon figure falls through as exclusive,
+   * which is the presentation that always reconciles.
+   */
+  const netPackagingBeforeDiscount = Number(bill?.netPackagingFeeBeforeDiscount)
   const packagingIsInclusive =
     Number(bill?.packagingFee ?? 0) <= 0
-    || Number(bill?.netPackagingFee ?? 0) < Number(bill?.packagingFee ?? 0) - 0.005
+    || (Number.isFinite(netPackagingBeforeDiscount)
+      && netPackagingBeforeDiscount < Number(bill?.packagingFee ?? 0) - 0.005)
   const gstIsIncludedInItems = bill?.pricesIncludeGst === true && packagingIsInclusive
 
   // Gross lines must be paired with the gross coupon; netting one against the

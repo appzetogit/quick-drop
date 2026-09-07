@@ -181,9 +181,18 @@ export default function UserOrderDetails() {
    * every figure still adds up. See Cart.jsx for the same reasoning.
    */
   const billOf = pricing.bill || {}
+  /*
+   * Compared BEFORE the coupon: netPackagingFee is post-discount, so a coupon
+   * spilling onto the packaging shrinks it for reasons unrelated to tax, and
+   * reading that as "inclusive" leaves the printed bill short of what was
+   * charged. An older order without the pre-coupon figure falls through as
+   * exclusive, the presentation that always reconciles. See Cart.jsx.
+   */
+  const receiptNetPackagingBeforeDiscount = Number(billOf.netPackagingFeeBeforeDiscount)
   const receiptPackagingIsInclusive =
     Number(billOf.packagingFee ?? 0) <= 0
-    || Number(billOf.netPackagingFee ?? 0) < Number(billOf.packagingFee ?? 0) - 0.005
+    || (Number.isFinite(receiptNetPackagingBeforeDiscount)
+      && receiptNetPackagingBeforeDiscount < Number(billOf.packagingFee ?? 0) - 0.005)
   const receiptGstIncluded = billOf.pricesIncludeGst === true && receiptPackagingIsInclusive
 
   const receiptItemAmount = receiptGstIncluded
