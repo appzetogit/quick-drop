@@ -320,7 +320,13 @@ const SidebarBadge = ({ count, isActive = false }) => {
 
   return (
     <span
-      className={`ml-auto inline-flex min-w-[1.5rem] items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-black ${isActive ? 'bg-white/20 text-white' : 'bg-primary-orange/50 text-white'
+      // isActive here means "sits on an open/containing group chip", which is now a
+      // light surface -- bg-white/20 text-white was legible only while that chip was
+      // a translucent white lift on black, and would have been white-on-cream.
+      // The default badge sits on either the light rail or the dark active pill, so
+      // it drops the 50% alpha and goes solid: half-opacity orange under white text
+      // was already thin on black and is unreadable on cream.
+      className={`ml-auto inline-flex min-w-[1.5rem] items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-black ${isActive ? 'bg-[var(--sb-ink)] text-[var(--sb-surface)]' : 'bg-primary-orange text-white'
         }`}
     >
       {count > 99 ? '99+' : count}
@@ -335,9 +341,12 @@ const SidebarItem = ({ icon, label, path, isCollapsed, sidebarTextColor, unreadC
     className={({ isActive }) =>
       cn(
         "group flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-300 relative",
+        // The current page inverts to a dark pill -- the strongest mark in the rail,
+        // and the same one the Food panel uses. Hover is a flat warm tint and resting
+        // is transparent, so the three states stay clearly ranked.
         isActive
-          ? "bg-white/10 text-white shadow-[0_4px_20px_rgba(255,255,255,0.05)] border border-white/15"
-          : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+          ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)] border border-[var(--sb-active-bg)]"
+          : "text-[var(--sb-ink-soft)] hover:text-[var(--sb-ink)] hover:bg-[var(--sb-hover)]"
       )
     }
   >
@@ -381,9 +390,14 @@ const SidebarGroup = ({
         onClick={toggleGroup}
         className={cn(
           "group w-full flex items-center justify-between px-4 py-2.5 rounded-xl transition-all duration-300",
+          // A raised chip, not the dark pill. This fires on merely *expanded* as well
+          // as active, so inverting it would paint a big black block for any group the
+          // operator opened, competing with the one item that is actually current.
+          // The border and shadow keep it distinct from a passing hover, which is the
+          // same fill with no edge.
           isActive || isExpanded
-            ? "bg-white/10 text-white shadow-[0_4px_20px_rgba(255,255,255,0.05)] border border-white/15"
-            : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+            ? "bg-[var(--sb-hover)] text-[var(--sb-ink)] shadow-sm border border-[var(--sb-border)]"
+            : "text-[var(--sb-ink-soft)] hover:text-[var(--sb-ink)] hover:bg-[var(--sb-hover)]"
         )}
       >
         <div className="flex min-w-0 items-center gap-3">
@@ -426,12 +440,15 @@ const SidebarGroup = ({
                   cn(
                     "flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-300",
                     childActive
-                      ? "bg-white/5 text-white"
-                      : "text-neutral-500 hover:text-neutral-200 hover:bg-white/5"
+                      ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] font-semibold"
+                      : "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink)] hover:bg-[var(--sb-hover)]"
                   )
                 }
               >
-                <div className={cn("h-1 w-1 shrink-0 rounded-full", "bg-neutral-600")} />
+                {/* bg-current, so the bullet tracks the link's own colour: it needs to
+                    be light on the dark active pill and dark at rest, and it renders
+                    outside the className callback that knows which. */}
+                <div className={cn("h-1 w-1 shrink-0 rounded-full", "bg-current")} />
                 <span className="min-w-0 flex-1">{item.label}</span>
                 <SidebarBadge count={getSidebarItemCount(item, unreadCountsByPath)} />
               </NavLink>
@@ -473,13 +490,17 @@ const NestedGroup = ({
         onClick={toggleGroup}
         className={cn(
           "group w-full flex items-center justify-between px-3 py-1.5 rounded-xl transition-all duration-300",
+          // Same reasoning as SidebarGroup: a chip for "open", never the dark pill.
           isActive || isExpanded
-            ? "bg-white/10 text-white shadow-[0_4px_20px_rgba(255,255,255,0.05)] border border-white/15"
-            : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+            ? "bg-[var(--sb-hover)] text-[var(--sb-ink)] shadow-sm border border-[var(--sb-border)]"
+            : "text-[var(--sb-ink-soft)] hover:text-[var(--sb-ink)] hover:bg-[var(--sb-hover)]"
         )}
       >
         <span className="flex min-w-0 items-center gap-3 text-[12px] font-medium">
-          <div className={cn("h-1 w-1 shrink-0 rounded-full", isActive || isExpanded ? "bg-white dark:bg-slate-900" : "bg-neutral-600")} />
+          {/* bg-current in both states now that the open chip is light -- the old
+              white dot (and its dark:slate-900 twin, which would have fought it)
+              existed only to show up against the black rail. */}
+          <div className={cn("h-1 w-1 shrink-0 rounded-full", "bg-current")} />
           <span className="truncate">{label}</span>
         </span>
         <span className="ml-3 flex items-center gap-2">
@@ -499,12 +520,12 @@ const NestedGroup = ({
                 cn(
                   "flex items-center gap-3 px-3 py-1.5 rounded-xl text-[12px] font-medium transition-all duration-300",
                   childActive
-                    ? "bg-white/5 text-white"
-                    : "text-neutral-500 hover:text-neutral-200 hover:bg-white/5"
+                    ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] font-semibold"
+                    : "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink)] hover:bg-[var(--sb-hover)]"
                 )
               }
             >
-              <div className="h-0.5 w-0.5 shrink-0 rounded-full bg-neutral-700" />
+              <div className="h-0.5 w-0.5 shrink-0 rounded-full bg-current" />
               <span className="min-w-0 flex-1">{item.label}</span>
               <SidebarBadge count={getSidebarItemCount(item, unreadCountsByPath)} />
             </NavLink>
@@ -1375,28 +1396,58 @@ const AdminLayout = () => {
   return (
     <div className="flex h-screen overflow-hidden bg-neutral-200 dark:bg-slate-950 font-sans text-gray-900 dark:text-gray-100">
       <aside
+        // Sidebar palette, shared with the Food admin rail (see Food's
+        // AdminSidebar.jsx, which defines the same tokens) so the two panels read as
+        // one product rather than two bolted together. Declared here rather than in
+        // ~60 utility classes so the rail can be retuned in one place, and declared on
+        // the <aside> so SidebarItem/SidebarGroup/NestedGroup -- which render inside
+        // it -- inherit the same values without being passed a theme prop.
+        //
+        // Warm, not grey: the admin canvas around this rail is already light
+        // (bg-neutral-100 on bg-neutral-200), so a few degrees of warmth separates the
+        // rail from the canvas without a hard colour change.
+        //
+        // The active state inverts to a dark pill. On a light ground a lightly tinted
+        // fill is easy to miss, and this rail has a lot of destinations to scan.
+        style={{
+          '--sb-surface': '#FAF8F5',
+          '--sb-surface-raised': '#FFFFFF',
+          '--sb-border': '#E8E2D9',
+          '--sb-hover': '#F1ECE4',
+          '--sb-ink': '#1A1A1A',
+          // Warm grey-brown, ~9:1 on --sb-surface.
+          '--sb-ink-soft': '#5C5247',
+          // Section labels, inactive icons and bullets. ~5.1:1 -- past AA.
+          '--sb-ink-faint': '#6E655B',
+          '--sb-active-bg': '#1A1A1A',
+          '--sb-active-ink': '#FFFFFF',
+        }}
         className={cn(
-          "relative z-50 flex h-screen flex-col overflow-hidden transition-all duration-300 ease-in-out bg-neutral-950 border-r border-neutral-800/60",
+          "relative z-50 flex h-screen flex-col overflow-hidden transition-all duration-300 ease-in-out bg-[var(--sb-surface)] border-r border-[var(--sb-border)]",
           isCollapsed ? 'w-20' : 'w-80',
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
         <div className="flex h-full flex-col">
           {/* Header with Logo and Brand */}
-          <div className="shrink-0 px-3 py-3 border-b border-neutral-800/60 bg-neutral-900">
+          <div className="shrink-0 px-3 py-3 border-b border-[var(--sb-border)] bg-[var(--sb-surface-raised)]">
             <div className="flex items-center justify-between mb-3">
               {!isCollapsed && (
                 <div className="flex items-center gap-3.5">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-white/5 p-1 transition-all">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--sb-border)] bg-[var(--sb-hover)] p-1 transition-all">
                     <img src={cachedLogo || settings?.logos?.admin || settings?.logos?.landing} alt={taxiTitle} className="h-9 w-9 object-contain" />
                   </div>
                   <div className="flex flex-col">
-                    <h3 className="text-[15px] font-extrabold leading-tight text-white tracking-tight">
+                    <h3 className="text-[15px] font-extrabold leading-tight text-[var(--sb-ink)] tracking-tight">
                       {taxiTitle}
                     </h3>
                     <div className="mt-1 flex items-center gap-1.5">
-                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                      {/* emerald-600 rather than 500: the lighter shade was chosen to
+                          glow on a near-black rail and sits at roughly 2.3:1 on this
+                          one. The outward glow goes with it -- on a light ground it
+                          reads as a smudge rather than a light source. */}
+                      <div className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-[var(--sb-ink-faint)]">
                         System Admin
                       </span>
                     </div>
@@ -1405,7 +1456,7 @@ const AdminLayout = () => {
               )}
               {isCollapsed && (
                 <div className="w-full flex items-center justify-center">
-                  <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center ring-1 ring-white/10">
+                  <div className="w-10 h-10 rounded-lg bg-[var(--sb-hover)] flex items-center justify-center ring-1 ring-[var(--sb-border)]">
                     <img src={cachedLogo || settings?.logos?.admin || settings?.logos?.landing} alt={taxiTitle} className="w-8 h-8 object-contain" />
                   </div>
                 </div>
@@ -1414,7 +1465,7 @@ const AdminLayout = () => {
                 <button
                   type="button"
                   onClick={() => setCollapsed((current) => !current)}
-                  className="text-neutral-300 hover:text-white transition-all duration-200 hover:scale-110 p-1.5 rounded-lg hover:bg-white/5"
+                  className="text-[var(--sb-ink-soft)] hover:text-[var(--sb-ink)] transition-all duration-200 hover:scale-110 p-1.5 rounded-lg hover:bg-[var(--sb-hover)]"
                   title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
                 >
                   {isCollapsed ? (
@@ -1429,7 +1480,7 @@ const AdminLayout = () => {
             {/* Admin Panel Label */}
             {!isCollapsed && (
               <div className="mb-3">
-                <h2 className="text-sm font-semibold text-neutral-300 uppercase tracking-wider text-left">
+                <h2 className="text-sm font-semibold text-[var(--sb-ink-soft)] uppercase tracking-wider text-left">
                   Admin Panel
                 </h2>
               </div>
@@ -1437,16 +1488,16 @@ const AdminLayout = () => {
 
             {/* Module Switcher Tabs */}
             {!isCollapsed && (
-              <div className="flex p-1 bg-neutral-800/40 backdrop-blur-sm rounded-xl mb-1 border border-white/5 shadow-inner">
+              <div className="flex p-1 bg-[var(--sb-surface-raised)] backdrop-blur-sm rounded-xl mb-1 border border-[var(--sb-border)] shadow-inner">
                 <button
                   type="button"
                   onClick={() => navigate("/admin/food")}
                   className={cn(
                     "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
-                    "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                    "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                   )}
                 >
-                  <UtensilsCrossed className="w-3.5 h-3.5 text-neutral-500" />
+                  <UtensilsCrossed className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
                   Food
                 </button>
                 <button
@@ -1454,13 +1505,22 @@ const AdminLayout = () => {
                   onClick={() => navigate("/taxi/admin/dashboard")}
                   className={cn(
                     "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
-                    "bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)] scale-[1.02]"
+                    // Was bg-white/text-black, which marked the current module only
+                    // because the strip behind it was dark. On a light strip that is
+                    // the least distinguishable fill available, so the active tab
+                    // inverts to the dark pill the rest of the rail uses for "current".
+                    "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)] scale-[1.02]"
                   )}
                 >
-                  <Truck className="w-3.5 h-3.5 text-black" />
+                  <Truck className="w-3.5 h-3.5 text-[var(--sb-active-ink)]" />
                   Taxi
                 </button>
-                <button
+                {/*
+                  Services is intentionally hidden from the module switcher (not
+                  removed). The /admin/sp routes and pages still exist and stay
+                  reachable by URL - uncomment to restore.
+                */}
+                {/*<button
                   type="button"
                   onClick={() => navigate("/admin/sp/dashboard")}
                   className={cn(
@@ -1470,16 +1530,16 @@ const AdminLayout = () => {
                 >
                   <Wrench className="w-3.5 h-3.5 text-neutral-500" />
                   Services
-                </button>
+                </button>*/}
                 <button
                   type="button"
                   onClick={() => navigate("/admin/quick-commerce")}
                   className={cn(
                     "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
-                    "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                    "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                   )}
                 >
-                  <ShoppingBasket className="w-3.5 h-3.5 text-neutral-500" />
+                  <ShoppingBasket className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
                   Quick
                 </button>
               </div>
@@ -1491,8 +1551,12 @@ const AdminLayout = () => {
               <div key={section.title} className="space-y-1">
                 {!isCollapsed && (
                   <div className="px-4 mb-4 flex items-center gap-2">
-                    <div className="h-3 w-1 rounded-full bg-white dark:bg-slate-900" />
-                    <span className="text-[12px] font-black uppercase tracking-widest text-white/90">
+                    {/* The accent bar and label were white-on-near-black. The dark:
+                        variant is dropped with them: this rail is light in both
+                        schemes now, so a slate-900 bar would have been an invisible
+                        bar fighting the default. */}
+                    <div className="h-3 w-1 rounded-full bg-[var(--sb-ink-faint)]" />
+                    <span className="text-[12px] font-black uppercase tracking-widest text-[var(--sb-ink-faint)]">
                       {section.title}
                     </span>
                   </div>
