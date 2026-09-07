@@ -174,31 +174,74 @@ export async function generateBulkMenuTemplate(restaurantId = null) {
         });
     }
 
-    // The sample only appears on an empty menu. Left in alongside real dishes it
-    // would be uploaded back as a real one.
-    if (existing.length === 0) {
-        sheet.addRow({
-            category: 'Starters',
-            name: 'Paneer Tikka',
-            description: 'Spicy marinated paneer grilled to perfection',
-            price: 250,
-            foodType: 'Veg',
-            isRecommended: 'Yes',
-            prepTime: '20-25 mins',
-            imageUrl: 'https://example.com/paneer.jpg',
-            v1Name: 'Half',
-            v1Price: 150,
-            v2Name: 'Full',
-            v2Price: 280
-        });
-    }
-
     // Spare rows so a restaurant can append new dishes with the dropdowns
     // already working, without burying what it already sells.
     const lastDataRow = Math.max(sheet.rowCount, 1);
     applyValidation(2, lastDataRow + 200);
 
+    /*
+     * The worked example gets its own sheet, because the importer only ever reads
+     * the first one.
+     *
+     * It used to sit on the menu sheet whenever the menu was empty -- which is
+     * precisely a new restaurant's first download -- so uploading the sheet as
+     * downloaded created a "Paneer Tikka" nobody ordered, and the importer then
+     * tried to fetch its example.com placeholder and logged a 404. Off the first
+     * sheet it stays useful as a reference and can no longer be imported at all.
+     */
+    const example = workbook.addWorksheet('Example (not imported)');
+    example.columns = sheet.columns.map(({ header, key, width }) => ({ header, key, width }));
+    example.getRow(1).font = { bold: true };
+    example.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE0E0E0' }
+    };
+    example.addRow({
+        category: 'Starters',
+        name: 'Paneer Tikka',
+        description: 'Spicy marinated paneer grilled to perfection',
+        price: 250,
+        foodType: 'Veg',
+        isRecommended: 'Yes',
+        prepTime: '20-25 mins',
+        imageUrl: 'https://example.com/paneer.jpg',
+        v1Name: 'Half',
+        v1Price: 150,
+        v2Name: 'Full',
+        v2Price: 280
+    });
+    example.addRow({});
+    example.getCell(`A${example.rowCount + 1}`).value =
+        'Reference only — nothing on this sheet is imported. '
+        + 'Copy a row into the "Menu Template" sheet to use it.';
+
     return workbook;
+}
+
+/**
+ * ExcelJS reads .xlsx only. Handed a legacy .xls it neither throws nor produces
+ * worksheets, so getWorksheet(1) returns undefined and the parse used to die on
+ * `sheet.eachRow` sixty lines later as an opaque 500. Name the real problem here.
+ */
+function describeUnreadableWorkbook(fileBuffer) {
+    const buf = Buffer.isBuffer(fileBuffer) ? fileBuffer : Buffer.from(fileBuffer ?? []);
+
+    // OLE2 compound-file header: the legacy .xls container.
+    if (buf.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]))) {
+        return 'This is an old-format .xls file, which cannot be read. Open it in Excel, '
+            + 'choose File > Save As > "Excel Workbook (.xlsx)", and upload that instead.';
+    }
+    // Every .xlsx is a zip, so it must start with "PK".
+    if (buf.subarray(0, 2).toString('latin1') !== 'PK') {
+        return 'That file is not an .xlsx workbook. Download the template above, fill it in, '
+            + 'and upload it without changing the format.';
+    }
+    // A valid zip that ExcelJS found no sheets in: .ods and other zip-based
+    // documents land here, as does an .xlsx saved with every sheet removed.
+    return 'This file is not a readable .xlsx workbook — an .ods, or another format renamed '
+        + 'to .xls/.xlsx, will do this. Open it in Excel, choose File > Save As > '
+        + '"Excel Workbook (.xlsx)", and upload that.';
 }
 
 /**
@@ -206,8 +249,17 @@ export async function generateBulkMenuTemplate(restaurantId = null) {
  */
 export async function processBulkMenuUpload(restaurantId, fileBuffer) {
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(fileBuffer);
-    const sheet = workbook.getWorksheet(1);
+    try {
+        await workbook.xlsx.load(fileBuffer);
+    } catch {
+        // A corrupt or truncated zip throws here; anything else is a bad format.
+        throw new ValidationError(describeUnreadableWorkbook(fileBuffer));
+    }
+    // By position, not getWorksheet(1): that argument is a worksheet *id*, and a
+    // workbook whose first sheet carries a different id -- ordinary after sheets
+    // have been deleted and the file re-saved -- would come back undefined.
+    const sheet = workbook.worksheets[0];
+    if (!sheet) throw new ValidationError(describeUnreadableWorkbook(fileBuffer));
 
     const restaurant = await FoodRestaurant.findById(restaurantId).lean();
     if (!restaurant) throw new ValidationError('Restaurant not found');
