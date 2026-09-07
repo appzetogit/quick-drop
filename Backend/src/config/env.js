@@ -64,6 +64,17 @@ export const config = {
     smsApiKey: process.env.SMS_INDIA_HUB_API_KEY,
     smsSenderId: process.env.SMS_INDIA_HUB_SENDER_ID,
     smsDltTemplateId: process.env.SMS_INDIA_HUB_DLT_TEMPLATE_ID,
+    /*
+     * These four were configured on the server and read by nothing: the sender
+     * hard-coded its own endpoint, gateway id and message text and ignored them.
+     * The message is the one that matters -- SMS India Hub rejects anything that
+     * is not character-for-character the DLT-registered template (ErrorCode
+     * 006), so the approved wording has to be settable without a deploy.
+     */
+    smsIndiaHubUrl: process.env.SMS_INDIA_HUB_URL,
+    smsIndiaHubGwid: process.env.SMS_INDIA_HUB_GWID,
+    smsIndiaHubTemplateText: process.env.SMS_INDIA_HUB_TEMPLATE_TEXT,
+    smsIndiaHubTimeoutMs: Number(process.env.SMS_INDIA_HUB_TIMEOUT_MS) || 15000,
 
     // Rate limiting
     rateLimitWindowMinutes: Number(process.env.RATE_LIMIT_WINDOW || 15),

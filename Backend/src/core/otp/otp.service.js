@@ -29,23 +29,68 @@ const normalizeOtpScope = (scope) => {
  * @param {string} phone - 10-digit mobile number (will be prefixed with 91)
  * @param {string} otp
  */
+/** The wording this file used to hard-code. Kept as the fallback, so an unset
+ *  SMS_INDIA_HUB_TEMPLATE_TEXT changes nothing about what is sent. */
+export const DEFAULT_OTP_SMS_TEMPLATE =
+    'Welcome to the Quick Drop powered by SMSINDIAHUB. Your OTP for registration is {{OTP}}';
+
+/**
+ * The message body, rendered from the DLT-registered template.
+ *
+ * SMS India Hub rejects anything that is not character-for-character the
+ * registered template (ErrorCode 006), so the wording is configuration rather
+ * than source and lives in SMS_INDIA_HUB_TEMPLATE_TEXT.
+ *
+ * Returns null for a template that would not carry the code -- sending an OTP
+ * message with no OTP in it costs money, tells the user nothing, and looks like
+ * the gateway working.
+ */
+export function buildOtpSmsMessage({ otp, expiryMinutes, template } = {}) {
+    const raw = String(template || '').trim() || DEFAULT_OTP_SMS_TEMPLATE;
+    const message = raw
+        .replace(/\{\{\s*OTP\s*\}\}/gi, String(otp ?? ''))
+        .replace(/\{\{\s*MINUTES\s*\}\}/gi, String(expiryMinutes ?? ''));
+    if (!String(otp ?? '') || !message.includes(String(otp))) return null;
+    return message;
+}
+
 const sendSmsViaIndiaHub = async (phone, otp) => {
     try {
         // Normalize phone: strip non-digits, ensure 91 country code prefix
         const digits = String(phone || '').replace(/\D/g, '');
         const msisdn = digits.startsWith('91') ? digits : `91${digits}`;
 
-        // EXACT DLT TEMPLATE provided by user:
-        // "Welcome to the ##var## powered by SMSINDIAHUB. Your OTP for registration is ##var##"
-        const message = `Welcome to the Quick Drop powered by SMSINDIAHUB. Your OTP for registration is ${otp}`;
+        const expiryMinutes = Math.max(
+            1,
+            Math.round(
+                (config.otpExpirySeconds
+                    ? config.otpExpirySeconds
+                    : (config.otpExpiryMinutes || 5) * 60) / 60,
+            ),
+        );
+        const message = buildOtpSmsMessage({
+            otp,
+            expiryMinutes,
+            template: config.smsIndiaHubTemplateText,
+        });
+        if (!message) {
+            logger.error(
+                '[SMS] SMS_INDIA_HUB_TEMPLATE_TEXT has no {{OTP}} placeholder, so the message '
+                + 'would carry no code. Not sending — fix the template.',
+            );
+            return;
+        }
 
         // SMS India Hub HTTP GET API — query param names are case-sensitive per SOP
-        const url = new URL('http://cloud.smsindiahub.in/vendorsms/pushsms.aspx');
+        const url = new URL(
+            String(config.smsIndiaHubUrl || '').trim()
+                || 'http://cloud.smsindiahub.in/vendorsms/pushsms.aspx',
+        );
         url.searchParams.append('APIKey', config.smsApiKey);
         url.searchParams.append('sid', config.smsSenderId);
         url.searchParams.append('msisdn', msisdn);
         url.searchParams.append('msg', message);
-        url.searchParams.append('gwid', '2');
+        url.searchParams.append('gwid', String(config.smsIndiaHubGwid || '2').trim() || '2');
         url.searchParams.append('fl', '0');
         if (config.smsIndiaHubUsername) {
             url.searchParams.append('uname', config.smsIndiaHubUsername);
@@ -55,7 +100,11 @@ const sendSmsViaIndiaHub = async (phone, otp) => {
         }
 
         logger.info(`[SMS] Sending OTP to ${msisdn} via SMS India Hub...`);
-        const response = await fetch(url.toString());
+        // Bounded, because the caller is a user waiting on a sign-in request and
+        // the gateway is a third party that can simply stop answering.
+        const response = await fetch(url.toString(), {
+            signal: AbortSignal.timeout(config.smsIndiaHubTimeoutMs || 15000),
+        });
         const resultText = await response.text();
         logger.info(`[SMS] Raw response for ${msisdn}: ${resultText}`);
 
