@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodUserWallet } from '../models/userWallet.model.js';
-import { createRazorpayCheckoutOrder, isRazorpayConfigured, verifyPaymentSignature } from '../../orders/helpers/razorpay.helper.js';
+import { createRazorpayCheckoutOrder, fetchRazorpayPayment, isRazorpayConfigured, verifyPaymentSignature } from '../../orders/helpers/razorpay.helper.js';
 
 const ensureWallet = async (userId) => {
     const id = String(userId || '');
@@ -112,10 +112,45 @@ export const verifyWalletTopupPayment = async (userId, payload) => {
         throw new ValidationError('Payment verification failed');
     }
 
+    /*
+     * Credit what the gateway says was paid, never what the client asked for.
+     *
+     * A Razorpay signature is HMAC over "orderId|paymentId" and says nothing
+     * about the amount, so signing a genuine Rs 1 payment and posting
+     * `amount: 100000` alongside it passed every check here and credited a
+     * hundred thousand rupees of spendable balance. The amount has to come from
+     * the gateway, and the payment has to belong to the order it claims to.
+     *
+     * This mirrors the order payment path in order.service.js, which has always
+     * refetched and compared. Mock payments keep the client amount so local
+     * development works without a live gateway; the id prefix is only reachable
+     * outside production, where verifyPaymentSignature refuses the bypass.
+     */
+    let creditedAmount = amount;
+    if (!paymentId.startsWith('mock_')) {
+        let rzpPayment;
+        try {
+            rzpPayment = await fetchRazorpayPayment(paymentId);
+        } catch {
+            throw new ValidationError('Unable to verify payment with gateway. Please try again.');
+        }
+        if (String(rzpPayment?.order_id || '') !== orderId) {
+            throw new ValidationError('Payment verification failed: order mismatch');
+        }
+        if (!['captured', 'authorized'].includes(String(rzpPayment?.status || ''))) {
+            throw new ValidationError('Payment verification failed: payment not captured');
+        }
+        const capturedPaise = Number(rzpPayment?.amount || 0);
+        if (!Number.isFinite(capturedPaise) || capturedPaise <= 0) {
+            throw new ValidationError('Payment verification failed: amount missing');
+        }
+        creditedAmount = Math.round(capturedPaise) / 100;
+    }
+
     // Store ONLY after payment is verified.
     wallet.transactions.unshift({
         type: 'addition',
-        amount,
+        amount: creditedAmount,
         status: 'Completed',
         description: 'Wallet top-up',
         metadata: { source: 'wallet_topup', mode: 'razorpay' },
@@ -124,7 +159,7 @@ export const verifyWalletTopupPayment = async (userId, payload) => {
         razorpaySignature: signature
     });
 
-    wallet.balance = Number(wallet.balance || 0) + amount;
+    wallet.balance = Number(wallet.balance || 0) + creditedAmount;
     await wallet.save();
 
     return { wallet: await getUserWallet(userId) };

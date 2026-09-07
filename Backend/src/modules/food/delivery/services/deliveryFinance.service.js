@@ -7,7 +7,7 @@ import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
-import { createRazorpayCheckoutOrder, isRazorpayConfigured, verifyPaymentSignature } from '../../orders/helpers/razorpay.helper.js';
+import { createRazorpayCheckoutOrder, fetchRazorpayPayment, isRazorpayConfigured, verifyPaymentSignature } from '../../orders/helpers/razorpay.helper.js';
 
 /**
  * Enhanced wallet fetch for delivery partners.
@@ -270,12 +270,50 @@ export const verifyDeliveryCashDepositPayment = async (deliveryPartnerId, payloa
         throw new ValidationError('Payment verification failed');
     }
 
+    /*
+     * Settle what the gateway says was paid, never what the client asked for.
+     *
+     * The signature is HMAC over "orderId|paymentId" and carries no amount, and
+     * createDeliveryCashDepositOrder stores nothing locally to compare against.
+     * So a genuine Rs 1 payment posted with `amount: 50000` cleared fifty
+     * thousand rupees of cash owed -- the cap above only limited it to the cash
+     * the rider was actually holding, which is exactly the money at stake.
+     *
+     * Same pattern as order.service.js: the payment must belong to the order it
+     * claims, be captured, and set the amount itself.
+     */
+    let settledAmount = amount;
+    if (!paymentId.startsWith('mock_')) {
+        let rzpPayment;
+        try {
+            rzpPayment = await fetchRazorpayPayment(paymentId);
+        } catch {
+            throw new ValidationError('Unable to verify payment with gateway. Please try again.');
+        }
+        if (String(rzpPayment?.order_id || '') !== orderId) {
+            throw new ValidationError('Payment verification failed: order mismatch');
+        }
+        if (!['captured', 'authorized'].includes(String(rzpPayment?.status || ''))) {
+            throw new ValidationError('Payment verification failed: payment not captured');
+        }
+        const capturedPaise = Number(rzpPayment?.amount || 0);
+        if (!Number.isFinite(capturedPaise) || capturedPaise <= 0) {
+            throw new ValidationError('Payment verification failed: amount missing');
+        }
+        settledAmount = Math.round(capturedPaise) / 100;
+        // Re-checked against the gateway figure: the earlier cap tested the
+        // client's number, which is no longer the one being recorded.
+        if (settledAmount > wallet.cashInHand) {
+            throw new ValidationError('Deposit amount cannot exceed cash in hand');
+        }
+    }
+
     const deposit = existing
         ? await FoodDeliveryCashDeposit.findByIdAndUpdate(
             existing._id,
             {
                 $set: {
-                    amount,
+                    amount: settledAmount,
                     paymentMethod: 'razorpay',
                     status: 'Completed',
                     razorpayOrderId: orderId,
@@ -286,7 +324,7 @@ export const verifyDeliveryCashDepositPayment = async (deliveryPartnerId, payloa
         )
         : await FoodDeliveryCashDeposit.create({
             deliveryPartnerId,
-            amount,
+            amount: settledAmount,
             paymentMethod: 'razorpay',
             status: 'Completed',
             razorpayOrderId: orderId,
