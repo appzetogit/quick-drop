@@ -169,6 +169,39 @@ export default function UserOrderDetails() {
 
   const items = Array.isArray(order.items) ? order.items : []
   const pricing = order.pricing || {}
+
+  /*
+   * The same bill presentation the cart uses, so an order does not describe
+   * itself one way at checkout and another way afterwards.
+   *
+   * A menu priced inclusive of GST prints the price the menu advertised, with
+   * the tax shown as already inside it. Only when everything taxable is
+   * inclusive: admin-owned packaging stays exclusive even on an inclusive menu,
+   * and its tax lives in gstOnItems, so that case keeps the net lines where
+   * every figure still adds up. See Cart.jsx for the same reasoning.
+   */
+  const billOf = pricing.bill || {}
+  const receiptPackagingIsInclusive =
+    Number(billOf.packagingFee ?? 0) <= 0
+    || Number(billOf.netPackagingFee ?? 0) < Number(billOf.packagingFee ?? 0) - 0.005
+  const receiptGstIncluded = billOf.pricesIncludeGst === true && receiptPackagingIsInclusive
+
+  const receiptItemAmount = receiptGstIncluded
+    ? Number(billOf.itemAmount ?? 0)
+    : Number(billOf.netItemAmountBeforeDiscount ?? billOf.netItemAmount ?? pricing.subtotal ?? pricing.total ?? 0)
+  const receiptPackagingFee = receiptGstIncluded
+    ? Number(billOf.packagingFee ?? 0)
+    : Number(billOf.netPackagingFeeBeforeDiscount ?? billOf.netPackagingFee ?? pricing.packagingFee ?? 0)
+  // Gross lines take the gross coupon; netting one against the other misses the total.
+  const receiptDiscount = receiptGstIncluded
+    ? Number(billOf.discount ?? pricing.discount ?? 0)
+    : Number(billOf.discountOnNet ?? pricing.discount ?? 0)
+  // Platform fee and its own GST as one line, per the client's bill format.
+  const receiptPlatformFee =
+    Number(billOf.platformFee ?? pricing.platformFee ?? 0)
+    + Number(billOf.platformFeeGst ?? pricing.platformFeeGst ?? 0)
+  const receiptPlatformFeeGstRate = Number(billOf.platformFeeGstRate ?? 0)
+
   const sendsCutlery = order.sendCutlery !== false
 
   const userName = order.userName || ""
@@ -449,48 +482,37 @@ export default function UserOrderDetails() {
                   </span>
                 )}
                 <span className="text-gray-800 dark:text-gray-200">
-                  ₹{Number(
-                    pricing.bill?.netItemAmountBeforeDiscount
-                      ?? pricing.bill?.netItemAmount
-                      ?? pricing.subtotal
-                      ?? pricing.total
-                      ?? 0,
-                  ).toFixed(2)}
+                  ₹{receiptItemAmount.toFixed(2)}
                 </span>
               </div>
             </div>
-            {Number(
-              pricing.bill?.netPackagingFeeBeforeDiscount
-                ?? pricing.bill?.netPackagingFee
-                ?? pricing.packagingFee
-                ?? 0,
-            ) > 0 && (
+            {receiptPackagingFee > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-500 dark:text-gray-400">Packaging charges</span>
                 <span className="text-gray-800 dark:text-gray-200">
-                  ₹{Number(
-                    pricing.bill?.netPackagingFeeBeforeDiscount
-                      ?? pricing.bill?.netPackagingFee
-                      ?? pricing.packagingFee
-                      ?? 0,
-                  ).toFixed(2)}
+                  ₹{receiptPackagingFee.toFixed(2)}
                 </span>
               </div>
             )}
             {/* The coupon gets its own line, so the two above are shown before it. */}
-            {Number(pricing.bill?.discountOnNet ?? pricing.discount ?? 0) > 0 && (
+            {receiptDiscount > 0 && (
               <div className="flex justify-between">
                 <span className="text-[#EB590E] font-medium">Coupon discount</span>
                 <span className="text-[#EB590E] font-medium">
-                  -₹{Number(pricing.bill?.discountOnNet ?? pricing.discount ?? 0).toFixed(2)}
+                  -₹{receiptDiscount.toFixed(2)}
                 </span>
               </div>
             )}
             <div className="flex justify-between">
               <span className="text-gray-500 dark:text-gray-400">
                 GST{Number(pricing.bill?.gstRate || 0) > 0 ? ` @ ${pricing.bill.gstRate}%` : " (govt. taxes)"}
+                {receiptGstIncluded ? " (included above)" : ""}
               </span>
-              <span className="text-gray-800 dark:text-gray-200">
+              {/* Already inside the item line for an inclusive menu, so it is
+                  shown for transparency and must not read as another charge. */}
+              <span className={receiptGstIncluded
+                ? "text-gray-400 dark:text-gray-500"
+                : "text-gray-800 dark:text-gray-200"}>
                 ₹{Number(pricing.bill?.gstOnItems ?? pricing.tax ?? 0).toFixed(2)}
               </span>
             </div>
@@ -506,9 +528,12 @@ export default function UserOrderDetails() {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-gray-400">Platform fee</span>
+              <span className="text-gray-500 dark:text-gray-400">
+                Platform fee
+                {receiptPlatformFeeGstRate > 0 ? ` (incl. ${receiptPlatformFeeGstRate}% GST)` : ""}
+              </span>
               <span className="text-gray-800 dark:text-gray-200">
-                ₹{Number(pricing.platformFee || 0).toFixed(2)}
+                ₹{receiptPlatformFee.toFixed(2)}
               </span>
             </div>
             {Number(pricing.surgeAmount || 0) > 0 && (
@@ -519,18 +544,8 @@ export default function UserOrderDetails() {
                 </span>
               </div>
             )}
-            {Number(pricing.bill?.platformFeeGst ?? pricing.platformFeeGst ?? 0) > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">
-                  Govt. fee{Number(pricing.bill?.platformFeeGstRate || 0) > 0
-                    ? ` @ ${pricing.bill.platformFeeGstRate}%`
-                    : ""}
-                </span>
-                <span className="text-gray-800 dark:text-gray-200">
-                  ₹{Number(pricing.bill?.platformFeeGst ?? pricing.platformFeeGst ?? 0).toFixed(2)}
-                </span>
-              </div>
-            )}
+            {/* The platform fee's own GST is now folded into the Platform fee
+                line above, so it is no longer listed separately. */}
             {Number(pricing.bill?.tip ?? pricing.tip ?? 0) > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-500 dark:text-gray-400">Tip for delivery partner</span>

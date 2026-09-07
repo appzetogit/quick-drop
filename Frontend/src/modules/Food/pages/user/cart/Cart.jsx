@@ -1003,10 +1003,60 @@ export default function Cart() {
   const billGstRate = Number(bill?.gstRate ?? 0)
   const billPlatformFeeGst = Number(bill?.platformFeeGst ?? 0)
   const billPlatformFeeGstRate = Number(bill?.platformFeeGstRate ?? 0)
+
+  /*
+   * A menu priced inclusive of GST is shown at the price the menu advertised.
+   *
+   * Printing the net figure (a Rs 200 dish as "Item Total Rs 190.48") reads as
+   * though we changed the price, when the tax was inside it all along. So the
+   * listed amount is shown and the GST line is marked as already included --
+   * displayed for transparency, not added again.
+   *
+   * Only when the WHOLE food total is inclusive. A cart mixing inclusive and
+   * exclusive dishes has no single honest gross line, which is exactly what
+   * bill.pricesIncludeGst reports, so those fall back to the net presentation
+   * where every line still adds up.
+   */
+  /*
+   * The gross presentation only reconciles when EVERYTHING taxable is
+   * inclusive. Admin-owned packaging stays exclusive even on an inclusive menu,
+   * and its tax still sits inside gstOnItems -- suppressing the GST line there
+   * loses a real charge and the printed lines come up a rupee short. That case
+   * keeps the net presentation, where every line adds up.
+   *
+   * A cart mixing inclusive and exclusive dishes reports pricesIncludeGst
+   * false and lands here too, which is what bill.js intends: there is no single
+   * honest gross line to print.
+   */
+  const packagingIsInclusive =
+    Number(bill?.packagingFee ?? 0) <= 0
+    || Number(bill?.netPackagingFee ?? 0) < Number(bill?.packagingFee ?? 0) - 0.005
+  const gstIsIncludedInItems = bill?.pricesIncludeGst === true && packagingIsInclusive
+
+  // Gross lines must be paired with the gross coupon; netting one against the
+  // other is what made a Rs 50 coupon show as Rs 47.62 and miss the total.
+  const billItemAmountShown = gstIsIncludedInItems
+    ? Number(bill?.itemAmount ?? billItemAmount)
+    : billItemAmount
+  const billPackagingFeeShown = gstIsIncludedInItems
+    ? Number(bill?.packagingFee ?? billPackagingFee)
+    : billPackagingFee
+
+  /*
+   * The platform fee and its own GST as one line, the way the client's bill
+   * format states it: "Platform fee (10) 11.80". Two lines charged the same
+   * money but read as two separate fees.
+   */
+  const billPlatformFeeShown = Number(platformFee ?? 0) + billPlatformFeeGst
   const billTip = Number(bill?.tip ?? 0)
   const billRoundOff = Number(bill?.roundOff ?? 0)
   const discount = pricing?.discount ?? (appliedCoupon ? Math.min(appliedCoupon.discount, subtotal * 0.5) : 0)
   const billDiscount = Number(bill?.discountOnNet ?? discount ?? 0) || 0
+  // Paired with whichever item line is being shown: the gross coupon against a
+  // gross line, the net-equivalent one against the net lines.
+  const billDiscountShown = gstIsIncludedInItems
+    ? (Number(bill?.discount ?? billDiscount) || 0)
+    : billDiscount
   const totalBeforeDiscount = subtotal + deliveryFee + platformFee + gstCharges + surgeAmount
   const total = pricing?.total ?? (subtotal + deliveryFee + platformFee + gstCharges + surgeAmount - (pricing?.discount ?? discount))
   /*
@@ -2647,12 +2697,12 @@ export default function Cart() {
                     )}
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600 dark:text-gray-400">Item Total</span>
-                      <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{billItemAmount.toFixed(2)}</span>
+                      <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{billItemAmountShown.toFixed(2)}</span>
                     </div>
-                    {billPackagingFee > 0 && (
+                    {billPackagingFeeShown > 0 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600 dark:text-gray-400">Packaging Charges</span>
-                        <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{billPackagingFee.toFixed(2)}</span>
+                        <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{billPackagingFeeShown.toFixed(2)}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm">
@@ -2662,17 +2712,14 @@ export default function Cart() {
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600 dark:text-gray-400">Platform Fee</span>
-                      <span className="text-gray-800 dark:text-gray-200 font-medium">{isPricingAvailable ? `${RUPEE_SYMBOL}${platformFee.toFixed(2)}` : "-"}</span>
+                      <span className="text-gray-600 dark:text-gray-400">
+                        Platform Fee
+                        {billPlatformFeeGst > 0 && billPlatformFeeGstRate > 0
+                          ? ` (incl. ${billPlatformFeeGstRate}% GST)`
+                          : ""}
+                      </span>
+                      <span className="text-gray-800 dark:text-gray-200 font-medium">{isPricingAvailable ? `${RUPEE_SYMBOL}${billPlatformFeeShown.toFixed(2)}` : "-"}</span>
                     </div>
-                    {billPlatformFeeGst > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600 dark:text-gray-400">
-                          Govt. Fee{billPlatformFeeGstRate > 0 ? ` @ ${billPlatformFeeGstRate}%` : ""}
-                        </span>
-                        <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{billPlatformFeeGst.toFixed(2)}</span>
-                      </div>
-                    )}
                     {surgeAmount > 0 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600 dark:text-gray-400">Surge Amount</span>
@@ -2682,13 +2729,24 @@ export default function Cart() {
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600 dark:text-gray-400">
                         GST{billGstRate > 0 ? ` @ ${billGstRate}%` : ""}
+                        {gstIsIncludedInItems ? " (included above)" : ""}
                       </span>
-                      <span className="text-gray-800 dark:text-gray-200 font-medium">{isPricingAvailable ? `${RUPEE_SYMBOL}${billGst.toFixed(2)}` : "-"}</span>
+                      {/*
+                        Already inside Item Total for an inclusive menu, so it is
+                        shown for transparency and must not read as another
+                        charge -- otherwise the visible lines add up to more
+                        than the amount being paid.
+                      */}
+                      <span className={gstIsIncludedInItems
+                        ? "text-gray-400 dark:text-gray-500 font-medium"
+                        : "text-gray-800 dark:text-gray-200 font-medium"}>
+                        {isPricingAvailable ? `${RUPEE_SYMBOL}${billGst.toFixed(2)}` : "-"}
+                      </span>
                     </div>
-                    {billDiscount > 0 && (
+                    {billDiscountShown > 0 && (
                       <div className="flex justify-between text-sm text-[#EB590E] font-medium">
                         <span>Coupon Discount</span>
-                        <span>-{RUPEE_SYMBOL}{billDiscount.toFixed(2)}</span>
+                        <span>-{RUPEE_SYMBOL}{billDiscountShown.toFixed(2)}</span>
                       </div>
                     )}
                     {billTip > 0 && (
