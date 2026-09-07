@@ -353,9 +353,17 @@ export async function createInitialTransaction(order) {
         }
     }
 
-    // Ensure nets are finite and rounded
+    /*
+     * Finite and rounded, but NOT floored at zero.
+     *
+     * Either side can end an order out of pocket when it funded a coupon worth
+     * more than it earned. Clamping that to zero did not prevent the loss, it
+     * only stopped the ledger recording it -- an order that cost the platform
+     * 100 was written as 0, and the earnings report read 100 too high. The
+     * schema's `min: 0` is what forced the clamp; both are gone.
+     */
     restaurantNet = Math.round((Number(restaurantNet) || 0) * 100) / 100;
-    platformNetProfit = Math.max(0, Math.round((Number(platformNetProfit) || 0) * 100) / 100);
+    platformNetProfit = Math.round((Number(platformNetProfit) || 0) * 100) / 100;
 
     const transaction = new FoodTransaction({
         orderId: order._id,
@@ -406,7 +414,7 @@ export async function createInitialTransaction(order) {
         },
         amounts: {
             totalCustomerPaid: totalCustomerPaid,
-            restaurantShare: Math.max(0, restaurantNet),
+            restaurantShare: restaurantNet,
             restaurantCommission: restaurantCommission,
             riderShare: riderTotalPayout,
             riderDeliveryFeeShare: riderDeliveryFeeShare,

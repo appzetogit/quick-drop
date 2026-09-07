@@ -70,7 +70,19 @@ const foodTransactionSchema = new mongoose.Schema({
     // Financial Breakdown (The Split)
     amounts: {
         totalCustomerPaid: { type: Number, required: true, min: 0 },
-        restaurantShare: { type: Number, required: true, min: 0 },
+        /*
+         * No floor at zero, deliberately.
+         *
+         * A coupon the restaurant funded can exceed what it earned on that
+         * order, which leaves it owing money rather than earning none. A `min:
+         * 0` here forced the service to clamp, and the clamped amount then
+         * vanished from the ledger: an order paying the restaurant -40 was
+         * recorded as 0, and the earnings reports read 40 too high.
+         *
+         * Every consumer sums these, so a negative reduces the total by exactly
+         * what was lost, which is the answer wanted.
+         */
+        restaurantShare: { type: Number, required: true },
         restaurantCommission: { type: Number, required: true, min: 0 },
         riderShare: { type: Number, required: true, min: 0 },
         riderDeliveryFeeShare: { type: Number, default: 0, min: 0 },
@@ -80,7 +92,10 @@ const foodTransactionSchema = new mongoose.Schema({
         riderIncentivePay: { type: Number, default: 0, min: 0 },
         riderTipPay: { type: Number, default: 0, min: 0 },
         riderTotalPayout: { type: Number, default: 0, min: 0 },
-        platformNetProfit: { type: Number, required: true, min: 0 },
+        // Also unfloored: a platform-funded coupon larger than the platform's
+        // revenue on that order is a real loss, and recording it as zero
+        // overstated profit by exactly the amount lost. See restaurantShare.
+        platformNetProfit: { type: Number, required: true },
         taxAmount: { type: Number, default: 0, min: 0 }
     },
 
