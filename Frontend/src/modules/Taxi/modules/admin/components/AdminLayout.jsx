@@ -848,7 +848,10 @@ const AdminLayout = () => {
               { label: 'Bus Bookings', path: '/taxi/admin/bus-service/bookings', permission: 'bus_service.view' },
             ],
           },*/
-          {
+          // Car Pooling is intentionally hidden from the admin sidebar (not
+          // removed). The routes/pages still exist and stay reachable by URL -
+          // uncomment to restore.
+          /*{
             icon: Share2,
             label: 'Car Pooling',
             subItems: [
@@ -857,7 +860,7 @@ const AdminLayout = () => {
               { label: 'Routes & Stops', path: '/taxi/admin/pooling/routes', permission: 'pooling.view' },
               { label: 'Pooling Bookings', path: '/taxi/admin/pooling/bookings', permission: 'pooling.view' },
             ],
-          },
+          },*/
           {
             icon: MapPin,
             label: 'Geofencing',

@@ -35,10 +35,6 @@ export default function GlobalPricing() {
   const [samples, setSamples] = useState([])
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
-  // Which number an adjustment moves. Defaults to the comparison figure so a
-  // mis-click cannot reprice a live menu -- charging customers differently has
-  // to be chosen deliberately.
-  const [target, setTarget] = useState("otherPrice")
   const [revertingId, setRevertingId] = useState("")
   const [confirmOpen, setConfirmOpen] = useState(false)
 
@@ -86,7 +82,7 @@ export default function GlobalPricing() {
           // "nothing struck through" warning was computed for the wrong
           // direction, which is the one case that warning exists to catch.
           percent: signedPercent ?? 0,
-          target,
+          // target is derived from the direction server-side; see priceAdjustment.service.js
         })
         if (!cancelled) {
           setItemCount(response?.data?.data?.itemCount ?? null)
@@ -108,12 +104,11 @@ export default function GlobalPricing() {
       cancelled = true
     }
     // signedPercent covers both the number and the increase/decrease toggle, and
-    // target decides which figure is being moved. Both were missing: flipping to
-    // Decrease, or switching what the run targets, left the previous preview on
-    // screen -- so the samples described a run the admin was no longer about to
-    // make. percent alone is not enough for the same reason it is a dependency
-    // at all: the MRP and no-comparison warnings are computed from it.
-  }, [restaurantId, signedPercent, target])
+    // the direction is now the only thing deciding which figure moves -- the
+    // server derives that from the sign, so there is nothing else to depend on.
+    // It was missing entirely once: flipping to Decrease left the previous
+    // preview on screen, describing a run the admin was no longer about to make.
+  }, [restaurantId, signedPercent])
 
   const scopeLabel = restaurantId
     ? restaurants.find((r) => String(r?._id || r?.id) === restaurantId)?.restaurantName ||
@@ -130,7 +125,7 @@ export default function GlobalPricing() {
       setApplying(true)
       const response = await adminAPI.applyPriceAdjustment({
         percent: signedPercent,
-        target,
+        // target is derived from the direction server-side
         ...(restaurantId ? { restaurantId } : {}),
       })
       const capped = response?.data?.data?.itemsCappedByMrp ?? 0
@@ -234,50 +229,28 @@ export default function GlobalPricing() {
           to silently reprice a live menu.
         */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Adjust</label>
-          <div className="flex flex-wrap gap-2">
-            {[
-              {
-                value: "otherPrice",
-                label: "Other platform price",
-                hint: "Only the struck-through comparison. Base price and what customers pay are untouched.",
-              },
-              {
-                value: "price",
-                label: "Selling price",
-                hint: "Base price, selling price and every size. The comparison figure is held.",
-              },
-            ].map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setTarget(option.value)}
-                className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-                  target === option.value
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                <span className="block font-medium">{option.label}</span>
-                <span className={`block text-xs ${target === option.value ? "text-slate-300" : "text-slate-500"}`}>
-                  {option.hint}
-                </span>
-              </button>
-            ))}
-          </div>
-          {target === "price" && direction === "increase" && (
+          <label className="block text-sm font-medium text-slate-700 mb-1">What this does</label>
+          <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            {direction === "increase" ? (
+              <>
+                An <span className="font-semibold">increase</span> raises the struck-through comparison only.
+                What the customer pays does not move: a &#8377;200 dish stays &#8377;200 and is shown as
+                &ldquo;&#8377;200, was &#8377;{Math.round(200 * (1 + (Number(percent) || 0) / 100))}&rdquo;.
+              </>
+            ) : (
+              <>
+                A <span className="font-semibold">decrease</span> marks the menu down. Today&rsquo;s price becomes
+                the struck-through one and the reduced figure is charged beneath it: a &#8377;200 dish becomes
+                &ldquo;&#8377;{Math.max(1, Math.round(200 * (1 - (Number(percent) || 0) / 100)))}, was
+                &#8377;200&rdquo;.
+              </>
+            )}
+          </p>
+          {direction === "decrease" && (
             <p className="mt-2 text-xs text-amber-700">
-              This changes what customers are charged. Base price rises with it and the discount percentage is
-              kept, so the advertised saving stays where it is.
-            </p>
-          )}
-          {target === "price" && direction === "decrease" && (
-            <p className="mt-2 text-xs text-amber-700">
-              <span className="font-semibold">A decrease marks the menu down.</span> Today&rsquo;s price becomes the
-              struck-through one and the reduced figure is charged beneath it, so the cut shows as a saving &mdash;
-              &#8377;200 becomes &#8377;180 was &#8377;200. Each dish&rsquo;s previous pre-discount price is replaced,
-              so a discount it was already advertising is folded into this one. Prices are saved first, so this can
-              be reverted.
+              A decrease changes what customers are charged. Each dish&rsquo;s previous pre-discount price is
+              replaced, so a discount it was already advertising is folded into this one. Prices are saved
+              first, so this can be reverted.
             </p>
           )}
         </div>
@@ -335,7 +308,7 @@ export default function GlobalPricing() {
           <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-700">
             <span className="inline-flex items-center gap-1 font-medium">
               <IndianRupee className="h-4 w-4" />
-              {target === "price" ? "Selling price" : "Other platform price"} on your actual menu
+              {direction === "decrease" ? "Selling price" : "Comparison price"} on your actual menu
             </span>
             {samples.length === 0 ? (
               <span className="ml-2">

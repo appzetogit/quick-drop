@@ -362,7 +362,17 @@ export async function getPriceAdjustmentPreview({ restaurantId, percent, target 
      * is how the same increase came to be applied five times in a row and
      * compounded to twenty times the selling price.
      */
-    const field = String(target || 'otherPrice') === 'price' ? 'price' : 'otherPrice';
+    /*
+     * Derived from the direction exactly as applyPriceAdjustment derives it, so
+     * the preview describes the run that will actually happen. Reading a
+     * caller-supplied target here would let the two disagree, and the preview
+     * is the only thing standing between an admin and repeating a run that
+     * appeared to do nothing.
+     *
+     * Nothing typed yet (0 or NaN) previews as an increase, which is what the
+     * screen opens on.
+     */
+    const field = Number.isFinite(pct) && pct < 0 ? 'price' : 'otherPrice';
     const factor = Number.isFinite(pct) ? 1 + pct / 100 : 1;
     const sampleDocs = await FoodItem.find(filter)
         .select(`name price otherPrice`)
@@ -510,10 +520,25 @@ export async function applyPriceAdjustment(body = {}, actor = {}) {
     const factor = 1 + percent / 100;
     const filter = buildFilter(restaurantId);
 
-    // Which number this run moves. Defaults to the comparison figure, so a
-    // mis-click cannot silently reprice a live menu -- changing what customers
-    // are charged has to be asked for.
-    const target = String(body.target || 'otherPrice') === 'price' ? 'price' : 'otherPrice';
+    /*
+     * The direction decides which number moves. The caller does not choose.
+     *
+     *   increase -> the struck-through comparison rises; what the customer is
+     *               charged does not move. Rs 200 becomes "Rs 200, was Rs 240".
+     *   decrease -> the selling price is marked down and today's price becomes
+     *               the strike-through. Rs 200 becomes "Rs 160, was Rs 200".
+     *
+     * This used to be an "Apply to" toggle the admin set independently of the
+     * direction, and two of the four combinations did nothing a customer could
+     * see. The one that got reported: a decrease against the comparison figure
+     * lowered it to Rs 160, below the Rs 200 still being charged, and a
+     * comparison under the selling price is never displayed -- so the run
+     * reported success and the menu looked untouched.
+     *
+     * `target` is still recorded on the adjustment, because revert reads it to
+     * know which fields to put back; it is derived here rather than supplied.
+     */
+    const target = percent > 0 ? 'otherPrice' : 'price';
 
     // Counted before the write, because afterwards the prices have already been
     // held at MRP and the comparison no longer finds them. Only meaningful when
