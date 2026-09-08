@@ -93,8 +93,8 @@ console.log('\n+20% on a Rs 200 dish -> pays 200, struck 240');
     check('a second +20% strikes 280', () => assert.equal(twice.strikePrice, 280));
     check('not 288, which would be compounding', () =>
         assert.notEqual(twice.strikePrice, 288));
-    check('the accumulated percent is stored', () =>
-        assert.equal(twice.stored.formulationPercent, 40));
+    check('the accumulated markup is stored', () =>
+        assert.equal(twice.stored.formulationMarkupPercent, 40));
 
     await run(20);
     const thrice = await shownFor(id);
@@ -131,29 +131,31 @@ console.log('\nruns add up, and cancel');
     await run(20);
     await run(-10);
     const s = await shownFor(id);
-    // +20 then -10 is +10 overall: still above the base, so still a strike and
-    // still nothing extra to pay.
-    check('+20% then -10% leaves +10%', () =>
-        assert.equal(s.stored.formulationPercent, 10));
-    check('so it strikes 220 and charges 200', () => {
-        assert.equal(s.strikePrice, 220);
-        assert.equal(s.price, 200);
+    /*
+     * The two directions do not cancel. A decrease that spent itself undoing a
+     * standing increase was the bug: a platform at +10% took -10% and the price
+     * never moved, so the decrease looked broken.
+     *
+     * +20 markup and -10 discount both stand: struck at 240, sold at 180.
+     */
+    check('the markup survives the decrease', () =>
+        assert.equal(s.stored.formulationMarkupPercent, 20));
+    check('the discount is its own total', () =>
+        assert.equal(s.stored.formulationDiscountPercent, 10));
+    check('struck at 240 and sold at 180', () => {
+        assert.equal(s.strikePrice, 240);
+        assert.equal(s.price, 180);
     });
 
     await run(-10);
-    const level = await shownFor(id);
-    check('another -10% cancels back to level', () =>
-        assert.equal(level.stored.formulationPercent, 0));
-    check('and the dish returns to its own price with no strike', () => {
-        assert.equal(level.price, 200);
-        assert.equal(level.strikePrice, null);
+    const deeper = await shownFor(id);
+    check('another -10% cuts further, it does not cancel', () => {
+        assert.equal(deeper.stored.formulationDiscountPercent, 20);
+        assert.equal(deeper.price, 160);
     });
-
-    await run(-25);
-    const cut = await shownFor(id);
-    check('going negative marks it down from the base', () => {
-        assert.equal(cut.price, 150);
-        assert.equal(cut.strikePrice, 200);
+    check('and the markup is still untouched', () => {
+        assert.equal(deeper.stored.formulationMarkupPercent, 20);
+        assert.equal(deeper.strikePrice, 240);
     });
 }
 
@@ -177,6 +179,8 @@ console.log('\nrepeat decreases do not ratchet the base down');
     check('not 137.70, which would be compounding', () =>
         assert.notEqual(twice2.price, 137.7));
     check('the restaurant base is still 170', () => assert.equal(twice2.stored.basePrice, 170));
+    check('the discount accumulated to 20%', () =>
+        assert.equal(twice2.stored.formulationDiscountPercent, 20));
 }
 
 /* ------------------------------------------------- an un-migrated legacy row */
@@ -190,7 +194,17 @@ console.log('\na row the backfill has not reached');
     const id = await seed({ price: 137.7, basePrice: 153 });
     await FoodItem.collection.updateOne(
         { _id: id },
-        { $unset: { formulationPercent: '', formulationPrice: '' } },
+        {
+            $unset: {
+                formulationPercent: '',
+                formulationPrice: '',
+                // The split fields have schema defaults of 0, so a document
+                // Mongoose creates already looks migrated. A genuine legacy row
+                // carries none of the three.
+                formulationMarkupPercent: '',
+                formulationDiscountPercent: '',
+            },
+        },
     );
     const before = await shownFor(id);
     check('charges what it charged, not the base', () => assert.equal(before.price, 137.7));
@@ -202,7 +216,7 @@ console.log('\na row the backfill has not reached');
     const after = await shownFor(id);
     // It was already effectively -10%, so another -20% takes it to -30% of 153.
     check('the inferred percent is added to, not replaced', () =>
-        assert.equal(after.stored.formulationPercent, -30));
+        assert.equal(after.stored.formulationDiscountPercent, 30));
     check('so it charges 30% off the base', () => assert.equal(after.price, 107.1));
     check('and strikes the base', () => assert.equal(after.strikePrice, 153));
 }
@@ -236,13 +250,16 @@ console.log('\nvariants follow the dish');
         assert.deepEqual(prices, [60, 100]);
     });
 
-    // +50 brings the total back to 0, so every size returns to its base.
+    // An increase touches only the struck comparison, so every size keeps the
+    // halved price it was cut to.
     await run(50);
     const up = await shownFor(id);
     check('an increase never raises what a size charges', () => {
         const prices = up.stored.variants.map((v) => v.price).sort((a, b) => a - b);
-        assert.deepEqual(prices, [120, 200]);
+        assert.deepEqual(prices, [60, 100]);
     });
+    check('and it raises the dish strike instead', () =>
+        assert.equal(up.stored.formulationMarkupPercent, 50));
 }
 
 /* ------------------------------------------------------------------ revert */

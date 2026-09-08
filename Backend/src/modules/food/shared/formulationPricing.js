@@ -98,6 +98,26 @@ export function computeFormulationPrice(basePrice, formulationPercent) {
  * client can render it unconditionally instead of deciding for itself -- the
  * same contract resolveItemDisplayPricing already offers.
  */
+/**
+ * The markup a dish carries, from the split fields or a legacy signed percent.
+ *
+ * Rows written before the split store one signed number: positive was a markup,
+ * negative a discount. Reading them through here means the migration is a
+ * tidy-up rather than a gate.
+ */
+function resolveMarkupPercent(item, legacyPercent) {
+    const stored = toFiniteNumber(item?.formulationMarkupPercent);
+    if (stored !== null) return Math.min(Math.max(round2(stored), 0), MAX_FORMULATION_PERCENT);
+    return legacyPercent > 0 ? Math.min(legacyPercent, MAX_FORMULATION_PERCENT) : 0;
+}
+
+/** The discount a dish carries. See resolveMarkupPercent. */
+function resolveDiscountPercent(item, legacyPercent) {
+    const stored = toFiniteNumber(item?.formulationDiscountPercent);
+    if (stored !== null) return Math.min(Math.max(round2(stored), 0), -MIN_FORMULATION_PERCENT);
+    return legacyPercent < 0 ? Math.min(-legacyPercent, -MIN_FORMULATION_PERCENT) : 0;
+}
+
 export function resolveFormulationPricing(item = {}) {
     const storedBase = toFiniteNumber(item?.basePrice);
     const storedPrice = toFiniteNumber(item?.price) ?? 0;
@@ -115,9 +135,10 @@ export function resolveFormulationPricing(item = {}) {
      * wins, including a stored 0, which is why the check is for the field's
      * presence rather than its truthiness.
      */
-    const hasStoredPercent = item?.formulationPercent !== null
-        && item?.formulationPercent !== undefined
-        && item?.formulationPercent !== '';
+    const isSet = (v) => v !== null && v !== undefined && v !== '';
+    const hasStoredPercent = isSet(item?.formulationPercent)
+        || isSet(item?.formulationMarkupPercent)
+        || isSet(item?.formulationDiscountPercent);
 
     /*
      * Only a markdown is ever inferred. A stored price ABOVE the base is bad
@@ -134,18 +155,36 @@ export function resolveFormulationPricing(item = {}) {
         : (inferable ? inferFormulationPercent(basePrice, storedPrice) : 0);
 
     /*
-     * The adjusted figure, which sits either side of the base depending on the
-     * direction, and is NOT what the formulation price means.
+     * Two accumulators, not one, because they do different jobs.
+     *
+     *   markup   raises the struck-through comparison. Nobody pays more.
+     *   discount lowers what is actually charged.
+     *
+     * They were a single signed percent, which meant a decrease could not do
+     * its job while an increase stood: a platform sitting at +10% took a -10%
+     * run and simply cancelled back to zero, leaving the price exactly where it
+     * was. The decrease looked broken because the increase was consuming it.
+     *
+     * Split, each direction accumulates its own total against the SAME base, so
+     * a dish can be struck at 220 and sold at 180 at once, and neither run
+     * interferes with the other.
      */
-    const adjusted = computeFormulationPrice(basePrice, formulationPercent) ?? round2(basePrice);
+    const markupPercent = resolveMarkupPercent(item, formulationPercent);
+    const discountPercent = resolveDiscountPercent(item, formulationPercent);
 
-    const price = Math.min(round2(basePrice), adjusted);
-    const strike = Math.max(round2(basePrice), adjusted);
+    const base = round2(basePrice);
+    const price = Math.max(MIN_RESULT_PRICE, round2(base * (1 - discountPercent / 100)));
+    const strike = round2(base * (1 + markupPercent / 100));
     const hasStrike = strike > price;
 
     return {
         basePrice: round2(basePrice),
         formulationPercent,
+        // The two accumulators, under names that cannot be mistaken for the
+        // saving a customer reads. `discountPercent` below is that saving, and
+        // every client already consumes it under that name.
+        markupPercent,
+        discountAccumulatorPercent: round2(discountPercent),
         /*
          * The formulation price is WHAT THE CUSTOMER PAYS, so an increase can
          * never move it -- only a decrease can.
@@ -163,6 +202,9 @@ export function resolveFormulationPricing(item = {}) {
         formulationPrice: round2(price),
         price: round2(Math.max(price, 0)),
         strikePrice: hasStrike ? round2(strike) : null,
+        // The saving a customer reads off the two figures on screen, which is
+        // not the discount accumulator: a dish struck at 220 and sold at 180 is
+        // advertised as 18% off, though the decrease that set it was 10%.
         discountPercent: hasStrike ? round2(((strike - price) / strike) * 100) : 0,
         savings: hasStrike ? round2(strike - price) : 0,
     };
@@ -188,6 +230,8 @@ export function formulationFieldsFor(basePrice, formulationPercent) {
     return {
         basePrice: derived.basePrice,
         formulationPercent: derived.formulationPercent,
+        formulationMarkupPercent: derived.markupPercent,
+        formulationDiscountPercent: derived.discountAccumulatorPercent,
         // Equal to `price` by definition now -- see resolveFormulationPricing.
         // Both are stored because the admin panel edits against one and every
         // order path reads the other, and a single source keeps them identical.

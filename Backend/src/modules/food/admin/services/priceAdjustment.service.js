@@ -378,21 +378,105 @@ const applyFactorToComparison = async (filter, factor, seedMultiplier = 1) => {
  */
 const applyFormulationPercent = async (filter, percent) => {
     const applied = normalizeFormulationPercent(percent);
+    // Which accumulator this run adds to. The two never touch each other.
+    const addMarkup = applied > 0 ? applied : 0;
+    const addDiscount = applied < 0 ? -applied : 0;
 
-    const derivedBase = {
-        $cond: [
-            { $gt: [{ $ifNull: ['$basePrice', 0] }, 0] },
-            { $round: ['$basePrice', 2] },
-            { $round: ['$price', 2] },
+    /*
+     * A row written before the split carries one signed percent: positive was a
+     * markup, negative a discount. Seeded here so the first run after the split
+     * adds to what the dish already had rather than discarding it.
+     */
+    const legacy = (positive) => ({
+        $let: {
+            vars: { p: { $ifNull: ['$formulationPercent', 0] } },
+            in: positive
+                ? { $cond: [{ $gt: ['$$p', 0] }, '$$p', 0] }
+                : {
+                    $cond: [
+                        { $lt: ['$$p', 0] },
+                        { $multiply: ['$$p', -1] },
+                        /*
+                         * Older still: a row with no percent at all carries its
+                         * discount in the gap between basePrice and price. The
+                         * display infers it the same way, so the write and the
+                         * read agree about what a dish is already on -- without
+                         * this, a dish already 10% off would take a further -20%
+                         * and land at -20% total, quietly handing back the 10%.
+                         *
+                         * `$price` is still the pre-run value here; the stage
+                         * above touched only basePrice.
+                         */
+                        {
+                            $cond: [
+                                { $gt: ['$basePrice', '$price'] },
+                                {
+                                    $round: [
+                                        {
+                                            $multiply: [
+                                                {
+                                                    $divide: [
+                                                        { $subtract: ['$basePrice', '$price'] },
+                                                        '$basePrice',
+                                                    ],
+                                                },
+                                                100,
+                                            ],
+                                        },
+                                        2,
+                                    ],
+                                },
+                                0,
+                            ],
+                        },
+                    ],
+                },
+        },
+    });
+
+    const accumulate = (field, add, positive, cap) => ({
+        $max: [
+            0,
+            {
+                $min: [
+                    cap,
+                    { $add: [{ $ifNull: ['$' + field, legacy(positive)] }, add] },
+                ],
+            },
         ],
-    };
+    });
+
+    const discountedFrom = (baseField) => ({
+        $max: [
+            MIN_RESULT_PRICE,
+            {
+                $round: [
+                    {
+                        $multiply: [
+                            baseField,
+                            { $subtract: [1, { $divide: ['$formulationDiscountPercent', 100] }] },
+                        ],
+                    },
+                    2,
+                ],
+            },
+        ],
+    });
 
     const result = await FoodItem.updateMany(
         { ...filter, price: { $gt: 0 } },
         [
             {
+                // Settle the base first: adopted from `price` only where the dish
+                // has none, so nothing the restaurant typed is discarded.
                 $set: {
-                    basePrice: derivedBase,
+                    basePrice: {
+                        $cond: [
+                            { $gt: [{ $ifNull: ['$basePrice', 0] }, 0] },
+                            { $round: ['$basePrice', 2] },
+                            { $round: ['$price', 2] },
+                        ],
+                    },
                     variants: {
                         $map: {
                             input: { $ifNull: ['$variants', []] },
@@ -416,117 +500,25 @@ const applyFormulationPercent = async (filter, percent) => {
                 },
             },
             {
-                $set: {
-                    /*
-                     * The percent ACCUMULATES. Running +10% twice means +20%,
-                     * so a Rs 200 dish is struck at 220 then 240.
-                     *
-                     * Each step is ten percent OF THE BASE, not of the last
-                     * result -- 220, 240, 260, never 242. That distinction is
-                     * the whole safety property: compounding is what took a
-                     * Rs 100 dish to Rs 216 advertising 54% off, and adding a
-                     * fixed slice of a fixed origin cannot run away like that.
-                     * The total is clamped to the same bounds a single run is.
-                     *
-                     * Replacing rather than adding was wrong, and it made a
-                     * second identical run look like it had done nothing.
-                     */
-                    formulationPercent: {
-                        $max: [
-                            MIN_PERCENT,
-                            {
-                                $min: [
-                                    MAX_PERCENT,
-                                    {
-                                        $add: [
-                                            /*
-                                             * A row the migration never reached carries its
-                                             * adjustment in the gap between basePrice and
-                                             * price rather than in a percent. Defaulting
-                                             * that to 0 would discard it: a dish already
-                                             * sold at 10% off would take a further -20% and
-                                             * land at -20% total, quietly giving the
-                                             * customer back the 10% it had. The display
-                                             * infers the same figure the same way, so the
-                                             * two agree about what a dish is currently on.
-                                             *
-                                             * `$price` is still the pre-run value here --
-                                             * the stage above touched only basePrice.
-                                             */
-                                            {
-                                                $ifNull: [
-                                                    '$formulationPercent',
-                                                    {
-                                                        $cond: [
-                                                            { $gt: ['$basePrice', '$price'] },
-                                                            {
-                                                                $round: [
-                                                                    {
-                                                                        $multiply: [
-                                                                            {
-                                                                                $divide: [
-                                                                                    { $subtract: ['$price', '$basePrice'] },
-                                                                                    '$basePrice',
-                                                                                ],
-                                                                            },
-                                                                            100,
-                                                                        ],
-                                                                    },
-                                                                    2,
-                                                                ],
-                                                            },
-                                                            0,
-                                                        ],
-                                                    },
-                                                ],
-                                            },
-                                            applied,
-                                        ],
-                                    },
-                                ],
-                            },
-                        ],
-                    },
-                },
-            },
-            {
                 /*
-                 * Derived from the accumulated percent above, which is why it
-                 * cannot share that stage: an aggregation stage sees the
-                 * document as it was when the stage began, so reading
-                 * $formulationPercent alongside writing it would use the old
-                 * value and lose the accumulation.
-                 *
-                 * NOT the formulation price. That is what the customer pays and
-                 * is settled below; an increase must leave it untouched.
+                 * Each direction adds to its own total, both measured against the
+                 * same base. An increase raises only the struck comparison; a
+                 * decrease lowers only what is charged. Sharing one signed
+                 * counter meant a decrease spent itself cancelling a standing
+                 * increase, and the price never moved.
                  */
                 $set: {
-                    adjustedPrice: {
-                        $max: [
-                            MIN_RESULT_PRICE,
-                            {
-                                $round: [
-                                    {
-                                        $multiply: [
-                                            '$basePrice',
-                                            { $add: [1, { $divide: ['$formulationPercent', 100] }] },
-                                        ],
-                                    },
-                                    2,
-                                ],
-                            },
-                        ],
-                    },
+                    formulationMarkupPercent:
+                        accumulate('formulationMarkupPercent', addMarkup, true, MAX_PERCENT),
+                    formulationDiscountPercent:
+                        accumulate('formulationDiscountPercent', addDiscount, false, -MIN_PERCENT),
                 },
             },
             {
+                // Derived from the totals above, which is why this is its own
+                // stage: a stage sees the document as it was when it began.
                 $set: {
-                    // Both are the lower of the two by definition: an increase
-                    // puts the adjusted figure above the base and changes
-                    // nothing anyone pays, a decrease puts it below and becomes
-                    // the price. See shared/formulationPricing.js.
-                    price: { $min: ['$basePrice', '$adjustedPrice'] },
-                    formulationPrice: { $min: ['$basePrice', '$adjustedPrice'] },
+                    price: discountedFrom('$basePrice'),
                     variants: {
                         $map: {
                             input: { $ifNull: ['$variants', []] },
@@ -534,29 +526,7 @@ const applyFormulationPercent = async (filter, percent) => {
                             in: {
                                 $mergeObjects: [
                                     '$$v',
-                                    {
-                                        price: {
-                                            $min: [
-                                                '$$v.basePrice',
-                                                {
-                                                    $max: [
-                                                        MIN_RESULT_PRICE,
-                                                        {
-                                                            $round: [
-                                                                {
-                                                                    $multiply: [
-                                                                        '$$v.basePrice',
-                                                                        { $add: [1, { $divide: ['$formulationPercent', 100] }] },
-                                                                    ],
-                                                                },
-                                                                2,
-                                                            ],
-                                                        },
-                                                    ],
-                                                },
-                                            ],
-                                        },
-                                    },
+                                    { price: discountedFrom('$$v.basePrice') },
                                 ],
                             },
                         },
@@ -565,9 +535,35 @@ const applyFormulationPercent = async (filter, percent) => {
             },
             {
                 $set: {
+                    // What the customer pays, equal to `price` by definition.
+                    formulationPrice: '$price',
+                    /*
+                     * The signed field older readers still consult. A markup
+                     * wins when both stand, which is how it was interpreted
+                     * before the split.
+                     */
+                    formulationPercent: {
+                        $cond: [
+                            { $gt: ['$formulationMarkupPercent', 0] },
+                            '$formulationMarkupPercent',
+                            { $multiply: ['$formulationDiscountPercent', -1] },
+                        ],
+                    },
                     discountPercent: {
                         $let: {
-                            vars: { strike: { $max: ['$basePrice', '$adjustedPrice'] } },
+                            vars: {
+                                strike: {
+                                    $round: [
+                                        {
+                                            $multiply: [
+                                                '$basePrice',
+                                                { $add: [1, { $divide: ['$formulationMarkupPercent', 100] }] },
+                                            ],
+                                        },
+                                        2,
+                                    ],
+                                },
+                            },
                             in: {
                                 $cond: [
                                     { $gt: ['$$strike', '$price'] },
@@ -575,7 +571,12 @@ const applyFormulationPercent = async (filter, percent) => {
                                         $round: [
                                             {
                                                 $multiply: [
-                                                    { $divide: [{ $subtract: ['$$strike', '$price'] }, '$$strike'] },
+                                                    {
+                                                        $divide: [
+                                                            { $subtract: ['$$strike', '$price'] },
+                                                            '$$strike',
+                                                        ],
+                                                    },
                                                     100,
                                                 ],
                                             },
@@ -589,8 +590,6 @@ const applyFormulationPercent = async (filter, percent) => {
                     },
                 },
             },
-            // The scratch figure must not survive into the document.
-            { $unset: 'adjustedPrice' },
         ],
     );
     return result?.modifiedCount || 0;

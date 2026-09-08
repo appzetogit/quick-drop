@@ -113,6 +113,24 @@ const foodSchema = new mongoose.Schema(
          */
         formulationPercent: { type: Number, min: -90, max: 300, default: 0 },
         /**
+         * The two adjustments a dish carries, accumulated separately.
+         *
+         *   markup   raises the struck-through comparison. Nobody pays more.
+         *   discount lowers what is actually charged.
+         *
+         * They were one signed percent, which meant the two directions shared a
+         * counter and fought: a platform sitting at +10% took a -10% run and
+         * cancelled back to zero, leaving the price where it was, so the
+         * decrease looked broken. Both measure against the same basePrice, so a
+         * dish can be struck at 220 and sold at 180 at once.
+         *
+         * formulationPercent above is kept for rows written before the split --
+         * positive meant a markup, negative a discount -- and is read as a
+         * fallback rather than maintained.
+         */
+        formulationMarkupPercent: { type: Number, min: 0, max: 300, default: 0 },
+        formulationDiscountPercent: { type: Number, min: 0, max: 90, default: 0 },
+        /**
          * basePrice x (1 + formulationPercent / 100), materialised.
          *
          * Derivable on read, and written anyway: this is the figure the admin
