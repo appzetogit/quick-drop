@@ -251,8 +251,9 @@ export default function GlobalPricing() {
           </p>
           {direction === "decrease" && (
             <p className="mt-2 text-xs text-amber-700">
-              A decrease changes what customers are charged. Each dish&rsquo;s previous pre-discount price is
-              replaced, so a discount it was already advertising is folded into this one. Prices are saved
+              A decrease changes what customers are charged. Each restaurant&rsquo;s own base price is kept
+              as typed and the cut is applied as a discount on top of it, so a dish already on offer ends up
+              advertising the deeper saving rather than losing the price it was struck from. Prices are saved
               first, so this can be reverted.
             </p>
           )}

@@ -271,9 +271,18 @@ const snapshotPrices = async (filter, adjustmentId) => {
  * is charged beneath it, so a 10% cut reads as "Rs 180, was Rs 200" instead of
  * moving both numbers and advertising the same discount as before.
  *
- * Two stages, because a later stage in an aggregation-pipeline update sees what
- * an earlier one wrote: the base has to be captured from the OLD price before
- * the price itself is reduced.
+ * What it writes is deliberately narrow: `price`, `discountPercent`, variant
+ * prices, and the platform's own comparison figure. The restaurant's basePrice
+ * is left exactly as typed wherever one exists, and only adopted from the price
+ * on dishes that have none. A global run is the platform discounting a menu, not
+ * the platform editing the restaurant's prices, and the two were the same write
+ * until this: the Edit Food form showed a base price a global run had rewritten,
+ * and each further run rewrote it again from the already-reduced figure.
+ *
+ * Stages matter, because a later stage in an aggregation-pipeline update sees
+ * what an earlier one wrote: the base is settled first, then the price is cut
+ * from the value `$price` still holds, then the discount is derived from the two
+ * figures actually stored so the advertised percentage matches them.
  *
  * No MRP clamp here, unlike the scaling path -- a markdown only ever lowers what
  * is charged, so it cannot push a dish above its printed maximum.
@@ -283,13 +292,42 @@ const applyMarkdownToMenu = async (filter, factor) => {
         { ...filter, price: { $gt: MIN_RESULT_PRICE } },
         [
             {
-                // The strike-through is what the dish sells for right now.
-                $set: { basePrice: { $round: ['$price', 2] } },
+                /*
+                 * The restaurant's own base price is KEPT wherever it has one.
+                 *
+                 * This used to overwrite it with the selling price
+                 * unconditionally, which quietly destroyed the restaurant's
+                 * number every run and ratcheted it down on every repeat.
+                 * Rainbow Restro sold Veg Biryani at Rs 153 off its own
+                 * Rs 170; one platform-wide -10% left it at Rs 137.70 off
+                 * Rs 153, and the Rs 170 the restaurant had typed was gone
+                 * from the Edit Food form and from the menu. Run it five times
+                 * and a restaurant's real price no longer exists anywhere.
+                 *
+                 * A dish with no base recorded still adopts today's price,
+                 * because that IS its pre-markdown price and nothing is being
+                 * discarded to write it.
+                 */
+                $set: {
+                    basePrice: {
+                        $cond: [
+                            { $gt: [{ $ifNull: ['$basePrice', 0] }, '$price'] },
+                            { $round: ['$basePrice', 2] },
+                            { $round: ['$price', 2] },
+                        ],
+                    },
+                },
             },
             {
                 $set: {
+                    /*
+                     * Derived from the price being charged today, not from the
+                     * base above -- the base may be the restaurant's own larger
+                     * figure now, and multiplying that would cut deeper than the
+                     * percent the admin typed.
+                     */
                     price: {
-                        $max: [MIN_RESULT_PRICE, { $round: [{ $multiply: ['$basePrice', factor] }, 2] }],
+                        $max: [MIN_RESULT_PRICE, { $round: [{ $multiply: ['$price', factor] }, 2] }],
                     },
                     /*
                      * Brought down to the same figure, because the customer is
@@ -302,15 +340,20 @@ const applyMarkdownToMenu = async (filter, factor) => {
                      * of the 70 marked-down dishes on the platform were showing
                      * the old figure instead of the markdown.
                      *
-                     * Set equal to basePrice rather than cleared: clearing it
-                     * falls back to the blanket 20% markup, which on a dish cut
-                     * by less than that lands ABOVE the pre-markdown price and
-                     * strikes through a number nobody has ever charged either.
-                     * Equal means resolveComparisonPrice breaks the tie toward
-                     * basePrice, so the strike is the restaurant's own price
-                     * and carries no "Other platforms" label.
+                     * Set to the pre-markdown price rather than cleared:
+                     * clearing it falls back to the blanket 20% markup, which
+                     * on a dish cut by less than that lands ABOVE the
+                     * pre-markdown price and strikes through a number nobody
+                     * has ever charged either. A -10% cut against a 20% markup
+                     * is exactly that case.
+                     *
+                     * The pre-markdown price, NOT basePrice -- basePrice may be
+                     * the restaurant's own larger figure, which this run
+                     * deliberately no longer touches. Where the two are equal
+                     * resolveComparisonPrice breaks the tie toward basePrice,
+                     * so the strike carries no "Other platforms" label.
                      */
-                    otherPrice: '$basePrice',
+                    otherPrice: { $round: ['$price', 2] },
                     variants: {
                         $map: {
                             input: { $ifNull: ['$variants', []] },

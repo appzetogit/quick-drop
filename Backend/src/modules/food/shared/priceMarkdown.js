@@ -11,11 +11,18 @@
  * charges the reduced figure beneath it. Rs 200 becomes "Rs 180, was Rs 200" --
  * a 10% saving the customer can read.
  *
- * The trade this makes, stated plainly: the dish's previous pre-discount price
- * is REPLACED, not kept. A dish that was Rs 250 marked down to Rs 200 no longer
- * shows Rs 250 anywhere. That is why the caller must snapshot before applying
- * one -- an inverse multiply cannot bring back a number that was overwritten.
- * See priceAdjustment.service.js.
+ * The restaurant's own base price is KEPT. An earlier version replaced it with
+ * the selling price, so a dish at Rs 200 struck from Rs 250 became Rs 180
+ * struck from Rs 200 and the Rs 250 was gone -- from the menu and from the
+ * restaurant's own Edit Food form -- with every repeat run cutting the number
+ * again from the already-reduced one. A dish carrying no base of its own still
+ * adopts today's price, since that is its pre-markdown price and nothing is
+ * discarded to write it.
+ *
+ * Snapshot before applying one regardless: `price`, `discountPercent` and
+ * variant prices are still overwritten, and an inverse multiply cannot restore
+ * a discount that was recomputed rather than scaled. See
+ * priceAdjustment.service.js.
  */
 
 const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
@@ -53,10 +60,12 @@ export function markdownFor(item = {}, factor = 1) {
 
     const price = Math.max(MIN_RESULT_PRICE, round2(current * factor));
 
-    // The strike-through is what the dish sold for a moment ago. If the floor
-    // above caught the price, the strike still has to sit above it or nothing
-    // renders.
-    const basePrice = round2(current);
+    // The restaurant's own base price where it has one above the price it
+    // charges, otherwise today's price -- which is that dish's pre-markdown
+    // price, so adopting it discards nothing. If the floor above caught the
+    // price, the strike still has to sit above it or nothing renders.
+    const ownBase = toPositive(item?.basePrice);
+    const basePrice = ownBase !== null && ownBase > current ? round2(ownBase) : round2(current);
     if (!(basePrice > price)) return null;
 
     return {
@@ -81,8 +90,11 @@ export function describeMarkdown(item = {}, factor = 1) {
         now: next.price,
         saving: round2(next.basePrice - next.price),
         percent: next.discountPercent,
-        // The figure being discarded, so the admin sees what they are giving up
-        // before pressing the button rather than discovering it afterwards.
-        replacedBasePrice: toPositive(item?.basePrice),
+        // Whether the strike is the restaurant's own base price or today's
+        // selling price adopted in place of one it does not have. There is no
+        // longer a `replacedBasePrice` to report: an earlier version of this
+        // overwrote the restaurant's number and had to warn about it.
+        strikeIsOwnBase: toPositive(item?.basePrice) !== null
+            && toPositive(item?.basePrice) > toPositive(item?.price),
     };
 }

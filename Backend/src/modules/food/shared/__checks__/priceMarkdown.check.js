@@ -15,28 +15,42 @@ assert.equal(isMarkdownFactor(-0.5), false);
 assert.equal(isMarkdownFactor('abc'), false);
 
 // --- the headline case ------------------------------------------------------
-// The example the behaviour was agreed on: Rs 200 selling, Rs 250 base, 20% off,
-// run at -10%. The old selling price becomes the strike-through.
+// Rs 200 selling, Rs 250 base, 20% off, run at -10%. The price is cut and the
+// restaurant's own Rs 250 stays, so the dish now advertises the deeper saving
+// rather than losing the figure it was struck from.
 {
     const out = markdownFor({ price: 200, basePrice: 250, discountPercent: 20 }, 0.9);
-    assert.deepEqual(out, { price: 180, basePrice: 200, discountPercent: 10 });
+    assert.deepEqual(out, { price: 180, basePrice: 250, discountPercent: 28 });
 }
 
-// A dish with no prior discount behaves the same way.
+// A dish with no discount of its own: the base equals the price, so the price
+// it sold at a moment ago is what gets struck through.
 assert.deepEqual(
     markdownFor({ price: 100, basePrice: 100, discountPercent: 0 }, 0.75),
     { price: 75, basePrice: 100, discountPercent: 25 },
 );
 
-// The old base is deliberately discarded, not preserved as the higher strike.
+// The restaurant's own base is KEPT, never replaced by the selling price. This
+// used to be the reverse, which destroyed the restaurant's number on every run
+// and cut it again from the reduced figure on the next one.
 {
     const out = markdownFor({ price: 200, basePrice: 400, discountPercent: 50 }, 0.9);
-    assert.equal(out.basePrice, 200, 'the strike is the OLD SELLING price, not the old base');
-    assert.notEqual(out.basePrice, 400);
+    assert.equal(out.basePrice, 400, "the restaurant's own base price survives");
+    assert.equal(out.price, 180);
+    assert.equal(out.discountPercent, 55, 'the saving deepens instead');
 }
 
-// A dish whose base was already below its price (bad data) still marks down
-// coherently, because the rule never reads basePrice.
+// Running it twice cuts the price twice and still leaves the base alone. The
+// ratchet this replaces took each run's base from the previous run's price.
+{
+    const once = markdownFor({ price: 200, basePrice: 250, discountPercent: 20 }, 0.9);
+    const twice = markdownFor({ ...once }, 0.9);
+    assert.equal(twice.basePrice, 250, 'still the restaurant number after two runs');
+    assert.equal(twice.price, 162);
+}
+
+// A dish whose base was already below its price (bad data) adopts today's
+// price, which is the only coherent strike available.
 assert.deepEqual(
     markdownFor({ price: 100, basePrice: 50, discountPercent: 0 }, 0.9),
     { price: 90, basePrice: 100, discountPercent: 10 },
@@ -67,13 +81,18 @@ assert.equal(markdownFor({ price: MIN_RESULT_PRICE }, 0.5), null, 'already at th
 // --- describeMarkdown -------------------------------------------------------
 {
     const d = describeMarkdown({ price: 200, basePrice: 250 }, 0.9);
+    assert.equal(d.was, 250, "struck at the restaurant's own base price");
+    assert.equal(d.now, 180);
+    assert.equal(d.saving, 70);
+    assert.equal(d.percent, 28);
+    assert.equal(d.strikeIsOwnBase, true);
+}
+// A dish with no base of its own strikes the price it sold at a moment ago.
+{
+    const d = describeMarkdown({ price: 200 }, 0.9);
     assert.equal(d.was, 200);
     assert.equal(d.now, 180);
-    assert.equal(d.saving, 20);
-    assert.equal(d.percent, 10);
-    // The preview names the figure being thrown away, so it is a decision
-    // rather than a surprise.
-    assert.equal(d.replacedBasePrice, 250);
+    assert.equal(d.strikeIsOwnBase, false);
 }
 assert.equal(describeMarkdown({ price: 100 }, 1.1), null);
 

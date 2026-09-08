@@ -137,6 +137,41 @@ console.log('\na markdown on a dish carrying an inflated old comparison');
         assert.equal(shown.strikeSource, 'basePrice'));
 }
 
+/* ------------------------------------------ the restaurant's own base price */
+console.log("\na markdown does not overwrite the restaurant's own base price");
+{
+    // Rainbow Restro as it actually stood: Rs 153 off its own Rs 170. One
+    // platform-wide -10% left it at Rs 137.70 off Rs 153 and the Rs 170 the
+    // restaurant had typed was gone from the Edit Food form and the menu.
+    const id = await seed({ price: 153, basePrice: 170, discountPercent: 10, otherPrice: 0 });
+    await run(-10);
+    const shown = await strikeOf(id);
+    check('charges 137.70', () => assert.equal(shown.price, 137.7));
+    check('keeps the restaurant base of 170', () => assert.equal(shown.stored.basePrice, 170));
+    check('strikes 170, the price the restaurant set', () => assert.equal(shown.strikePrice, 170));
+    check('reports the real saving off that base', () => assert.equal(shown.savingsPercent, 19));
+
+    // The ratchet: the old write took its next base from the already-reduced
+    // price, so every repeat cut the restaurant's number again.
+    await run(-10);
+    const twice = await strikeOf(id);
+    check('a second run still keeps 170', () => assert.equal(twice.stored.basePrice, 170));
+    check('a second run cuts the price again', () => assert.equal(twice.price, 123.93));
+}
+
+console.log('\na markdown on a dish with no base price of its own');
+{
+    const id = await seed({ price: 200, basePrice: null, otherPrice: 0 });
+    await run(-10);
+    const shown = await strikeOf(id);
+    check('adopts today price as the base', () => assert.equal(shown.stored.basePrice, 200));
+    check('charges 180', () => assert.equal(shown.price, 180));
+    // A 10% cut against the platform's 20% blanket markup: the fallback would
+    // strike 216, above the 200 anyone has ever been charged.
+    check('strikes 200, not the 20% markup fallback', () => assert.equal(shown.strikePrice, 200));
+    check('does not invent another platform', () => assert.equal(shown.strikeSource, 'basePrice'));
+}
+
 /* ------------------------------------------- a restaurant own bigger strike */
 console.log("\nan increase leaves a restaurant's own larger strike alone");
 {

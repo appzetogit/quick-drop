@@ -20,6 +20,7 @@ const createFoodForm = () => ({
   name: "",
   price: "",
   basePrice: "",
+  discountPercent: 0,
   otherPrice: "",
   variantsEnabled: false,
   variants: [],
@@ -155,6 +156,10 @@ export default function FoodsList() {
               categoryName: f.categoryName || "",
               price: getFoodDisplayPrice(f),
               basePrice: f.basePrice ?? f.price ?? 0,
+              // Carried through so the edit form can say what the dish charges.
+              // Dropped here, every marked-down dish opened as though its base
+              // price were its selling price.
+              discountPercent: Number(f.discountPercent) || 0,
               otherPrice: f.otherPrice ?? 0,
               variants: getStoredFoodVariants(f),
               foodType: f.foodType || "Non-Veg",
@@ -299,6 +304,10 @@ export default function FoodsList() {
       // Rows written before basePrice existed carry only `price`, which is the
       // same figure for an undiscounted item.
       basePrice: String(food.basePrice ?? food.price ?? ""),
+      // Read-only here, and only to say what the dish actually sells for. A
+      // global decrease sets it, so a form that ignored it showed the base
+      // price as though that were what customers pay.
+      discountPercent: Number(food.discountPercent) || 0,
       otherPrice: food.otherPrice ? String(food.otherPrice) : "",
       variants: getStoredFoodVariants(food).map(createVariantDraft),
       // Absent on old rows means "sell by variants if any exist".
@@ -465,8 +474,19 @@ export default function FoodsList() {
         name: foodForm.name.trim(),
         basePrice: hasVariants ? undefined : parsedPrice,
         variantsEnabled: hasVariants,
-        // Base price is charged as typed; the comparison is presentational.
-        discountPercent: 0,
+        /*
+         * discountPercent is deliberately NOT sent.
+         *
+         * It used to be hardcoded to 0, which meant opening any marked-down
+         * dish and pressing Save silently undid the markdown: Eggitarion's Veg
+         * Biryani sat at Rs 144 off Rs 180 after a -20% run, and one save with
+         * nothing else edited put it back to Rs 180. The admin had repriced the
+         * dish by 25% without being told.
+         *
+         * Omitted rather than sent, so the server keeps whatever discount is on
+         * the dish. A new dish has none, so it still saves at the base price
+         * exactly as before.
+         */
       showIn99Store: foodForm.showIn99Store === true,
       freeDelivery: foodForm.freeDelivery === true,
         otherPrice: foodForm.otherPrice === "" ? 0 : Number(foodForm.otherPrice),
@@ -942,6 +962,28 @@ export default function FoodsList() {
                 {foodForm.variantsEnabled === true ? (
                   <p className="mt-1 text-xs text-slate-500">Selling by variants: customers see the lowest variant price as the starting price.</p>
                 ) : null}
+                {(() => {
+                  /*
+                   * What the dish actually charges, whenever that is not the
+                   * base price above. A global decrease discounts the menu
+                   * without touching the base, so this field alone stopped
+                   * describing the dish: the form read "Base Price 180" on a
+                   * dish selling at 144 and said nothing about the difference.
+                   */
+                  const base = Number(foodForm.basePrice)
+                  const discount = Number(foodForm.discountPercent) || 0
+                  if (foodForm.variantsEnabled === true) return null
+                  if (!Number.isFinite(base) || base <= 0 || discount <= 0) return null
+                  const sells = Math.round(base * (1 - discount / 100) * 100) / 100
+                  return (
+                    <p className="mt-1 text-xs text-amber-700">
+                      A {discount}% platform discount is on this dish. Customers pay{" "}
+                      <span className="font-semibold">{"₹"}{sells.toFixed(2)}</span>, struck through
+                      at {"₹"}{base.toFixed(2)}. Editing the base price here keeps that discount;
+                      it is removed from Global Price Adjustment.
+                    </p>
+                  )
+                })()}
               </div>
               {/* Comparison figure only. Customers are charged the base price above;
                   this is struck through beside it, and a global price adjustment
