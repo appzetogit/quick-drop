@@ -40,7 +40,20 @@ const statusConfig = {
 
 export default function OrdersPage({ statusKey = "all" }) {
   const config = statusConfig[statusKey] || statusConfig["all"]
+  // Hoisted to the top of the component: the fetch below reads the page and
+  // size out of the URL, so it has to exist before that.
+  const [searchParams, setSearchParams] = useSearchParams()
   const [orders, setOrders] = useState([])
+  const [pageMeta, setPageMeta] = useState({ total: 0, totalPages: 1 })
+  /*
+   * The live search term, held in a ref rather than read directly.
+   *
+   * useOrdersManagement declares searchQuery well below fetchOrders, so naming
+   * it in that callback's dependency array would read a const before its
+   * declaration and throw. The ref is written by an effect further down, which
+   * also drives the refetch.
+   */
+  const searchRef = useRef("")
   const [isLoading, setIsLoading] = useState(true)
   const [processingRefund, setProcessingRefund] = useState(null)
   const [processingActionOrderId, setProcessingActionOrderId] = useState(null)
@@ -310,16 +323,58 @@ export default function OrdersPage({ statusKey = "all" }) {
     if (Notification.permission === "default") {
       Notification.requestPermission().catch(() => {})
     }
-  }, [statusKey])
+  }, [statusKey, page, limit])
+
+  /*
+   * Page and size, held in the URL rather than in component state.
+   *
+   * Bounded on the way in: a hand-edited `?limit=100000` would otherwise ask
+   * the server for everything and be silently cut to 100 anyway, which is the
+   * confusion this whole change is about. The server's own cap is 100.
+   */
+  const page = Math.max(1, parseInt(searchParams.get("page"), 10) || 1)
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit"), 10) || 20, 1), 100)
+
+  const setPage = useCallback((next) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev)
+      params.set("page", String(Math.max(1, next)))
+      return params
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const setLimit = useCallback((next) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev)
+      params.set("limit", String(Math.min(Math.max(1, next), 100)))
+      // A new page size makes the old page number meaningless.
+      params.set("page", "1")
+      return params
+    }, { replace: true })
+  }, [setSearchParams])
 
   const fetchOrders = useCallback(async (options = {}) => {
     const { silent = false, withRingCheck = false } = options
 
     try {
       if (!silent) setIsLoading(true)
+      /*
+       * Page, size and search go to the server.
+       *
+       * This asked for a thousand orders and filtered them in the browser. The
+       * endpoint caps a request at 100 and says nothing about it, so the list
+       * silently stopped at the hundredth order -- invisible while a platform
+       * has 24, and a support desk unable to find last week's order once it
+       * has 300. Search had the same ceiling for the same reason, which is why
+       * it moved to the server with this rather than after it.
+       *
+       * Page and size live in the URL, so a particular page can be linked,
+       * reloaded, and opened in a second tab.
+       */
       const params = {
-        page: 1,
-        limit: 1000,
+        page,
+        limit,
+        search: searchRef.current.trim() || undefined,
         status:
           statusKey === "all"
             ? undefined
@@ -337,6 +392,12 @@ export default function OrdersPage({ statusKey = "all" }) {
         response?.data?.data?.docs ??
         response?.data?.data
       const nextOrders = Array.isArray(rawOrders) ? rawOrders : []
+      // The server reports the true total; the page only knows its own slice.
+      const meta = response?.data?.data?.meta ?? response?.data?.meta ?? null
+      setPageMeta({
+        total: Number(meta?.total) || nextOrders.length,
+        totalPages: Number(meta?.totalPages) || 1,
+      })
 
       if (response.data?.success) {
         const nextOrderIds = new Set(
@@ -642,7 +703,24 @@ export default function OrdersPage({ statusKey = "all" }) {
     }
   }, [playDefaultRing, showBrowserNotification])
 
-  const [searchParams] = useSearchParams()
+  /*
+   * Search runs on the server, so a new term means a new request -- debounced,
+   * or every keystroke is a round trip, and reset to page one, because page
+   * four of the old results says nothing about the new ones.
+   *
+   * Placed here rather than beside the fetch: searchQuery is declared by
+   * useOrdersManagement above, and this is the first point it exists.
+   */
+  useEffect(() => {
+    if (searchRef.current === searchQuery) return undefined
+    const timer = setTimeout(() => {
+      searchRef.current = searchQuery
+      if (page !== 1) setPage(1)
+      else fetchOrders({ silent: true, withRingCheck: false })
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [searchQuery, page, setPage, fetchOrders])
+
   const orderIdFromUrl = searchParams.get("orderId")
 
   useEffect(() => {
@@ -926,8 +1004,15 @@ export default function OrdersPage({ statusKey = "all" }) {
         onConfirm={handleRefundConfirm}
         isProcessing={processingRefund !== null}
       />
-      <OrdersTable 
-        orders={filteredOrders} 
+      <OrdersTable
+        orders={filteredOrders}
+        serverPagination={{
+          page,
+          limit,
+          total: pageMeta.total,
+          totalPages: pageMeta.totalPages,
+          onPageChange: setPage,
+        }}
         visibleColumns={visibleColumns}
         onViewOrder={handleViewOrder}
         onPrintOrder={handlePrintOrder}

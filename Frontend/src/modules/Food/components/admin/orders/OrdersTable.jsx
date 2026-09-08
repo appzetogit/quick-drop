@@ -38,21 +38,54 @@ export default function OrdersTable({
   onRejectOrder,
   actionLoadingOrderId,
   deletingOrderId,
+  /*
+   * Optional server-driven pagination:
+   *   { page, limit, total, totalPages, onPageChange }
+   *
+   * Supplied, `orders` is already one page: the table renders it as given and
+   * asks the parent for the next. Omitted, it keeps paginating the whole array
+   * itself, which is what the seven other screens using it do.
+   *
+   * Opt-in for a reason. Slicing locally is correct only while "every order"
+   * fits in one response, and the server caps a request at 100 silently -- so
+   * those screens stop at 100 rows with no way to reach the rest. This is the
+   * way out, taken one screen at a time rather than by changing the contract
+   * under all eight at once.
+   */
+  serverPagination = null,
 }) {
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
-  const totalPages = Math.ceil(orders.length / itemsPerPage)
+  const [localPage, setLocalPage] = useState(1)
+
+  const isServerPaged = !!serverPagination
+  const itemsPerPage = isServerPaged ? (serverPagination.limit || 10) : 10
+  const currentPage = isServerPaged ? (serverPagination.page || 1) : localPage
+  const totalCount = isServerPaged ? (serverPagination.total ?? orders.length) : orders.length
+  const totalPages = isServerPaged
+    ? (serverPagination.totalPages || 1)
+    : Math.ceil(orders.length / itemsPerPage)
+
+  const setCurrentPage = (next) => {
+    const value = typeof next === "function" ? next(currentPage) : next
+    const clamped = Math.min(Math.max(1, value), Math.max(1, totalPages))
+    if (isServerPaged) serverPagination.onPageChange?.(clamped)
+    else setLocalPage(clamped)
+  }
   
-  // Reset to page 1 when orders change
+  /*
+   * Reset to page one when the underlying list changes -- but only while this
+   * table owns the page number. A server-paged parent owns it, and resetting
+   * here would fight every fetch: each new page arrives as a changed list.
+   */
   useEffect(() => {
-    setCurrentPage(1)
-  }, [orders.length])
+    if (!isServerPaged) setLocalPage(1)
+  }, [orders.length, isServerPaged])
   
   const paginatedOrders = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage
+    if (isServerPaged) return orders
+    const start = (localPage - 1) * itemsPerPage
     const end = start + itemsPerPage
     return orders.slice(start, end)
-  }, [orders, currentPage])
+  }, [orders, localPage, isServerPaged, itemsPerPage])
 
   const formatRestaurantName = (name) => {
     if (name === "Cafe Monarch") return "Café Monarch"
@@ -467,8 +500,10 @@ export default function OrdersTable({
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
           <div className="text-sm text-slate-600">
             Showing <span className="font-semibold">{(currentPage - 1) * itemsPerPage + 1}</span> to{" "}
-            <span className="font-semibold">{Math.min(currentPage * itemsPerPage, orders.length)}</span> of{" "}
-            <span className="font-semibold">{orders.length}</span> orders
+            <span className="font-semibold">
+              {Math.min((currentPage - 1) * itemsPerPage + paginatedOrders.length, totalCount)}
+            </span>{" "}
+            of <span className="font-semibold">{totalCount}</span> orders
           </div>
           <div className="flex items-center gap-2">
             <button

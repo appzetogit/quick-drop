@@ -1516,6 +1516,45 @@ export async function listOrdersAdmin(query) {
     }
   }
 
+  /*
+   * Search, run on the server so it reaches every order rather than the page
+   * currently on screen.
+   *
+   * The admin list used to fetch a thousand orders and filter them in the
+   * browser, which worked only because the whole dataset arrived at once -- and
+   * it did not: the endpoint caps a request at 100, silently, so search already
+   * missed everything past the hundredth order. Paginating without moving this
+   * would have made that worse rather than better.
+   *
+   * Order id and phone are matched as substrings, which is how someone reads a
+   * number off a receipt or a caller's screen. The term is escaped: an admin
+   * pasting an id containing a bracket should get no results, not a crash.
+   */
+  const searchRaw = typeof query.search === "string" ? query.search.trim().slice(0, 120) : "";
+  if (searchRaw) {
+    const escaped = searchRaw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const rx = new RegExp(escaped, "i");
+    filter.$and = [
+      ...(filter.$and || []),
+      {
+        /*
+         * The fields an order actually carries. customerName and customerPhone
+         * are denormalised onto the order at checkout, which is what makes this
+         * a plain query rather than a join.
+         *
+         * Restaurant name is deliberately absent: the order stores only
+         * restaurantId, so matching a name would need a lookup per query. The
+         * filter panel already narrows by restaurant, and does it properly.
+         */
+        $or: [
+          { order_id: rx },
+          { customerName: rx },
+          { customerPhone: rx },
+        ],
+      },
+    ];
+  }
+
   if (restaurantIdRaw && mongoose.Types.ObjectId.isValid(restaurantIdRaw)) {
     filter.restaurantId = new mongoose.Types.ObjectId(restaurantIdRaw);
   }
