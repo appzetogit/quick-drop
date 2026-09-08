@@ -153,6 +153,20 @@ export const serializeFoodVariants = (value = []) =>
                 _id: variantId ? String(variantId) : '',
                 name,
                 price,
+                /*
+                 * What this size costs before the dish's global adjustment.
+                 * Sent so a client can strike it through directly instead of
+                 * reconstructing one: the customer app used to infer a size's
+                 * "was" price by adding the DISH's saving to it, which is a
+                 * different number on every size and was wrong on all but one.
+                 *
+                 * Equal to `price` on an unadjusted size, and the client
+                 * discards anything not strictly above the price, so that
+                 * renders as no discount rather than "Rs 120, was Rs 120".
+                 */
+                basePrice: Number.isFinite(Number(entry?.basePrice)) && Number(entry?.basePrice) > 0
+                    ? Number(entry.basePrice)
+                    : price,
                 // null means this size sets none of its own; the dish's applies.
                 minOrderQuantity: entry?.minOrderQuantity ?? null,
                 maxOrderQuantity: entry?.maxOrderQuantity ?? null,

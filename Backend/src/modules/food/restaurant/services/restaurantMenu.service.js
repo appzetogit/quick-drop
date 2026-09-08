@@ -84,15 +84,27 @@ const buildMenuFromFoods = async (foods = []) => {
             // the next save writes the blanks over what the restaurant set.
             ...(() => {
                 const display = resolveItemDisplayPricing({ ...food, price: getFoodDisplayPrice(food) });
-                // Per-item figure wins over the blanket markup; see
-                // shared/otherPlatformPricing.js for why.
-                const otherPlatformPrice = resolveItemOtherPlatformPrice(
-                    { ...food, price: display.price },
-                    otherPlatform,
-                );
+                /*
+                 * Only a figure a restaurant actually typed about a rival. The
+                 * blanket markup fallback is deliberately not used here any
+                 * more: it is derived from the CURRENT price, so on a dish cut
+                 * by less than the markup it lands above the pre-cut price and
+                 * wins the comparison -- a Rs 200 dish cut 10% to Rs 180 struck
+                 * through at Rs 216, a figure nobody has ever been charged and
+                 * that no adjustment can move. The formulation price is the
+                 * platform's comparison now, and it cannot invent one.
+                 */
+                const storedOtherPrice = Number(food.otherPrice) || 0;
+                const otherPlatformPrice = storedOtherPrice > display.price ? storedOtherPrice : null;
+                /*
+                 * The formulation's own decision is what the restaurant side of
+                 * this comparison is. Passing basePrice instead would drop the
+                 * strike on an increase entirely -- there the base IS the price
+                 * charged, and the figure to strike is the formulation above it.
+                 */
                 const comparison = resolveComparisonPrice({
                     price: display.price,
-                    basePrice: display.basePrice,
+                    basePrice: display.strikePrice ?? display.basePrice,
                     otherPlatformPrice,
                     label: otherPlatform.label,
                 });

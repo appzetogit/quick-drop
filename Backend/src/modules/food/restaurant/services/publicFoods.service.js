@@ -157,17 +157,24 @@ export async function listPublicFoods(query = {}) {
                 const display = resolveItemDisplayPricing({ ...food, price });
                 // Per-item figure wins over the blanket markup; see
                 // shared/otherPlatformPricing.js for why.
-                const otherPlatformPrice = resolveItemOtherPlatformPrice(
-                    { ...food, price: display.price },
-                    otherPlatform,
-                );
+                /*
+                 * Only a figure a restaurant actually typed about a rival. The
+                 * blanket markup fallback is deliberately not used here any
+                 * more: it is derived from the CURRENT price, so on a dish cut
+                 * by less than the markup it lands above the pre-cut price and
+                 * wins the comparison -- a Rs 200 dish cut 10% to Rs 180 struck
+                 * through at Rs 216, a figure nobody has ever been charged and
+                 * that no adjustment can move.
+                 */
+                const storedOtherPrice = Number(food.otherPrice) || 0;
+                const otherPlatformPrice = storedOtherPrice > display.price ? storedOtherPrice : null;
                 // One struck-through figure, not two: whichever is higher between
-                // the restaurant's own pre-discount price and the platform
-                // comparison. Labelled, because a struck "Rs.100" means different
-                // things depending on which it is.
+                // the formulation price and a rival price the restaurant typed.
+                // Labelled, because a struck "Rs.100" means different things
+                // depending on which it is.
                 const comparison = resolveComparisonPrice({
                     price: display.price,
-                    basePrice: display.basePrice,
+                    basePrice: display.strikePrice ?? display.basePrice,
                     otherPlatformPrice,
                     label: otherPlatform.label,
                 });
