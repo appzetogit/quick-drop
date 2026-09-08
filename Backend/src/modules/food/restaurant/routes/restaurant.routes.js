@@ -106,18 +106,35 @@ router.post('/register', uploadFields, registerRestaurantController);
 router.post('/upload-attachment', upload.single('file'), uploadRestaurantAttachmentController);
 
 // Public: approved restaurants list (for user app)
-router.get('/restaurants', cacheResponse(300, 'restaurants'), listApprovedRestaurantsController);
-router.get('/restaurants/:id', cacheResponse(600, 'restaurant_detail'), getApprovedRestaurantController);
-router.get('/restaurants/:id/menu', cacheResponse(600, 'restaurant_menu'), getPublicRestaurantMenuController);
+/*
+ * Cache lifetimes for the public endpoints.
+ *
+ * These are a BACKSTOP, not the mechanism: every write that changes a price,
+ * an availability toggle or an approval clears the relevant keys immediately
+ * (see middleware/cache.js). The TTL only covers changes made outside those
+ * paths -- a direct database edit, a one-off script -- and it used to be five
+ * to ten minutes, so such a change took that long to reach a customer with
+ * nothing explaining the delay.
+ *
+ * A minute is short enough that nobody waits and long enough to absorb the
+ * burst of identical requests a home screen fires on open, which is what the
+ * cache is actually for.
+ */
+const PRICE_TTL = 60;
+const SLOW_TTL = 600;
+
+router.get('/restaurants', cacheResponse(PRICE_TTL, 'restaurants'), listApprovedRestaurantsController);
+router.get('/restaurants/:id', cacheResponse(PRICE_TTL, 'restaurant_detail'), getApprovedRestaurantController);
+router.get('/restaurants/:id/menu', cacheResponse(PRICE_TTL, 'restaurant_menu'), getPublicRestaurantMenuController);
 router.get('/restaurants/:id/reviews', getRestaurantPublicReviewsController);
-router.get('/restaurants/:id/outlet-timings', cacheResponse(600, 'restaurant_timings'), getOutletTimingsByRestaurantIdController);
-router.get('/offers', cacheResponse(300, 'offers'), listPublicOffersController);
+router.get('/restaurants/:id/outlet-timings', cacheResponse(SLOW_TTL, 'restaurant_timings'), getOutletTimingsByRestaurantIdController);
+router.get('/offers', cacheResponse(PRICE_TTL, 'offers'), listPublicOffersController);
 // Public: cross-restaurant dish feed, used by the home screen's category rails and
 // the under-250 promo. Declared before the ':id' routes above cannot swallow it --
 // '/public/foods' has two segments, so there is no collision either way.
-router.get('/public/foods', cacheResponse(300, 'public_foods'), listPublicFoodsController);
+router.get('/public/foods', cacheResponse(PRICE_TTL, 'public_foods'), listPublicFoodsController);
 // Public: categories list (zone-aware; returns zone categories + global)
-router.get('/categories/public', cacheResponse(600, 'categories'), listCategoriesController);
+router.get('/categories/public', cacheResponse(SLOW_TTL, 'categories'), listCategoriesController);
 
 // Restaurant dashboard/profile (Bearer token + RESTAURANT role)
 router.get('/current', authMiddleware, requireRestaurant, getCurrentRestaurantController);
@@ -241,7 +258,7 @@ router.patch('/menu', authMiddleware, requireRestaurant, async (req, res, next) 
 router.post('/feedback-experience', authMiddleware, requireRestaurant, feedbackExperienceController.createFeedbackExperience);
 
 // Public: restaurant add-ons (user app)
-router.get('/restaurants/:id/addons', cacheResponse(600, 'restaurant_addons'), getPublicRestaurantAddonsController);
+router.get('/restaurants/:id/addons', cacheResponse(SLOW_TTL, 'restaurant_addons'), getPublicRestaurantAddonsController);
 
 // Foods (restaurant creates/updates items -> stored in food_items collection)
 router.post('/foods', authMiddleware, requireRestaurant, async (req, res, next) => {

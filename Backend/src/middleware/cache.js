@@ -91,7 +91,23 @@ export const invalidatePriceCaches = invalidateMenuCaches;
 export const invalidateCache = async (pattern) => {
     if (!config.redisEnabled) return;
     const redis = getRedisClient();
-    if (!redis || !redis.isReady) return;
+    /*
+     * Say so rather than returning quietly.
+     *
+     * A one-off script that connects to Mongo but never opens Redis gets a
+     * null client here, and this used to return as though the clear had
+     * happened. A bulk price reset then reported "menu caches cleared" while
+     * every cached menu kept serving the old prices until its TTL ran out --
+     * which is exactly how a change lands in the database and takes ten
+     * minutes to reach a customer with nothing explaining the delay.
+     */
+    if (!redis || !redis.isReady) {
+        logger.warn(
+            `Cache NOT invalidated for "${pattern}": no Redis connection in this process. `
+            + 'Cached responses will serve stale data until they expire.'
+        );
+        return;
+    }
 
     try {
         const keys = await redis.keys(pattern);
