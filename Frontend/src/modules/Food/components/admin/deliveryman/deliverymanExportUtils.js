@@ -311,15 +311,29 @@ const formatBonusForExport = (transaction) => {
   // First priority: use raw amount value if available
   if (transaction.amount !== undefined && transaction.amount !== null && !isNaN(transaction.amount)) {
     const amount = parseFloat(transaction.amount)
-    return `?${amount.toFixed(2)}`
+    return `₹${amount.toFixed(2)}`
   }
   
   // Second priority: clean and extract from bonus string
   if (transaction.bonus) {
     // Remove all superscript/special characters and unwanted text
     let cleaned = transaction.bonus.toString()
-      .replace(/�/g, '') // Remove superscript 1
-      .replace(/[���45678?�]/g, '') // Remove all superscript numbers
+      /*
+       * The two passes that were here are gone, and they were not harmless.
+       *
+       * The character class read [¹²³45678?°] -- superscript one, two, three,
+       * then LITERAL ASCII 4 5 6 7 8. It was meant to be the superscript
+       * forms, but this file was saved as cp1252 at some point and those did
+       * not survive: the ones that did (¹ ² ³ °) sit below U+00FF, the ones
+       * that did not are above it. So a bonus of 45.00 exported as ".00" --
+       * the 4 and the 5 stripped as though they were superscripts. Every
+       * amount containing a 4, 5, 6, 7 or 8 came out wrong, which is most.
+       *
+       * Nothing is lost by removing them: the Unicode ranges on the next line
+       * already cover every superscript and subscript, ¹ ² ³ included, and
+       * the digits-only pass after that discards anything else regardless.
+       */
+      .replace(/[°¹²³]/g, '') // degree and the three superscripts below U+00FF
       .replace(/[\u2070-\u207F\u2080-\u208F]/g, '') // Remove all superscript Unicode ranges
       .replace(/[^\d.-]/g, '') // Keep only digits, dots, and minus signs
       .trim()
@@ -329,7 +343,7 @@ const formatBonusForExport = (transaction) => {
     if (numericMatch) {
       const amount = parseFloat(numericMatch[0])
       if (!isNaN(amount)) {
-        return `?${amount.toFixed(2)}`
+        return `₹${amount.toFixed(2)}`
       }
     }
   }
@@ -434,7 +448,7 @@ export const exportBonusToPDF = (transactions, filename = "deliveryman_bonus") =
               ? parseFloat(transaction.amount.replace(/[^\d.-]/g, ''))
               : parseFloat(transaction.amount)
             if (!isNaN(numAmount)) {
-              bonusAmount = `?${numAmount.toFixed(2)}`
+              bonusAmount = `₹${numAmount.toFixed(2)}`
             }
           } 
           // Second priority: Extract number from bonus string and rebuild
@@ -443,7 +457,7 @@ export const exportBonusToPDF = (transactions, filename = "deliveryman_bonus") =
             const numericPart = String(transaction.bonus).replace(/[^\d.-]/g, '')
             const numAmount = parseFloat(numericPart)
             if (!isNaN(numAmount) && numAmount > 0) {
-              bonusAmount = `?${numAmount.toFixed(2)}`
+              bonusAmount = `₹${numAmount.toFixed(2)}`
             }
           }
           

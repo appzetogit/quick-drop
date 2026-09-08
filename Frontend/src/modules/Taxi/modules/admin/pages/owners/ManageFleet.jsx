@@ -734,25 +734,25 @@ const ManageFleet = () => {
                         {/* Vehicle Type */}
                         <td className="px-3 py-5 text-sm text-gray-950">
                           <span className="text-[13px] font-black text-gray-800 uppercase">
-                            {item.vehicle_type_id?.name || item.vehicle_type_id?.type_name || item.vehicle_type || '—'}
+                            {item.vehicle_type_id?.name || item.vehicle_type_id?.type_name || item.vehicle_type || 'â€”'}
                           </span>
                         </td>
 
                         {/* Fleet Owner */}
                         <td className="hidden">
                           <span className="text-[12px] font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 uppercase tracking-wider shadow-sm shadow-indigo-50">
-                            {item.owner_id?.company_name || item.owner_id?.name || '—'}
+                            {item.owner_id?.company_name || item.owner_id?.name || 'â€”'}
                           </span>
                         </td>
 
                         {/* Car Brand */}
                         <td className="px-3 py-5 text-sm text-gray-950">
-                          <span className="text-[13px] font-bold text-gray-600">{item.car_brand || '—'}</span>
+                          <span className="text-[13px] font-bold text-gray-600">{item.car_brand || 'â€”'}</span>
                         </td>
 
                         {/* Car Model */}
                         <td className="px-3 py-5">
-                          <span className="text-[13px] font-bold text-gray-600">{item.car_model || '—'}</span>
+                          <span className="text-[13px] font-bold text-gray-600">{item.car_model || 'â€”'}</span>
                         </td>
 
                         {/* Document View */}
@@ -779,7 +779,7 @@ const ManageFleet = () => {
                         {/* License Plate */}
                         <td className="px-3 py-5">
                           <span className="inline-block px-3 py-1 bg-gray-50 border border-gray-100 rounded-lg text-[12px] font-black text-gray-700 tracking-widest uppercase">
-                            {item.license_plate_number || '—'}
+                            {item.license_plate_number || 'â€”'}
                           </span>
                         </td>
 
@@ -791,7 +791,7 @@ const ManageFleet = () => {
                         {/* Reason */}
                         <td className="px-3 py-5">
                           <span className="text-[12px] text-gray-400 italic">
-                            {item.status?.toLowerCase() === 'rejected' ? (getFleetStatusReason(item) || 'Rejected without a reason') : '—'}
+                            {item.status?.toLowerCase() === 'rejected' ? (getFleetStatusReason(item) || 'Rejected without a reason') : 'â€”'}
                           </span>
                         </td>
 

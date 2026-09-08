@@ -540,7 +540,7 @@ const UserDetails = () => {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-[15px] font-black text-gray-900">{item.name}</p>
-                      <p className="mt-1 text-[12px] font-bold text-gray-400">{item.vehicle_type?.name || 'Vehicle plan'} • {item.transport_type}</p>
+                      <p className="mt-1 text-[12px] font-bold text-gray-400">{item.vehicle_type?.name || 'Vehicle plan'} â€¢ {item.transport_type}</p>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${item.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                       {item.status}
