@@ -78,14 +78,29 @@ console.log('\n+20% on a Rs 200 dish -> pays 200, struck 240');
     check('reads as 17% off', () => assert.equal(s.discountPercent, 16.67));
     check('stores the percent, not a product', () => assert.equal(s.stored.formulationPercent, 20));
 
-    // The reported bug: the same +20% run twice doubled the saving. Nothing the
-    // admin typed said "and remember the last time".
+    /*
+     * A second run ADDS to the first: +20% then +20% is +40%, so the strike
+     * goes 240 then 280. Each step is twenty percent OF THE BASE.
+     *
+     * The distinction that matters is against compounding, which is what the
+     * original bug did -- 200, 240, 288, 345, multiplying each result by the
+     * next factor until a Rs 100 dish advertised 54% off a price nobody had
+     * charged. Adding a fixed slice of a fixed origin is linear and cannot run
+     * away like that.
+     */
     await run(20);
+    const twice = await shownFor(id);
+    check('a second +20% strikes 280', () => assert.equal(twice.strikePrice, 280));
+    check('not 288, which would be compounding', () =>
+        assert.notEqual(twice.strikePrice, 288));
+    check('the accumulated percent is stored', () =>
+        assert.equal(twice.stored.formulationPercent, 40));
+
     await run(20);
-    const again = await shownFor(id);
-    check('three +20% runs still strike 240', () => assert.equal(again.strikePrice, 240));
-    check('three +20% runs still charge 200', () => assert.equal(again.price, 200));
-    check('the base never moved', () => assert.equal(again.stored.basePrice, 200));
+    const thrice = await shownFor(id);
+    check('a third +20% strikes 320', () => assert.equal(thrice.strikePrice, 320));
+    check('nobody ever pays more', () => assert.equal(thrice.price, 200));
+    check('the base never moved', () => assert.equal(thrice.stored.basePrice, 200));
 }
 
 /* ---------------------------------------------------------------- decrease */
@@ -110,21 +125,36 @@ console.log('\n-10% on a Rs 200 dish -> pays 180, struck 200');
 }
 
 /* --------------------------------------------- the property this exists for */
-console.log('\nno run inherits another');
+console.log('\nruns add up, and cancel');
 {
     const id = await seed({ price: 200, basePrice: 200 });
     await run(20);
     await run(-10);
     const s = await shownFor(id);
-    check('+20% then -10% measures from 200', () => assert.equal(s.price, 180));
-    check('and strikes 200, not a stale 240', () => assert.equal(s.strikePrice, 200));
+    // +20 then -10 is +10 overall: still above the base, so still a strike and
+    // still nothing extra to pay.
+    check('+20% then -10% leaves +10%', () =>
+        assert.equal(s.stored.formulationPercent, 10));
+    check('so it strikes 220 and charges 200', () => {
+        assert.equal(s.strikePrice, 220);
+        assert.equal(s.price, 200);
+    });
 
-    await run(-50);
-    await run(0.0001);
-    const back = await shownFor(id);
-    check('a percent near zero returns the dish to its own price', () =>
-        assert.equal(back.price, 200));
-    check('and strikes nothing', () => assert.equal(back.strikePrice, null));
+    await run(-10);
+    const level = await shownFor(id);
+    check('another -10% cancels back to level', () =>
+        assert.equal(level.stored.formulationPercent, 0));
+    check('and the dish returns to its own price with no strike', () => {
+        assert.equal(level.price, 200);
+        assert.equal(level.strikePrice, null);
+    });
+
+    await run(-25);
+    const cut = await shownFor(id);
+    check('going negative marks it down from the base', () => {
+        assert.equal(cut.price, 150);
+        assert.equal(cut.strikePrice, 200);
+    });
 }
 
 console.log('\nrepeat decreases do not ratchet the base down');
@@ -138,11 +168,15 @@ console.log('\nrepeat decreases do not ratchet the base down');
     check('keeps the restaurant base of 170', () => assert.equal(once.stored.basePrice, 170));
     check('charges 153', () => assert.equal(once.price, 153));
 
+    // -10 then -10 is -20 OF THE BASE: 170 - 34 = 136. Compounding would give
+    // 153 x 0.9 = 137.70, which is what the old code produced by cutting the
+    // already-cut price -- and it took the base down with it every time.
     await run(-10);
-    await run(-10);
-    const thrice = await shownFor(id);
-    check('three runs later the base is still 170', () => assert.equal(thrice.stored.basePrice, 170));
-    check('and the price has not ratcheted', () => assert.equal(thrice.price, 153));
+    const twice2 = await shownFor(id);
+    check('a second -10% charges 136', () => assert.equal(twice2.price, 136));
+    check('not 137.70, which would be compounding', () =>
+        assert.notEqual(twice2.price, 137.7));
+    check('the restaurant base is still 170', () => assert.equal(twice2.stored.basePrice, 170));
 }
 
 /* ------------------------------------------------- an un-migrated legacy row */
@@ -166,8 +200,10 @@ console.log('\na row the backfill has not reached');
 
     await run(-20);
     const after = await shownFor(id);
-    check('a run measures from the base, not the reduced price', () =>
-        assert.equal(after.price, 122.4));
+    // It was already effectively -10%, so another -20% takes it to -30% of 153.
+    check('the inferred percent is added to, not replaced', () =>
+        assert.equal(after.stored.formulationPercent, -30));
+    check('so it charges 30% off the base', () => assert.equal(after.price, 107.1));
     check('and strikes the base', () => assert.equal(after.strikePrice, 153));
 }
 
@@ -191,15 +227,17 @@ console.log('\nvariants follow the dish');
         assert.deepEqual(bases, [120, 200]);
     });
 
-    await run(-25);
+    // -25 then -25 is -50 OF EACH SIZE'S OWN BASE: 60 and 100. Compounding
+    // would give 67.50 and 112.50 by cutting the already-cut figures.
     await run(-25);
     const again = await shownFor(id);
-    check('repeat runs do not ratchet a size down', () => {
+    check('a second -25% halves each size from its own base', () => {
         const prices = again.stored.variants.map((v) => v.price).sort((a, b) => a - b);
-        assert.deepEqual(prices, [90, 150]);
+        assert.deepEqual(prices, [60, 100]);
     });
 
-    await run(20);
+    // +50 brings the total back to 0, so every size returns to its base.
+    await run(50);
     const up = await shownFor(id);
     check('an increase never raises what a size charges', () => {
         const prices = up.stored.variants.map((v) => v.price).sort((a, b) => a - b);

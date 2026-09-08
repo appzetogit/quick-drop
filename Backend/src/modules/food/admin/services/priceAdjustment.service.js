@@ -377,8 +377,7 @@ const applyFactorToComparison = async (filter, factor, seedMultiplier = 1) => {
  * outrank the real one.
  */
 const applyFormulationPercent = async (filter, percent) => {
-    const stored = normalizeFormulationPercent(percent);
-    const multiplier = 1 + stored / 100;
+    const applied = normalizeFormulationPercent(percent);
 
     const derivedBase = {
         $cond: [
@@ -418,17 +417,104 @@ const applyFormulationPercent = async (filter, percent) => {
             },
             {
                 $set: {
-                    formulationPercent: stored,
                     /*
-                     * The adjusted figure, held briefly so the next stage can
-                     * compare it against the base. It is NOT the formulation
-                     * price, which is what the customer pays and is settled
-                     * below -- an increase must leave that untouched.
+                     * The percent ACCUMULATES. Running +10% twice means +20%,
+                     * so a Rs 200 dish is struck at 220 then 240.
+                     *
+                     * Each step is ten percent OF THE BASE, not of the last
+                     * result -- 220, 240, 260, never 242. That distinction is
+                     * the whole safety property: compounding is what took a
+                     * Rs 100 dish to Rs 216 advertising 54% off, and adding a
+                     * fixed slice of a fixed origin cannot run away like that.
+                     * The total is clamped to the same bounds a single run is.
+                     *
+                     * Replacing rather than adding was wrong, and it made a
+                     * second identical run look like it had done nothing.
                      */
+                    formulationPercent: {
+                        $max: [
+                            MIN_PERCENT,
+                            {
+                                $min: [
+                                    MAX_PERCENT,
+                                    {
+                                        $add: [
+                                            /*
+                                             * A row the migration never reached carries its
+                                             * adjustment in the gap between basePrice and
+                                             * price rather than in a percent. Defaulting
+                                             * that to 0 would discard it: a dish already
+                                             * sold at 10% off would take a further -20% and
+                                             * land at -20% total, quietly giving the
+                                             * customer back the 10% it had. The display
+                                             * infers the same figure the same way, so the
+                                             * two agree about what a dish is currently on.
+                                             *
+                                             * `$price` is still the pre-run value here --
+                                             * the stage above touched only basePrice.
+                                             */
+                                            {
+                                                $ifNull: [
+                                                    '$formulationPercent',
+                                                    {
+                                                        $cond: [
+                                                            { $gt: ['$basePrice', '$price'] },
+                                                            {
+                                                                $round: [
+                                                                    {
+                                                                        $multiply: [
+                                                                            {
+                                                                                $divide: [
+                                                                                    { $subtract: ['$price', '$basePrice'] },
+                                                                                    '$basePrice',
+                                                                                ],
+                                                                            },
+                                                                            100,
+                                                                        ],
+                                                                    },
+                                                                    2,
+                                                                ],
+                                                            },
+                                                            0,
+                                                        ],
+                                                    },
+                                                ],
+                                            },
+                                            applied,
+                                        ],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            },
+            {
+                /*
+                 * Derived from the accumulated percent above, which is why it
+                 * cannot share that stage: an aggregation stage sees the
+                 * document as it was when the stage began, so reading
+                 * $formulationPercent alongside writing it would use the old
+                 * value and lose the accumulation.
+                 *
+                 * NOT the formulation price. That is what the customer pays and
+                 * is settled below; an increase must leave it untouched.
+                 */
+                $set: {
                     adjustedPrice: {
                         $max: [
                             MIN_RESULT_PRICE,
-                            { $round: [{ $multiply: ['$basePrice', multiplier] }, 2] },
+                            {
+                                $round: [
+                                    {
+                                        $multiply: [
+                                            '$basePrice',
+                                            { $add: [1, { $divide: ['$formulationPercent', 100] }] },
+                                        ],
+                                    },
+                                    2,
+                                ],
+                            },
                         ],
                     },
                 },
@@ -455,7 +541,17 @@ const applyFormulationPercent = async (filter, percent) => {
                                                 {
                                                     $max: [
                                                         MIN_RESULT_PRICE,
-                                                        { $round: [{ $multiply: ['$$v.basePrice', multiplier] }, 2] },
+                                                        {
+                                                            $round: [
+                                                                {
+                                                                    $multiply: [
+                                                                        '$$v.basePrice',
+                                                                        { $add: [1, { $divide: ['$formulationPercent', 100] }] },
+                                                                    ],
+                                                                },
+                                                                2,
+                                                            ],
+                                                        },
                                                     ],
                                                 },
                                             ],
