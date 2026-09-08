@@ -3480,6 +3480,18 @@ export async function createFood(body) {
     // Born approved, so the approval hook never sees it: decide the shelf here.
     if (shouldAutoMark99(doc, await getNinetyNineCap())) doc.showIn99Store = true;
     await doc.save();
+    /*
+     * The public menu and cross-restaurant feed are cached for minutes. Writing
+     * without clearing them served customers the old dish -- old price, old
+     * name, still orderable after it was switched off. See middleware/cache.js.
+     */
+    try {
+        const { invalidateMenuCaches } = await import('../../../../middleware/cache.js');
+        await invalidateMenuCaches();
+    } catch (cacheErr) {
+        console.error('Failed to invalidate menu caches after a food write:', cacheErr);
+    }
+
     return doc.toObject();
 }
 
@@ -3576,12 +3588,36 @@ export async function updateFood(id, body) {
     const { invalidatePriceCaches } = await import('../../../../middleware/cache.js');
     await invalidatePriceCaches();
 
+    /*
+     * The public menu and cross-restaurant feed are cached for minutes. Writing
+     * without clearing them served customers the old dish -- old price, old
+     * name, still orderable after it was switched off. See middleware/cache.js.
+     */
+    try {
+        const { invalidateMenuCaches } = await import('../../../../middleware/cache.js');
+        await invalidateMenuCaches();
+    } catch (cacheErr) {
+        console.error('Failed to invalidate menu caches after a food write:', cacheErr);
+    }
+
     return doc.toObject();
 }
 
 export async function deleteFood(id) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
     const deleted = await FoodItem.findByIdAndDelete(id).lean();
+    /*
+     * The public menu and cross-restaurant feed are cached for minutes. Writing
+     * without clearing them served customers the old dish -- old price, old
+     * name, still orderable after it was switched off. See middleware/cache.js.
+     */
+    try {
+        const { invalidateMenuCaches } = await import('../../../../middleware/cache.js');
+        await invalidateMenuCaches();
+    } catch (cacheErr) {
+        console.error('Failed to invalidate menu caches after a food write:', cacheErr);
+    }
+
     return deleted ? { id } : null;
 }
 

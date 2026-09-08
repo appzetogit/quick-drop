@@ -91,7 +91,7 @@ export async function createOrder(userId, dto) {
   try {
     const restaurantId = toObjectId(dto.restaurantId, 'Restaurant ID');
     const restaurant = await FoodRestaurant.findById(restaurantId)
-      .select("status restaurantName zoneId location isAcceptingOrders")
+      .select("status restaurantName zoneId location isAcceptingOrders openingTime closingTime openDays")
       .lean();
     
     if (!restaurant) throw new ValidationError("Restaurant not found");
@@ -99,6 +99,38 @@ export async function createOrder(userId, dto) {
       throw new ValidationError("Restaurant not accepting orders");
     if (restaurant.isAcceptingOrders === false)
       throw new ValidationError("Restaurant not accepting orders");
+
+    /*
+     * Trading hours, enforced here and not only shown.
+     *
+     * The listing badge tells a customer an outlet is shut; this is what stops
+     * the order if they get past it -- a stale app, a deep link, a cart opened
+     * before closing time and paid for after. Without it the hours are
+     * decoration, which is what they were: the app listed every outlet as
+     * orderable around the clock because nothing ever consulted them.
+     *
+     * A restaurant that has entered no hours is unaffected; see
+     * shared/outletHours.js for why that means open rather than closed.
+     */
+    {
+      const { FoodRestaurantOutletTimings } = await import(
+        "../../restaurant/models/outletTimings.model.js"
+      );
+      const { describeOutletHours } = await import("../../shared/outletHours.js");
+      const timingsDoc = await FoodRestaurantOutletTimings.findOne({
+        restaurantId: restaurant._id,
+      })
+        .select("timings")
+        .lean();
+      const hours = describeOutletHours({ timingsDoc, restaurant });
+      if (!hours.isOpen) {
+        throw new ValidationError(
+          hours.opensAt
+            ? `${restaurant.restaurantName || "This restaurant"} is closed right now. It opens at ${hours.opensAt}.`
+            : `${restaurant.restaurantName || "This restaurant"} is closed right now.`
+        );
+      }
+    }
 
     const settings = await getDispatchSettings();
     const dispatchMode = settings.dispatchMode;

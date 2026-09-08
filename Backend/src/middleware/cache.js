@@ -61,7 +61,7 @@ export const cacheResponse = (ttlInSeconds = 300, prefix = 'api_cache') => {
  * request, so over-clearing costs one uncached query; under-clearing shows
  * customers a stale price.
  */
-export const invalidatePriceCaches = async () => {
+export const invalidateMenuCaches = async () => {
     await Promise.all([
         invalidateCache('public_foods:*'),
         invalidateCache('restaurant_menu:*'),
@@ -71,6 +71,17 @@ export const invalidatePriceCaches = async () => {
         invalidateCache('search_products:*'),
     ]);
 };
+
+/**
+ * The same clear, under the name the pricing code already calls it by.
+ *
+ * It was only ever about prices because prices were the first thing found to
+ * go stale. Availability has the same problem and is worse: a restaurant
+ * switches a dish off, the write lands in Mongo, and `restaurant_menu` keeps
+ * serving the dish for its full ten minutes -- so the toggle looks broken, and
+ * a customer can order something the kitchen has just run out of.
+ */
+export const invalidatePriceCaches = invalidateMenuCaches;
 
 /**
  * Clear cache by pattern (e.g. 'api_cache:GET:/api/food/restaurants*')

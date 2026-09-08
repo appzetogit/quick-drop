@@ -46,6 +46,7 @@ import { FoodAddon } from '../models/foodAddon.model.js';
 import { assertVariantAddonsOwned, normalizeAddonIdsInput } from '../../shared/orderAddons.js';
 
 import { resolveSeedOtherPriceForRestaurant } from '../../shared/otherPlatformSeed.service.js';
+import { invalidateMenuCaches } from '../../../../middleware/cache.js';
 const toStr = (v) => (v != null ? String(v).trim() : '');
 const APPROVED_CATEGORY_FILTER = [
     { approvalStatus: 'approved' },
@@ -508,6 +509,18 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
             console.error('Combo availability sync failed:', e?.message || e);
         }
     }
+
+    /*
+     * The public menu is cached for ten minutes and the cross-restaurant feed
+     * for five. Writing without clearing them is why switching a dish off
+     * looked like it did nothing: the write landed in Mongo instantly and the
+     * app kept being served the dish, still orderable, until the cache aged
+     * out. The same shape of bug already bit global price adjustments.
+     *
+     * Every field is cleared, not just availability, because price, name and
+     * image are all in the same cached payload.
+     */
+    if (updated) await invalidateMenuCaches();
 
     return updated;
 }

@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
+import { attachOutletOpenState, describeOutletHours } from '../../shared/outletHours.js';
 
 const normalizeName = (value) =>
     String(value || '')
@@ -1567,12 +1568,40 @@ export const uploadRestaurantMenuImages = async (restaurantId, files = []) => {
     };
 };
 
+/**
+ * Restaurants with at least one dish a customer could actually order.
+ *
+ * Approving a restaurant and approving its menu are separate steps, and only
+ * the first was gating this listing -- so a restaurant went live the moment an
+ * admin approved the shop, with an empty menu or one still awaiting review. A
+ * customer tapped through to nothing.
+ *
+ * One distinct() over the items rather than a lookup per restaurant. The set is
+ * small (it is bounded by the number of restaurants, not dishes) and this runs
+ * once per listing request.
+ */
+const restaurantIdsWithApprovedMenu = async () =>
+    FoodItem.distinct('restaurantId', {
+        approvalStatus: 'approved',
+        isActive: { $ne: false },
+        isAvailable: { $ne: false },
+        price: { $gt: 0 },
+    });
+
 export const listApprovedRestaurants = async (query = {}) => {
     const limit = Math.min(Math.max(parseInt(query.limit, 10) || 100, 1), 1000);
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
     const skip = (page - 1) * limit;
 
     const filter = { status: 'approved' };
+
+    /*
+     * Menu approval is a second gate, not the same one. See
+     * restaurantIdsWithApprovedMenu -- an approved shop with no approved dish
+     * is not something a customer can order from, and listing it is how the
+     * app came to show restaurants that opened to an empty menu.
+     */
+    filter._id = { $in: await restaurantIdsWithApprovedMenu() };
 
     if (query.city && String(query.city).trim()) {
         const city = String(query.city).trim().slice(0, 80);
@@ -1716,7 +1745,9 @@ export const listApprovedRestaurants = async (query = {}) => {
         const total = totalDocs?.[0]?.count || 0;
         const restaurantsWithRecommendedImages = await attachRecommendedImagesToRestaurants(pageDocs);
         const withOffers = await attachFreeDeliveryOffer(restaurantsWithRecommendedImages);
-        return { restaurants: withOffers, total, page, limit };
+        // Trading hours, in one query for the page. See shared/outletHours.js.
+        const withHours = await attachOutletOpenState(withOffers);
+        return { restaurants: withHours, total, page, limit };
     }
 
     // Non-geo path: normal query + sort.
@@ -1740,7 +1771,9 @@ export const listApprovedRestaurants = async (query = {}) => {
     ]);
 
     const restaurantsWithRecommendedImages = await attachRecommendedImagesToRestaurants(restaurantsRaw || []);
-    const withOffers = await attachFreeDeliveryOffer(restaurantsWithRecommendedImages);
+    const withOffersOnly = await attachFreeDeliveryOffer(restaurantsWithRecommendedImages);
+    // Trading hours, in one query for the page. See shared/outletHours.js.
+    const withOffers = await attachOutletOpenState(withOffersOnly);
     const restaurants = withOffers.map((r) => ({
         ...r,
         // Frontend user app expects `name` and often checks `profileImage.url`
@@ -1772,8 +1805,11 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug) => {
         if (!doc) return null;
         const [withOffer] = await attachFreeDeliveryOffer([doc]);
         const decorated = await attachMenuCategories(withOffer);
+        // The detail screen has to agree with the listing badge, or a customer
+        // taps a restaurant marked closed and finds an ordinary open shop.
+        const [withHours] = await attachOutletOpenState([decorated]);
         return {
-            ...decorated,
+            ...withHours,
             rating: normalizeRatingValue(doc.rating),
             totalRatings: normalizeTotalRatingsValue(doc.totalRatings)
         };
@@ -1790,8 +1826,9 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug) => {
     if (!doc) return null;
     const [withOffer] = await attachFreeDeliveryOffer([doc]);
     const decorated = await attachMenuCategories(withOffer);
+    const [withHours] = await attachOutletOpenState([decorated]);
     return {
-        ...decorated,
+        ...withHours,
         rating: normalizeRatingValue(doc.rating),
         totalRatings: normalizeTotalRatingsValue(doc.totalRatings)
     };
