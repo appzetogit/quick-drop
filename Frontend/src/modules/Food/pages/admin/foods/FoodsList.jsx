@@ -805,7 +805,10 @@ export default function FoodsList() {
       </div>
 
       <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
-        <DialogContent className="max-w-xl p-0 overflow-hidden">
+        <DialogContent
+          description="Read-only details for the selected dish, including its pricing, category and availability."
+          className="max-w-xl p-0 overflow-hidden"
+        >
           <DialogHeader className="px-6 py-4 border-b border-slate-200 bg-slate-50">
             <DialogTitle className="text-lg font-semibold text-slate-900">Food Details</DialogTitle>
           </DialogHeader>
@@ -870,7 +873,14 @@ export default function FoodsList() {
           }
         }}
       >
-        <DialogContent className="max-w-2xl p-0 overflow-hidden">
+        <DialogContent
+          description={
+            foodFormMode === "edit"
+              ? "Edit this dish's name, category, pricing and availability. The formulation price is set from Global Price Adjustment and is shown here read-only."
+              : "Add a dish to a restaurant's menu: name, category, base price and availability."
+          }
+          className="max-w-2xl p-0 overflow-hidden"
+        >
           <DialogHeader className="px-6 py-4 border-b border-slate-200 bg-slate-50">
             <DialogTitle className="text-lg font-semibold text-slate-900">
               {foodFormMode === "edit" ? "Edit Food" : "Add Food"}

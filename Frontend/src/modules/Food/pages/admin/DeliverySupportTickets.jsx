@@ -346,7 +346,7 @@ export default function DeliverySupportTickets() {
 
       {/* View Ticket Dialog - Full Details */}
       <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-        <DialogContent className="flex w-[calc(100%-2rem)] max-w-[600px] max-h-[85vh] flex-col overflow-hidden border border-slate-200 bg-white p-0 shadow-2xl">
+        <DialogContent aria-describedby={undefined} className="flex w-[calc(100%-2rem)] max-w-[600px] max-h-[85vh] flex-col overflow-hidden border border-slate-200 bg-white p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5 pr-14">
             <DialogTitle className="text-xl font-semibold text-gray-900">Ticket Details</DialogTitle>
             <p className="text-sm text-gray-600 mt-1">Complete information about the support ticket</p>
@@ -498,7 +498,7 @@ export default function DeliverySupportTickets() {
 
       {/* Respond Dialog */}
       <Dialog open={isResponseOpen} onOpenChange={setIsResponseOpen}>
-        <DialogContent className="w-[calc(100%-2rem)] max-w-[560px] overflow-hidden border border-slate-200 bg-white p-0 shadow-2xl">
+        <DialogContent aria-describedby={undefined} className="w-[calc(100%-2rem)] max-w-[560px] overflow-hidden border border-slate-200 bg-white p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5 pr-14">
             <DialogTitle className="text-xl font-semibold text-slate-900">
               Respond to Ticket

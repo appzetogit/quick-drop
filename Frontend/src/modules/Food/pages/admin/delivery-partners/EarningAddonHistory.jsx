@@ -508,7 +508,7 @@ export default function EarningAddonHistory() {
 
       {/* Credit Dialog */}
       <Dialog open={isCreditDialogOpen} onOpenChange={setIsCreditDialogOpen}>
-        <DialogContent className="max-w-lg bg-gradient-to-br from-white via-slate-50 to-white p-0 border-0 shadow-2xl">
+        <DialogContent aria-describedby={undefined} className="max-w-lg bg-gradient-to-br from-white via-slate-50 to-white p-0 border-0 shadow-2xl">
           {/* Header with gradient */}
           <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 py-5 rounded-t-lg">
             <DialogHeader className="mb-0">
@@ -610,7 +610,7 @@ export default function EarningAddonHistory() {
 
       {/* Settings Dialog */}
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="max-w-md bg-white">
+        <DialogContent aria-describedby={undefined} className="max-w-md bg-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Settings className="w-5 h-5" />

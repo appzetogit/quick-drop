@@ -303,7 +303,7 @@ export default function DeliveryWithdrawal() {
 
         {/* View details dialog */}
         <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-          <DialogContent className="max-w-md bg-white p-0">
+          <DialogContent aria-describedby={undefined} className="max-w-md bg-white p-0">
             <DialogHeader className="px-6 pt-6 pb-4">
               <DialogTitle>Withdrawal request details</DialogTitle>
             </DialogHeader>
@@ -410,7 +410,7 @@ export default function DeliveryWithdrawal() {
 
         {/* Reject modal */}
         <Dialog open={showRejectModal} onOpenChange={setShowRejectModal}>
-          <DialogContent className="max-w-md bg-white p-0">
+          <DialogContent aria-describedby={undefined} className="max-w-md bg-white p-0">
             <DialogHeader className="px-6 pt-6 pb-4">
               <DialogTitle>Reject withdrawal request</DialogTitle>
             </DialogHeader>

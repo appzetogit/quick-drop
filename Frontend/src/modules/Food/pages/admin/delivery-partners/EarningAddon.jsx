@@ -496,7 +496,7 @@ export default function EarningAddon() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl bg-gradient-to-br from-slate-50 via-white to-slate-50 p-0 border-0 shadow-2xl">
+        <DialogContent aria-describedby={undefined} className="max-w-2xl bg-gradient-to-br from-slate-50 via-white to-slate-50 p-0 border-0 shadow-2xl">
           <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 px-5 py-4 rounded-t-2xl">
             <DialogHeader className="mb-0">
               <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
@@ -626,7 +626,7 @@ export default function EarningAddon() {
 
       {/* Settings Dialog */}
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="max-w-md bg-gradient-to-br from-slate-50 via-white to-slate-50 p-0 border-0 shadow-2xl">
+        <DialogContent aria-describedby={undefined} className="max-w-md bg-gradient-to-br from-slate-50 via-white to-slate-50 p-0 border-0 shadow-2xl">
           <div className="bg-gradient-to-r from-slate-600 to-slate-700 px-6 py-5 rounded-t-2xl">
             <DialogHeader className="mb-0">
               <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">

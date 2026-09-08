@@ -338,7 +338,7 @@ export default function OfflinePaymentSetup() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="max-w-md bg-white p-0">
+        <DialogContent aria-describedby={undefined} className="max-w-md bg-white p-0">
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>Delete Payment Method</DialogTitle>
           </DialogHeader>
@@ -366,7 +366,7 @@ export default function OfflinePaymentSetup() {
 
       {/* Settings Dialog */}
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="max-w-md bg-white p-0">
+        <DialogContent aria-describedby={undefined} className="max-w-md bg-white p-0">
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle className="flex items-center gap-2">
               <Settings className="w-4 h-4" />

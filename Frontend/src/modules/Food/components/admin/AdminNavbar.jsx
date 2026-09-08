@@ -494,7 +494,7 @@ export default function AdminNavbar({ onMenuClick }) {
 
       {/* Search Modal */}
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
-        <DialogContent className="max-w-2xl p-0 bg-white opacity-0 data-[state=open]:opacity-100 data-[state=closed]:opacity-0 transition-opacity duration-200 ease-in-out data-[state=open]:scale-100 data-[state=closed]:scale-100 border border-neutral-200">
+        <DialogContent aria-describedby={undefined} className="max-w-2xl p-0 bg-white opacity-0 data-[state=open]:opacity-100 data-[state=closed]:opacity-0 transition-opacity duration-200 ease-in-out data-[state=open]:scale-100 data-[state=closed]:scale-100 border border-neutral-200">
           <DialogHeader className="p-6 pb-4 border-b border-neutral-200">
             <DialogTitle className="text-xl font-semibold text-neutral-900">
               Universal Search

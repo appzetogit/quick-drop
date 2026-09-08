@@ -528,7 +528,7 @@ export default function Customers() {
 
       {/* User Details Modal */}
       <Dialog open={showUserDetails} onOpenChange={setShowUserDetails}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto mx-auto p-0 gap-0">
+        <DialogContent aria-describedby={undefined} className="max-w-2xl max-h-[85vh] overflow-y-auto mx-auto p-0 gap-0">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-200">
             <DialogTitle className="pr-12 text-xl font-bold text-slate-900">User Details</DialogTitle>
           </DialogHeader>

@@ -429,7 +429,7 @@ export default function AddonsList() {
       </div>
 
       <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
-        <DialogContent className="max-w-xl p-0 overflow-hidden">
+        <DialogContent aria-describedby={undefined} className="max-w-xl p-0 overflow-hidden">
           <DialogHeader className="px-6 py-4 border-b border-slate-200 bg-slate-50">
             <DialogTitle className="text-lg font-semibold text-slate-900">Add-on Details</DialogTitle>
           </DialogHeader>
@@ -478,7 +478,7 @@ export default function AddonsList() {
       </Dialog>
 
       <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
-        <DialogContent className="max-w-md p-0 overflow-hidden">
+        <DialogContent aria-describedby={undefined} className="max-w-md p-0 overflow-hidden">
           <DialogHeader className="px-6 py-4 border-b border-slate-200 bg-slate-50">
             <DialogTitle className="text-lg font-semibold text-slate-900">Edit Add-on</DialogTitle>
           </DialogHeader>
@@ -571,7 +571,7 @@ export default function AddonsList() {
       </Dialog>
 
       <Dialog open={Boolean(pendingDelete)} onOpenChange={(open) => !open && setPendingDelete(null)}>
-        <DialogContent className="max-w-md w-full rounded-xl p-0 overflow-hidden shadow-xl">
+        <DialogContent aria-describedby={undefined} className="max-w-md w-full rounded-xl p-0 overflow-hidden shadow-xl">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
             <DialogTitle className="text-lg font-semibold text-slate-900">Delete add-on?</DialogTitle>
             <button

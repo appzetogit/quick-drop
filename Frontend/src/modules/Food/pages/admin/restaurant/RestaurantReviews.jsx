@@ -261,7 +261,7 @@ export default function RestaurantReviews() {
       </div>
 
       <Dialog open={isReviewModalOpen} onOpenChange={setIsReviewModalOpen}>
-        <DialogContent className="max-w-2xl bg-white p-0">
+        <DialogContent aria-describedby={undefined} className="max-w-2xl bg-white p-0">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-200">
             <DialogTitle className="flex items-center gap-2 text-xl"><Eye className="w-5 h-5 text-slate-600" />Review Details</DialogTitle>
           </DialogHeader>

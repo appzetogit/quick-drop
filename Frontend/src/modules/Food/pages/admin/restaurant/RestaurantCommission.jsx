@@ -504,7 +504,7 @@ export default function RestaurantCommission() {
 
       {/* Restaurant Selection Dialog */}
       <Dialog open={isRestaurantSelectOpen} onOpenChange={setIsRestaurantSelectOpen}>
-        <DialogContent className="max-w-xl bg-white p-0">
+        <DialogContent aria-describedby={undefined} className="max-w-xl bg-white p-0">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-200">
             <DialogTitle className="text-lg font-semibold text-slate-900">Select Restaurant</DialogTitle>
           </DialogHeader>
@@ -547,7 +547,7 @@ export default function RestaurantCommission() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={isAddEditOpen} onOpenChange={setIsAddEditOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-white p-0">
+        <DialogContent aria-describedby={undefined} className="max-w-2xl max-h-[85vh] overflow-y-auto bg-white p-0">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-200">
             <DialogTitle className="text-lg font-semibold text-slate-900">
               {selectedCommission ? "Edit Restaurant Commission" : "Add Restaurant Commission"}
@@ -637,7 +637,7 @@ export default function RestaurantCommission() {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <DialogContent className="max-w-md bg-white">
+        <DialogContent aria-describedby={undefined} className="max-w-md bg-white">
           <DialogHeader>
             <DialogTitle>Delete Restaurant Commission</DialogTitle>
           </DialogHeader>

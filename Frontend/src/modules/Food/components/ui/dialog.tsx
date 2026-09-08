@@ -44,13 +44,36 @@ function DialogOverlay({
   )
 }
 
+/**
+ * A dialog's body.
+ *
+ * `description` is the accessible description a screen reader announces after
+ * the title. Radix generates an id for it and points `aria-describedby` at
+ * that id whether or not anything renders there, so a dialog with no
+ * description leaves the attribute referencing an element that does not exist
+ * -- which is what the console warning is about, and what makes a screen
+ * reader announce nothing where a description was promised.
+ *
+ * Pass a string and it is rendered for assistive technology only, changing
+ * nothing on screen. Pass nothing and the dialog must say so deliberately with
+ * `aria-describedby={undefined}`, which is Radix's documented opt-out; the
+ * warning exists precisely so that "this dialog has no description" is a
+ * decision rather than an oversight.
+ *
+ * NOT defaulted to the opt-out here. Doing that would silence the warning for
+ * every dialog at once, including the ones that do render a DialogDescription
+ * -- an explicit `aria-describedby` overrides the id Radix wires up, so a
+ * blanket default would break the association it was meant to protect.
+ */
 function DialogContent({
   className,
   children,
+  description,
   showCloseButton = true,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  description?: React.ReactNode
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
@@ -63,6 +86,9 @@ function DialogContent({
         )}
         {...props}
       >
+        {description ? (
+          <DialogDescription className="sr-only">{description}</DialogDescription>
+        ) : null}
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close

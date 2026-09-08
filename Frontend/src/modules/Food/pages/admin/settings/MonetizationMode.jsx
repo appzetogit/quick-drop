@@ -186,7 +186,7 @@ export default function MonetizationMode() {
       )}
 
       <Dialog open={Boolean(pending)} onOpenChange={(open) => !open && !saving && setPending(null)}>
-        <DialogContent>
+        <DialogContent aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-amber-500" />

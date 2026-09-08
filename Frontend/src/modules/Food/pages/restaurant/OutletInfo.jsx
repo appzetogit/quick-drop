@@ -472,7 +472,7 @@ export default function OutletInfo() {
     </div>
 
       <Dialog open={showEditNameDialog} onOpenChange={setShowEditNameDialog}>
-        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-xl w-[90%]">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-md p-0 overflow-hidden rounded-xl w-[90%]">
           <DialogHeader className="p-4 border-b border-gray-100"><DialogTitle className="text-lg font-bold">Edit restaurant name</DialogTitle></DialogHeader>
           <div className="p-4"><Input value={editNameValue} onChange={(e) => setEditNameValue(e.target.value)} placeholder="Enter restaurant name" className="w-full" /></div>
           <DialogFooter className="p-4 bg-gray-50 flex flex-row gap-3">

@@ -517,7 +517,7 @@ export default function RestaurantWithdraws() {
 
         {/* View Withdraw Dialog */}
         <Dialog open={isViewOpen} onOpenChange={setIsViewOpen}>
-          <DialogContent className="max-w-md bg-white p-0">
+          <DialogContent aria-describedby={undefined} className="max-w-md bg-white p-0">
             <DialogHeader className="px-6 pt-6 pb-4">
               <DialogTitle>Withdraw Request Details</DialogTitle>
             </DialogHeader>
@@ -617,7 +617,7 @@ export default function RestaurantWithdraws() {
 
         {/* Reject Modal */}
         <Dialog open={showRejectModal} onOpenChange={setShowRejectModal}>
-          <DialogContent className="max-w-md bg-white p-0">
+          <DialogContent aria-describedby={undefined} className="max-w-md bg-white p-0">
             <DialogHeader className="px-6 pt-6 pb-4">
               <DialogTitle>Reject Withdrawal Request</DialogTitle>
             </DialogHeader>
@@ -658,7 +658,7 @@ export default function RestaurantWithdraws() {
 
         {/* Settings Dialog */}
         <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-          <DialogContent className="max-w-md bg-white p-0">
+          <DialogContent aria-describedby={undefined} className="max-w-md bg-white p-0">
             <DialogHeader className="px-6 pt-6 pb-4">
               <DialogTitle className="flex items-center gap-2">
                 <Settings className="w-5 h-5" />

@@ -274,7 +274,7 @@ export default function PageMetaDataPageMetaData() {
 
       {/* Settings Dialog */}
       <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-        <DialogContent className="max-w-md bg-white p-0">
+        <DialogContent aria-describedby={undefined} className="max-w-md bg-white p-0">
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle className="flex items-center gap-2">
               <Settings className="w-4 h-4" />
@@ -327,7 +327,7 @@ export default function PageMetaDataPageMetaData() {
 
       {/* Edit SEO Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-3xl bg-white max-h-[90vh] overflow-y-auto">
+        <DialogContent aria-describedby={undefined} className="max-w-3xl bg-white max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="w-4 h-4" />
