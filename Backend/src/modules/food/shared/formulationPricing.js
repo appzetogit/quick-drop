@@ -174,7 +174,28 @@ export function resolveFormulationPricing(item = {}) {
 
     const base = round2(basePrice);
     const price = Math.max(MIN_RESULT_PRICE, round2(base * (1 - discountPercent / 100)));
-    const strike = round2(base * (1 + markupPercent / 100));
+
+    /*
+     * The struck-through figure is whatever the LAST run set it to.
+     *
+     *   an increase sets it from the markup: base x (1 + markup/100)
+     *   a decrease sets it to the price the dish was selling for a moment
+     *   before the cut, so the customer sees what it just dropped from
+     *
+     * Stored rather than derived, because "the price before the cut" is not
+     * recoverable from the base and the totals -- after two decreases the dish
+     * has been at three different prices and only the run knows which one came
+     * immediately before.
+     *
+     * Absent means no run has set one, which covers every row written before
+     * this and every dish only ever increased. Then the markup figure applies,
+     * falling back to the base itself so a legacy row that carries its discount
+     * in the price/base gap still strikes through something.
+     */
+    const storedStrike = toFiniteNumber(item?.formulationStrikePrice);
+    const strike = storedStrike !== null && storedStrike > 0
+        ? round2(storedStrike)
+        : Math.max(round2(base * (1 + markupPercent / 100)), base);
     const hasStrike = strike > price;
 
     return {

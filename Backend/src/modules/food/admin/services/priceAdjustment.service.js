@@ -515,6 +515,36 @@ const applyFormulationPercent = async (filter, percent) => {
                 },
             },
             {
+                /*
+                 * The struck-through figure, decided by THIS run.
+                 *
+                 * A decrease sets it to what the dish is selling for right now,
+                 * before the stage below cuts the price -- so the customer sees
+                 * the figure it just dropped from. An increase sets it from the
+                 * markup total instead.
+                 *
+                 * `$price` is still the pre-run value here; the next stage is
+                 * what changes it. That ordering is the whole mechanism, and
+                 * merging these two stages would capture the already-cut price
+                 * and strike through the number being charged.
+                 */
+                $set: {
+                    formulationStrikePrice: addDiscount > 0
+                        ? { $round: ['$price', 2] }
+                        : {
+                            $round: [
+                                {
+                                    $multiply: [
+                                        '$basePrice',
+                                        { $add: [1, { $divide: ['$formulationMarkupPercent', 100] }] },
+                                    ],
+                                },
+                                2,
+                            ],
+                        },
+                },
+            },
+            {
                 // Derived from the totals above, which is why this is its own
                 // stage: a stage sees the document as it was when it began.
                 $set: {
@@ -551,19 +581,9 @@ const applyFormulationPercent = async (filter, percent) => {
                     },
                     discountPercent: {
                         $let: {
-                            vars: {
-                                strike: {
-                                    $round: [
-                                        {
-                                            $multiply: [
-                                                '$basePrice',
-                                                { $add: [1, { $divide: ['$formulationMarkupPercent', 100] }] },
-                                            ],
-                                        },
-                                        2,
-                                    ],
-                                },
-                            },
+                            // The saving read off the two figures on screen, so
+                            // it has to use the strike this run actually stored.
+                            vars: { strike: '$formulationStrikePrice' },
                             in: {
                                 $cond: [
                                     { $gt: ['$$strike', '$price'] },

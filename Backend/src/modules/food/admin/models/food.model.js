@@ -128,6 +128,16 @@ const foodSchema = new mongoose.Schema(
          * positive meant a markup, negative a discount -- and is read as a
          * fallback rather than maintained.
          */
+        /**
+         * The struck-through figure the last run set.
+         *
+         * An increase sets it from the markup; a decrease sets it to the price
+         * the dish was selling for immediately before the cut, which is not
+         * recoverable from the base and the totals -- after two decreases the
+         * dish has been at three prices and only the run knows which came just
+         * before. null means no run has set one, and the markup figure applies.
+         */
+        formulationStrikePrice: { type: Number, min: 0, default: null },
         formulationMarkupPercent: { type: Number, min: 0, max: 300, default: 0 },
         formulationDiscountPercent: { type: Number, min: 0, max: 90, default: 0 },
         /**

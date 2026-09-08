@@ -142,8 +142,13 @@ console.log('\nruns add up, and cancel');
         assert.equal(s.stored.formulationMarkupPercent, 20));
     check('the discount is its own total', () =>
         assert.equal(s.stored.formulationDiscountPercent, 10));
-    check('struck at 240 and sold at 180', () => {
-        assert.equal(s.strikePrice, 240);
+    /*
+     * The strike is what the LAST run set. A decrease sets it to the price the
+     * dish was selling for immediately before the cut, so the customer sees the
+     * figure it just dropped from -- 200 here, not the markup's 240.
+     */
+    check('the decrease strikes the pre-cut price', () => {
+        assert.equal(s.strikePrice, 200);
         assert.equal(s.price, 180);
     });
 
@@ -153,10 +158,19 @@ console.log('\nruns add up, and cancel');
         assert.equal(deeper.stored.formulationDiscountPercent, 20);
         assert.equal(deeper.price, 160);
     });
-    check('and the markup is still untouched', () => {
-        assert.equal(deeper.stored.formulationMarkupPercent, 20);
-        assert.equal(deeper.strikePrice, 240);
+    check('and strikes the price before THAT cut', () =>
+        assert.equal(deeper.strikePrice, 180));
+    check('the markup total is still untouched', () =>
+        assert.equal(deeper.stored.formulationMarkupPercent, 20));
+
+    // An increase takes the strike back over, from the markup total.
+    await run(10);
+    const up = await shownFor(id);
+    check('an increase restores a markup strike', () => {
+        assert.equal(up.stored.formulationMarkupPercent, 30);
+        assert.equal(up.strikePrice, 260);
     });
+    check('and still charges the discounted price', () => assert.equal(up.price, 160));
 }
 
 console.log('\nrepeat decreases do not ratchet the base down');
@@ -218,7 +232,10 @@ console.log('\na row the backfill has not reached');
     check('the inferred percent is added to, not replaced', () =>
         assert.equal(after.stored.formulationDiscountPercent, 30));
     check('so it charges 30% off the base', () => assert.equal(after.price, 107.1));
-    check('and strikes the base', () => assert.equal(after.strikePrice, 153));
+    // A decrease strikes the price before the cut, which for this row is the
+    // 137.70 it was already selling at -- not the 153 base it derives from.
+    check('and strikes the price before the cut', () =>
+        assert.equal(after.strikePrice, 137.7));
 }
 
 /* ------------------------------------------------------------------ variants */
