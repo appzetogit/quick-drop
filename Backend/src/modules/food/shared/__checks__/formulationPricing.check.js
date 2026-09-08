@@ -40,6 +40,17 @@ check('+20%: pays 200, struck 240', () => {
     assert.equal(r.strikePrice, 240);
     assert.equal(r.discountPercent, 16.67);
 });
+check('an increase never moves the formulation price', () => {
+    // The formulation price is what the customer pays. An increase changes the
+    // struck-through comparison and nothing else, so a +20% run on a Rs 200
+    // dish must still report a formulation price of 200, not 240.
+    assert.equal(shown(200, 20).formulationPrice, 200);
+    assert.equal(shown(200, 300).formulationPrice, 200);
+});
+check('a decrease does move it, and it equals what is charged', () => {
+    assert.equal(shown(200, -20).formulationPrice, 160);
+    assert.equal(shown(200, -20).price, 160);
+});
 check('-20%: pays 160, struck 200', () => {
     const r = shown(200, -20);
     assert.equal(r.price, 160);
@@ -59,18 +70,20 @@ check('back to 0%: pays 200, nothing struck', () => {
 
 // --- the property the whole design exists for -------------------------------
 console.log('\nno run can inherit another');
-check('+20% applied five times is still 240', () => {
+check('+20% applied five times still charges 200', () => {
     // Applying a percent means STORING it, not multiplying. Five identical runs
     // store the same number, so there is nothing to compound.
     let fields = formulationFieldsFor(200, 20);
     for (let i = 0; i < 4; i += 1) fields = formulationFieldsFor(fields.basePrice, 20);
-    assert.equal(fields.formulationPrice, 240);
     assert.equal(fields.price, 200);
+    assert.equal(fields.formulationPrice, 200, 'an increase never moves it');
+    assert.equal(resolveFormulationPricing({ basePrice: 200, formulationPercent: 20 }).strikePrice, 240);
 });
 check('+20% then -10% measures from 200, not from 240', () => {
     const up = formulationFieldsFor(200, 20);
     const down = formulationFieldsFor(up.basePrice, -10);
     assert.equal(down.formulationPrice, 180);
+    assert.equal(up.formulationPrice, 200, 'the increase left it alone');
     assert.equal(down.price, 180);
     assert.equal(down.basePrice, 200, 'the origin never moves');
 });

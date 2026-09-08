@@ -6,6 +6,7 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 import { invalidatePriceCaches } from '../../../../middleware/cache.js';
 import { FoodPriceAdjustmentSnapshot } from '../models/priceAdjustmentSnapshot.model.js';
 import {
+    computeFormulationPrice,
     normalizeFormulationPercent,
     resolveFormulationPricing,
 } from '../../shared/formulationPricing.js';
@@ -277,11 +278,18 @@ export async function getPriceAdjustmentPreview({ restaurantId, percent } = {}) 
     const samples = sampleDocs.map((doc) => {
         const now = resolveFormulationPricing(doc);
         const after = resolveFormulationPricing({ ...doc, formulationPercent: pct });
+        /*
+         * The figure the percent actually moves, which is direction-dependent:
+         * an increase moves the struck-through comparison and leaves the price
+         * alone, a decrease moves the price and strikes the base. Reporting the
+         * formulation price for both would show "200 -> 200" on every increase
+         * and read as a run that did nothing.
+         */
+        const moved = (r) => computeFormulationPrice(r.basePrice, r.formulationPercent) ?? r.price;
         return {
             name: doc?.name || '',
-            // The formulation figure, which is what this screen adjusts.
-            current: now.formulationPrice,
-            next: after.formulationPrice,
+            current: moved(now),
+            next: moved(after),
             // What the two mean for the customer, since a positive percent
             // moves the strike and a negative one moves the bill.
             paysNow: now.price,
@@ -411,7 +419,13 @@ const applyFormulationPercent = async (filter, percent) => {
             {
                 $set: {
                     formulationPercent: stored,
-                    formulationPrice: {
+                    /*
+                     * The adjusted figure, held briefly so the next stage can
+                     * compare it against the base. It is NOT the formulation
+                     * price, which is what the customer pays and is settled
+                     * below -- an increase must leave that untouched.
+                     */
+                    adjustedPrice: {
                         $max: [
                             MIN_RESULT_PRICE,
                             { $round: [{ $multiply: ['$basePrice', multiplier] }, 2] },
@@ -421,7 +435,12 @@ const applyFormulationPercent = async (filter, percent) => {
             },
             {
                 $set: {
-                    price: { $min: ['$basePrice', '$formulationPrice'] },
+                    // Both are the lower of the two by definition: an increase
+                    // puts the adjusted figure above the base and changes
+                    // nothing anyone pays, a decrease puts it below and becomes
+                    // the price. See shared/formulationPricing.js.
+                    price: { $min: ['$basePrice', '$adjustedPrice'] },
+                    formulationPrice: { $min: ['$basePrice', '$adjustedPrice'] },
                     variants: {
                         $map: {
                             input: { $ifNull: ['$variants', []] },
@@ -452,7 +471,7 @@ const applyFormulationPercent = async (filter, percent) => {
                 $set: {
                     discountPercent: {
                         $let: {
-                            vars: { strike: { $max: ['$basePrice', '$formulationPrice'] } },
+                            vars: { strike: { $max: ['$basePrice', '$adjustedPrice'] } },
                             in: {
                                 $cond: [
                                     { $gt: ['$$strike', '$price'] },
@@ -474,6 +493,8 @@ const applyFormulationPercent = async (filter, percent) => {
                     },
                 },
             },
+            // The scratch figure must not survive into the document.
+            { $unset: 'adjustedPrice' },
         ],
     );
     return result?.modifiedCount || 0;

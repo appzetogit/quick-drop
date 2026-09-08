@@ -80,8 +80,10 @@ console.log('\nwhat the API sends for a +20% increase');
     const dish = await fromApi();
     check('price is the base, unchanged', () => assert.equal(dish.price, 200));
     check('strikePrice is the formulation figure', () => assert.equal(dish.strikePrice, 240));
-    check('formulationPrice is sent for the admin panel', () =>
-        assert.equal(dish.formulationPrice, 240));
+    // The formulation price is what the customer pays, so an increase leaves it
+    // alone. 240 is the struck-through comparison, asserted above.
+    check('formulationPrice is unmoved by an increase', () =>
+        assert.equal(dish.formulationPrice, 200));
     check('formulationPercent is sent', () => assert.equal(dish.formulationPercent, 20));
 }
 

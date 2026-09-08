@@ -14,20 +14,26 @@
  *
  *   basePrice          what the restaurant typed. A global run never writes it.
  *   formulationPercent the ONE active adjustment. Replaced, never added to.
- *   formulationPrice   basePrice x (1 + formulationPercent / 100)
+ *   adjusted           basePrice x (1 + formulationPercent / 100)
  *
  * and what the customer sees follows from those two figures alone:
  *
- *   pays    = min(basePrice, formulationPrice)
- *   struck  = max(basePrice, formulationPrice), when it exceeds what is paid
+ *   pays   = min(basePrice, adjusted)   <- this is the formulation price
+ *   struck = max(basePrice, adjusted),  when it exceeds what is paid
  *
  * which gives both directions from one rule:
  *
- *   +20% on Rs 200 -> formulation 240 -> pays 200, struck 240   (17% off)
- *   -20% on Rs 200 -> formulation 160 -> pays 160, struck 200   (20% off)
+ *   +20% on Rs 200 -> pays 200, struck 240   (17% off)
+ *   -20% on Rs 200 -> pays 160, struck 200   (20% off)
  *
- * Running +20% five times still lands on Rs 240; switching to -10% afterwards
- * gives Rs 180 measured from Rs 200, not from a stale Rs 240.
+ * The FORMULATION PRICE IS WHAT THE CUSTOMER PAYS. An increase never moves it;
+ * only a decrease does. An increase raises the struck-through comparison and
+ * nothing else, so a +20% run on a Rs 200 dish still reports a formulation
+ * price of Rs 200 -- reporting 240 there reads as a price rise, which is the
+ * opposite of what the run did.
+ *
+ * Running +20% five times still strikes Rs 240; switching to -10% afterwards
+ * charges Rs 180 measured from Rs 200, not from a stale Rs 240.
  *
  * An increase deliberately does not change what anyone pays. That is the
  * client's written specification -- "20% -> 240 crossed out -> 200 paid" -- and
@@ -127,16 +133,34 @@ export function resolveFormulationPricing(item = {}) {
         ? normalizeFormulationPercent(item.formulationPercent)
         : (inferable ? inferFormulationPercent(basePrice, storedPrice) : 0);
 
-    const formulationPrice = computeFormulationPrice(basePrice, formulationPercent) ?? round2(basePrice);
+    /*
+     * The adjusted figure, which sits either side of the base depending on the
+     * direction, and is NOT what the formulation price means.
+     */
+    const adjusted = computeFormulationPrice(basePrice, formulationPercent) ?? round2(basePrice);
 
-    const price = Math.min(round2(basePrice), formulationPrice);
-    const strike = Math.max(round2(basePrice), formulationPrice);
+    const price = Math.min(round2(basePrice), adjusted);
+    const strike = Math.max(round2(basePrice), adjusted);
     const hasStrike = strike > price;
 
     return {
         basePrice: round2(basePrice),
         formulationPercent,
-        formulationPrice,
+        /*
+         * The formulation price is WHAT THE CUSTOMER PAYS, so an increase can
+         * never move it -- only a decrease can.
+         *
+         * It used to be the raw adjusted figure, which meant a +10% run showed
+         * a formulation price of 220 on a dish still charging 200. That reads
+         * as a price rise in the admin panel and in the app, when an increase
+         * deliberately changes nothing anyone pays: it moves the struck-through
+         * comparison and nothing else.
+         *
+         * On a decrease the two coincide -- the adjusted figure IS what is
+         * charged -- so this is the same number either way, just never above
+         * the base.
+         */
+        formulationPrice: round2(price),
         price: round2(Math.max(price, 0)),
         strikePrice: hasStrike ? round2(strike) : null,
         discountPercent: hasStrike ? round2(((strike - price) / strike) * 100) : 0,
@@ -164,6 +188,9 @@ export function formulationFieldsFor(basePrice, formulationPercent) {
     return {
         basePrice: derived.basePrice,
         formulationPercent: derived.formulationPercent,
+        // Equal to `price` by definition now -- see resolveFormulationPricing.
+        // Both are stored because the admin panel edits against one and every
+        // order path reads the other, and a single source keeps them identical.
         formulationPrice: derived.formulationPrice,
         price: derived.price,
         discountPercent: derived.discountPercent,
