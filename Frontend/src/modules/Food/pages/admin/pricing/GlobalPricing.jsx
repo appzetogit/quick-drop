@@ -214,16 +214,18 @@ export default function GlobalPricing() {
         </div>
 
         {/*
-          What the percentage moves, spelled out because the two options touch
-          entirely different fields and the old copy did not say which:
+          What the percentage moves, spelled out because the two directions
+          touch entirely different fields and the old copy did not say which:
 
-            otherPrice  -> the struck-through comparison only. basePrice and
-                           price are untouched, so a cut here changes nothing
-                           a customer pays.
-            price       -> basePrice, price and every variant, with
-                           discountPercent held and price re-derived from the
-                           scaled base. otherPrice is left alone, so a cut here
-                           widens the visible saving against other platforms.
+            increase -> the struck-through comparison only, SET to that much
+                        above the price rather than scaled up from whatever it
+                        was last time. basePrice, price and variants are
+                        untouched, so nothing a customer pays moves, and
+                        running the same increase twice is a no-op.
+            decrease -> a markdown: today's price becomes the strike-through
+                        (on both comparison fields, so a stale one cannot
+                        outrank it) and the reduced figure is charged beneath.
+                        This one does change what customers pay.
 
           The comparison figure stays the default: a mis-click must not be able
           to silently reprice a live menu.
@@ -233,9 +235,10 @@ export default function GlobalPricing() {
           <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
             {direction === "increase" ? (
               <>
-                An <span className="font-semibold">increase</span> raises the struck-through comparison only.
+                An <span className="font-semibold">increase</span> sets the struck-through comparison only.
                 What the customer pays does not move: a &#8377;200 dish stays &#8377;200 and is shown as
                 &ldquo;&#8377;200, was &#8377;{Math.round(200 * (1 + (Number(percent) || 0) / 100))}&rdquo;.
+                Running it again lands on the same figure rather than compounding.
               </>
             ) : (
               <>
