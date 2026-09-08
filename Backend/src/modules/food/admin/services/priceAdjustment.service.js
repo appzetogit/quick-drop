@@ -376,11 +376,25 @@ const applyFactorToComparison = async (filter, factor, seedMultiplier = 1) => {
  * writing it, so it stops being a second, competing comparison that could
  * outrank the real one.
  */
-const applyFormulationPercent = async (filter, percent) => {
+const applyFormulationPercent = async (filter, percent, { undo = false } = {}) => {
     const applied = normalizeFormulationPercent(percent);
-    // Which accumulator this run adds to. The two never touch each other.
-    const addMarkup = applied > 0 ? applied : 0;
-    const addDiscount = applied < 0 ? -applied : 0;
+    /*
+     * Which accumulator this run moves, and in which direction. The two never
+     * touch each other.
+     *
+     * `undo` subtracts the same run's contribution instead of adding it, which
+     * is what makes a revert behave like `git revert` rather than
+     * `git reset --hard`: undoing a -10% takes 10 off the discount total and
+     * leaves every run made since exactly where it is. Restoring a snapshot
+     * would have thrown those away.
+     *
+     * It composes because accumulation is linear against a fixed base. Undoing
+     * a run from the middle of the history lands on the same totals as if it
+     * had never been applied, whatever ran after it.
+     */
+    const sign = undo ? -1 : 1;
+    const addMarkup = applied > 0 ? sign * applied : 0;
+    const addDiscount = applied < 0 ? sign * -applied : 0;
 
     /*
      * A row written before the split carries one signed percent: positive was a
@@ -529,7 +543,13 @@ const applyFormulationPercent = async (filter, percent) => {
                  * and strike through the number being charged.
                  */
                 $set: {
-                    formulationStrikePrice: addDiscount > 0
+                    /*
+                     * An undo has no "price before the cut" to strike -- the run
+                     * it is removing no longer applies -- so the strike falls
+                     * back to the markup figure, which is what a dish carrying
+                     * only a markup shows.
+                     */
+                    formulationStrikePrice: (!undo && addDiscount > 0)
                         ? { $round: ['$price', 2] }
                         : {
                             $round: [
@@ -731,6 +751,47 @@ export async function revertPriceAdjustment(id, actor = {}) {
      * handles.
      */
     let itemsUpdated = 0;
+
+    /*
+     * A formulation run is undone by removing its own contribution, not by
+     * restoring the prices as they stood before it.
+     *
+     * That distinction is the difference between `git revert` and
+     * `git reset --hard`. Restoring the snapshot puts every dish back to the
+     * moment before this run -- discarding every adjustment made since, which
+     * is almost never what someone reverting a week-old run wants. Subtracting
+     * the percent removes that run alone and leaves the rest standing.
+     *
+     * Exact rather than approximate, because accumulation is linear against a
+     * base no run writes: undoing -10 from a dish now at -30 lands on -20, the
+     * same total it would have had if the run had never happened.
+     */
+    if (String(original.strategy) === 'formulation') {
+        itemsUpdated = await applyFormulationPercent(
+            buildFilter(original.restaurantId),
+            Number(original.percent),
+            { undo: true },
+        );
+
+        original.isReverted = true;
+        await original.save();
+
+        const revertEntry = await FoodPriceAdjustment.create({
+            percent: -Number(original.percent),
+            factor: 1 / (Number(original.factor) || 1),
+            target: 'formulation',
+            strategy: 'formulation',
+            restaurantId: original.restaurantId,
+            restaurantName: original.restaurantName,
+            itemsUpdated,
+            revertsAdjustmentId: original._id,
+            ...(await resolveActor(actor)),
+        });
+
+        await invalidatePriceCaches();
+        return { adjustment: revertEntry.toObject(), itemsUpdated };
+    }
+
     const snapshots = await FoodPriceAdjustmentSnapshot.find({ adjustmentId: original._id }).lean();
 
     /*

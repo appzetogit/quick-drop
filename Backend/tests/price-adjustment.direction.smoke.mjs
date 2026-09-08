@@ -282,19 +282,77 @@ console.log('\nvariants follow the dish');
 /* ------------------------------------------------------------------ revert */
 console.log('\nrevert puts the dish back');
 {
-    const id = await seed({ price: 200, basePrice: 250, discountPercent: 20 });
-    const before = await FoodItem.findById(id).lean();
+    // A dish already carrying a 20% discount: base 250, so it sells at 200.
+    const id = await seed({ price: 200, basePrice: 250, formulationDiscountPercent: 20 });
 
     const down = await run(-30);
     const cut = await shownFor(id);
-    check('the run took effect', () => assert.equal(cut.price, 175));
+    check('the run took effect', () => {
+        assert.equal(cut.stored.formulationDiscountPercent, 50);
+        assert.equal(cut.price, 125);
+    });
 
     await revertPriceAdjustment(String(down.adjustment._id), {});
-    const after = await FoodItem.findById(id).lean();
-    check('price restored', () => assert.equal(after.price, before.price));
-    check('base restored', () => assert.equal(after.basePrice, before.basePrice));
-    check('percent restored', () =>
-        assert.equal(after.formulationPercent ?? null, before.formulationPercent ?? null));
+    const after = await shownFor(id);
+    // Only this run is removed. The 20% the dish already had is not the run's
+    // to undo, so it stays -- which is the whole point of reverting rather
+    // than resetting.
+    check('the run is removed and the earlier discount survives', () =>
+        assert.equal(after.stored.formulationDiscountPercent, 20));
+    check('so the dish is back to what it sold for before the run', () =>
+        assert.equal(after.price, 200));
+    check('the restaurant base never moved', () =>
+        assert.equal(after.stored.basePrice, 250));
+}
+
+/* ------------------------------------------------- revert, git-revert style */
+console.log('\nreverting one run leaves the others standing');
+{
+    await FoodItem.deleteMany({ restaurantId: restaurant._id });
+    const id = await seed({ price: 200, basePrice: 200 });
+
+    const first = await run(-10);   // discount 10 -> pays 180
+    await run(-10);                 // discount 20 -> pays 160
+    await run(20);                  // markup 20   -> struck 240
+
+    const before = await shownFor(id);
+    check('three runs stack', () => {
+        assert.equal(before.stored.formulationDiscountPercent, 20);
+        assert.equal(before.stored.formulationMarkupPercent, 20);
+        assert.equal(before.price, 160);
+    });
+
+    /*
+     * Revert the FIRST run, with two later ones on top. Restoring its snapshot
+     * would put the dish back to 200 and throw both away; removing its own
+     * contribution leaves discount at 10 and the markup untouched.
+     */
+    await revertPriceAdjustment(String(first.adjustment._id), {});
+    const after = await shownFor(id);
+    check('the reverted run is gone from the total', () =>
+        assert.equal(after.stored.formulationDiscountPercent, 10));
+    check('the later decrease still stands', () => assert.equal(after.price, 180));
+    check('the later increase still stands', () =>
+        assert.equal(after.stored.formulationMarkupPercent, 20));
+    check('it did not reset to the pre-run price', () =>
+        assert.notEqual(after.price, 200));
+}
+
+console.log('\nreverting the only run returns the dish to its base');
+{
+    await FoodItem.deleteMany({ restaurantId: restaurant._id });
+    const id = await seed({ price: 200, basePrice: 200 });
+    const only = await run(-25);
+    const applied = await shownFor(id);
+    check('the run applied', () => assert.equal(applied.price, 150));
+    await revertPriceAdjustment(String(only.adjustment._id), {});
+    const back = await shownFor(id);
+    check('back to the base price', () => assert.equal(back.price, 200));
+    check('with nothing struck through', () => assert.equal(back.strikePrice, null));
+    check('and both totals at zero', () => {
+        assert.equal(back.stored.formulationDiscountPercent, 0);
+        assert.equal(back.stored.formulationMarkupPercent, 0);
+    });
 }
 
 /* ----------------------------------------------------------------- preview */
