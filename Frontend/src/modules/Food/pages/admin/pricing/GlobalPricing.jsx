@@ -217,15 +217,23 @@ export default function GlobalPricing() {
           What the percentage moves, spelled out because the two directions
           touch entirely different fields and the old copy did not say which:
 
-            increase -> the struck-through comparison only, SET to that much
-                        above the price rather than scaled up from whatever it
-                        was last time. basePrice, price and variants are
-                        untouched, so nothing a customer pays moves, and
-                        running the same increase twice is a no-op.
-            decrease -> a markdown: today's price becomes the strike-through
-                        (on both comparison fields, so a stale one cannot
-                        outrank it) and the reduced figure is charged beneath.
-                        This one does change what customers pay.
+            Both directions now store ONE number on each dish: the
+            formulation percent, measured against the restaurant's own base
+            price, which a run never writes. formulationPrice is re-derived
+            from it, and what the customer sees follows:
+
+              pays   = min(basePrice, formulationPrice)
+              struck = max(basePrice, formulationPrice)
+
+            increase -> formulationPrice lands above the base, so the base is
+                        charged and the formulation is struck through. Nothing
+                        a customer pays moves, and repeats are no-ops.
+            decrease -> formulationPrice lands below, so it becomes what is
+                        charged and the base is struck. This one does change
+                        what customers pay.
+
+            A run REPLACES the percent rather than compounding it, which is
+            what stops +20% twice from meaning +44%.
 
           The comparison figure stays the default: a mis-click must not be able
           to silently reprice a live menu.
@@ -252,9 +260,9 @@ export default function GlobalPricing() {
           {direction === "decrease" && (
             <p className="mt-2 text-xs text-amber-700">
               A decrease changes what customers are charged. Each restaurant&rsquo;s own base price is kept
-              as typed and the cut is applied as a discount on top of it, so a dish already on offer ends up
-              advertising the deeper saving rather than losing the price it was struck from. Prices are saved
-              first, so this can be reverted.
+              exactly as typed &mdash; the cut is stored as a percentage against it, so running a decrease twice
+              cuts from the same starting price rather than from the reduced one. Prices are saved first, so
+              this can be reverted.
             </p>
           )}
         </div>
@@ -312,7 +320,7 @@ export default function GlobalPricing() {
           <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-sm text-slate-700">
             <span className="inline-flex items-center gap-1 font-medium">
               <IndianRupee className="h-4 w-4" />
-              {direction === "decrease" ? "Selling price" : "Comparison price"} on your actual menu
+              Formulation price on your actual menu
             </span>
             {samples.length === 0 ? (
               <span className="ml-2">
@@ -324,10 +332,20 @@ export default function GlobalPricing() {
                 {samples.map((s) => (
                   <li key={s.name} className="flex items-center justify-between gap-3">
                     <span className="truncate text-slate-600">{s.name}</span>
-                    <span className="shrink-0 tabular-nums">
+                    <span className="shrink-0 tabular-nums text-right">
                       <span className="text-slate-500">{RUPEE}{s.current}</span>
                       <span className="mx-1 text-slate-400">&rarr;</span>
                       <span className="font-semibold text-slate-900">{RUPEE}{s.next}</span>
+                      {/* What the formulation figure means for the bill. The
+                          samples used to show only the number being moved, so a
+                          run that changed the strike and a run that changed the
+                          price looked identical here. */}
+                      {s.paysAfter !== undefined && (
+                        <span className="ml-2 text-xs text-slate-500">
+                          (pays {RUPEE}{s.paysAfter}
+                          {s.strikeAfter ? <>, was {RUPEE}{s.strikeAfter}</> : null})
+                        </span>
+                      )}
                     </span>
                   </li>
                 ))}

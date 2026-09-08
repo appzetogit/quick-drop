@@ -22,6 +22,8 @@
  * existing rows keep their data rather than being silently erased.
  */
 
+import { resolveFormulationPricing, formulationFieldsFor } from './formulationPricing.js';
+
 const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 
 const toFiniteNumber = (value) => {
@@ -129,22 +131,28 @@ export function normalizeDiscountPricingInput(body = {}, existing = {}) {
  * than repeating the selling price, which would otherwise show as "₹40 ₹40".
  */
 export function resolveItemDisplayPricing(food = {}) {
-    const price = toFiniteNumber(food.price) ?? 0;
-    const base = toFiniteNumber(food.basePrice);
-
-    // Pre-feature rows: no base recorded means no discount was ever applied.
-    const basePrice = base === null || base <= 0 ? price : base;
-    const discountPercent =
-        toFiniteNumber(food.discountPercent) ?? computeDiscountPercent(basePrice, price);
-
-    const hasDiscount = basePrice > price && discountPercent > 0;
+    /*
+     * Delegated to the formulation rule, which is now the only place a
+     * displayed price is decided. Every caller of this function -- menus, the
+     * public listing, the seller app, the 99-store shelf -- picks up the new
+     * derivation without knowing about it, which is the point: the last time
+     * two pricing paths existed side by side they disagreed, and a disagreement
+     * about price is not the kind that surfaces as an error.
+     *
+     * The returned shape is unchanged, so nothing downstream had to move. The
+     * formulation figures are added rather than substituted, for the admin
+     * panel, which edits against them.
+     */
+    const derived = resolveFormulationPricing(food);
 
     return {
-        price: round2(price),
-        basePrice: round2(basePrice),
-        discountPercent: hasDiscount ? round2(discountPercent) : 0,
-        strikePrice: hasDiscount ? round2(basePrice) : null,
-        savings: hasDiscount ? round2(basePrice - price) : 0,
+        price: derived.price,
+        basePrice: derived.basePrice,
+        discountPercent: derived.discountPercent,
+        strikePrice: derived.strikePrice,
+        savings: derived.savings,
+        formulationPercent: derived.formulationPercent,
+        formulationPrice: derived.formulationPrice,
     };
 }
 
@@ -208,5 +216,22 @@ export function resolveItemPricingForWrite({
         throw new Error('Price must be greater than 0');
     }
 
-    return resolved;
+    /*
+     * Re-derive against the dish's active adjustment.
+     *
+     * The base price is the restaurant's to set and this is where they set it.
+     * The percent is the platform's and is not in this form, so it is carried
+     * over from the stored dish -- otherwise editing a Rs 200 dish to Rs 250
+     * would keep a formulation figure computed from the old base, and the two
+     * would describe different dishes.
+     *
+     * resolveFormulationPricing supplies the percent for a row that has never
+     * been migrated by reading it back out of its stored prices, so this works
+     * before and after the backfill.
+     */
+    const carried = resolveFormulationPricing(existing).formulationPercent;
+    const derived = formulationFieldsFor(resolved.basePrice, carried);
+    if (!derived) return resolved;
+
+    return derived;
 }

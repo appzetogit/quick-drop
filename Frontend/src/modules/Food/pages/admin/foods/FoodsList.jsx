@@ -21,6 +21,7 @@ const createFoodForm = () => ({
   price: "",
   basePrice: "",
   discountPercent: 0,
+  formulationPercent: 0,
   otherPrice: "",
   variantsEnabled: false,
   variants: [],
@@ -160,6 +161,8 @@ export default function FoodsList() {
               // Dropped here, every marked-down dish opened as though its base
               // price were its selling price.
               discountPercent: Number(f.discountPercent) || 0,
+              formulationPercent: Number(f.formulationPercent) || 0,
+              formulationPrice: Number(f.formulationPrice) || 0,
               otherPrice: f.otherPrice ?? 0,
               variants: getStoredFoodVariants(f),
               foodType: f.foodType || "Non-Veg",
@@ -308,6 +311,9 @@ export default function FoodsList() {
       // global decrease sets it, so a form that ignored it showed the base
       // price as though that were what customers pay.
       discountPercent: Number(food.discountPercent) || 0,
+      // Read-only in this form. The adjustment belongs to Global Price
+      // Adjustment; this is here so the admin can see what it did to the dish.
+      formulationPercent: Number(food.formulationPercent) || 0,
       otherPrice: food.otherPrice ? String(food.otherPrice) : "",
       variants: getStoredFoodVariants(food).map(createVariantDraft),
       // Absent on old rows means "sell by variants if any exist".
@@ -962,26 +968,60 @@ export default function FoodsList() {
                 {foodForm.variantsEnabled === true ? (
                   <p className="mt-1 text-xs text-slate-500">Selling by variants: customers see the lowest variant price as the starting price.</p>
                 ) : null}
+                <p className="mt-1 text-xs text-slate-500">
+                  The restaurant&rsquo;s own price. Global Price Adjustment never changes it.
+                </p>
+              </div>
+
+              {/*
+                The formulation price, read-only.
+
+                It is derived -- basePrice x (1 + formulationPercent / 100) --
+                so making it editable here would give the admin two ways to set
+                one number and no way to tell which won. Shown rather than
+                hidden because it is what the customer sees, and the form used
+                to display "Base Price 180" on a dish selling at 144 while
+                saying nothing about the gap.
+              */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Formulation price</label>
                 {(() => {
-                  /*
-                   * What the dish actually charges, whenever that is not the
-                   * base price above. A global decrease discounts the menu
-                   * without touching the base, so this field alone stopped
-                   * describing the dish: the form read "Base Price 180" on a
-                   * dish selling at 144 and said nothing about the difference.
-                   */
                   const base = Number(foodForm.basePrice)
-                  const discount = Number(foodForm.discountPercent) || 0
-                  if (foodForm.variantsEnabled === true) return null
-                  if (!Number.isFinite(base) || base <= 0 || discount <= 0) return null
-                  const sells = Math.round(base * (1 - discount / 100) * 100) / 100
+                  const percent = Number(foodForm.formulationPercent) || 0
+                  if (!Number.isFinite(base) || base <= 0) {
+                    return (
+                      <div className="w-full px-3 py-2.5 border border-dashed border-slate-300 rounded-lg text-sm text-slate-400 bg-slate-50">
+                        Set a base price first
+                      </div>
+                    )
+                  }
+                  const formulation = Math.round(base * (1 + percent / 100) * 100) / 100
+                  const pays = Math.min(base, formulation)
+                  const struck = Math.max(base, formulation)
+                  const hasStrike = struck > pays
                   return (
-                    <p className="mt-1 text-xs text-amber-700">
-                      A {discount}% platform discount is on this dish. Customers pay{" "}
-                      <span className="font-semibold">{"₹"}{sells.toFixed(2)}</span>, struck through
-                      at {"₹"}{base.toFixed(2)}. Editing the base price here keeps that discount;
-                      it is removed from Global Price Adjustment.
-                    </p>
+                    <>
+                      <div className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-slate-50 text-slate-900 font-semibold tabular-nums">
+                        {"₹"}{formulation.toFixed(2)}
+                        <span className="ml-2 font-normal text-slate-500">
+                          {percent === 0
+                            ? "no adjustment"
+                            : `${percent > 0 ? "+" : ""}${percent}% of base`}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Customers pay <span className="font-semibold">{"₹"}{pays.toFixed(2)}</span>
+                        {hasStrike ? (
+                          <>
+                            {" "}with <span className="line-through text-slate-400">{"₹"}{struck.toFixed(2)}</span>{" "}
+                            struck through ({Math.round((1 - pays / struck) * 100)}% off).
+                          </>
+                        ) : (
+                          <>, with nothing struck through.</>
+                        )}
+                        {" "}Set from Global Price Adjustment, not here.
+                      </p>
+                    </>
                   )
                 })()}
               </div>

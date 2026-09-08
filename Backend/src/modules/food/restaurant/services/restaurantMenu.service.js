@@ -96,7 +96,21 @@ const buildMenuFromFoods = async (foods = []) => {
                     otherPlatformPrice,
                     label: otherPlatform.label,
                 });
-                return { ...display, otherPrice: Number(food.otherPrice) || 0, otherPlatformPrice, ...comparison };
+                return {
+                    ...display,
+                    otherPrice: Number(food.otherPrice) || 0,
+                    otherPlatformPrice,
+                    ...comparison,
+                    /*
+                     * Re-applied after the comparison spread, which also
+                     * carries a strikePrice. The formulation figure is the
+                     * one the admin panel edits against, and letting the
+                     * other-platform comparison win here would show the
+                     * admin a number no adjustment of theirs can move.
+                     */
+                    formulationPercent: display.formulationPercent,
+                    formulationPrice: display.formulationPrice,
+                };
             })(),
             // Which add-ons this dish offers, so the editor can show the picker
             // pre-filled and the app can offer only the relevant ones.

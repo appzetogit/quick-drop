@@ -5,7 +5,10 @@ import { FoodPriceAdjustment } from '../models/priceAdjustment.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { invalidatePriceCaches } from '../../../../middleware/cache.js';
 import { FoodPriceAdjustmentSnapshot } from '../models/priceAdjustmentSnapshot.model.js';
-import { isMarkdownFactor } from '../../shared/priceMarkdown.js';
+import {
+    normalizeFormulationPercent,
+    resolveFormulationPricing,
+} from '../../shared/formulationPricing.js';
 
 /**
  * A single adjustment may not wipe out more than 90% of a price or more than
@@ -98,31 +101,6 @@ const resolveRestaurant = async (restaurantId) => {
  * which checkout would happily charge as ₹0.
  */
 /**
- * Scale one price, then hold it at the item's MRP.
- *
- * This runs as an aggregation pipeline update, which skips every validator the
- * per-item save paths use -- including the one that refuses a price above the
- * printed MRP. Without the clamp a broad increase here would quietly put items
- * on sale above their MRP, which is illegal, and no screen would say so.
- *
- * Clamped rather than refused: blocking the whole run because one dish would
- * cross its MRP would make the feature unusable on a large menu. The count of
- * clamped items is reported back so the admin is told rather than guessing.
- *
- * An MRP of null or 0 means "not recorded", so those items scale freely.
- */
-const scalePriceExpr = (field, factor) => {
-    const scaled = { $max: [MIN_RESULT_PRICE, { $round: [{ $multiply: [`$${field}`, factor] }, 2] }] };
-    return {
-        $cond: [
-            { $gt: [{ $ifNull: ['$mrp', 0] }, 0] },
-            { $min: [scaled, '$mrp'] },
-            scaled
-        ]
-    };
-};
-
-/**
  * Scale a menu, keeping base price and discount coherent.
  *
  * `price` is derived (basePrice less discountPercent), so scaling price alone
@@ -214,19 +192,6 @@ const applyFactorToMenu = async (filter, factor) => {
 };
 
 /**
- * How many items this factor would push above their MRP, and so be held there.
- *
- * Counted before the write for the preview, and again after for the message the
- * admin sees, because "42 items updated" reads very differently from "42 items
- * updated, 6 held at their MRP".
- */
-const countItemsCappedByMrp = async (filter, factor) => FoodItem.countDocuments({
-    ...filter,
-    mrp: { $gt: 0 },
-    $expr: { $gt: [{ $multiply: ['$price', factor] }, '$mrp'] },
-});
-
-/**
  * Record what every affected dish was priced at, before a run touches it.
  *
  * Neither direction is reversible by arithmetic. A markdown overwrites
@@ -245,162 +210,28 @@ const countItemsCappedByMrp = async (filter, factor) => FoodItem.countDocuments(
  */
 const snapshotPrices = async (filter, adjustmentId) => {
     const items = await FoodItem.find(filter)
-        .select('price basePrice discountPercent otherPrice variants')
+        .select('price basePrice discountPercent otherPrice formulationPercent formulationPrice variants')
         .lean();
     if (!items.length) return 0;
+
+    const orNull = (value) => (value === null || value === undefined ? null : Number(value));
 
     await FoodPriceAdjustmentSnapshot.insertMany(
         items.map((item) => ({
             adjustmentId,
             itemId: item._id,
             price: Number(item.price) || 0,
-            basePrice: item.basePrice === null || item.basePrice === undefined ? null : Number(item.basePrice),
+            basePrice: orNull(item.basePrice),
             discountPercent: Number(item.discountPercent) || 0,
             otherPrice: Number(item.otherPrice) || 0,
+            formulationPercent: orNull(item.formulationPercent),
+            formulationPrice: orNull(item.formulationPrice),
             variants: (item.variants || []).map((v) => ({ _id: v._id, price: Number(v.price) || 0 })),
+            variantBases: (item.variants || []).map((v) => ({ _id: v._id, basePrice: orNull(v.basePrice) })),
         })),
         { ordered: false },
     );
     return items.length;
-};
-
-/**
- * Mark a menu down so the saving shows.
- *
- * Today's selling price becomes the struck-through figure and the reduced price
- * is charged beneath it, so a 10% cut reads as "Rs 180, was Rs 200" instead of
- * moving both numbers and advertising the same discount as before.
- *
- * What it writes is deliberately narrow: `price`, `discountPercent`, variant
- * prices, and the platform's own comparison figure. The restaurant's basePrice
- * is left exactly as typed wherever one exists, and only adopted from the price
- * on dishes that have none. A global run is the platform discounting a menu, not
- * the platform editing the restaurant's prices, and the two were the same write
- * until this: the Edit Food form showed a base price a global run had rewritten,
- * and each further run rewrote it again from the already-reduced figure.
- *
- * Stages matter, because a later stage in an aggregation-pipeline update sees
- * what an earlier one wrote: the base is settled first, then the price is cut
- * from the value `$price` still holds, then the discount is derived from the two
- * figures actually stored so the advertised percentage matches them.
- *
- * No MRP clamp here, unlike the scaling path -- a markdown only ever lowers what
- * is charged, so it cannot push a dish above its printed maximum.
- */
-const applyMarkdownToMenu = async (filter, factor) => {
-    const result = await FoodItem.updateMany(
-        { ...filter, price: { $gt: MIN_RESULT_PRICE } },
-        [
-            {
-                /*
-                 * The restaurant's own base price is KEPT wherever it has one.
-                 *
-                 * This used to overwrite it with the selling price
-                 * unconditionally, which quietly destroyed the restaurant's
-                 * number every run and ratcheted it down on every repeat.
-                 * Rainbow Restro sold Veg Biryani at Rs 153 off its own
-                 * Rs 170; one platform-wide -10% left it at Rs 137.70 off
-                 * Rs 153, and the Rs 170 the restaurant had typed was gone
-                 * from the Edit Food form and from the menu. Run it five times
-                 * and a restaurant's real price no longer exists anywhere.
-                 *
-                 * A dish with no base recorded still adopts today's price,
-                 * because that IS its pre-markdown price and nothing is being
-                 * discarded to write it.
-                 */
-                $set: {
-                    basePrice: {
-                        $cond: [
-                            { $gt: [{ $ifNull: ['$basePrice', 0] }, '$price'] },
-                            { $round: ['$basePrice', 2] },
-                            { $round: ['$price', 2] },
-                        ],
-                    },
-                },
-            },
-            {
-                $set: {
-                    /*
-                     * Derived from the price being charged today, not from the
-                     * base above -- the base may be the restaurant's own larger
-                     * figure now, and multiplying that would cut deeper than the
-                     * percent the admin typed.
-                     */
-                    price: {
-                        $max: [MIN_RESULT_PRICE, { $round: [{ $multiply: ['$price', factor] }, 2] }],
-                    },
-                    /*
-                     * Brought down to the same figure, because the customer is
-                     * shown whichever comparison is higher and a stale one
-                     * silently won. Paneer Tikka was marked down from Rs 150 to
-                     * Rs 135, so the strike should read Rs 150 -- but the dish
-                     * still carried Rs 326.03 from earlier compounded runs, and
-                     * that is what the menu displayed: "Rs 135, was Rs 326.03",
-                     * 59% off, against a price the restaurant never charged. 67
-                     * of the 70 marked-down dishes on the platform were showing
-                     * the old figure instead of the markdown.
-                     *
-                     * Set to the pre-markdown price rather than cleared:
-                     * clearing it falls back to the blanket 20% markup, which
-                     * on a dish cut by less than that lands ABOVE the
-                     * pre-markdown price and strikes through a number nobody
-                     * has ever charged either. A -10% cut against a 20% markup
-                     * is exactly that case.
-                     *
-                     * The pre-markdown price, NOT basePrice -- basePrice may be
-                     * the restaurant's own larger figure, which this run
-                     * deliberately no longer touches. Where the two are equal
-                     * resolveComparisonPrice breaks the tie toward basePrice,
-                     * so the strike carries no "Other platforms" label.
-                     */
-                    otherPrice: { $round: ['$price', 2] },
-                    variants: {
-                        $map: {
-                            input: { $ifNull: ['$variants', []] },
-                            as: 'variant',
-                            in: {
-                                $mergeObjects: [
-                                    '$$variant',
-                                    {
-                                        price: {
-                                            $max: [
-                                                MIN_RESULT_PRICE,
-                                                { $round: [{ $multiply: ['$$variant.price', factor] }, 2] },
-                                            ],
-                                        },
-                                    },
-                                ],
-                            },
-                        },
-                    },
-                },
-            },
-            {
-                // Derived from the two figures actually stored, so the advertised
-                // percentage always matches the numbers beside it.
-                $set: {
-                    discountPercent: {
-                        $cond: [
-                            { $gt: ['$basePrice', 0] },
-                            {
-                                $round: [
-                                    {
-                                        $multiply: [
-                                            { $divide: [{ $subtract: ['$basePrice', '$price'] }, '$basePrice'] },
-                                            100,
-                                        ],
-                                    },
-                                    2,
-                                ],
-                            },
-                            0,
-                        ],
-                    },
-                },
-            },
-        ],
-    );
-    return result?.modifiedCount || 0;
 };
 
 export async function listPriceAdjustments({ limit = 20 } = {}) {
@@ -412,138 +243,73 @@ export async function listPriceAdjustments({ limit = 20 } = {}) {
     return { adjustments };
 }
 
-export async function getPriceAdjustmentPreview({ restaurantId, percent, target } = {}) {
+export async function getPriceAdjustmentPreview({ restaurantId, percent } = {}) {
     const { restaurantName } = await resolveRestaurant(restaurantId);
     const filter = buildFilter(restaurantId);
     const itemCount = await FoodItem.countDocuments(filter);
 
-    // Only meaningful once a percent has been typed, and only an increase can
-    // push anything into its MRP.
-    const pct = Number(percent);
-    const itemsCappedByMrp = Number.isFinite(pct) && pct > 0
-        ? await countItemsCappedByMrp(filter, 1 + pct / 100)
-        : 0;
-
-    /**
-     * Real dishes at their real current values, not an invented "Rs 500
-     * becomes Rs 550". Without this the admin cannot see what a run did, so a
-     * run that worked and one that silently did nothing look identical -- which
-     * is how the same increase came to be applied five times in a row and
-     * compounded to twenty times the selling price.
-     */
     /*
-     * Derived from the direction exactly as applyPriceAdjustment derives it, so
-     * the preview describes the run that will actually happen. Reading a
-     * caller-supplied target here would let the two disagree, and the preview
-     * is the only thing standing between an admin and repeating a run that
-     * appeared to do nothing.
-     *
-     * Nothing typed yet (0 or NaN) previews as an increase, which is what the
-     * screen opens on.
+     * Nothing can be pushed above its MRP any more. An increase moves only the
+     * struck-through figure and a decrease lowers what is charged, so the
+     * charged price never rises. Kept in the response shape because the admin
+     * screen still reads it.
      */
-    const field = Number.isFinite(pct) && pct < 0 ? 'price' : 'otherPrice';
-    const factor = Number.isFinite(pct) ? 1 + pct / 100 : 1;
+    const itemsCappedByMrp = 0;
+
+    /*
+     * Real dishes at their real current values, not an invented "Rs 500 becomes
+     * Rs 550". Without this the admin cannot see what a run did, so a run that
+     * worked and one that silently did nothing look identical -- which is how
+     * the same increase came to be applied five times in a row.
+     *
+     * Both figures come from resolveFormulationPricing, the same function the
+     * write derives from, so the preview cannot describe a different run from
+     * the one that happens. They disagreed once, and a preview that lies is
+     * worse than no preview.
+     */
+    const pct = Number.isFinite(Number(percent)) ? Number(percent) : 0;
     const sampleDocs = await FoodItem.find(filter)
-        .select(`name price otherPrice`)
+        .select('name price basePrice formulationPercent formulationPrice')
         .sort({ name: 1 })
         .limit(5)
         .lean();
 
-    // The same seed the write uses, so "current" is the figure actually on the
-    // menu today rather than one the preview invented.
-    const seedMultiplier = field === 'price' ? 1 : await resolveComparisonSeedMultiplier();
-
     const samples = sampleDocs.map((doc) => {
-        const price = Number(doc?.price) || 0;
-        // What the dish shows today: its stored figure, or the markup-derived
-        // one it is already displaying in place of one.
-        const stored = Number(doc?.[field]);
-        const current = Number.isFinite(stored) && stored > 0
-            ? stored
-            : price * seedMultiplier;
-        /*
-         * An increase no longer scales `current` -- it sets the comparison to
-         * `percent` above the price, so the preview must too. These two used to
-         * agree only because both multiplied, and the preview showing
-         * "Rs 216 becomes Rs 259" while the run wrote Rs 240 would be worse
-         * than no preview at all.
-         */
-        const next = field === 'price'
-            ? current * factor
-            : price * factor;
+        const now = resolveFormulationPricing(doc);
+        const after = resolveFormulationPricing({ ...doc, formulationPercent: pct });
         return {
             name: doc?.name || '',
-            current: Math.round(current * 100) / 100,
-            next: Math.round(Math.max(MIN_RESULT_PRICE, next) * 100) / 100,
+            // The formulation figure, which is what this screen adjusts.
+            current: now.formulationPrice,
+            next: after.formulationPrice,
+            // What the two mean for the customer, since a positive percent
+            // moves the strike and a negative one moves the bill.
+            paysNow: now.price,
+            paysAfter: after.price,
+            strikeAfter: after.strikePrice,
         };
     });
 
-    /**
+    /*
      * How many dishes would end up with nothing struck through.
      *
-     * A comparison only displays while it sits above the price charged, so a
-     * decrease can move every figure correctly and still blank the whole menu
-     * -- the run reports "70 items updated" and the customer sees no comparison
-     * at all. That is indistinguishable from the feature being broken, so the
-     * preview has to say it before the button is pressed.
+     * Only a percent of exactly 0 can do that now -- any other value puts the
+     * formulation price either side of the base, and the further of the two is
+     * struck. Computed rather than hardcoded so that if the derivation changes
+     * again this goes wrong loudly instead of quietly reassuring an admin.
      */
-    /*
-     * The state each dish will be in afterwards, modelled field by field rather
-     * than assumed. Both directions now write the comparison from the selling
-     * price, so in practice this comes back 0 -- an increase puts the figure
-     * above the price by construction, and a markdown promotes today's price to
-     * the strike. It is still computed rather than hardcoded, so that if either
-     * write changes again this number goes wrong loudly instead of quietly
-     * reassuring an admin.
-     */
-    const markedDownPrice = { $max: [MIN_RESULT_PRICE, { $multiply: ['$price', factor] }] };
-    const raisedComparison = { $max: [MIN_RESULT_PRICE, { $multiply: ['$price', factor] }] };
-
-    const newPriceExpr = field === 'price' ? markedDownPrice : '$price';
-    const newBaseExpr = field === 'price' ? '$price' : { $ifNull: ['$basePrice', 0] };
-    const newOtherExpr = field === 'price' ? '$price' : raisedComparison;
-
-    const itemsWithoutComparison = await FoodItem.countDocuments({
-        ...filter,
-        $expr: {
-            $and: [
-                { $lte: [newBaseExpr, newPriceExpr] },
-                { $lte: [newOtherExpr, newPriceExpr] },
-            ],
-        },
-    });
+    const itemsWithoutComparison = pct === 0 ? itemCount : 0;
 
     return {
         itemCount,
         restaurantName,
         itemsCappedByMrp,
-        target: field,
+        target: 'formulation',
         samples,
         itemsWithoutComparison,
     };
 }
 
-/**
- * Scale the struck-through comparison figure -- basePrice in the current
- * pricing system, not the retired otherPrice field. resolveItemDisplayPricing
- * (shared/itemDiscountPricing.js) only ever reads price/basePrice/discountPercent,
- * so scaling otherPrice alone -- the old behaviour here -- never reached the
- * customer no matter what it was set to.
- *
- * Selling price (`price`) stays untouched, matching "only the struck-through
- * figure". An item with no base recorded yet is seeded from its current price:
- * that IS the comparison this run is creating, not an invented one --
- * resolveItemDisplayPricing already treats a null base as "no discount" until
- * something sets it, which is exactly the state every skipped item was stuck in.
- *
- * discountPercent is rewritten alongside basePrice in a second stage: the
- * display function trusts a stored discountPercent as-is and only shows a
- * discount when it is above 0, so raising basePrice without it would still
- * silently not display.
- *
- * otherPrice is kept in step too, for anything else that might still read it --
- * harmless, and cheaper than proving nothing does.
- */
 /**
  * Multiply the comparison figure by a factor. Kept only to undo runs recorded
  * before snapshotting covered every direction -- see setComparisonFromPrice for
@@ -579,45 +345,137 @@ const applyFactorToComparison = async (filter, factor, seedMultiplier = 1) => {
 };
 
 /**
- * Set the struck-through figure to `percent` above what the dish charges today.
+ * Store the percent on every matching dish and re-derive what follows from it.
  *
- * An increase does not change what anyone pays, so what it means is "show this
- * dish as `percent` off". Rs 200 at +20% reads "Rs 200, was Rs 240", which is
- * the spec, and running the same +20% again still reads Rs 240.
+ * One pipeline for both directions, replacing applyMarkdownToMenu,
+ * applyFactorToMenu and setComparisonFromPrice. Nothing here multiplies a
+ * figure by the value it already held, which is what makes a run idempotent
+ * and a repeat harmless.
  *
- * That idempotence is the whole point of this function, and why it derives the
- * figure from `price` rather than scaling the figure it last wrote. Scaling
- * compounded: an admin ran +20% on Eggitarion twice, on the 7th and again on
- * the 8th of September, and paneer butter masala went from Rs 120 to Rs 216 --
- * advertised as 54% off a price nobody had ever charged. Across the platform
- * the median comparison had reached 1.70x and the worst 2.95x, all of it from
- * runs multiplying their own output. There is no percent an admin can type that
- * means "and remember the last four times you did this", so the previous figure
- * is not an input.
+ * Stage by stage, because a later stage in an aggregation-pipeline update sees
+ * what an earlier one wrote:
  *
- * A dish carrying no figure needs no special handling here, unlike the scaling
- * path it replaces: `price` is always present, so every row gets the same
- * treatment and there is nothing to seed.
+ *   1. settle the base. Adopted from `price` only where the dish has none --
+ *      that IS its unadjusted price, so nothing is discarded. Where the dish
+ *      has one it is left exactly as the restaurant typed it. Variants get the
+ *      same treatment, since they had no base at all until now.
+ *   2. store the percent and derive the formulation price from the base.
+ *   3. charge the lower of the two and derive the advertised saving from the
+ *      two figures actually stored, so the percentage always describes them.
  *
- * basePrice and discountPercent stay untouched. Those are the restaurant's own
- * pre-discount price and its own advertised saving; a platform-wide comparison
- * is neither, and writing it there would manufacture a discount the restaurant
- * never offered. The display picks whichever of the two is higher, so a
- * restaurant that already strikes through more than this keeps its own number.
+ * `otherPrice` is deliberately untouched. It goes back to meaning only what a
+ * restaurant typed about a rival, which is what it was for; global runs stop
+ * writing it, so it stops being a second, competing comparison that could
+ * outrank the real one.
  */
-const setComparisonFromPrice = async (filter, factor) => {
-    const result = await FoodItem.updateMany(filter, [
-        {
-            $set: {
-                otherPrice: {
-                    $max: [
-                        MIN_RESULT_PRICE,
-                        { $round: [{ $multiply: ['$price', factor] }, 2] },
-                    ],
+const applyFormulationPercent = async (filter, percent) => {
+    const stored = normalizeFormulationPercent(percent);
+    const multiplier = 1 + stored / 100;
+
+    const derivedBase = {
+        $cond: [
+            { $gt: [{ $ifNull: ['$basePrice', 0] }, 0] },
+            { $round: ['$basePrice', 2] },
+            { $round: ['$price', 2] },
+        ],
+    };
+
+    const result = await FoodItem.updateMany(
+        { ...filter, price: { $gt: 0 } },
+        [
+            {
+                $set: {
+                    basePrice: derivedBase,
+                    variants: {
+                        $map: {
+                            input: { $ifNull: ['$variants', []] },
+                            as: 'v',
+                            in: {
+                                $mergeObjects: [
+                                    '$$v',
+                                    {
+                                        basePrice: {
+                                            $cond: [
+                                                { $gt: [{ $ifNull: ['$$v.basePrice', 0] }, 0] },
+                                                { $round: ['$$v.basePrice', 2] },
+                                                { $round: ['$$v.price', 2] },
+                                            ],
+                                        },
+                                    },
+                                ],
+                            },
+                        },
+                    },
                 },
             },
-        },
-    ]);
+            {
+                $set: {
+                    formulationPercent: stored,
+                    formulationPrice: {
+                        $max: [
+                            MIN_RESULT_PRICE,
+                            { $round: [{ $multiply: ['$basePrice', multiplier] }, 2] },
+                        ],
+                    },
+                },
+            },
+            {
+                $set: {
+                    price: { $min: ['$basePrice', '$formulationPrice'] },
+                    variants: {
+                        $map: {
+                            input: { $ifNull: ['$variants', []] },
+                            as: 'v',
+                            in: {
+                                $mergeObjects: [
+                                    '$$v',
+                                    {
+                                        price: {
+                                            $min: [
+                                                '$$v.basePrice',
+                                                {
+                                                    $max: [
+                                                        MIN_RESULT_PRICE,
+                                                        { $round: [{ $multiply: ['$$v.basePrice', multiplier] }, 2] },
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                    },
+                                ],
+                            },
+                        },
+                    },
+                },
+            },
+            {
+                $set: {
+                    discountPercent: {
+                        $let: {
+                            vars: { strike: { $max: ['$basePrice', '$formulationPrice'] } },
+                            in: {
+                                $cond: [
+                                    { $gt: ['$$strike', '$price'] },
+                                    {
+                                        $round: [
+                                            {
+                                                $multiply: [
+                                                    { $divide: [{ $subtract: ['$$strike', '$price'] }, '$$strike'] },
+                                                    100,
+                                                ],
+                                            },
+                                            2,
+                                        ],
+                                    },
+                                    0,
+                                ],
+                            },
+                        },
+                    },
+                },
+            },
+        ],
+    );
     return result?.modifiedCount || 0;
 };
 
@@ -635,47 +493,36 @@ export async function applyPriceAdjustment(body = {}, actor = {}) {
     const filter = buildFilter(restaurantId);
 
     /*
-     * The direction decides which number moves. The caller does not choose.
+     * A run stores the percent. It does not apply it to anything.
      *
-     *   increase -> the struck-through comparison is SET to that much above the
-     *               price; what the customer is charged does not move. Rs 200 at
-     *               +20% becomes "Rs 200, was Rs 240", and stays there however
-     *               many times the same run is repeated.
-     *   decrease -> the selling price is marked down and today's price becomes
-     *               the strike-through, on both comparison fields so neither can
-     *               outrank it. Rs 200 at -20% becomes "Rs 160, was Rs 200".
+     * That single sentence is the fix for every compounding bug this feature
+     * has had. `formulationPercent` REPLACES whatever was there, and
+     * `formulationPrice` is re-derived from `basePrice`, which a run never
+     * writes -- so five identical +20% runs land on the same figure, and
+     * switching to -10% afterwards measures from the restaurant's price rather
+     * than from the last run's output.
      *
-     * This used to be an "Apply to" toggle the admin set independently of the
-     * direction, and two of the four combinations did nothing a customer could
-     * see. The one that got reported: a decrease against the comparison figure
-     * lowered it to Rs 160, below the Rs 200 still being charged, and a
-     * comparison under the selling price is never displayed -- so the run
-     * reported success and the menu looked untouched.
+     * Direction no longer selects a code path. It falls out of the arithmetic:
+     * a positive percent puts formulationPrice above basePrice, so the customer
+     * keeps paying the base and the formulation is struck through; a negative
+     * one puts it below, so it becomes what is charged and the base is struck.
+     * The markdown-versus-scale split, and the two revert strategies it needed,
+     * are gone with it.
      *
-     * `target` is still recorded on the adjustment, because revert reads it to
-     * know which fields to put back; it is derived here rather than supplied.
+     * `target` and `strategy` are still recorded, as 'formulation', so the
+     * history reads honestly and revert can tell these runs from the older
+     * ones it still has to undo by hand.
      */
-    const target = percent > 0 ? 'otherPrice' : 'price';
+    const target = 'formulation';
+    const strategy = 'formulation';
 
-    // Counted before the write, because afterwards the prices have already been
-    // held at MRP and the comparison no longer finds them. Only meaningful when
-    // selling prices are the thing being moved.
     /*
-     * A decrease on the selling price is a markdown: today's price becomes the
-     * struck-through figure and the reduced one is charged beneath it, so the
-     * cut is visible as a saving. Scaling both together the way an increase does
-     * would move the numbers and advertise the same discount as before.
-     *
-     * Increases keep scaling. Only this branch changes, which is what makes the
-     * run direction-dependent -- and why `strategy` is recorded, because revert
-     * cannot infer from the factor alone which fields were moved.
+     * No MRP count. Only the charged price can breach a printed maximum, and
+     * this never raises it: an increase moves the struck-through figure alone,
+     * and a decrease lowers what is charged. Nothing on the platform carries an
+     * MRP today in any case.
      */
-    const isMarkdown = target === 'price' && isMarkdownFactor(factor);
-    const strategy = isMarkdown ? 'markdown' : 'scale';
-
-    const itemsCappedByMrp = target === 'price' && !isMarkdown
-        ? await countItemsCappedByMrp(filter, factor)
-        : 0;
+    const itemsCappedByMrp = 0;
 
     // The record is created first so the snapshot can point at it, and so a run
     // that dies partway still leaves a trace of what was attempted.
@@ -691,13 +538,16 @@ export async function applyPriceAdjustment(body = {}, actor = {}) {
         ...(await resolveActor(actor))
     });
 
+    /*
+     * Still snapshotted, though revert no longer needs it: a run overwrites the
+     * percent, and the percent each dish carried before is the only record of
+     * what a partial or per-restaurant history looked like. Cheap insurance
+     * against a migration or a bad backfill, which is exactly the situation
+     * this platform has been in.
+     */
     await snapshotPrices(filter, adjustment._id);
 
-    const itemsUpdated = isMarkdown
-        ? await applyMarkdownToMenu(filter, factor)
-        : target === 'price'
-            ? await applyFactorToMenu(filter, factor)
-            : await setComparisonFromPrice(filter, factor);
+    const itemsUpdated = await applyFormulationPercent(filter, percent);
 
     adjustment.itemsUpdated = itemsUpdated;
     await adjustment.save();
@@ -786,6 +636,32 @@ export async function revertPriceAdjustment(id, actor = {}) {
                                                     in: { $ifNull: ['$$saved.price', '$$v.price'] },
                                                 },
                                             },
+                                            // A formulation run adopts a base
+                                            // for every size that had none, so
+                                            // the absence of one is itself a
+                                            // state a revert has to restore.
+                                            basePrice: {
+                                                $let: {
+                                                    vars: {
+                                                        savedBase: {
+                                                            $first: {
+                                                                $filter: {
+                                                                    input: snap.variantBases || [],
+                                                                    as: 's',
+                                                                    cond: { $eq: ['$$s._id', '$$v._id'] },
+                                                                },
+                                                            },
+                                                        },
+                                                    },
+                                                    in: {
+                                                        $cond: [
+                                                            { $gt: [{ $size: { $ifNull: [snap.variantBases, []] } }, 0] },
+                                                            '$$savedBase.basePrice',
+                                                            '$$v.basePrice',
+                                                        ],
+                                                    },
+                                                },
+                                            },
                                         },
                                     ],
                                 },
@@ -805,16 +681,23 @@ export async function revertPriceAdjustment(id, actor = {}) {
                             basePrice: snap.basePrice,
                             discountPercent: snap.discountPercent,
                             /*
-                             * Only for snapshots that recorded one. Rows written
-                             * by the markdown-only snapshotting that came before
-                             * have no such field, and reading their absence as 0
-                             * would clear a comparison figure the run never
-                             * touched -- blanking the strike-through on every
-                             * dish a revert was meant to leave alone.
+                             * Each field restored only when the snapshot
+                             * actually recorded it. Snapshots have been widened
+                             * twice -- markdown-only at first, then every
+                             * direction, then the formulation fields -- and
+                             * reading an absent field as 0 would clear a value
+                             * the run never touched, blanking the strike on
+                             * dishes a revert was meant to leave alone.
                              */
                             ...(snap.otherPrice === undefined || snap.otherPrice === null
                                 ? {}
                                 : { otherPrice: Number(snap.otherPrice) || 0 }),
+                            ...(snap.formulationPercent === undefined || snap.formulationPercent === null
+                                ? {}
+                                : { formulationPercent: Number(snap.formulationPercent) || 0 }),
+                            ...(snap.formulationPrice === undefined || snap.formulationPrice === null
+                                ? {}
+                                : { formulationPrice: Number(snap.formulationPrice) || 0 }),
                         },
                     },
                 },

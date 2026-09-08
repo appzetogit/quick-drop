@@ -171,7 +171,21 @@ export async function listPublicFoods(query = {}) {
                     otherPlatformPrice,
                     label: otherPlatform.label,
                 });
-                return { ...display, otherPrice: Number(food.otherPrice) || 0, otherPlatformPrice, ...comparison };
+                return {
+                    ...display,
+                    otherPrice: Number(food.otherPrice) || 0,
+                    otherPlatformPrice,
+                    ...comparison,
+                    /*
+                     * Re-applied after the comparison spread, which also
+                     * carries a strikePrice. The formulation figure is the
+                     * one the admin panel edits against, and letting the
+                     * other-platform comparison win here would show the
+                     * admin a number no adjustment of theirs can move.
+                     */
+                    formulationPercent: display.formulationPercent,
+                    formulationPrice: display.formulationPrice,
+                };
             })(),
             // The add-ons this dish offers. The order API re-checks the list, so
             // this is for showing the right picker, not for deciding what is allowed.

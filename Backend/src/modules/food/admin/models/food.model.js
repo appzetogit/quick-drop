@@ -5,6 +5,19 @@ const foodVariantSchema = new mongoose.Schema(
         name: { type: String, required: true, trim: true },
         price: { type: Number, required: true, min: 0 },
         /**
+         * What this size costs before any global adjustment.
+         *
+         * Variants had no base of their own, so a global run scaled `price`
+         * directly and there was nothing to derive a later run from -- every
+         * decrease cut the already-cut figure and the size's real price was
+         * gone. The dish's formulationPercent applies to this, since a global
+         * run adjusts a dish rather than a size.
+         *
+         * null on rows that predate the field; readers adopt `price`, which is
+         * what an unadjusted variant means.
+         */
+        basePrice: { type: Number, min: 0, default: null },
+        /**
          * Add-ons offered only when this variant is chosen -- extra cheese on
          * the large, but not the small.
          *
@@ -83,6 +96,33 @@ const foodSchema = new mongoose.Schema(
          */
         basePrice: { type: Number, min: 0, default: null },
         discountPercent: { type: Number, min: 0, max: 100, default: 0 },
+        /**
+         * The one active global price adjustment on this dish, as a percent of
+         * basePrice. 0 means untouched, which is every row that predates this.
+         *
+         * Stored rather than applied, so a run REPLACES it instead of adding to
+         * it. That is the whole point: every adjustment before this measured its
+         * percentage from the previous adjustment's output, so repeats
+         * compounded -- +20% twice took a Rs 100 dish to Rs 216 -- and a
+         * decrease overwrote basePrice and cut again from the reduced figure.
+         * Nothing accumulates when the number stored is the percentage itself.
+         *
+         * Negative is a markdown, positive raises only the struck-through
+         * comparison. See shared/formulationPricing.js for the derivation and
+         * why an increase never changes what a customer pays.
+         */
+        formulationPercent: { type: Number, min: -90, max: 300, default: 0 },
+        /**
+         * basePrice x (1 + formulationPercent / 100), materialised.
+         *
+         * Derivable on read, and written anyway: this is the figure the admin
+         * panel edits against and the one a listing sorts and filters by, and
+         * recomputing it per row per query is the kind of cost that only shows
+         * up under load. Every write path that touches basePrice or the percent
+         * must rewrite this -- formulationFieldsFor() returns both so they
+         * cannot drift.
+         */
+        formulationPrice: { type: Number, min: 0, default: null },
         /**
          * Whether the price above already contains GST.
          *

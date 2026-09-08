@@ -18,7 +18,7 @@ import { invalidateOrderQuantityCeilingCache } from '../../shared/orderQuantityC
 import { FoodCommissionSchedule } from '../models/commissionSchedule.model.js';
 import { normalizeScheduleInput } from '../../shared/commissionSchedule.js';
 import { invalidateCommissionScheduleCache } from '../../orders/services/foodTransaction.service.js';
-import { resolveItemPricingForWrite } from '../../shared/itemDiscountPricing.js';
+import { resolveItemPricingForWrite, resolveItemDisplayPricing } from '../../shared/itemDiscountPricing.js';
 import { normalizeItemOtherPriceInput } from '../../shared/otherPlatformPricing.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
@@ -3229,6 +3229,21 @@ export async function getFoods(query) {
         basePrice: f.basePrice ?? getFoodDisplayPrice(f),
         discountPercent: Number(f.discountPercent) || 0,
         otherPrice: Number(f.otherPrice) || 0,
+        /*
+         * The formulation figures, resolved rather than read raw, so a dish the
+         * backfill has not reached yet reports the percent it is effectively
+         * being sold at instead of a bare 0. The admin panel edits against
+         * these, and a panel showing 0% on a dish that is visibly discounted is
+         * how the last round of pricing confusion started.
+         */
+        ...(() => {
+            const derived = resolveItemDisplayPricing({ ...f, price: getFoodDisplayPrice(f) });
+            return {
+                formulationPercent: derived.formulationPercent,
+                formulationPrice: derived.formulationPrice,
+                strikePrice: derived.strikePrice,
+            };
+        })(),
         availabilitySchedule: f.availabilitySchedule || null,
         variants: serializeFoodVariants(f.variants),
         // The toggle, tri-state on old rows: absent means "sell by variants if"
@@ -3330,6 +3345,8 @@ const getAdminFoodCreatePricing = (body = {}) => {
         price: pricing.price,
         basePrice: pricing.basePrice,
         discountPercent: pricing.discountPercent,
+        formulationPercent: pricing.formulationPercent ?? 0,
+        formulationPrice: pricing.formulationPrice ?? pricing.basePrice,
         variants,
         variantsEnabled: false,
     };
@@ -3384,6 +3401,15 @@ const getAdminFoodUpdatedPricing = (existing = {}, body = {}) => {
     update.price = pricing.price;
     update.basePrice = pricing.basePrice;
     update.discountPercent = pricing.discountPercent;
+    /*
+     * Rewritten with the base, never independently. formulationPrice is derived
+     * from basePrice, so a base edit that left it alone would leave the dish
+     * advertising a figure computed from a price it no longer has. The percent
+     * is carried over rather than reset: it belongs to the platform's global
+     * adjustment, not to this form.
+     */
+    if (pricing.formulationPercent !== undefined) update.formulationPercent = pricing.formulationPercent;
+    if (pricing.formulationPrice !== undefined) update.formulationPrice = pricing.formulationPrice;
     return update;
 };
 
@@ -3404,7 +3430,7 @@ export async function createFood(body) {
     if (restaurant.pureVegRestaurant === true && foodType !== 'Veg') {
         throw new ValidationError('Pure veg restaurants can only use veg foods');
     }
-    const { price, basePrice, discountPercent, variants, variantsEnabled } = getAdminFoodCreatePricing(body);
+    const { price, basePrice, discountPercent, formulationPercent, formulationPrice, variants, variantsEnabled } = getAdminFoodCreatePricing(body);
 
     let categoryName = typeof body.categoryName === 'string' ? body.categoryName.trim() : '';
     if (!categoryName && typeof body.category === 'string') categoryName = body.category.trim();
@@ -3439,6 +3465,8 @@ export async function createFood(body) {
         price,
         basePrice,
         discountPercent,
+        formulationPercent,
+        formulationPrice,
         variantsEnabled,
         ...(normalizeItemOtherPriceInput(body) || {}),
         variants,
@@ -3479,6 +3507,8 @@ export async function updateFood(id, body) {
     if (pricingUpdate.basePrice !== undefined) doc.basePrice = pricingUpdate.basePrice;
     if (pricingUpdate.variantsEnabled !== undefined) doc.variantsEnabled = pricingUpdate.variantsEnabled;
     if (pricingUpdate.discountPercent !== undefined) doc.discountPercent = pricingUpdate.discountPercent;
+    if (pricingUpdate.formulationPercent !== undefined) doc.formulationPercent = pricingUpdate.formulationPercent;
+    if (pricingUpdate.formulationPrice !== undefined) doc.formulationPrice = pricingUpdate.formulationPrice;
     // Comparison figure only. Global price adjustment moves this; it never
     // moves what the customer is charged.
     const otherPriceUpdate = normalizeItemOtherPriceInput(body);

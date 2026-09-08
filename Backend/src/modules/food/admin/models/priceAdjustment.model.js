@@ -23,7 +23,10 @@ const priceAdjustmentSchema = new mongoose.Schema(
          * unreadable without it -- '+20%' means very different things.
          * Rows written before this default to 'price', which is what they did.
          */
-        target: { type: String, enum: ['price', 'otherPrice'], default: 'price' },
+        // 'formulation' is what every run records now: it stores a percent and
+        // derives everything from basePrice. The older two named which field a
+        // run multiplied, and remain only so historic rows still read and revert.
+        target: { type: String, enum: ['formulation', 'price', 'otherPrice'], default: 'formulation' },
         /*
          * How the run wrote, and therefore how it must be undone.
          *
@@ -36,7 +39,9 @@ const priceAdjustmentSchema = new mongoose.Schema(
          * Rows written before this field default to 'scale', which is what they
          * all were.
          */
-        strategy: { type: String, enum: ['scale', 'markdown'], default: 'scale' },
+        // Likewise: 'scale' and 'markdown' were the two ways a run applied a
+        // factor, and revert still branches on them for rows that predate this.
+        strategy: { type: String, enum: ['formulation', 'scale', 'markdown'], default: 'formulation' },
         /** Null means the adjustment covered every restaurant. */
         restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodRestaurant', default: null },
         restaurantName: { type: String, trim: true, default: 'All restaurants' },

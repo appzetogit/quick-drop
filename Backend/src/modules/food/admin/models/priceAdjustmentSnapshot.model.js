@@ -35,9 +35,20 @@ const priceAdjustmentSnapshotSchema = new mongoose.Schema(
         // none, and readers treat that as "base equals price".
         basePrice: { type: Number, default: null },
         discountPercent: { type: Number, default: 0 },
-        // The comparison figure, which both directions now overwrite rather
-        // than scale, so it cannot be undone by an inverse multiply either.
+        // The comparison figure. Global runs no longer write it at all, but a
+        // revert of an older run still has to put it back.
         otherPrice: { type: Number, default: 0 },
+        // The formulation adjustment the dish carried. A run replaces this
+        // outright, so the previous value exists nowhere else -- and it is the
+        // only thing a revert of a formulation run actually needs, since
+        // everything else is derived from it and basePrice.
+        formulationPercent: { type: Number, default: null },
+        formulationPrice: { type: Number, default: null },
+        // Every size, since a run adjusts those too.
+        variantBases: {
+            type: [{ _id: mongoose.Schema.Types.ObjectId, basePrice: Number }],
+            default: [],
+        },
         // Every size, since a markdown moves those too.
         variants: { type: [{ _id: mongoose.Schema.Types.ObjectId, price: Number }], default: [] },
     },
