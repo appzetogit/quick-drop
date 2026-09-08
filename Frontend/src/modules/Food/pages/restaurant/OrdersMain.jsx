@@ -866,6 +866,14 @@ export default function OrdersMain() {
   });
   const [isReverifying, setIsReverifying] = useState(false);
   const audioUnlockedRef = useRef(false);
+  /*
+   * True while the browser is refusing to play the buzzer.
+   *
+   * Rendered as a banner rather than kept internal: a silent alert is
+   * indistinguishable from no order, and this screen is what a kitchen
+   * watches. One click anywhere clears it.
+   */
+  const [audioBlocked, setAudioBlocked] = useState(false);
   const showNewOrderPopupRef = useRef(showNewOrderPopup);
   const isMutedRef = useRef(isMuted);
   const newOrderRef = useRef(null);
@@ -1111,10 +1119,28 @@ export default function OrdersMain() {
     newOrderRef.current = newOrder;
   }, [newOrder]);
 
-  // Best-effort unlock for popup buzzer so it can keep playing when tab is backgrounded.
+  /*
+   * Unlock the buzzer against the browser's autoplay policy.
+   *
+   * Sound cannot start without a user gesture, so the first click or keypress
+   * is used to play the clip muted and immediately pause it, which is what
+   * marks the element as user-activated for the rest of the session.
+   *
+   * The listeners used to be registered with { once: true }, which is the bug
+   * behind "the order alert is not ringing". If that first attempt failed --
+   * the audio element not mounted yet, the file still loading, the play
+   * promise rejected -- the listener was already gone and the buzzer stayed
+   * silent for the whole session, with nothing on screen to say so. A kitchen
+   * would sit next to a laptop that never made a sound.
+   *
+   * Now they stay attached until an unlock actually succeeds, and the failure
+   * is surfaced rather than swallowed: see the banner keyed off audioBlocked.
+   */
   useEffect(() => {
+    let disposed = false;
+
     const unlockAudio = async () => {
-      if (audioUnlockedRef.current || !audioRef.current) return;
+      if (disposed || audioUnlockedRef.current || !audioRef.current) return;
       try {
         audioRef.current.muted = true;
         await audioRef.current.play();
@@ -1123,6 +1149,11 @@ export default function OrdersMain() {
         audioRef.current.muted = false;
         audioRef.current.volume = 1;
         audioUnlockedRef.current = true;
+        setAudioBlocked(false);
+
+        // Nothing left to listen for once it has worked.
+        window.removeEventListener("pointerdown", unlockAudio);
+        window.removeEventListener("keydown", unlockAudio);
 
         // If an order popup is already open, start buzzing immediately after unlock.
         if (showNewOrderPopupRef.current && !isMutedRef.current) {
@@ -1131,17 +1162,21 @@ export default function OrdersMain() {
           audioRef.current.play().catch(() => { });
         }
       } catch (_) {
-        audioRef.current.muted = false;
+        // Keep the listeners attached and try again on the next gesture.
+        if (audioRef.current) audioRef.current.muted = false;
+        setAudioBlocked(true);
       }
     };
 
-    window.addEventListener("pointerdown", unlockAudio, {
-      once: true,
-      passive: true,
-    });
-    window.addEventListener("keydown", unlockAudio, { once: true });
+    // Try once without a gesture: a browser the restaurant has already granted
+    // sound permission to will succeed here and never show the banner.
+    unlockAudio();
+
+    window.addEventListener("pointerdown", unlockAudio, { passive: true });
+    window.addEventListener("keydown", unlockAudio);
 
     return () => {
+      disposed = true;
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
     };
@@ -1873,6 +1908,25 @@ export default function OrdersMain() {
       <div className="sticky top-0 z-50 bg-white">
         <RestaurantNavbar showNotifications={true} />
       </div>
+
+      {/*
+        The buzzer is blocked and the kitchen needs to know.
+
+        Browsers refuse to play sound until someone interacts with the page, so
+        a panel left open on a counter overnight can be completely silent on the
+        first order of the day. That is indistinguishable from having no orders,
+        which is exactly how "the order alert is not ringing" gets reported.
+        Any click clears it, including this one.
+      */}
+      {audioBlocked && (
+        <button
+          type="button"
+          onClick={() => { }}
+          className="w-full bg-amber-500 px-4 py-2.5 text-left text-sm font-medium text-white"
+        >
+          Sound is blocked by your browser — new orders will not ring. Tap anywhere to enable it.
+        </button>
+      )}
 
       {/* Top Filter Bar - Sticky below navbar */}
       <div className="sticky top-[56px] z-40 bg-white/90 backdrop-blur-md border-b border-gray-100/70 shadow-sm">
