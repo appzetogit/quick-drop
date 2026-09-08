@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/componen
 import { Popover, PopoverContent, PopoverTrigger } from "@food/components/ui/popover"
 import { getFoodDisplayPrice, getFoodVariants, getStoredFoodVariants } from "@food/utils/foodVariants"
 import ItemAvailabilityScheduleEditor, { buildScheduleState, isScheduleEmpty } from "@food/components/ItemAvailabilityScheduleEditor"
+import { PLACEHOLDER_40, PLACEHOLDER_64 } from "@food/utils/imagePlaceholder"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -94,7 +95,7 @@ export default function FoodsList() {
 
   const toArray = (value) => (Array.isArray(value) ? value : [])
   const withImageVersion = (url) => {
-    if (!url || typeof url !== "string") return "https://via.placeholder.com/40"
+    if (!url || typeof url !== "string") return PLACEHOLDER_40
     return `${url}${url.includes("?") ? "&" : "?"}v=${imageVersion}`
   }
 
@@ -149,7 +150,7 @@ export default function FoodsList() {
               id: String(f.id || f._id || ""),
               _id: f._id || f.id,
               name: f.name || "Unnamed Item",
-              image: f.image || "https://via.placeholder.com/40",
+              image: f.image || PLACEHOLDER_40,
               status: f.isAvailable !== false && String(f.approvalStatus || "").toLowerCase() !== "rejected",
               restaurantId: String(f.restaurantId || ""),
               restaurantName: f.restaurantName || "Unknown Restaurant",
@@ -694,7 +695,7 @@ export default function FoodsList() {
                           key={`${food.id}-${imageVersion}`}
                           loading="lazy"
                           onError={(e) => {
-                            e.target.src = "https://via.placeholder.com/40"
+                            e.target.src = PLACEHOLDER_40
                           }}
                         />
                       </div>
@@ -816,7 +817,7 @@ export default function FoodsList() {
                           alt={selectedFood.name}
                           className="w-20 h-20 rounded-xl object-cover border border-slate-200"
                   onError={(e) => {
-                    e.target.src = "https://via.placeholder.com/64"
+                    e.target.src = PLACEHOLDER_64
                   }}
                 />
                 <div>

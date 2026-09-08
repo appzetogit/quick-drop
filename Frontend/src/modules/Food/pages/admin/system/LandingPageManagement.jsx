@@ -9,6 +9,7 @@ import { Button } from "@food/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@food/components/ui/dialog"
 import { Checkbox } from "@food/components/ui/checkbox"
 import { useValueShelfCap } from "@food/utils/valueShelf"
+import { PLACEHOLDER_400 } from "@food/utils/imagePlaceholder"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -1907,7 +1908,7 @@ export default function LandingPageManagement() {
                             ? coverImages[0]
                             : (menuImages.length > 0
                               ? menuImages[0]
-                              : (item.restaurant?.profileImage?.url || "https://via.placeholder.com/400"))
+                              : (item.restaurant?.profileImage?.url || PLACEHOLDER_400))
 
                           return (
                             <div key={item._id} className="border border-slate-200 rounded-lg overflow-hidden">

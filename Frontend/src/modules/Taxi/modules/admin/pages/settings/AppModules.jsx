@@ -21,6 +21,7 @@ import { useImageUpload } from '../../../../shared/hooks/useImageUpload';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from "framer-motion";
 import { useTaxiTransportTypes } from '../../../../shared/hooks/useTaxiTransportTypes';
+import { PLACEHOLDER_40 } from "@food/utils/imagePlaceholder"
 
 const inputClass = "w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-800 bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors";
 const labelClass = "block text-xs font-semibold text-gray-500 mb-1.5";
@@ -384,7 +385,7 @@ const AppModules = ({ mode: propMode }) => {
                             </td>
                             <td className="px-6 py-5">
                               <div className="w-10 h-10 rounded bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden">
-                                <img src={m.mobile_menu_icon || 'https://via.placeholder.com/40'} className="w-full h-full object-contain" alt="" />
+                                <img src={m.mobile_menu_icon || PLACEHOLDER_40} className="w-full h-full object-contain" alt="" />
                               </div>
                             </td>
                             <td className="px-6 py-5">

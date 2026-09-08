@@ -4,6 +4,7 @@ import { emptyFoodReports, emptyYearlySalesData } from "@food/utils/adminFallbac
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { exportReportsToCSV, exportReportsToExcel, exportReportsToPDF, exportReportsToJSON } from "@food/components/admin/reports/reportsExportUtils"
+import { PLACEHOLDER_40 } from "@food/utils/imagePlaceholder"
 
 export default function FoodReport() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -449,7 +450,7 @@ export default function FoodReport() {
                               alt={food.name}
                               className="w-full h-full object-cover"
                               onError={(e) => {
-                                e.target.src = "https://via.placeholder.com/40"
+                                e.target.src = PLACEHOLDER_40
                               }}
                             />
                           </div>

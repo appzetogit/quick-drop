@@ -14,6 +14,7 @@ import { useLocation } from "@food/hooks/useLocation"
 import { restaurantAPI } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
+import { PLACEHOLDER_400 } from "@food/utils/imagePlaceholder"
 
 const BACKEND_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, "")
 
@@ -228,7 +229,7 @@ export default function Restaurants() {
 
                         <div className="w-36 sm:w-44 md:w-56 lg:w-64 xl:w-72 flex-shrink-0 relative overflow-hidden group/image">
                           <img
-                            src={restaurant.image || "https://via.placeholder.com/400x300?text=Restaurant"}
+                            src={restaurant.image || PLACEHOLDER_400}
                             alt={restaurant.name}
                             className="w-full h-full object-cover"
                           />

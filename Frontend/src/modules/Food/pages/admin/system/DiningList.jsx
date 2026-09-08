@@ -4,6 +4,7 @@ import { Search, Download, ChevronDown, Eye, Settings, ArrowUpDown, Loader2, Sta
 import { adminAPI } from "@food/api"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { exportRestaurantsToPDF } from "@food/components/admin/restaurants/restaurantsExportUtils"
+import { PLACEHOLDER_40 } from "@food/utils/imagePlaceholder"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -86,7 +87,7 @@ export default function DiningList() {
                         zone: restaurant.zone || "N/A",
                         status: restaurant.status === "approved" || restaurant.isActive === true,
                         rating: restaurant.rating || 0,
-                        logo: getPrimaryRestaurantImage(restaurant, "https://via.placeholder.com/40"),
+                        logo: getPrimaryRestaurantImage(restaurant, PLACEHOLDER_40),
                         categories: Array.isArray(restaurant.categories) ? restaurant.categories : [],
                         categoryIds: Array.isArray(restaurant.categoryIds) ? restaurant.categoryIds : [],
                         primaryCategoryId: restaurant.primaryCategoryId || null,
@@ -345,7 +346,7 @@ export default function DiningList() {
                                                                     src={restaurant.logo}
                                                                     alt={restaurant.name}
                                                                     className="w-full h-full object-cover"
-                                                                    onError={(e) => { e.target.src = "https://via.placeholder.com/40" }}
+                                                                    onError={(e) => { e.target.src = PLACEHOLDER_40 }}
                                                                 />
                                                             </div>
                                                             <div className="flex flex-col">
