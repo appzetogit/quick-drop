@@ -169,6 +169,72 @@ console.log('\n3. the listing reports whether an outlet is trading');
     });
 }
 
+/* -------------------------------------------- 4. a zone is settled at onboarding */
+console.log('\n4. onboarding settles the delivery zone');
+{
+    const { FoodZone } = await import('../src/modules/food/admin/models/zone.model.js');
+    const { registerRestaurant } = await import('../src/modules/food/restaurant/services/restaurant.service.js');
+
+    // A square around Indore.
+    const zone = await FoodZone.create({
+        name: 'Indore Test Zone',
+        isActive: true,
+        // The polygon schema stores latitude/longitude, not lat/lng.
+        coordinates: [
+            { latitude: 22.60, longitude: 75.80 },
+            { latitude: 22.60, longitude: 75.95 },
+            { latitude: 22.80, longitude: 75.95 },
+            { latitude: 22.80, longitude: 75.80 },
+        ],
+    });
+
+    const base = (extra) => ({
+        restaurantName: `Zone Test ${Math.random().toString(36).slice(2, 7)}`,
+        ownerName: 'Owner',
+        ownerEmail: `zone${Math.random().toString(36).slice(2, 8)}@example.com`,
+        ownerPhone: `9${String(Math.floor(Math.random() * 1e9)).padStart(9, '0')}`,
+        ...extra,
+    });
+
+    let pinned = null;
+    try {
+        pinned = await registerRestaurant(base({ latitude: 22.7196, longitude: 75.8577 }), {});
+    } catch (err) {
+        pinned = { error: err.message };
+    }
+    check('a pin inside a zone resolves it without asking twice', () =>
+        assert.ok(!pinned?.error, `registration failed: ${pinned?.error}`));
+
+    let outside = null;
+    try {
+        outside = await registerRestaurant(base({ latitude: 12.9716, longitude: 77.5946 }), {});
+    } catch (err) {
+        outside = { error: err.message };
+    }
+    check('a pin outside every zone is refused at onboarding', () =>
+        assert.ok(outside?.error, 'it should not register silently zone-less'));
+    check('and the refusal says what to do', () =>
+        assert.match(String(outside?.error || ''), /zone/i));
+
+    let noLocation = null;
+    try {
+        noLocation = await registerRestaurant(base({}), {});
+    } catch (err) {
+        noLocation = { error: err.message };
+    }
+    check('no pin and no zone is refused too', () =>
+        assert.ok(noLocation?.error, 'a zone-less restaurant can never be listed'));
+
+    let explicit = null;
+    try {
+        explicit = await registerRestaurant(base({ zoneId: String(zone._id) }), {});
+    } catch (err) {
+        explicit = { error: err.message };
+    }
+    check('an explicitly chosen zone is accepted with no pin', () =>
+        assert.ok(!explicit?.error, `registration failed: ${explicit?.error}`));
+}
+
 await mongoose.disconnect();
 await server.stop();
 

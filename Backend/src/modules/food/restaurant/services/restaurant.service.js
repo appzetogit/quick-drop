@@ -482,6 +482,39 @@ export const uploadRestaurantAttachment = async (file, folderType = 'profile') =
     return { url };
 };
 
+/**
+ * The zone a newly registering restaurant belongs to.
+ *
+ * An explicit id wins. Otherwise the pinned coordinates are matched against
+ * the active zone polygons -- the same check updateRestaurant already runs, so
+ * a restaurant that moves its pin later lands the same way it did on day one.
+ *
+ * Throws rather than returning null. A restaurant with no zone cannot appear
+ * in any customer listing, so accepting the registration would create an
+ * account that silently never trades.
+ */
+const resolveZoneForOnboarding = async ({ zoneId, latitude, longitude }) => {
+    const explicit = String(zoneId || '').trim();
+    if (explicit && mongoose.Types.ObjectId.isValid(explicit)) {
+        const zone = await FoodZone.findById(explicit).select('_id isActive').lean();
+        if (!zone?._id) throw new ValidationError('The selected delivery zone does not exist');
+        return new mongoose.Types.ObjectId(String(zone._id));
+    }
+
+    if (latitude !== null && longitude !== null) {
+        const activeZones = await FoodZone.find({ isActive: true }).select('_id coordinates').lean();
+        const matched = activeZones.find((zone) =>
+            isPointInZonePolygon(latitude, longitude, zone?.coordinates)
+        );
+        if (matched?._id) return new mongoose.Types.ObjectId(String(matched._id));
+    }
+
+    throw new ValidationError(
+        'Select a delivery zone, or pin the restaurant inside one. '
+        + 'A restaurant outside every zone cannot be shown to customers.'
+    );
+};
+
 export const registerRestaurant = async (payload, files) => {
     const {
         restaurantName,
@@ -540,6 +573,27 @@ export const registerRestaurant = async (payload, files) => {
     if (!restaurantNameNormalized) {
         throw new ValidationError('Restaurant name is required to register a restaurant');
     }
+
+    /*
+     * A restaurant must land in a zone at onboarding, not later.
+     *
+     * The customer listing filters strictly by zone, so a restaurant that
+     * registers without one is invisible to every customer -- and nothing said
+     * so. It looked live in the admin panel, its menu was approved, and it took
+     * no orders because it was never in anyone's results. Zone was assigned
+     * afterwards by hand, if someone noticed.
+     *
+     * The pin the restaurant already drops is enough to answer this, so the
+     * zone is derived from it rather than asked for twice; an explicitly
+     * supplied zoneId still wins, for an admin registering on someone's behalf.
+     * Only when neither resolves is the registration refused, and then with a
+     * message that says what to do about it.
+     */
+    const resolvedZoneId = await resolveZoneForOnboarding({
+        zoneId,
+        latitude: toFiniteNumber(latitude),
+        longitude: toFiniteNumber(longitude),
+    });
 
     const images = {
         profileImage: preUploadedProfileImage || '',
@@ -644,9 +698,8 @@ export const registerRestaurant = async (payload, files) => {
             ownerPhoneLast10,
             primaryContactNumber,
             pureVegRestaurant: pureVegRestaurant === true,
-            zoneId: zoneId && mongoose.Types.ObjectId.isValid(String(zoneId).trim())
-                ? new mongoose.Types.ObjectId(String(zoneId).trim())
-                : undefined,
+            // Resolved above, and never undefined: see resolveZoneForOnboarding.
+            zoneId: resolvedZoneId,
             // Store unified location object (geo + address).
             location: {
                 type: 'Point',
