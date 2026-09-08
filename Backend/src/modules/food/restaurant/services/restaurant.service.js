@@ -2039,6 +2039,49 @@ export async function updateRestaurantOfferStatus(restaurantId, offerId, status)
 }
 
 /**
+ * Everything keyed to a restaurant that becomes meaningless once it is gone.
+ *
+ * Configuration and presentation only. A row here describes how the restaurant
+ * behaves or where it is shown, and outlives it as a broken reference: a
+ * commission record whose restaurant cannot be looked up renders as a blank
+ * name and a null id in the admin panel, and a dining or gourmet showcase entry
+ * keeps advertising a restaurant customers can no longer order from.
+ *
+ * Collection names rather than models, because these live across two verticals
+ * and several modules; importing eight models into a delete path is how the
+ * list falls out of date the first time someone adds a ninth.
+ */
+const RESTAURANT_SCOPED_CONFIG = [
+    'food_restaurant_commissions',
+    'food_categories',
+    'food_offers',
+    'food_bogo_offers',
+    'food_freebie_offers',
+    'food_dining_restaurants',
+    'food_gourmet_restaurants',
+    'food_user_carts',
+    'food_restaurant_withdrawal_settings',
+    // The quick-commerce twins, which mount the same restaurants.
+    'qc_items',
+    'qc_restaurant_outlet_timings',
+];
+
+/**
+ * What is deliberately NOT deleted with a restaurant.
+ *
+ * Orders, transactions and price-adjustment runs are the financial and audit
+ * record. A delivered order does not stop having happened because the shop
+ * later closed, and deleting it would take the money trail, the customer's
+ * order history and the platform's own accounts with it. These rows keep a
+ * restaurantId that no longer resolves, and that is correct: it is a historical
+ * fact about an entity that used to exist.
+ *
+ *   food_orders, qc_orders
+ *   food_transactions, qc_transactions
+ *   food_price_adjustments
+ */
+
+/**
  * Delete a restaurant and all associated data (menu, wallet, items, timings) permanently.
  */
 export const deleteCurrentRestaurantAccount = async (restaurantId) => {
@@ -2059,8 +2102,46 @@ export const deleteCurrentRestaurantAccount = async (restaurantId) => {
     await FoodItem.deleteMany({ restaurantId });
     await FoodAddon.deleteMany({ restaurantId });
 
+    /*
+     * The rest of the configuration, which this used to leave behind. A
+     * deleted restaurant kept its commission record, and the admin panel
+     * rendered it as a row with no name and a null id -- along with its
+     * offers, its menu categories, and its slot in the dining and gourmet
+     * showcases the customer app reads.
+     *
+     * Matched on both the ObjectId and its string form: these collections were
+     * written by several modules and not all of them cast the id.
+     */
+    const asId = mongoose.Types.ObjectId.isValid(String(restaurantId))
+        ? new mongoose.Types.ObjectId(String(restaurantId))
+        : null;
+    const idMatch = { $in: [asId, String(restaurantId)].filter((v) => v !== null) };
+
+    for (const collection of RESTAURANT_SCOPED_CONFIG) {
+        try {
+            await mongoose.connection.collection(collection)
+                .deleteMany({ restaurantId: idMatch });
+        } catch (err) {
+            /*
+             * One missing collection must not abort the delete and leave the
+             * restaurant half-removed. Logged, not thrown: a stray config row
+             * is a cosmetic problem, a half-deleted restaurant is not.
+             */
+            console.error(`Failed clearing ${collection} for restaurant ${restaurantId}:`, err?.message || err);
+        }
+    }
+
     // Remove Restaurant
     await FoodRestaurant.findByIdAndDelete(restaurantId);
+
+    // The listing, menu and detail responses all cache; a deleted restaurant
+    // must not keep being served from one.
+    try {
+        const { invalidateMenuCaches } = await import('../../../../middleware/cache.js');
+        await invalidateMenuCaches();
+    } catch (err) {
+        console.error('Failed to invalidate caches after deleting a restaurant:', err?.message || err);
+    }
 
     return { success: true };
 };
