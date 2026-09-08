@@ -67,8 +67,25 @@ function getModuleFromUrl(url = "") {
   // requireRoles('ADMIN'). Classifying it as "user" meant no admin token was attached
   // and every banner call 401'd on pages that rely on the interceptor. Public reads
   // stay unclassified so the user app's banner fetches keep working tokenless.
+  /*
+   * `/showcase-items` is the ad-blocker-safe alias for `/hero-banners`, added
+   * after this rule and not covered by it. uBlock and friends abort any XHR
+   * whose URL contains "banner", so the client calls the alias and the SERVER
+   * rewrites it back -- which means the URL this function sees never says
+   * "hero-banners" any more.
+   *
+   * The result was a 401 on every banner write that carries no /admin/
+   * segment, uploading a promotion banner among them: classified as "user", no
+   * admin token attached, and the request rejected while the operator was
+   * plainly signed in.
+   *
+   * Public reads stay unclassified so the customer app's banner fetches keep
+   * working without a token.
+   */
   if (
-    (normalized.includes("/hero-banners") || normalized.includes("/top-banners")) &&
+    (normalized.includes("/hero-banners") ||
+      normalized.includes("/showcase-items") ||
+      normalized.includes("/top-banners")) &&
     !/\/public(\?|$)/.test(normalized)
   ) return "admin";
   
