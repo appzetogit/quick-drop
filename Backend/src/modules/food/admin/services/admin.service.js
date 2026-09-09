@@ -3383,10 +3383,22 @@ const getAdminFoodUpdatedPricing = (existing = {}, body = {}) => {
     let pricing;
     try {
         pricing = resolveItemPricingForWrite({
+            /*
+             * `price` is forwarded as `price`, never renamed to `basePrice`.
+             *
+             * Renaming it made every caller that knows only about a selling price
+             * -- older clients, bulk upload -- silently redefine the base as the
+             * discounted figure, so each save walked the base down by the discount.
+             * The resolver knows how to read a selling price against the dish's
+             * standing discount; it only gets the chance if the field arrives under
+             * its own name.
+             */
             body: {
-                basePrice: body.basePrice !== undefined ? body.basePrice
-                    : body.price !== undefined ? body.price
-                    : (existing.basePrice ?? existing.price),
+                ...(body.basePrice !== undefined
+                    ? { basePrice: body.basePrice }
+                    : body.price !== undefined
+                        ? { price: body.price }
+                        : { basePrice: existing.basePrice ?? existing.price }),
                 discountPercent: body.discountPercent,
             },
             existing,

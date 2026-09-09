@@ -173,10 +173,18 @@ const getUpdatedFoodPricing = (existing = {}, body = {}) => {
     if (!mustReprice) return update;
 
     const fallbackBase = existing.basePrice ?? existing.price;
+    /*
+     * `price` keeps its own name rather than being renamed to `basePrice` -- see
+     * the note in normalizeDiscountPricingInput. A restaurant form that submits
+     * only the selling price of a discounted dish was redefining the base as that
+     * discounted figure, walking the base down on every save.
+     */
     const pricing = applyPricing({
-        basePrice: body.basePrice !== undefined ? body.basePrice
-            : body.price !== undefined ? body.price
-            : fallbackBase,
+        ...(body.basePrice !== undefined
+            ? { basePrice: body.basePrice }
+            : body.price !== undefined
+                ? { price: body.price }
+                : { basePrice: fallbackBase }),
         discountPercent: body.discountPercent,
     });
     if (!pricing || pricing.basePrice === null || !(pricing.basePrice > 0)) {

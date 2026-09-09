@@ -96,13 +96,35 @@ export function normalizeDiscountPricingInput(body = {}, existing = {}) {
         ? toFiniteNumber(body.discountPercent)
         : existingDiscount;
 
-    // `price` alone still arrives from older clients and from bulk upload. Treat
-    // it as the selling price and let it define the base, so those paths keep
-    // working without knowing about discounts at all.
+    /*
+     * `price` alone still arrives from older clients and from bulk upload. It is
+     * the SELLING price, so on a discounted dish it must not be written into the
+     * base -- that is how a base price walks downwards.
+     *
+     * Gajrela on production: base 100, discount 10%, selling at 90. A save that
+     * sent only `price: 90` set basePrice to 90 and cleared the discount, so the
+     * dish now derived 81 and the next such save would make it 72.90. Its
+     * siblings from the same run (Masala Mushroom, Paneer Bhurji, Butter Chicken)
+     * all still read base 100 / discount 10% / selling 90, which is what this
+     * dish should have looked like.
+     *
+     * So the selling price is honoured by holding the discount and solving for
+     * the base it implies. A dish with no discount is unaffected: the base and
+     * the selling price are the same number, and this reduces to what it did
+     * before.
+     */
     if (!mentionsBase && !mentionsDiscount && mentionsPrice) {
         const submitted = toFiniteNumber(body.price);
         if (submitted === null || submitted < 0) {
             throw new Error('Price must be a number of 0 or more');
+        }
+        if (existingDiscount > 0 && existingDiscount < 100) {
+            const impliedBase = round2(submitted / (1 - existingDiscount / 100));
+            return {
+                basePrice: impliedBase,
+                discountPercent: round2(existingDiscount),
+                price: computeSellingPrice(impliedBase, existingDiscount),
+            };
         }
         return { basePrice: submitted, discountPercent: 0, price: round2(submitted) };
     }
