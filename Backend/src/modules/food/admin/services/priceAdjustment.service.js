@@ -658,8 +658,99 @@ const applyFormulationPercent = async (filter, percent, { undo = false } = {}) =
  * prices rather than recording a percent, so there is no total to inherit --
  * and a dish created today was never part of what they did.
  */
-export async function resolveStandingAdjustment(restaurantId) {
-    const filter = {
+export async function resolveStandingAdjustment(restaurantId, { excludeItemId = null } = {}) {
+    /*
+     * Read from the dishes, not from the run history.
+     *
+     * The history looks authoritative and is not. A run records what an admin
+     * asked for; it does not record anything done to prices outside the
+     * adjuster -- a direct correction, a bulk reset, a migration. This platform
+     * has had all three, and the two sources had already diverged: seven runs
+     * summing to 50% markup and 30% discount over a menu whose dishes all sat
+     * at zero, because a reset had cleared the dishes and left the history
+     * standing.
+     *
+     * A dish inheriting from the history would then have landed at 30% off
+     * beside neighbours at full price -- the precise opposite of the point.
+     * What the neighbours actually carry is the only thing that answers "make
+     * this one match", so that is what is read.
+     *
+     * The mode rather than the mean or the first row: a menu is usually
+     * uniform, and where it is not, the majority is what a new dish should join.
+     * An outlier priced by hand should not drag every future dish toward it.
+     */
+    const match = { approvalStatus: 'approved', price: { $gt: 0 } };
+    if (restaurantId && mongoose.Types.ObjectId.isValid(String(restaurantId))) {
+        match.restaurantId = new mongoose.Types.ObjectId(String(restaurantId));
+    }
+    /*
+     * The dish being approved is excluded from its own sample.
+     *
+     * Approval flips approvalStatus before this runs, so without this the dish
+     * asking "what do my neighbours carry?" is counted as one of them -- and on
+     * a menu whose only approved dish is that one, it answers with its own
+     * zeroes and inherits nothing.
+     */
+    if (excludeItemId && mongoose.Types.ObjectId.isValid(String(excludeItemId))) {
+        match._id = { $ne: new mongoose.Types.ObjectId(String(excludeItemId)) };
+    }
+
+    const grouped = await FoodItem.aggregate([
+        { $match: match },
+        {
+            $group: {
+                _id: {
+                    markup: { $ifNull: ['$formulationMarkupPercent', 0] },
+                    discount: { $ifNull: ['$formulationDiscountPercent', 0] },
+                    /*
+                     * Whether those dishes strike the price they dropped from
+                     * (a decrease ran last) or the markup figure (an increase
+                     * did).
+                     *
+                     * Told apart by where the stored strike sits relative to
+                     * the base, not by whether one exists: both directions
+                     * write it now, so its presence says nothing. A decrease
+                     * records the pre-cut price, which is at or below the base;
+                     * an increase records base x (1 + markup), which is above.
+                     */
+                    struckFromBase: {
+                        $and: [
+                            { $gt: [{ $ifNull: ['$formulationStrikePrice', 0] }, 0] },
+                            {
+                                $lte: [
+                                    { $ifNull: ['$formulationStrikePrice', 0] },
+                                    { $ifNull: ['$basePrice', 0] },
+                                ],
+                            },
+                        ],
+                    },
+                },
+                count: { $sum: 1 },
+            },
+        },
+        { $sort: { count: -1 } },
+        { $limit: 1 },
+    ]);
+
+    const top = grouped[0]?._id;
+    if (top) {
+        const markupPercent = Math.min(Math.max(round2(Number(top.markup) || 0), 0), MAX_PERCENT);
+        const discountPercent = Math.min(Math.max(round2(Number(top.discount) || 0), 0), -MIN_PERCENT);
+        return {
+            markupPercent,
+            discountPercent,
+            lastDirection: top.struckFromBase && discountPercent > 0 ? 'decrease' : 'increase',
+            source: 'menu',
+            sampleSize: grouped[0].count,
+        };
+    }
+
+    /*
+     * No approved dish to copy -- a restaurant onboarding its first menu. The
+     * run history is all there is, and platform-wide runs are the part of it
+     * that would have reached this restaurant had it existed.
+     */
+    const runs = await FoodPriceAdjustment.find({
         strategy: 'formulation',
         isReverted: { $ne: true },
         revertsAdjustmentId: null,
@@ -669,10 +760,7 @@ export async function resolveStandingAdjustment(restaurantId) {
                 ? [{ restaurantId: new mongoose.Types.ObjectId(String(restaurantId)) }]
                 : []),
         ],
-    };
-
-    // Newest first, so the last run's direction is the head of the list.
-    const runs = await FoodPriceAdjustment.find(filter)
+    })
         .select('percent createdAt')
         .sort({ createdAt: -1 })
         .lean();
@@ -685,23 +773,14 @@ export async function resolveStandingAdjustment(restaurantId) {
         if (percent > 0) markupPercent += percent;
         else discountPercent += -percent;
     }
-
-    /*
-     * Which direction ran last, because it decides the struck figure.
-     *
-     * A decrease strikes the price the dish was selling for before the cut; an
-     * increase strikes the markup figure. The totals alone cannot say which,
-     * since +20 then -10 and -10 then +20 give the same pair and different
-     * strikes. A dish inheriting the total has to inherit that too, or it lands
-     * beside its neighbours showing a different comparison.
-     */
     const lastPercent = Number(runs.find((r) => Number(r?.percent))?.percent) || 0;
 
     return {
         markupPercent: Math.min(Math.max(round2(markupPercent), 0), MAX_PERCENT),
         discountPercent: Math.min(Math.max(round2(discountPercent), 0), -MIN_PERCENT),
-        lastDirection: lastPercent > 0 ? 'increase' : (lastPercent < 0 ? 'decrease' : 'none'),
-        runCount: runs.length,
+        lastDirection: lastPercent < 0 ? 'decrease' : 'increase',
+        source: 'history',
+        sampleSize: 0,
     };
 }
 

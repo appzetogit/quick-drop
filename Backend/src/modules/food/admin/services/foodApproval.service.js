@@ -143,7 +143,12 @@ export async function approveFoodItem(id, options = {}) {
             try {
                 const { resolveStandingAdjustment } = await import('./priceAdjustment.service.js');
                 const { formulationFieldsFor } = await import('../../shared/formulationPricing.js');
-                const standing = await resolveStandingAdjustment(updated.restaurantId);
+                const standing = await resolveStandingAdjustment(updated.restaurantId, {
+                    // This dish is already flagged approved by now; counting
+                    // it among its own neighbours makes it inherit its own
+                    // zeroes on a menu where it is the first one through.
+                    excludeItemId: updated._id,
+                });
 
                 const base = Number(updated.basePrice) > 0
                     ? Number(updated.basePrice)
