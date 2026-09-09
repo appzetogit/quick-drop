@@ -323,7 +323,7 @@ export default function OrdersPage({ statusKey = "all" }) {
     if (Notification.permission === "default") {
       Notification.requestPermission().catch(() => {})
     }
-  }, [statusKey, page, limit])
+  }, [statusKey])
 
   /*
    * Page and size, held in the URL rather than in component state.
@@ -442,7 +442,10 @@ export default function OrdersPage({ statusKey = "all" }) {
     } finally {
       if (!silent) setIsLoading(false)
     }
-  }, [statusKey, playDefaultRing, showBrowserNotification, startAlertLoop])
+    // page and limit included so changing either refetches. They are declared
+    // above this callback; naming them in an earlier hook's dependency array
+    // read them before initialization and crashed the whole screen.
+  }, [statusKey, page, limit, playDefaultRing, showBrowserNotification, startAlertLoop])
 
   const normalizedOrders = useMemo(() => {
     const safeOrders = Array.isArray(orders) ? orders : []

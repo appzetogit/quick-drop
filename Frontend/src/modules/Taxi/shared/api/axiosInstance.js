@@ -260,12 +260,76 @@ api.interceptors.request.use(
 );
 
 // Response Interceptor: Simplify responses and handle global errors
+/*
+ * Refreshing an expired access token.
+ *
+ * This client had no refresh at all. The moment an access token aged out, every
+ * screen in the taxi panel showed "Authorization token has expired" and the
+ * interceptor below cleared the session -- while a valid refresh token sat
+ * untouched in localStorage. The food panel's client has refreshed since it was
+ * written; this one simply never learned how, so the two halves of the same
+ * admin session behaved differently.
+ *
+ * The admin session is shared: both panels read `admin_accessToken` and
+ * `admin_refreshToken`, and /food/auth is the platform-wide auth service rather
+ * than a food-specific one, so refreshing here refreshes the session the food
+ * panel is using too.
+ *
+ * Plain axios, not `api`: this instance's response interceptor unwraps
+ * `response.data` and clears auth on 401, both of which would fire on the
+ * refresh call itself and turn one expired token into a logout.
+ */
+let refreshInFlight = null;
+
+const readRefreshToken = () => {
+  try {
+    return localStorage.getItem('admin_refreshToken')
+      || localStorage.getItem('refreshToken')
+      || null;
+  } catch {
+    return null;
+  }
+};
+
+const refreshAdminAccessToken = async () => {
+  const refreshToken = readRefreshToken();
+  if (!refreshToken) return null;
+
+  // One refresh for however many requests hit 401 together. Without this a
+  // dashboard that fires eight calls on load sends eight refreshes.
+  if (!refreshInFlight) {
+    const url = `${API_BASE_URL || ''}`.replace(/\/+$/, '') + '/food/auth/refresh-token';
+    refreshInFlight = axios
+      .post(url, { refreshToken }, { timeout: 10000 })
+      .then((res) => {
+        const token = res?.data?.data?.accessToken || res?.data?.accessToken || null;
+        if (token) {
+          try {
+            localStorage.setItem('admin_accessToken', token);
+            // The food client listens for this and picks the token up without
+            // a reload, so one refresh serves both panels.
+            window.dispatchEvent(new CustomEvent('authRefreshed', {
+              detail: { module: 'admin', token },
+            }));
+          } catch { /* private window: the in-memory retry below still works */ }
+        }
+        return token;
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+
+  return refreshInFlight;
+};
+
 api.interceptors.response.use(
   (response) => {
     // Pro-Level: Many APIs return data in data.data or data.result, you can flatten it here
     return response.data;
   },
-  (error) => {
+  async (error) => {
     if (error.response) {
       // Global error handling: e.g. deleted or inactive account logout
       if (error.response.status === 401 || error.response.status === 403) {
@@ -273,6 +337,27 @@ api.interceptors.response.use(
         const authHeader = error.config?.headers?.Authorization || error.config?.headers?.authorization || '';
         const token = String(authHeader).startsWith('Bearer ') ? String(authHeader).slice(7) : '';
         const tokenRole = normalizeAuthRole(getTokenPayload(token)?.role || '');
+
+        /*
+         * An expired admin token is recoverable: refresh it and replay the
+         * request, rather than clearing the session and showing the error.
+         *
+         * Only for an admin whose token has genuinely expired -- an invalid or
+         * missing token, or a deleted account, is not something a refresh fixes,
+         * and retrying those would loop. `_retry` bounds it to one attempt per
+         * request whatever else goes wrong.
+         */
+        const isExpired = error.response.status === 401
+          && String(serverMessage).toLowerCase().includes('expired');
+        if (isExpired && tokenRole === 'admin' && error.config && !error.config._retry) {
+          error.config._retry = true;
+          const fresh = await refreshAdminAccessToken();
+          if (fresh) {
+            error.config.headers = error.config.headers || {};
+            error.config.headers.Authorization = `Bearer ${fresh}`;
+            return api(error.config);
+          }
+        }
 
         const shouldClearAuth =
           (error.response.status === 401 && isAuthTokenFailure(serverMessage)) ||
