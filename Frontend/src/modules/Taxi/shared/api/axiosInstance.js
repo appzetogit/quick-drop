@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { API_BASE_URL } from './runtimeConfig';
+import { API_BASE_URL, BACKEND_ORIGIN } from './runtimeConfig';
 import { syncAdminSessionBridge } from '../../modules/admin/services/adminSession';
 
 const api = axios.create({
@@ -298,7 +298,21 @@ const refreshAdminAccessToken = async () => {
   // One refresh for however many requests hit 401 together. Without this a
   // dashboard that fires eight calls on load sends eight refreshes.
   if (!refreshInFlight) {
-    const url = `${API_BASE_URL || ''}`.replace(/\/+$/, '') + '/food/auth/refresh-token';
+    /*
+     * Built from BACKEND_ORIGIN, not API_BASE_URL.
+     *
+     * API_BASE_URL is always taxi-scoped -- runtimeConfig appends '/taxi' if it is
+     * not already there -- so basing the refresh on it produced
+     * /api/v1/taxi/food/auth/refresh-token, a 404. The request failed, the catch
+     * below returned null, no retry was attempted and the session was cleared:
+     * exactly the "Authorization token has expired" this function exists to
+     * prevent, which is why adding it changed nothing.
+     *
+     * /food/auth is the platform-wide auth service and sits directly under
+     * /api/v1, which is why the login call reaches it the same way.
+     */
+    const origin = String(BACKEND_ORIGIN || '').replace(/\/+$/, '');
+    const url = `${origin}/api/v1/food/auth/refresh-token`;
     refreshInFlight = axios
       .post(url, { refreshToken }, { timeout: 10000 })
       .then((res) => {
@@ -349,7 +363,12 @@ api.interceptors.response.use(
          */
         const isExpired = error.response.status === 401
           && String(serverMessage).toLowerCase().includes('expired');
-        if (isExpired && tokenRole === 'admin' && error.config && !error.config._retry) {
+        // Any admin-ish role, not just the default 'ADMIN'. A platform superadmin
+        // carries role 'superadmin', which normalizeAuthRole leaves untouched --
+        // gating on 'admin' alone would silently skip the refresh for exactly the
+        // accounts that live in this panel all day.
+        const isAdminToken = ['admin', 'superadmin', 'super-admin'].includes(tokenRole);
+        if (isExpired && isAdminToken && error.config && !error.config._retry) {
           error.config._retry = true;
           const fresh = await refreshAdminAccessToken();
           if (fresh) {
