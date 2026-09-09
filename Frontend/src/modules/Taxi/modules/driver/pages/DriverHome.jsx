@@ -518,7 +518,6 @@ const isExpiredDateValue = (value) => {
 
 const DRIVER_ROUTE_BOOKING_STORAGE_KEY = 'driver_route_booking_preferences';
 const DRIVER_VEHICLE_REAPPROVAL_PENDING_KEY = 'driver_vehicle_reapproval_pending';
-const getTodaySelfieKey = () => new Date().toISOString().slice(0, 10);
 
 const readRouteBookingPreferences = () => {
     try {
@@ -549,10 +548,6 @@ const normalizeRouteBookingPreferences = (routeBooking = null) => {
 
 const isDriverVehicleApprovalPending = (driver = {}) =>
     driver?.approve === false || String(driver?.status || '').toLowerCase() === 'pending';
-
-const hasSelfieForToday = (onlineSelfie = null) =>
-    String(onlineSelfie?.forDate || '').trim() === getTodaySelfieKey() &&
-    Boolean(String(onlineSelfie?.imageUrl || '').trim());
 
 const mapStyles = [
     { "elementType": "geometry", "stylers": [{ "color": "#f5f5f5" }] },
@@ -1231,9 +1226,6 @@ const DriverHome = () => {
             socketService.disconnect();
             const nextMessage = error?.response?.data?.message || error.message || 'Could not go online.';
             setStatusMessage(nextMessage);
-            if (String(nextMessage).toLowerCase().includes('selfie is required')) {
-                setShowOnlineSelfiePrompt(true);
-            }
         } finally {
             setIsTogglingDuty(false);
         }
@@ -1316,23 +1308,26 @@ const DriverHome = () => {
             return;
         }
 
-        if (hasSelfieForToday(onlineSelfie)) {
-            goOnline();
-            return;
-        }
-
-        setSelfieError('');
-        setShowSelfieCameraCapture(false);
-        stopSelfieCameraStream();
-        setShowOnlineSelfiePrompt(true);
+        /*
+         * The daily selfie is no longer required to go online.
+         *
+         * This used to open the selfie prompt instead of starting the shift
+         * whenever there was no selfie for today, so a driver could not take a
+         * ride until they captured one -- and if the camera failed they were stuck.
+         * Going online now depends only on the wallet, vehicle and document checks
+         * above.
+         *
+         * The capture flow itself is left intact and still reachable, so a driver
+         * or the admin can capture one deliberately; it just no longer stands
+         * between them and their shift.
+         */
+        goOnline();
     }, [
         expiredDocumentNames,
         goOnline,
         isOnline,
         isTogglingDuty,
-        onlineSelfie,
         rejectedDocumentNotes,
-        stopSelfieCameraStream,
         vehicleReapprovalPending,
         walletAlertState,
     ]);
