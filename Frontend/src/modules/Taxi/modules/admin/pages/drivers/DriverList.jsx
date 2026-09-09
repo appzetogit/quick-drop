@@ -58,8 +58,6 @@ const DriverList = ({ mode = 'approved' }) => {
             ? Number(d.rating || d.average_rating || d.avg_rating || 0)
             : 0,
           isOnline: Boolean(d.isOnline),
-          onlineSelfieImage: d.online_selfie_image || '',
-          onlineSelfieCapturedAt: d.online_selfie_captured_at || null,
           registeredAt: d.createdAt || null,
           status: mode === 'active' ? 'Online' : (d.approve ? 'Approved' : (d.status || 'Approved')),
         }));
@@ -284,7 +282,6 @@ const DriverList = ({ mode = 'approved' }) => {
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Service Location</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Mobile Number</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Transport Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Today Selfie</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Document View</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Approved Status</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Rating</th>
@@ -295,7 +292,7 @@ const DriverList = ({ mode = 'approved' }) => {
             <tbody className="divide-y divide-gray-50">
               {isLoading ? (
                 <tr>
-                  <td colSpan="10" className="py-16 text-center">
+                  <td colSpan="9" className="py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <Loader2 className="w-7 h-7 text-indigo-600 animate-spin" />
                       <p className="text-sm text-gray-400">Loading drivers...</p>
@@ -304,7 +301,7 @@ const DriverList = ({ mode = 'approved' }) => {
                 </tr>
               ) : drivers.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="px-6 py-16 text-center text-sm text-gray-400">No drivers found.</td>
+                  <td colSpan="9" className="px-6 py-16 text-center text-sm text-gray-400">No drivers found.</td>
                 </tr>
               ) : (
                 drivers.map((driver) => (
@@ -313,22 +310,6 @@ const DriverList = ({ mode = 'approved' }) => {
                     <td className="px-4 py-4 text-sm text-gray-500">{driver.serviceLocation}</td>
                     <td className="px-4 py-4 text-sm text-gray-500">{driver.phone}</td>
                     <td className="px-4 py-4 text-sm text-gray-500">{driver.transportType}</td>
-                    <td className="px-4 py-4">
-                      {driver.onlineSelfieImage ? (
-                        <button
-                          type="button"
-                          onClick={() => window.open(driver.onlineSelfieImage, '_blank', 'noopener,noreferrer')}
-                          className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-2 py-1.5 hover:bg-slate-50 transition-colors"
-                        >
-                          <img src={driver.onlineSelfieImage} alt={`${driver.name} selfie`} className="h-10 w-10 rounded-lg object-cover" />
-                          <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">
-                            {formatDate(driver.onlineSelfieCapturedAt)}
-                          </span>
-                        </button>
-                      ) : (
-                        <span className="text-xs font-medium text-gray-400">No selfie</span>
-                      )}
-                    </td>
                     <td className="px-4 py-4">
                       <button
                         onClick={() => navigate(`/taxi/admin/drivers/${driver.id}?tab=Documents`)}

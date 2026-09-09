@@ -424,7 +424,6 @@ const DriverDetails = () => {
   }, [profile]);
   const chart = profile?.chart || { months: [], earnings: [], trips: { completed: [], cancelled: [] } };
   const profileImage = String(profile?.image || '').trim();
-  const onlineSelfieImage = String(profile?.online_selfie?.imageUrl || '').trim();
 
   const acceptanceRate = requests.length
     ? Math.round((stats.completed_trips / requests.length) * 100)
@@ -539,22 +538,6 @@ const DriverDetails = () => {
             <span className={`h-2 w-2 rounded-full ${profile.isOnline ? 'bg-sky-500' : 'bg-gray-400'}`} />
             {profile.isOnline ? 'Driver Online' : 'Driver Offline'}
           </span>
-
-          {onlineSelfieImage ? (
-            <div className="flex items-center gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-3 py-2">
-              <img
-                src={onlineSelfieImage}
-                alt={`${profile.name} online selfie`}
-                className="h-14 w-14 rounded-xl object-cover border border-indigo-100 bg-white"
-              />
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500">Daily online selfie</p>
-                <p className="break-words text-xs font-semibold leading-relaxed text-slate-700">
-                  {profile?.online_selfie?.forDate || 'Latest check-in'}
-                </p>
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
 

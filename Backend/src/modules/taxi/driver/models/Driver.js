@@ -101,26 +101,6 @@ const driverSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    onlineSelfie: {
-      imageUrl: {
-        type: String,
-        default: '',
-        trim: true,
-      },
-      capturedAt: {
-        type: Date,
-        default: null,
-      },
-      uploadedAt: {
-        type: Date,
-        default: null,
-      },
-      forDate: {
-        type: String,
-        default: '',
-        trim: true,
-      },
-    },
     isOnRide: {
       type: Boolean,
       default: false,

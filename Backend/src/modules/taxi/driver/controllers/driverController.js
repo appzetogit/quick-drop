@@ -1482,7 +1482,6 @@ const serializeOwnerProfile = (owner = {}) => ({
   deletionRequest: { status: "none" },
   isOnline: false,
   isOnRide: false,
-  onlineSelfie: {},
   location: null,
   zoneId: null,
   documents: {},
@@ -1522,7 +1521,6 @@ const serializeServiceCenterProfile = (center = {}) => ({
   deletionRequest: { status: "none" },
   isOnline: false,
   isOnRide: false,
-  onlineSelfie: {},
   location:
     Number.isFinite(Number(center.longitude)) && Number.isFinite(Number(center.latitude))
       ? {
@@ -1585,7 +1583,6 @@ const serializeServiceCenterStaffProfile = (staff = {}, center = null) => ({
   deletionRequest: { status: "none" },
   isOnline: false,
   isOnRide: false,
-  onlineSelfie: {},
   location: null,
   zoneId: center?.zone_id?._id || center?.zone_id || null,
   documents: {},
@@ -2305,7 +2302,7 @@ export const setWorkMode = async (req, res) => {
 };
 
 export const goOnline = async (req, res) => {
-  const { location, selfieImageUrl } = req.body;
+  const { location } = req.body;
 
   const coordinates = normalizePoint(location, "location");
   const zone = await findZoneByPickup(coordinates);
@@ -2316,20 +2313,11 @@ export const goOnline = async (req, res) => {
   }
 
   /*
-   * The daily selfie is no longer required to go online.
-   *
-   * It used to block the shift outright: a driver with no selfie for today got a
-   * 400 and could not take a single ride until they captured one. That gate is
-   * gone -- going online is now decided by the wallet and document checks below
-   * and nothing else.
-   *
-   * A selfie is still STORED when the app sends one, so the admin panel's
-   * online-selfie view and everything already captured keep working. It is
-   * simply optional: `selfieImageUrl` absent is a normal request now, not an
-   * error.
+   * No selfie step of any kind. Going online is decided by the wallet, vehicle
+   * and document checks below and nothing else. The daily-selfie requirement,
+   * the stored record and the admin view of it were all removed together, so a
+   * `selfieImageUrl` in the body is simply ignored.
    */
-  const todayKey = new Date().toISOString().slice(0, 10);
-
   await ensureDriverWalletCanAcceptRide(existingDriver);
   await clearDriverActiveRideIfStale(existingDriver);
   // Self-heal a cross-service busy-lock left behind by an abandoned/force-quit job, otherwise
@@ -2342,33 +2330,12 @@ export const goOnline = async (req, res) => {
   );
   const nextTodaySummary = buildDriverTodaySummaryFromDocument(existingDriver);
 
-  /*
-   * Only write a selfie record when an image was actually supplied.
-   *
-   * This used to lean on the removed gate for that guarantee: reaching here
-   * without a stored selfie meant `selfieImageUrl` was definitely present. With
-   * the requirement gone, a driver going online with no selfie at all would have
-   * fallen into the else branch and stored `{ imageUrl: '', forDate: today }` --
-   * overwriting whatever was captured previously with a blank, so the admin panel
-   * would show an empty selfie for a driver who had one yesterday.
-   */
-  const submittedSelfieUrl = String(selfieImageUrl || "").trim();
-  const nextOnlineSelfie = submittedSelfieUrl
-    ? {
-      imageUrl: submittedSelfieUrl,
-      capturedAt: new Date(),
-      uploadedAt: new Date(),
-      forDate: todayKey,
-    }
-    : existingDriver.onlineSelfie;
-
   const driver = await Driver.findByIdAndUpdate(
     req.auth.sub,
     {
       isOnline: true,
       zoneId: zone?._id || null,
       location: toPoint(coordinates, "location"),
-      onlineSelfie: nextOnlineSelfie,
       incentiveTracking: {
         ...trackingBeforeOnline,
         currentOnlineStartedAt: new Date(),
@@ -2390,7 +2357,6 @@ export const goOnline = async (req, res) => {
     data: {
       ...driver.toObject(),
       vehicleIconUrl,
-      onlineSelfie: driver.onlineSelfie || {},
     },
   });
 
@@ -2529,7 +2495,6 @@ export const getCurrentDriver = async (req, res) => {
       serviceCapabilities: Array.isArray(driver.serviceCapabilities) && driver.serviceCapabilities.length
         ? driver.serviceCapabilities
         : ['taxi'],
-      onlineSelfie: driver.onlineSelfie || {},
       location: driver.location,
       zoneId: driver.zoneId,
       routeBooking: serializeDriverRouteBooking(driver.routeBooking),
