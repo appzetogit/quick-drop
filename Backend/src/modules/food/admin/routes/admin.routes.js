@@ -129,6 +129,10 @@ router.patch('/foods/:id', adminController.updateFood);
 router.delete('/foods/:id', adminController.deleteFood);
 // Food approval queue (pending items created by restaurants)
 router.get('/foods/pending-approvals', foodApprovalController.getPendingFoodApprovals);
+// What adjustment is standing over this dish's menu, and what approving it
+// either way would cost -- so the choice below is made with the numbers in
+// view rather than blind.
+router.get('/foods/:id/standing-adjustment', foodApprovalController.getStandingAdjustmentController);
 router.patch('/foods/:id/approve', foodApprovalController.approveFoodItemController);
 router.patch('/foods/:id/reject', foodApprovalController.rejectFoodItemController);
 router.post('/foods/bulk-approve', adminController.bulkApproveFoodItems);

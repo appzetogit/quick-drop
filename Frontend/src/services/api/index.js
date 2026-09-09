@@ -596,12 +596,24 @@ export const adminAPI = {
       params,
       contextModule: "admin",
     }),
-  approveFoodItem: (id) =>
+  /**
+   * Approve a pending dish.
+   *
+   * `applyGlobalPricing` decides whether it joins the price adjustment
+   * standing over that menu. Omitted means no -- the dish goes live at its own
+   * base price, which is what every approval did before the option existed.
+   */
+  approveFoodItem: (id, { applyGlobalPricing = false } = {}) =>
     apiClient.patch(
       `/food/admin/foods/${String(id)}/approve`,
-      {},
+      { applyGlobalPricing: applyGlobalPricing === true },
       { contextModule: "admin" },
     ),
+  /** What adjustment stands over this dish's menu, and what either choice costs. */
+  getStandingAdjustment: (id) =>
+    apiClient.get(`/food/admin/foods/${String(id)}/standing-adjustment`, {
+      contextModule: "admin",
+    }),
   rejectFoodItem: (id, reason) =>
     apiClient.patch(
       `/food/admin/foods/${String(id)}/reject`,

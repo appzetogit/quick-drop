@@ -19,6 +19,8 @@ import {
 const MIN_PERCENT = -90;
 const MAX_PERCENT = 300;
 
+const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
 /** Prices below this are treated as unset and left alone. */
 const MIN_RESULT_PRICE = 0.01;
 
@@ -634,6 +636,74 @@ const applyFormulationPercent = async (filter, percent, { undo = false } = {}) =
     );
     return result?.modifiedCount || 0;
 };
+
+/**
+ * The global adjustment currently standing over a restaurant's menu.
+ *
+ * A dish arriving for approval carries no adjustment: it was created after
+ * every run that shaped the menu around it, so it would go live at its bare
+ * base price beside dishes marked 20% up and 10% down. The admin approving it
+ * has to be able to say whether it joins them.
+ *
+ * Totalled from the run history rather than read off a neighbouring dish. A
+ * menu is not always uniform -- an earlier per-restaurant run may have touched
+ * only part of it -- and "what the runs say" is a fact, where "what that dish
+ * over there has" is a guess.
+ *
+ * Included: every formulation run that is not itself a revert and has not been
+ * reverted, scoped either to this restaurant or to all restaurants. Increases
+ * add to the markup, decreases to the discount, matching how a run accumulates.
+ *
+ * Excluded: the older `scale` and `markdown` runs. Those multiplied stored
+ * prices rather than recording a percent, so there is no total to inherit --
+ * and a dish created today was never part of what they did.
+ */
+export async function resolveStandingAdjustment(restaurantId) {
+    const filter = {
+        strategy: 'formulation',
+        isReverted: { $ne: true },
+        revertsAdjustmentId: null,
+        $or: [
+            { restaurantId: null },
+            ...(restaurantId && mongoose.Types.ObjectId.isValid(String(restaurantId))
+                ? [{ restaurantId: new mongoose.Types.ObjectId(String(restaurantId)) }]
+                : []),
+        ],
+    };
+
+    // Newest first, so the last run's direction is the head of the list.
+    const runs = await FoodPriceAdjustment.find(filter)
+        .select('percent createdAt')
+        .sort({ createdAt: -1 })
+        .lean();
+
+    let markupPercent = 0;
+    let discountPercent = 0;
+    for (const run of runs) {
+        const percent = Number(run?.percent);
+        if (!Number.isFinite(percent) || percent === 0) continue;
+        if (percent > 0) markupPercent += percent;
+        else discountPercent += -percent;
+    }
+
+    /*
+     * Which direction ran last, because it decides the struck figure.
+     *
+     * A decrease strikes the price the dish was selling for before the cut; an
+     * increase strikes the markup figure. The totals alone cannot say which,
+     * since +20 then -10 and -10 then +20 give the same pair and different
+     * strikes. A dish inheriting the total has to inherit that too, or it lands
+     * beside its neighbours showing a different comparison.
+     */
+    const lastPercent = Number(runs.find((r) => Number(r?.percent))?.percent) || 0;
+
+    return {
+        markupPercent: Math.min(Math.max(round2(markupPercent), 0), MAX_PERCENT),
+        discountPercent: Math.min(Math.max(round2(discountPercent), 0), -MIN_PERCENT),
+        lastDirection: lastPercent > 0 ? 'increase' : (lastPercent < 0 ? 'decrease' : 'none'),
+        runCount: runs.length,
+    };
+}
 
 export async function applyPriceAdjustment(body = {}, actor = {}) {
     const percent = Number(body.percent);

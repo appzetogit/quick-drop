@@ -100,16 +100,111 @@ export async function listPendingFoodApprovals(query = {}) {
     return { requests: allRequests, page, limit, total: allRequests.length };
 }
 
-export async function approveFoodItem(id) {
+/**
+ * Approve a dish, and decide whether it joins the menu's standing adjustment.
+ *
+ * A dish arriving for approval carries no adjustment: it was created after
+ * every run that shaped the menu around it. Approved as-is it goes live at its
+ * bare base price beside dishes the platform has marked 20% up and 10% down --
+ * visibly cheaper or dearer than its neighbours for no reason a customer could
+ * name. Approving it INTO the adjustment was equally wrong as a silent default:
+ * a restaurant that has just repriced a dish would find the platform's old
+ * discount applied to the new figure without being asked.
+ *
+ * So it is a choice at the moment of approval, and the default is to leave the
+ * dish untouched -- the conservative reading, and what every approval did
+ * before this existed.
+ *
+ * @param {string} id
+ * @param {object} [options]
+ * @param {boolean} [options.applyGlobalPricing=false]
+ *   true  -> inherit the markup and discount totals standing over this menu
+ *   false -> approve at the base price, adjustment-free
+ */
+export async function approveFoodItem(id, options = {}) {
     if (!id || !mongoose.Types.ObjectId.isValid(String(id))) {
         throw new ValidationError('Invalid food id');
     }
+    const applyGlobalPricing = options?.applyGlobalPricing === true;
+
     const updated = await FoodItem.findOneAndUpdate(
         { _id: id, approvalStatus: 'pending' },
         { $set: { approvalStatus: 'approved', approvedAt: new Date(), rejectedAt: null, rejectionReason: '' } },
         { new: true }
     ).lean();
     if (updated?.restaurantId) {
+        /*
+         * Applied before the 99-store check below, which reads the dish's
+         * price: a dish approved into a 30% discount may land under the cap
+         * when its base price did not, and the shelf should reflect what the
+         * customer will actually pay.
+         */
+        if (applyGlobalPricing) {
+            try {
+                const { resolveStandingAdjustment } = await import('./priceAdjustment.service.js');
+                const { formulationFieldsFor } = await import('../../shared/formulationPricing.js');
+                const standing = await resolveStandingAdjustment(updated.restaurantId);
+
+                const base = Number(updated.basePrice) > 0
+                    ? Number(updated.basePrice)
+                    : Number(updated.price);
+
+                if (base > 0 && (standing.markupPercent > 0 || standing.discountPercent > 0)) {
+                    const fields = formulationFieldsFor(base, -standing.discountPercent);
+                    if (fields) {
+                        const next = {
+                            basePrice: fields.basePrice,
+                            price: fields.price,
+                            formulationPrice: fields.price,
+                            formulationDiscountPercent: standing.discountPercent,
+                            formulationMarkupPercent: standing.markupPercent,
+                            // The signed field older readers still consult; a
+                            // markup wins when both stand, as elsewhere.
+                            formulationPercent: standing.markupPercent > 0
+                                ? standing.markupPercent
+                                : -standing.discountPercent,
+                        };
+                        /*
+                         * The struck figure, chosen the way a run would have
+                         * chosen it for this dish.
+                         *
+                         * A decrease strikes the price the dish was selling for
+                         * before the cut. This dish was never cut -- it is
+                         * being approved straight into the total -- so the
+                         * figure it is discounted FROM is its own base price.
+                         * Recording that puts it exactly where its neighbours
+                         * are, which is the point of inheriting at all.
+                         *
+                         * With no discount standing there is nothing it dropped
+                         * from, so the markup figure applies instead and no
+                         * strike is stored.
+                         */
+                        const struckFromBase = standing.lastDirection === 'decrease'
+                            && standing.discountPercent > 0;
+                        const strike = struckFromBase
+                            ? fields.basePrice
+                            : Math.round(base * (1 + standing.markupPercent / 100) * 100) / 100;
+                        if (struckFromBase) {
+                            next.formulationStrikePrice = fields.basePrice;
+                        }
+                        next.discountPercent = strike > next.price
+                            ? Math.round(((strike - next.price) / strike) * 10000) / 100
+                            : 0;
+
+                        await FoodItem.updateOne({ _id: updated._id }, { $set: next });
+                        Object.assign(updated, next);
+                    }
+                }
+            } catch (err) {
+                /*
+                 * Logged, not thrown. The dish is already approved at this
+                 * point; failing here would leave it live and the admin staring
+                 * at an error, unsure whether the approval landed.
+                 */
+                console.error('Failed to apply the standing adjustment on approval:', err);
+            }
+        }
+
         // Single DB update; makes user-facing menu reflect approval immediately.
         await syncMenuItemApprovalStatus(updated.restaurantId, updated._id, 'approved', '');
 

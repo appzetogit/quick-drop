@@ -101,6 +101,46 @@ export default function FoodApproval() {
   const totalRequests = filteredRequests.length
 
   // Handle approve food item or addon
+  /*
+   * Whether the dish being approved joins the price adjustment standing over
+   * its menu.
+   *
+   * Defaults to "leave it untouched" deliberately. A dish arriving for approval
+   * was created after every run that shaped the menu around it, so approving it
+   * as-is puts it live at its bare base price beside neighbours the platform
+   * has marked up and discounted -- but silently applying an old discount to a
+   * price a restaurant has just set is the worse mistake of the two, so the
+   * quiet default is the one that changes nothing.
+   */
+  const [applyGlobalPricing, setApplyGlobalPricing] = useState(false)
+  const [standing, setStanding] = useState(null)
+
+  /*
+   * Reset the choice whenever a different request is opened. It is a decision
+   * about one dish, and carrying it over would apply an adjustment the admin
+   * chose for something else.
+   */
+  useEffect(() => {
+    setApplyGlobalPricing(false)
+    setStanding(null)
+    const id = selectedRequest?._id || selectedRequest?.id
+    if (!id || selectedRequest?.entityType === 'addon') return undefined
+    let cancelled = false
+    adminAPI
+      .getStandingAdjustment(id)
+      .then((res) => {
+        if (!cancelled) setStanding(res?.data?.data ?? null)
+      })
+      .catch(() => {
+        // The choice still works without the preview; it just has to be made
+        // without the numbers in view, so this stays quiet rather than alarming.
+        if (!cancelled) setStanding(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedRequest])
+
   const handleApprove = async (request) => {
     if (!request?.isActionable) return
     try {
@@ -111,8 +151,12 @@ export default function FoodApproval() {
         await adminAPI.approveRestaurantAddon(id)
         toast.success('Add-on approved successfully')
       } else {
-        await adminAPI.approveFoodItem(id)
-        toast.success('Food item approved successfully')
+        await adminAPI.approveFoodItem(id, { applyGlobalPricing })
+        toast.success(
+          applyGlobalPricing
+            ? 'Approved with the menu\'s current price adjustment'
+            : 'Approved at its own price',
+        )
       }
       
       await fetchFoodRequests()
@@ -464,6 +508,90 @@ export default function FoodApproval() {
               </div>
             </div>
           )}
+          {/*
+            The pricing choice, above the buttons rather than beside them: it
+            changes what Approve does, so it has to be read before the button is
+            reached. Only shown when there is actually an adjustment standing --
+            offering a choice between two identical outcomes is noise.
+          */}
+          {selectedRequest?.isActionable
+            && selectedRequest?.entityType !== 'addon'
+            && standing?.standing
+            && (standing.standing.markupPercent > 0 || standing.standing.discountPercent > 0) ? (
+            <div className="px-6 pt-4">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-semibold text-amber-900">
+                  This menu is on a price adjustment
+                </p>
+                <p className="mt-1 text-xs text-amber-800">
+                  {standing.standing.markupPercent > 0
+                    ? `${standing.standing.markupPercent}% markup`
+                    : null}
+                  {standing.standing.markupPercent > 0 && standing.standing.discountPercent > 0
+                    ? " and "
+                    : null}
+                  {standing.standing.discountPercent > 0
+                    ? `${standing.standing.discountPercent}% discount`
+                    : null}
+                  {" "}applies to the other dishes here. This one was created afterwards, so it
+                  carries none of it.
+                </p>
+
+                <div className="mt-3 space-y-2">
+                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-amber-200 bg-white p-3">
+                    <input
+                      type="radio"
+                      name="approval-pricing"
+                      className="mt-0.5"
+                      checked={!applyGlobalPricing}
+                      onChange={() => setApplyGlobalPricing(false)}
+                    />
+                    <span className="text-xs">
+                      <span className="block font-semibold text-slate-900">
+                        Leave it untouched
+                      </span>
+                      <span className="block text-slate-600">
+                        Goes live at its own price
+                        {standing.preview?.untouched?.pays != null
+                          ? ` — customers pay ${"\u20B9"}${standing.preview.untouched.pays}, nothing struck through`
+                          : ""}
+                        .
+                      </span>
+                    </span>
+                  </label>
+
+                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-amber-200 bg-white p-3">
+                    <input
+                      type="radio"
+                      name="approval-pricing"
+                      className="mt-0.5"
+                      checked={applyGlobalPricing}
+                      onChange={() => setApplyGlobalPricing(true)}
+                    />
+                    <span className="text-xs">
+                      <span className="block font-semibold text-slate-900">
+                        Apply the current adjustment
+                      </span>
+                      <span className="block text-slate-600">
+                        Lands where the rest of the menu is
+                        {standing.preview?.applied?.pays != null
+                          ? ` — customers pay ${"\u20B9"}${standing.preview.applied.pays}`
+                          : ""}
+                        {standing.preview?.applied?.cutout
+                          ? `, struck through at ${"\u20B9"}${standing.preview.applied.cutout}`
+                          : ""}
+                        .
+                      </span>
+                    </span>
+                  </label>
+                </div>
+
+                <p className="mt-2 text-[11px] text-amber-700">
+                  The restaurant&rsquo;s own base price is not changed either way.
+                </p>
+              </div>
+            </div>
+          ) : null}
           <DialogFooter className="p-6 pt-4 border-t border-gray-100 bg-slate-50/50 flex gap-2">
             <button
               type="button"
