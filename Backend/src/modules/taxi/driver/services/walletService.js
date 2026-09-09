@@ -6,6 +6,7 @@ import { Driver } from '../models/Driver.js';
 import { WalletTransaction } from '../models/WalletTransaction.js';
 import { Ride } from '../../user/models/Ride.js';
 import { getWalletSettings } from '../../services/appSettingsService.js';
+import { getRiderFinance, resolveSharedCashLimit } from '../../../../core/finance/riderFinance.service.js';
 
 const normalizeAmount = (value, fieldName = 'amount') => {
   const amount = Number(value);
@@ -146,19 +147,41 @@ const getWalletSnapshot = async (driver) => {
   };
 };
 
+/*
+ * The driver app's wallet, now answered by the unified rider finance service.
+ *
+ * `balance` is no longer this vertical's own figure: it is ONE balance covering
+ * rides, deliveries and groceries, because the person driving the taxi is the
+ * person delivering the food and they were being shown two unrelated numbers.
+ *
+ * Every key the app already read keeps its name and meaning. What changed is
+ * where the numbers come from, plus three additions -- cashInHand,
+ * availableCashLimit and blockReason -- that the taxi side never had a way to
+ * express. `taxiSignedBalance` is kept alongside so this vertical's own ledger
+ * position is still inspectable when the unified figure is queried.
+ *
+ * The driver document is passed through rather than re-read: this is called from
+ * inside applyDriverWalletAdjustment's transaction, where a fresh read would miss
+ * the uncommitted balance and show the rider their pre-top-up figure.
+ */
 export const serializeDriverWallet = async (driver) => {
-  const wallet = await getWalletSnapshot(driver);
+  const finance = await getRiderFinance(driver?._id, { driverWallet: driver?.wallet || null });
 
   return {
-    balance: wallet.balance,
-    cashLimit: wallet.cashLimit,
-    minimumBalanceForOrders: wallet.minimumBalanceForOrders,
-    availableForOrders: wallet.availableForOrders,
-    isWalletEnabled: wallet.rules.isWalletEnabled,
-    isTransferEnabled: wallet.rules.isTransferEnabled,
-    minimumTopUpAmount: wallet.rules.minimumTopUpAmount,
-    minimumTransferAmount: wallet.rules.minimumTransferAmount,
-    isBlocked: wallet.isBlocked || !wallet.rules.isWalletEnabled || wallet.balance <= wallet.minimumBalanceForOrders,
+    balance: finance.walletBalance,
+    cashInHand: finance.cashInHand,
+    cashLimit: finance.cashLimit,
+    availableCashLimit: finance.availableCashLimit,
+    minimumBalanceForOrders: finance.rules.minimumBalanceForOrders,
+    availableForOrders: finance.availableForOrders,
+    isWalletEnabled: finance.rules.isWalletEnabled,
+    isTransferEnabled: finance.rules.isTransferEnabled,
+    minimumTopUpAmount: finance.rules.minimumTopUpAmount,
+    minimumTransferAmount: finance.rules.minimumTransferAmount,
+    isBlocked: finance.isBlocked,
+    blockReason: finance.blockReason,
+    taxiSignedBalance: finance.breakdown.taxi.signedBalance,
+    breakdown: finance.breakdown,
   };
 };
 
@@ -172,27 +195,43 @@ export const ensureDriverWalletCanAcceptRide = async (driverOrId, { session } = 
     throw new ApiError(404, 'Driver not found');
   }
 
-  const wallet = await getWalletSnapshot(driver);
-  const isBlocked = wallet.isBlocked || !wallet.rules.isWalletEnabled || wallet.balance <= wallet.minimumBalanceForOrders;
+  /*
+   * Cash collected on deliveries now blocks rides.
+   *
+   * This is the behaviour the shared cash limit exists for: a rider over the
+   * ceiling was previously refused food orders and free to keep taking rides
+   * against the very same uncollected cash. getRiderFinance applies both gates --
+   * this vertical's minimum-balance rule, unchanged, and the shared ceiling over
+   * combined cash in hand.
+   *
+   * The session-loaded wallet is passed through so the check sees the same
+   * balance as the surrounding transaction.
+   */
+  const finance = await getRiderFinance(driver._id, { driverWallet: driver?.wallet || null });
 
-  if (isBlocked) {
+  if (finance.isBlocked) {
     await Driver.findByIdAndUpdate(driver._id, {
-      'wallet.cashLimit': wallet.cashLimit,
+      'wallet.cashLimit': finance.cashLimit,
       'wallet.isBlocked': true,
     });
-    throw new ApiError(403, wallet.rules.isWalletEnabled
-      ? 'Driver wallet minimum balance is not met. Please top up to accept rides.'
-      : 'Driver wallet is disabled by admin.');
+
+    const messages = {
+      wallet_disabled: 'Driver wallet is disabled by admin.',
+      below_minimum_balance: 'Driver wallet minimum balance is not met. Please top up to accept rides.',
+      cash_limit_reached: `Cash in hand of Rs ${finance.cashInHand} has reached the limit of Rs ${finance.cashLimit}. Please deposit collected cash to continue.`,
+      blocked_by_admin: 'Driver wallet is blocked by admin.',
+    };
+    throw new ApiError(403, messages[finance.blockReason] || 'Driver wallet cannot accept rides right now.');
   }
 
-  if (Number(driver?.wallet?.cashLimit) !== wallet.cashLimit || driver?.wallet?.isBlocked) {
+  if (Number(driver?.wallet?.cashLimit) !== finance.cashLimit || driver?.wallet?.isBlocked) {
     await Driver.findByIdAndUpdate(driver._id, {
-      'wallet.cashLimit': wallet.cashLimit,
+      'wallet.cashLimit': finance.cashLimit,
       'wallet.isBlocked': false,
     });
   }
 
-  return wallet;
+  return finance;
 };
 
 export const applyDriverWalletAdjustment = async ({
@@ -218,9 +257,29 @@ export const applyDriverWalletAdjustment = async ({
 
   const before = await getWalletSnapshot(driver);
 
+  /*
+   * wallet.cashLimit stores the SHARED ceiling, not this vertical's derived one.
+   *
+   * ensureDriverWalletCanAcceptRide writes the shared figure, and if this path
+   * kept writing the taxi-local |min(minimumBalanceForOrders, 0)| the two writers
+   * would overwrite each other on every ride and every top-up, leaving the field
+   * meaning whichever ran last.
+   *
+   * Only the limit is fetched, not the whole finance view: this runs on every ride
+   * settlement and every top-up, and the delivery aggregates behind a full
+   * getRiderFinance call would be paid for on that hot path to read one number.
+   */
+  const { cashLimit: sharedCashLimit } = await resolveSharedCashLimit();
+
   // ponytail: compute balance AND isBlocked in one atomic aggregation-pipeline update so the
   // block flag is derived from the real post-balance. Deriving it from the pre-read snapshot
   // (then $set) lost the update under concurrent adjustments.
+  //
+  // Only the minimum-balance rule is applied here. The shared cash ceiling needs
+  // the delivery aggregates, which an aggregation-pipeline update cannot reach --
+  // so wallet.isBlocked stays this vertical's fast cache, while the authoritative
+  // answer is recomputed on every read by serializeDriverWallet and enforced by
+  // ensureDriverWalletCanAcceptRide before any ride is accepted.
   const walletEnabled = before.rules.isWalletEnabled;
   const minBal = before.minimumBalanceForOrders;
   const updatedDriver = await Driver.findByIdAndUpdate(
@@ -231,7 +290,7 @@ export const applyDriverWalletAdjustment = async ({
           'wallet.balance': {
             $round: [{ $add: [{ $ifNull: ['$wallet.balance', 0] }, normalizedAmount] }, 2],
           },
-          'wallet.cashLimit': before.cashLimit,
+          'wallet.cashLimit': sharedCashLimit,
         },
       },
       {
@@ -256,7 +315,7 @@ export const applyDriverWalletAdjustment = async ({
         amount: normalizedAmount,
         balanceBefore,
         balanceAfter,
-        cashLimit: before.cashLimit,
+        cashLimit: sharedCashLimit,
         isBlockedAfter,
         description,
         metadata,

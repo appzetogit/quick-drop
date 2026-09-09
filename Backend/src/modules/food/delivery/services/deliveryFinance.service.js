@@ -8,6 +8,9 @@ import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransa
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { createRazorpayCheckoutOrder, fetchRazorpayPayment, isRazorpayConfigured, verifyPaymentSignature } from '../../orders/helpers/razorpay.helper.js';
+import { getRiderFinance } from '../../../../core/finance/riderFinance.service.js';
+
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
 /**
  * Enhanced wallet fetch for delivery partners.
@@ -151,18 +154,87 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
         }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
+    /*
+     * The money figures come from the unified rider finance service, not from the
+     * food-only arithmetic above.
+     *
+     * The rider delivering this order is the same person driving the taxi, and they
+     * were being shown two unrelated balances: this endpoint's food figure and
+     * taxidrivers.wallet.balance. pocketBalance is now ONE balance across rides,
+     * deliveries and groceries, and cashInHand is the cash they hold from any of
+     * them, measured against a single shared ceiling.
+     *
+     * Every key keeps its name and its meaning, because six call sites read this --
+     * including the COD gate in order.service.js, which now compares an order
+     * against a rider's real combined headroom rather than their food-only one.
+     *
+     * The food-only aggregates above are still computed: they build the transaction
+     * list, and they are returned under `breakdown` so a disagreement between the
+     * two verticals stays diagnosable.
+     */
+    const finance = await getRiderFinance(partnerId);
+
+    /*
+     * Ride ledger rows belong in this history too. One wallet with one balance and
+     * a history that silently omitted every taxi movement would leave a rider
+     * unable to account for their own total.
+     */
+    let taxiTransactions = [];
+    if (finance.driverId) {
+        try {
+            const { WalletTransaction } = await import('../../../taxi/driver/models/WalletTransaction.js');
+            const rows = await WalletTransaction.find({ driverId: finance.driverId })
+                .sort({ createdAt: -1 })
+                .limit(50)
+                .lean();
+
+            const labels = {
+                ride_earning: 'Ride earning',
+                commission_deduction: 'Commission on cash ride',
+                top_up: 'Wallet top-up',
+                adjustment: 'Wallet adjustment',
+            };
+
+            taxiTransactions = (rows || []).map((t) => ({
+                id: t._id,
+                _id: t._id,
+                // Signed on the taxi side: a negative amount is money taken from the
+                // rider, which this list expresses as a deduction.
+                type: Number(t.amount) < 0 ? 'deduction' : 'payment',
+                amount: Math.abs(Number(t.amount) || 0),
+                status: 'Completed',
+                date: t.createdAt,
+                createdAt: t.createdAt,
+                description: t.description || labels[t.type] || 'Taxi wallet movement',
+                source: 'taxi',
+                balanceAfter: t.balanceAfter,
+            }));
+        } catch (err) {
+            // A missing ride history must not take down the wallet screen.
+            taxiTransactions = [];
+        }
+    }
+
+    const mergedTransactions = [...transactions, ...taxiTransactions]
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
+
     return {
-        totalBalance: totalEarned + totalBonus, // Gross lifetime earnings
-        pocketBalance, // Available to withdraw
-        cashInHand, // COD to be deposited/deducted
+        // Lifetime gross across both streams, which is what this key always meant.
+        totalBalance: round2(totalEarned + totalBonus + finance.breakdown.taxi.walletPortion),
+        pocketBalance: finance.walletBalance, // ONE balance, available to withdraw
+        cashInHand: finance.cashInHand, // combined cash owed back to the platform
         totalWithdrawn, // Actually paid out
         pendingWithdrawals, // In process
         totalEarned,
         totalBonus,
-        totalCashLimit,
-        availableCashLimit: Math.max(0, totalCashLimit - cashInHand),
-        deliveryWithdrawalLimit,
-        transactions: transactions.slice(0, 50)
+        totalCashLimit: finance.cashLimit, // the shared ceiling
+        availableCashLimit: finance.availableCashLimit,
+        deliveryWithdrawalLimit: finance.rules.withdrawalLimit || deliveryWithdrawalLimit,
+        isBlocked: finance.isBlocked,
+        blockReason: finance.blockReason,
+        driverId: finance.driverId,
+        breakdown: finance.breakdown,
+        transactions: mergedTransactions.slice(0, 50)
     };
 };
 

@@ -10,6 +10,9 @@ import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { createRazorpayOrder, getRazorpayKeyId, isRazorpayConfigured, verifyPaymentSignature, fetchRazorpayPayment } from '../../orders/helpers/razorpay.helper.js';
 import { logger } from '../../../../utils/logger.js';
+// Reaches out of quickCommerce to the platform-wide service on purpose: a rider's
+// balance cannot be per-vertical and still be one balance.
+import { getRiderFinance } from '../../../../../../core/finance/riderFinance.service.js';
 
 /**
  * Enhanced wallet fetch for delivery partners.
@@ -156,18 +159,36 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
         }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
+    /*
+     * Same unification as the food module's copy of this service: the money figures
+     * come from the platform-wide rider finance service, so a rider sees one balance
+     * and one cash-in-hand whether they open the grocery app, the food app or the
+     * driver app.
+     *
+     * Leaving this duplicate on its own arithmetic would have re-created the exact
+     * split being fixed -- a third number for the same person.
+     *
+     * Keys and their meanings are unchanged; lockedAmount stays a quick-commerce
+     * concern, as nothing outside this vertical models it.
+     */
+    const finance = await getRiderFinance(partnerId);
+
     return {
-        totalBalance: totalEarned + totalBonus, // Gross lifetime earnings
-        pocketBalance, // Available to withdraw
-        cashInHand, // COD to be deposited/deducted
+        totalBalance: Math.round((totalEarned + totalBonus + finance.breakdown.taxi.walletPortion) * 100) / 100,
+        pocketBalance: finance.walletBalance, // ONE balance, available to withdraw
+        cashInHand: finance.cashInHand, // combined cash owed back to the platform
         totalWithdrawn, // Actually paid out
         pendingWithdrawals, // In process
         lockedAmount: effectiveLockedAmount,
         totalEarned,
         totalBonus,
-        totalCashLimit,
-        availableCashLimit: Math.max(0, totalCashLimit - cashInHand),
-        deliveryWithdrawalLimit,
+        totalCashLimit: finance.cashLimit, // the shared ceiling
+        availableCashLimit: finance.availableCashLimit,
+        deliveryWithdrawalLimit: finance.rules.withdrawalLimit || deliveryWithdrawalLimit,
+        isBlocked: finance.isBlocked,
+        blockReason: finance.blockReason,
+        driverId: finance.driverId,
+        breakdown: finance.breakdown,
         transactions: transactions.slice(0, 50)
     };
 };
