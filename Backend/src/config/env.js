@@ -107,8 +107,23 @@ export const config = {
     uploadWebpMaxWidth: Number(process.env.UPLOAD_WEBP_MAX_WIDTH || 2560),
     /** @deprecated Use uploadStorageRoot */
     uploadPath: process.env.UPLOAD_PATH || 'uploads/',
-    requestJsonLimit: process.env.REQUEST_JSON_LIMIT || '2mb',
-    requestUrlencodedLimit: process.env.REQUEST_URLENCODED_LIMIT || '2mb',
+    /*
+     * 25mb, not 2mb, because the taxi admin panel posts images as base64 data URLs
+     * inside the JSON body -- driver profile photos, vehicle types, CMS banners,
+     * goods types, pooling vehicles, bus service media.
+     *
+     * Base64 inflates a file by a third, and several of those screens submit more
+     * than one image in a single payload: CreateDriver sends a profile picture plus
+     * every uploaded document at once. So a genuinely small 1MB photo arrived as
+     * ~1.37MB and a two-document driver form cleared 2mb easily -- express rejected
+     * the request with "request entity too large" before any image-size check ran,
+     * which is why the panel reported an oversized image for a 1MB file.
+     *
+     * nginx already accepts 50M in front of this, so 2mb was the binding limit and
+     * the only one nobody had matched to what the client actually sends.
+     */
+    requestJsonLimit: process.env.REQUEST_JSON_LIMIT || '25mb',
+    requestUrlencodedLimit: process.env.REQUEST_URLENCODED_LIMIT || '25mb',
 
     // Redis
     redisEnabled: process.env.REDIS_ENABLED === 'true',

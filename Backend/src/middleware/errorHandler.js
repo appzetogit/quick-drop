@@ -30,6 +30,20 @@ const errorHandler = (err, req, res, next) => {
         }
     }
 
+    /*
+     * express.json rejects an oversized body before any route runs, and its
+     * "request entity too large" reads to an admin as though the image they picked
+     * was too big -- even for a 1MB photo, because the taxi panel base64-encodes
+     * images into the JSON body and a third is added in the encoding.
+     *
+     * Naming the real limit and the real cause is the difference between shrinking
+     * one photo and understanding that several images went up in one request.
+     */
+    if (err.type === 'entity.too.large' || err.name === 'PayloadTooLargeError') {
+        statusCode = 413;
+        message = `That upload is too large for one request. The limit is ${config.requestJsonLimit} of encoded data, and images sent this way grow by about a third. Try fewer or smaller images at once.`;
+    }
+
     const requestId = req.requestId || '-';
 
     logger.error(
