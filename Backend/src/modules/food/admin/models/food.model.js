@@ -95,6 +95,21 @@ const foodSchema = new mongoose.Schema(
          * See shared/itemDiscountPricing.js.
          */
         basePrice: { type: Number, min: 0, default: null },
+        /**
+         * The struck-through comparison for THIS size, decided by the last global
+         * run -- the per-variant twin of the dish's formulationStrikePrice.
+         *
+         * Without it an increase was invisible on any dish sold by size. The
+         * markup raises only a struck figure, never what is charged, and the only
+         * struck figure a size had was its basePrice -- which an increase must not
+         * move. So price stayed equal to basePrice, clients discard a strike that
+         * is not strictly above the price, and a +20% run changed nothing on
+         * screen. Decreases appeared to work only because cutting price below
+         * basePrice happens to leave basePrice standing above it.
+         *
+         * null means no run has decided one; readers fall back to basePrice.
+         */
+        formulationStrikePrice: { type: Number, min: 0, default: null },
         discountPercent: { type: Number, min: 0, max: 100, default: 0 },
         /**
          * The one active global price adjustment on this dish, as a percent of

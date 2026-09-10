@@ -41,6 +41,28 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
                 price
             };
 
+            /*
+             * Carry the formulation fields through a save instead of dropping them.
+             *
+             * This built a fresh object per size, so every admin or restaurant save
+             * replaced the variants array and silently discarded basePrice -- and
+             * the next global run, finding no base, adopted the already-adjusted
+             * price as the new one. On a marked-down size that walks the base
+             * downwards on every save, which is the same ratchet that hit the dish
+             * itself when a selling price was written into its base.
+             *
+             * Only copied when the caller actually sent them. A genuinely new size
+             * carries neither, and the run settles both.
+             */
+            const incomingBase = Number(entry?.basePrice);
+            if (Number.isFinite(incomingBase) && incomingBase > 0) {
+                variant.basePrice = Math.round(incomingBase * 100) / 100;
+            }
+            const incomingStrike = Number(entry?.formulationStrikePrice ?? entry?.strikePrice);
+            if (Number.isFinite(incomingStrike) && incomingStrike > 0) {
+                variant.formulationStrikePrice = Math.round(incomingStrike * 100) / 100;
+            }
+
             // Optional per-size quantity limits. Absent or blank means "not set",
             // which is different from zero: the dish's own limit then applies.
             // Send null explicitly to clear one.
@@ -140,7 +162,12 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
     return normalized;
 };
 
-export const serializeFoodVariants = (value = []) =>
+/**
+ * @param {object} [options]
+ * @param {boolean} [options.strikeAsBase]  emit the run's struck figure as
+ *   `basePrice`. Customer-facing callers only -- see the note on the field.
+ */
+export const serializeFoodVariants = (value = [], { strikeAsBase = false } = {}) =>
     (Array.isArray(value) ? value : [])
         .map((entry = {}) => {
             const name = toTrimmedString(entry?.name);
@@ -154,19 +181,33 @@ export const serializeFoodVariants = (value = []) =>
                 name,
                 price,
                 /*
-                 * What this size costs before the dish's global adjustment.
-                 * Sent so a client can strike it through directly instead of
-                 * reconstructing one: the customer app used to infer a size's
-                 * "was" price by adding the DISH's saving to it, which is a
-                 * different number on every size and was wrong on all but one.
+                 * `strikeAsBase` decides which number this carries, and the split
+                 * is deliberate.
                  *
-                 * Equal to `price` on an unadjusted size, and the client
-                 * discards anything not strictly above the price, so that
-                 * renders as no discount rather than "Rs 120, was Rs 120".
+                 * Customer-facing (true): the run's struck figure, so an increase
+                 * is visible on a dish sold by size. Mirrors what the dish itself
+                 * already does -- `display.strikePrice ?? display.basePrice` in
+                 * publicFoods and restaurantMenu.
+                 *
+                 * Admin and approval (false): the real base, never the strike. The
+                 * admin form loads this field and saves it straight back, so
+                 * sending a strike here would write it into basePrice and ratchet
+                 * the base UPWARDS on every save -- the same failure as a selling
+                 * price being written into the base, in the other direction.
                  */
-                basePrice: Number.isFinite(Number(entry?.basePrice)) && Number(entry?.basePrice) > 0
-                    ? Number(entry.basePrice)
-                    : price,
+                basePrice: (() => {
+                    const realBase = Number.isFinite(Number(entry?.basePrice)) && Number(entry?.basePrice) > 0
+                        ? Number(entry.basePrice)
+                        : price;
+                    if (!strikeAsBase) return realBase;
+                    const strike = Number(entry?.formulationStrikePrice);
+                    return Number.isFinite(strike) && strike > realBase ? strike : realBase;
+                })(),
+                // Always the run's own figure, unconflated, for clients that would
+                // rather read it directly than infer one.
+                strikePrice: Number.isFinite(Number(entry?.formulationStrikePrice)) && Number(entry?.formulationStrikePrice) > 0
+                    ? Number(entry.formulationStrikePrice)
+                    : null,
                 // null means this size sets none of its own; the dish's applies.
                 minOrderQuantity: entry?.minOrderQuantity ?? null,
                 maxOrderQuantity: entry?.maxOrderQuantity ?? null,

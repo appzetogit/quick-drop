@@ -211,12 +211,12 @@ export async function listPublicFoods(query = {}) {
             // dish is not sold by. Missi Roti sells for 50 with variants off and
             // still carried a 26.52 'half' row, so the app advertised 26.52 for a
             // dish that charges 50.
-            variants: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants) : [],
+            variants: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants, { strikeAsBase: true }) : [],
             // The toggle, tri-state on old rows: absent means "sell by variants if"
             // "any exist", which is what those rows always did. Serialised as the
             // resolved boolean so no client re-derives the legacy rule.
             variantsEnabled: food.variantsEnabled !== false,
-            variations: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants) : [],
+            variations: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants, { strikeAsBase: true }) : [],
             image: food.image || '',
             // Falls back to the single image so a dish saved before galleries
             // existed still returns a one-entry list — the app can then always

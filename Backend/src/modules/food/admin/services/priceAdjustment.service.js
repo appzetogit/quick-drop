@@ -564,6 +564,43 @@ const applyFormulationPercent = async (filter, percent, { undo = false } = {}) =
                                 2,
                             ],
                         },
+                    /*
+                     * Every size gets the same decision, measured against its own
+                     * base. This stage used to set the dish's strike and nothing
+                     * else, so an increase on a dish sold by size landed nowhere a
+                     * customer could see: the markup only ever moves a struck
+                     * figure, and the sizes had none.
+                     *
+                     * Still reading the PRE-run `$$v.price` on a decrease, exactly
+                     * as the dish above does -- the stage that cuts prices runs
+                     * after this one.
+                     */
+                    variants: {
+                        $map: {
+                            input: { $ifNull: ['$variants', []] },
+                            as: 'v',
+                            in: {
+                                $mergeObjects: [
+                                    '$$v',
+                                    {
+                                        formulationStrikePrice: (!undo && addDiscount > 0)
+                                            ? { $round: ['$$v.price', 2] }
+                                            : {
+                                                $round: [
+                                                    {
+                                                        $multiply: [
+                                                            '$$v.basePrice',
+                                                            { $add: [1, { $divide: ['$formulationMarkupPercent', 100] }] },
+                                                        ],
+                                                    },
+                                                    2,
+                                                ],
+                                            },
+                                    },
+                                ],
+                            },
+                        },
+                    },
                 },
             },
             {
