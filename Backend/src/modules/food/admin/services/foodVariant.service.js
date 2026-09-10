@@ -57,6 +57,24 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
             const incomingBase = Number(entry?.basePrice);
             if (Number.isFinite(incomingBase) && incomingBase > 0) {
                 variant.basePrice = Math.round(incomingBase * 100) / 100;
+            } else {
+                /*
+                 * A size with no base gets one now, equal to its price.
+                 *
+                 * Leaving it unset used to be deliberate -- the next global run
+                 * settles it. But a dish whose sizes are never touched by a run
+                 * keeps null bases indefinitely, and then nothing can express the
+                 * dish's markup per size: paneer chila carried a 20% markup with
+                 * both sizes at basePrice null, so neither could be given a struck
+                 * figure and the customer app fell back to inferring one by adding
+                 * the DISH's saving to each size. That is a flat amount, so it was
+                 * right only for the size whose price happens to equal the dish's
+                 * (Half) and wrong for every other (Full showed 670 instead of 720).
+                 *
+                 * An unadjusted size's price IS its base, so this is the same value
+                 * a run would have settled -- just recorded immediately.
+                 */
+                variant.basePrice = price;
             }
             const incomingStrike = Number(entry?.formulationStrikePrice ?? entry?.strikePrice);
             if (Number.isFinite(incomingStrike) && incomingStrike > 0) {

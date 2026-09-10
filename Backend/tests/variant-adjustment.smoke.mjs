@@ -125,10 +125,17 @@ const main = async () => {
         assert.equal(savedHalf.formulationStrikePrice, 155, 'and the strike with it');
     });
 
-    check('a brand new size carries neither, for the run to settle', () => {
+    check('a brand new size gets a base immediately, equal to its price', () => {
+        /*
+         * It used to be left unset for the next run to settle. A dish no run ever
+         * touches then keeps null bases forever, and nothing can express its
+         * markup per size -- which is how paneer chila ended up with a 20% markup
+         * that neither size could show, and the app inferred a flat saving that
+         * was right for Half and wrong for Full.
+         */
         const saved = normalizeFoodVariantsInput([{ name: 'Family', price: 500 }]);
-        assert.equal(saved[0].basePrice, undefined);
-        assert.equal(saved[0].formulationStrikePrice, undefined);
+        assert.equal(saved[0].basePrice, 500, 'an unadjusted size\'s price is its base');
+        assert.equal(saved[0].formulationStrikePrice, undefined, 'but no strike until a run decides one');
     });
 
     await mongoose.disconnect();
