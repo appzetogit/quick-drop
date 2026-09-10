@@ -8,11 +8,31 @@ export const normalizeFoodVariants = (value) =>
       const price = Number(entry?.price)
       if (!name || !Number.isFinite(price) || price <= 0) return null
 
+      const basePrice = Number(entry?.basePrice)
+      const strikePrice = Number(entry?.strikePrice)
+
       return {
         id,
         _id: id,
         name,
         price,
+        /*
+         * The size's own base, and the figure struck beside it.
+         *
+         * These were dropped here, and this is the one place BOTH editors load
+         * through -- so the admin panel and the restaurant portal each showed
+         * `price`, the figure AFTER the global adjustment, in a box labelled
+         * "Base Price". Margherita Pizza's Small sat at a base of 120 and the box
+         * read 72 once 40% was standing. Every fix upstream was thrown away at
+         * this line.
+         *
+         * null rather than a fallback to `price`: the caller has to be able to
+         * tell "no base recorded" from "a base that happens to equal the price",
+         * and quietly substituting the charged figure is how it got written back
+         * as the base in the first place.
+         */
+        basePrice: Number.isFinite(basePrice) && basePrice > 0 ? basePrice : null,
+        strikePrice: Number.isFinite(strikePrice) && strikePrice > 0 ? strikePrice : null,
         // Per-variant add-on pairings must survive normalisation, or the picker
         // can neither offer a variant-only add-on nor show its per-size price --
         // the customer would see the published price and be charged the pairing's.
