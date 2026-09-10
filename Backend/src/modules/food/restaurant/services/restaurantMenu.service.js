@@ -11,7 +11,19 @@ import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { resolveItemDisplayPricing } from '../../shared/itemDiscountPricing.js';
 import { normalizeOtherPlatformSettings, resolveComparisonPrice, resolveItemOtherPlatformPrice } from '../../shared/otherPlatformPricing.js';
 
-const buildMenuFromFoods = async (foods = []) => {
+/**
+ * @param {object} [options]
+ * @param {boolean} [options.forCustomer]
+ *   Customers are sent the struck-through comparison as `basePrice`, because that
+ *   is the figure their app strikes. The restaurant portal must be sent the REAL
+ *   base: its editor loads that field and posts it straight back, so handing it a
+ *   strike would write the strike in as the new base and ratchet the base upwards
+ *   on every save -- a 20% markup compounding once per save.
+ *
+ *   One mapper serves both audiences, which is how they came to share a setting
+ *   they must not share.
+ */
+const buildMenuFromFoods = async (foods = [], { forCustomer = false } = {}) => {
     // Admin-configurable platform cap, so the limits the seller UI shows match
     // what checkout will actually enforce. Read once per menu, not per item.
     const quantityCeiling = await getOrderQuantityCeiling();
@@ -104,7 +116,11 @@ const buildMenuFromFoods = async (foods = []) => {
                  */
                 const comparison = resolveComparisonPrice({
                     price: display.price,
-                    basePrice: display.strikePrice ?? display.basePrice,
+                    // The strike is the comparison a customer sees; the portal gets
+                    // the real base, which is the number it lets a restaurant edit.
+                    basePrice: forCustomer
+                        ? (display.strikePrice ?? display.basePrice)
+                        : display.basePrice,
                     otherPlatformPrice,
                     label: otherPlatform.label,
                 });
@@ -133,7 +149,7 @@ const buildMenuFromFoods = async (foods = []) => {
             // dish is not sold by. Missi Roti sells for 50 with variants off and
             // still carried a 26.52 'half' row, so the app advertised 26.52 for a
             // dish that charges 50.
-            variants: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants, { strikeAsBase: true }) : [],
+            variants: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants, { strikeAsBase: forCustomer }) : [],
             // The toggle, tri-state on old rows: absent means "sell by variants if"
             // "any exist", which is what those rows always did. Serialised as the
             // resolved boolean so no client re-derives the legacy rule.
@@ -158,7 +174,7 @@ const buildMenuFromFoods = async (foods = []) => {
             // different ways.
             bogo: describeBogoBadge(bogoOffersByItem, food._id),
             freeDelivery: food.freeDelivery === true,
-            variations: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants, { strikeAsBase: true }) : [],
+            variations: (food.variantsEnabled !== false) ? serializeFoodVariants(food.variants, { strikeAsBase: forCustomer }) : [],
             image: food.image || '',
             foodType: food.foodType || 'Non-Veg',
             isActive: food.isActive !== false,
@@ -237,7 +253,8 @@ export async function getRestaurantMenu(restaurantId) {
         .sort({ createdAt: -1 })
         .limit(5000)
         .lean();
-    return buildMenuFromFoods(foods);
+    // The portal. Real base prices, never strikes.
+    return buildMenuFromFoods(foods, { forCustomer: false });
 }
 
 export async function updateRestaurantMenu(restaurantId, body = {}) {
@@ -274,7 +291,8 @@ export async function getPublicApprovedRestaurantMenu(restaurantIdOrSlug) {
         .sort({ createdAt: -1 })
         .limit(2000)
         .lean();
-    return buildMenuFromFoods(foods);
+    // Customer-facing. Strikes as basePrice, which is what the app renders.
+    return buildMenuFromFoods(foods, { forCustomer: true });
 }
 
 export async function syncMenuItemApprovalStatus(restaurantId, itemId, status, rejectionReason = '') {
