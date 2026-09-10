@@ -331,6 +331,10 @@ export default function HubMenu() {
               rating: item.rating || 0.0,
               reviews: item.reviews || 0,
               price: item.price || 0,
+              // The restaurant's own price. `price` is what a customer pays after
+              // the platform's global adjustment, so on a marked-down dish the two
+              // differ and only this one is theirs.
+              basePrice: item.basePrice != null ? Number(item.basePrice) : null,
               stock: item.stock || "Unlimited",
               discount: item.discount || null,
               originalPrice: item.originalPrice || null,
@@ -370,6 +374,7 @@ export default function HubMenu() {
                 rating: item.rating || 0.0,
                 reviews: item.reviews || 0,
                 price: item.price || 0,
+                basePrice: item.basePrice != null ? Number(item.basePrice) : null,
                 stock: item.stock || "Unlimited",
                 discount: item.discount || null,
                 originalPrice: item.originalPrice || null,
@@ -1481,7 +1486,20 @@ export default function HubMenu() {
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm font-medium text-gray-700 mb-3">₹{item.price}</p>
+                            {/*
+                              * Their price first. This used to be a bare `₹{item.price}`
+                              * -- the figure after the global adjustment -- so a decrease
+                              * made a restaurant's own listed price appear to drop, with
+                              * nothing on screen saying which number it was.
+                              */}
+                            <p className="text-sm font-medium text-gray-700 mb-3">
+                              ₹{item.basePrice != null ? item.basePrice : item.price}
+                              {item.basePrice != null && Math.abs(item.basePrice - item.price) >= 0.01 && (
+                                <span className="ml-2 text-xs font-normal text-gray-500">
+                                  customer pays ₹{item.price}
+                                </span>
+                              )}
+                            </p>
                             {isRejectedApproval(item.approvalStatus) && item.rejectionReason && (
                               <p className="text-xs text-red-600 -mt-2 mb-3">Reason: {item.rejectionReason}</p>
                             )}
@@ -2253,7 +2271,14 @@ export default function HubMenu() {
                                       {item.name}
                                     </h4>
                                   </div>
-                                  <p className="text-sm font-medium text-gray-700">₹{item.price}</p>
+                                  <p className="text-sm font-medium text-gray-700">
+                                    ₹{item.basePrice != null ? item.basePrice : item.price}
+                                    {item.basePrice != null && Math.abs(item.basePrice - item.price) >= 0.01 && (
+                                      <span className="ml-2 text-xs font-normal text-gray-500">
+                                        customer pays ₹{item.price}
+                                      </span>
+                                    )}
+                                  </p>
                                   {isRejectedApproval(item.approvalStatus) && item.rejectionReason && (
                                     <p className="text-xs text-red-600 mt-1">Reason: {item.rejectionReason}</p>
                                   )}
