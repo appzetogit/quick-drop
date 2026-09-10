@@ -1039,7 +1039,10 @@ export async function revertPriceAdjustment(id, actor = {}) {
                                                     in: {
                                                         $cond: [
                                                             { $gt: [{ $size: { $ifNull: [snap.variantBases, []] } }, 0] },
-                                                            '$$savedBase.basePrice',
+                                                            // Same guard as the dish above: a size the
+                                                            // snapshot has no base for keeps the one it
+                                                            // has, rather than being blanked.
+                                                            { $ifNull: ['$$savedBase.basePrice', '$$v.basePrice'] },
                                                             '$$v.basePrice',
                                                         ],
                                                     },
@@ -1061,7 +1064,22 @@ export async function revertPriceAdjustment(id, actor = {}) {
                     update: {
                         $set: {
                             price: snap.price,
-                            basePrice: snap.basePrice,
+                            /*
+                             * The base is restored ONLY when the snapshot recorded
+                             * a real one.
+                             *
+                             * 62 snapshots on production carry basePrice null --
+                             * rows captured before the field existed. Writing that
+                             * back blanked the dish's base, and the next decrease,
+                             * finding no base, adopted the already-discounted price
+                             * as the new one. That is a base price falling as a
+                             * result of a global run, which must never happen.
+                             *
+                             * Leaving the current base in place is right in any
+                             * case: a run never writes the base, so a revert has
+                             * nothing of its own to undo there.
+                             */
+                            ...(Number(snap.basePrice) > 0 ? { basePrice: snap.basePrice } : {}),
                             discountPercent: snap.discountPercent,
                             /*
                              * Each field restored only when the snapshot
