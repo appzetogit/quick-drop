@@ -3352,12 +3352,22 @@ const getAdminFoodCreatePricing = (body = {}) => {
     };
 };
 
+/** The lowest base among a dish's sizes -- the base behind its "from" price. */
+const cheapestVariantBase = (variants = []) => {
+    const bases = (Array.isArray(variants) ? variants : [])
+        .map((v) => Number(v?.basePrice))
+        .filter((n) => Number.isFinite(n) && n > 0);
+    return bases.length ? Math.min(...bases) : null;
+};
+
 const getAdminFoodUpdatedPricing = (existing = {}, body = {}) => {
     const variantsTouched = body.variants !== undefined || body.variations !== undefined;
     const update = {};
 
     const variants = variantsTouched
-        ? normalizeFoodVariantsInput(extractRawFoodVariants(body))
+        // `existing` lets the normalizer tell an untouched selling price from a
+        // deliberate reprice, so an ordinary save cannot walk a size's base down.
+        ? normalizeFoodVariantsInput(extractRawFoodVariants(body), { existing })
         : (existing.variants || []);
     if (variantsTouched) update.variants = variants;
 
@@ -3370,9 +3380,17 @@ const getAdminFoodUpdatedPricing = (existing = {}, body = {}) => {
         if (variants.length === 0) {
             throw new ValidationError('Add at least one variant, or switch variants off');
         }
-        const from = getFoodDisplayPrice({ variants });
-        update.price = from;
-        update.basePrice = from;
+        /*
+         * The dish's own figures mirror its cheapest size -- the "from" price a
+         * listing shows. `price` is the cheapest CHARGED price and `basePrice` the
+         * cheapest BASE, which are different numbers on a discounted dish.
+         *
+         * Both used to be set to the charged one. On Margherita Pizza, bases
+         * 120/270/390 with 10% off, that wrote the dish's base as 108 on every
+         * save, and the next save took it lower again.
+         */
+        update.price = getFoodDisplayPrice({ variants });
+        update.basePrice = cheapestVariantBase(variants) ?? update.price;
         update.discountPercent = 0;
         return update;
     }

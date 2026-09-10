@@ -12,8 +12,52 @@ export const extractRawFoodVariants = (value = {}) => {
 export const normalizeFoodVariantsInput = (value = [], options = {}) => {
     const {
         allowEmpty = true,
-        priceLabel = 'Variant price'
+        priceLabel = 'Variant price',
+        existing = null
     } = options;
+
+    /*
+     * The dish as stored, so a size's base can be told apart from its price.
+     *
+     * Every editing form shows and posts back the SELLING price -- the figure a
+     * customer pays. On a dish carrying a platform discount that is lower than
+     * the base, so treating it as the base walks the base down on every save:
+     * Margherita Pizza sat at bases 120/270/390 with 10% off, the portal showed
+     * 108/243/351, and saving wrote those back as the new bases.
+     */
+    const dishDiscount = Math.min(Math.max(Number(existing?.formulationDiscountPercent) || 0, 0), 99.99);
+    const priorById = new Map(
+        (Array.isArray(existing?.variants) ? existing.variants : [])
+            .filter((v) => v?._id)
+            .map((v) => [String(v._id), v])
+    );
+
+    /** The base a submitted size should end up with. */
+    const resolveVariantBase = (entry, price) => {
+        const explicit = Number(entry?.basePrice);
+        // A client that knows the difference and sends it outright wins.
+        if (Number.isFinite(explicit) && explicit > 0) return Math.round(explicit * 100) / 100;
+
+        const prior = priorById.get(String(entry?._id || entry?.id || ''));
+        if (prior) {
+            const priorBase = Number(prior.basePrice);
+            const priorPrice = Number(prior.price);
+            // The selling price came back unchanged, so nothing was repriced and
+            // the stored base still stands. This is the ordinary save -- renaming
+            // a size, editing add-ons -- and it must not touch the base.
+            if (Number.isFinite(priorPrice) && Math.abs(priorPrice - price) < 0.01) {
+                return Number.isFinite(priorBase) && priorBase > 0
+                    ? Math.round(priorBase * 100) / 100
+                    : price;
+            }
+        }
+
+        // Genuinely repriced, or a size that did not exist before: the number
+        // typed is what a customer should pay, so solve for the base that
+        // produces it under the discount the dish already carries.
+        if (dishDiscount > 0) return Math.round((price / (1 - dishDiscount / 100)) * 100) / 100;
+        return price;
+    };
 
     if (value == null || value === '') {
         if (allowEmpty) return [];
@@ -54,27 +98,29 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
              * Only copied when the caller actually sent them. A genuinely new size
              * carries neither, and the run settles both.
              */
-            const incomingBase = Number(entry?.basePrice);
-            if (Number.isFinite(incomingBase) && incomingBase > 0) {
-                variant.basePrice = Math.round(incomingBase * 100) / 100;
-            } else {
-                /*
-                 * A size with no base gets one now, equal to its price.
-                 *
-                 * Leaving it unset used to be deliberate -- the next global run
-                 * settles it. But a dish whose sizes are never touched by a run
-                 * keeps null bases indefinitely, and then nothing can express the
-                 * dish's markup per size: paneer chila carried a 20% markup with
-                 * both sizes at basePrice null, so neither could be given a struck
-                 * figure and the customer app fell back to inferring one by adding
-                 * the DISH's saving to each size. That is a flat amount, so it was
-                 * right only for the size whose price happens to equal the dish's
-                 * (Half) and wrong for every other (Full showed 670 instead of 720).
-                 *
-                 * An unadjusted size's price IS its base, so this is the same value
-                 * a run would have settled -- just recorded immediately.
-                 */
-                variant.basePrice = price;
+            /*
+             * Always recorded, never guessed from the selling price -- see
+             * resolveVariantBase. A size without a base is one the app cannot show
+             * the dish's markup on: paneer chila carried 20% with both sizes at
+             * basePrice null, so neither could be given a struck figure and the
+             * customer app fell back to adding the DISH's flat saving to each,
+             * right on Half and wrong on Full.
+             */
+            variant.basePrice = resolveVariantBase(entry, price);
+
+            /*
+             * And the charged price is derived back from that base, never just
+             * carried through from the form.
+             *
+             * Otherwise the two can disagree: a size whose base is preserved at
+             * 120 while its price is whatever the form happened to post is a dish
+             * that no longer satisfies price = base less the discount, and the
+             * next global run would move it somewhere neither figure predicts.
+             *
+             * On an undiscounted dish this is exactly the number that was typed.
+             */
+            if (dishDiscount > 0) {
+                variant.price = Math.round(variant.basePrice * (1 - dishDiscount / 100) * 100) / 100;
             }
             const incomingStrike = Number(entry?.formulationStrikePrice ?? entry?.strikePrice);
             if (Number.isFinite(incomingStrike) && incomingStrike > 0) {

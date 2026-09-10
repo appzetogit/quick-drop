@@ -135,7 +135,9 @@ const getUpdatedFoodPricing = (existing = {}, body = {}) => {
     const update = {};
 
     const variants = variantsTouched
-        ? normalizeFoodVariantsInput(extractRawFoodVariants(body))
+        // `existing` lets the normalizer tell an untouched selling price from a
+        // deliberate reprice, so an ordinary save cannot walk a size's base down.
+        ? normalizeFoodVariantsInput(extractRawFoodVariants(body), { existing })
         : (existing.variants || []);
     if (variantsTouched) update.variants = variants;
 
@@ -156,13 +158,22 @@ const getUpdatedFoodPricing = (existing = {}, body = {}) => {
         if (variants.length === 0) {
             throw new ValidationError('Add at least one variant, or switch variants off');
         }
-        // Selling by variants: the item's own price is the cheapest option --
-        // the "from" figure a listing shows. The base price inputs are ignored
-        // here rather than rejected, so a form that sends everything it holds
-        // does not have to know which half applies.
-        const from = getFoodDisplayPrice({ variants });
-        update.price = from;
-        update.basePrice = from;
+        /*
+         * Selling by variants: the item's own figures mirror its cheapest size --
+         * the "from" figure a listing shows. `price` is the cheapest CHARGED
+         * price and `basePrice` the cheapest BASE, which differ on a discounted
+         * dish. Both used to be the charged one, which wrote a discounted figure
+         * into the dish's base on every save.
+         *
+         * The base price inputs are still ignored here rather than rejected, so a
+         * form that sends everything it holds does not have to know which half
+         * applies.
+         */
+        const bases = variants
+            .map((v) => Number(v?.basePrice))
+            .filter((n) => Number.isFinite(n) && n > 0);
+        update.price = getFoodDisplayPrice({ variants });
+        update.basePrice = bases.length ? Math.min(...bases) : update.price;
         update.discountPercent = 0;
         return update;
     }
