@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom"
 import { Input } from "@food/components/ui/input"
 import { Button } from "@food/components/ui/button"
@@ -483,6 +483,43 @@ function TimeSelector({ label, value, onChange }) {
   )
 }
 
+/**
+ * Pull the fields we store out of a Google place or geocoder result.
+ *
+ * Both shapes are handled by the same function on purpose: an Autocomplete
+ * prediction and a reverse-geocode result carry the same address_components and
+ * the same LatLng, so pinning on the map and picking a suggestion fill the form
+ * identically. Keeping two parsers would have let the two entry points drift.
+ */
+const parseGooglePlace = (place) => {
+  const comps = Array.isArray(place?.address_components) ? place.address_components : []
+  const get = (types) => comps.find((c) => types.some((t) => c.types?.includes(t)))?.long_name || ""
+
+  const lat = typeof place?.geometry?.location?.lat === "function"
+    ? place.geometry.location.lat()
+    : place?.geometry?.location?.lat
+  const lng = typeof place?.geometry?.location?.lng === "function"
+    ? place.geometry.location.lng()
+    : place?.geometry?.location?.lng
+
+  return {
+    formattedAddress: place?.formatted_address || "",
+    area: get(["sublocality_level_1", "sublocality", "neighborhood"]) || get(["locality"]),
+    city: get(["locality"]) || get(["administrative_area_level_2"]),
+    state: get(["administrative_area_level_1"]) || get(["administrative_area_level_2"]),
+    pincode: get(["postal_code"]),
+    latitude: Number.isFinite(Number(lat)) ? Number(Number(lat).toFixed(6)) : "",
+    longitude: Number.isFinite(Number(lng)) ? Number(Number(lng).toFixed(6)) : "",
+  }
+}
+
+// Where the map opens when the restaurant has not picked anything yet. Roughly
+// the centre of India, zoomed out far enough that the pin is obviously a
+// placeholder rather than a guess at their address.
+const MAP_FALLBACK_CENTER = { lat: 22.5937, lng: 78.9629 }
+const MAP_FALLBACK_ZOOM = 4
+const MAP_PINNED_ZOOM = 17
+
 export default function RestaurantOnboarding() {
   const companyName = useCompanyName()
   const navigate = useNavigate()
@@ -626,6 +663,7 @@ export default function RestaurantOnboarding() {
   const locationSearchInputRef = useRef(null)
   const placesAutocompleteRef = useRef(null)
   const mapsScriptLoadedRef = useRef(false)
+  const mapsLoadPromiseRef = useRef(null)
   const menuImagesInputRef = useRef(null)
   const profileImageInputRef = useRef(null)
   const panImageInputRef = useRef(null)
@@ -643,6 +681,13 @@ export default function RestaurantOnboarding() {
   const [locationSearchValue, setLocationSearchValue] = useState("")
   const [locationSuggestions, setLocationSuggestions] = useState([])
   const [isSearchingLocation, setIsSearchingLocation] = useState(false)
+  const mapContainerRef = useRef(null)
+  const mapInstanceRef = useRef(null)
+  const mapMarkerRef = useRef(null)
+  const geocoderRef = useRef(null)
+  const [isMapReady, setIsMapReady] = useState(false)
+  const [isResolvingPin, setIsResolvingPin] = useState(false)
+  const [mapError, setMapError] = useState("")
 
   const getPreviewImageUrl = (value) => {
     if (!value) return null
@@ -1663,21 +1708,15 @@ export default function RestaurantOnboarding() {
                       const state = addr.state || ""
                       const pincode = addr.postcode || ""
 
-                      setStep1((prev) => ({
-                        ...prev,
-                        location: {
-                          ...prev.location,
-                          formattedAddress: display,
-                          addressLine1: display,
-                          area: area || prev.location.area,
-                          city: city || prev.location.city,
-                          state: state || prev.location.state,
-                          pincode: pincode || prev.location.pincode,
-                          latitude: lat,
-                          longitude: lng,
-                        },
-                      }))
-                      setLocationSearchValue(display)
+                      applyResolvedLocation({
+                        formattedAddress: display,
+                        area,
+                        city,
+                        state,
+                        pincode,
+                        latitude: lat,
+                        longitude: lng,
+                      })
                       setLocationSuggestions([])
                     }}
                     className="w-full px-4 py-2 text-left text-[13px] hover:bg-primary-orange/5 border-b border-gray-100 last:border-none font-medium text-gray-700"
@@ -1691,6 +1730,51 @@ export default function RestaurantOnboarding() {
             <p className="text-[11px] text-gray-500 mt-1">
               Select a suggestion to auto-fill area/city/state/pincode and coordinates.
             </p>
+          </div>
+
+          {/* Pin the exact spot. Searching gets the street; the pin gets the door. */}
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs text-gray-700">Pin your exact location</Label>
+              <button
+                type="button"
+                onClick={useCurrentLocation}
+                disabled={isResolvingPin}
+                className="text-[11px] font-semibold text-primary-orange hover:underline disabled:opacity-50"
+              >
+                {isResolvingPin ? "Locating..." : "Use my current location"}
+              </button>
+            </div>
+
+            <div className="relative mt-1 overflow-hidden rounded-md border border-gray-200">
+              <div ref={mapContainerRef} className="h-56 w-full bg-gray-100" />
+
+              {!isMapReady && !mapError && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-50/80 text-[11px] text-gray-500">
+                  Loading map...
+                </div>
+              )}
+
+              {isResolvingPin && isMapReady && (
+                <div className="absolute left-2 top-2 rounded bg-white/95 px-2 py-1 text-[11px] font-medium text-gray-600 shadow">
+                  Finding address...
+                </div>
+              )}
+            </div>
+
+            {mapError ? (
+              <p className="mt-1 text-[11px] text-amber-700">{mapError}</p>
+            ) : (
+              <p className="mt-1 text-[11px] text-gray-500">
+                Tap the map or drag the pin to your doorstep. This is where delivery partners will be sent.
+              </p>
+            )}
+
+            {step1.location?.latitude !== "" && step1.location?.longitude !== "" && (
+              <p className="mt-1 text-[11px] font-medium text-gray-600">
+                Pinned at {Number(step1.location.latitude).toFixed(6)}, {Number(step1.location.longitude).toFixed(6)}
+              </p>
+            )}
           </div>
           <Input
             value={step1.location?.addressLine1 || ""}
@@ -1780,6 +1864,269 @@ export default function RestaurantOnboarding() {
   )
 
 
+  /*
+   * One Google Maps load, shared by the address autocomplete and the map picker.
+   *
+   * This used to live inside the autocomplete effect. The map picker needs the
+   * same SDK, and a second copy of this logic would have raced the first: both
+   * would look for an existing tag, both could decide to remove and re-inject it,
+   * and whichever lost would resolve against a script that had just been pulled
+   * out of the document.
+   */
+  const loadGoogleMaps = useCallback(async () => {
+    if (window.google?.maps?.places?.Autocomplete) {
+      mapsScriptLoadedRef.current = true
+      return true
+    }
+
+    if (mapsLoadPromiseRef.current) return mapsLoadPromiseRef.current
+
+    mapsLoadPromiseRef.current = (async () => {
+      const apiKey = await getGoogleMapsApiKey()
+      if (!apiKey) {
+        debugError("Google Maps API Key missing or invalid")
+        return false
+      }
+
+      window.gm_authFailure = () => {
+        debugError("Google Maps authentication failed.")
+      }
+
+      const scripts = Array.from(document.getElementsByTagName("script"))
+      const mapsScript = scripts.find((sc) => sc.src?.includes("maps.googleapis.com/maps/api/js"))
+
+      if (mapsScript && !mapsScript.src.includes("libraries=places")) {
+        debugLog("Found maps script without places, removing to reload properly.")
+        mapsScript.remove()
+      } else if (mapsScript) {
+        for (let i = 0; i < 60; i++) {
+          if (window.google?.maps?.places?.Autocomplete) return true
+          await new Promise((r) => setTimeout(r, 100))
+        }
+      }
+
+      return new Promise((resolve) => {
+        const script = document.createElement("script")
+        script.id = "google-maps-sdk"
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&v=weekly`
+        script.async = true
+        script.defer = true
+        script.onload = () => {
+          setTimeout(() => {
+            const ok = !!window.google?.maps?.places?.Autocomplete
+            mapsScriptLoadedRef.current = ok
+            resolve(ok)
+          }, 200)
+        }
+        script.onerror = () => resolve(false)
+        document.head.appendChild(script)
+      })
+    })()
+
+    const result = await mapsLoadPromiseRef.current
+    // A failed load must be retryable; a successful one is cached by the guard above.
+    if (!result) mapsLoadPromiseRef.current = null
+    return result
+  }, [])
+
+  /*
+   * Write a resolved location into the form.
+   *
+   * Three entry points land here -- an autocomplete pick, the Nominatim fallback
+   * list, and a pin dropped on the map -- and they must agree field for field, or
+   * the address a restaurant sees depends on how they chose it.
+   */
+  const applyResolvedLocation = useCallback((parsed) => {
+    setStep1((prev) => ({
+      ...prev,
+      location: {
+        ...prev.location,
+        formattedAddress: parsed.formattedAddress || prev.location.formattedAddress,
+        addressLine1: parsed.formattedAddress || prev.location.addressLine1 || "",
+        area: parsed.area || prev.location.area,
+        city: parsed.city || prev.location.city,
+        state: parsed.state || prev.location.state,
+        pincode: parsed.pincode || prev.location.pincode,
+        latitude: parsed.latitude !== "" ? parsed.latitude : prev.location.latitude,
+        longitude: parsed.longitude !== "" ? parsed.longitude : prev.location.longitude,
+      },
+    }))
+    if (parsed.formattedAddress) setLocationSearchValue(parsed.formattedAddress)
+  }, [])
+
+  /**
+   * Turn a dropped pin into an address.
+   *
+   * Typing an address and dropping a pin are the two halves of the same job, so
+   * this ends at the same applyResolvedLocation the autocomplete uses. If the
+   * reverse geocode fails we still keep the coordinates -- the exact spot is the
+   * thing the pin was for, and losing it because the address lookup was rate
+   * limited would be the worst outcome.
+   */
+  const resolvePinnedPosition = useCallback(async (lat, lng) => {
+    const latitude = Number(Number(lat).toFixed(6))
+    const longitude = Number(Number(lng).toFixed(6))
+
+    setStep1((prev) => ({ ...prev, location: { ...prev.location, latitude, longitude } }))
+    setMapError("")
+    setIsResolvingPin(true)
+
+    try {
+      if (!geocoderRef.current && window.google?.maps?.Geocoder) {
+        geocoderRef.current = new window.google.maps.Geocoder()
+      }
+      if (!geocoderRef.current) return
+
+      const { results } = await geocoderRef.current.geocode({ location: { lat: latitude, lng: longitude } })
+      const best = Array.isArray(results) ? results[0] : null
+      if (!best) {
+        setMapError("Could not find an address for that point. The coordinates are saved -- please fill the address fields below.")
+        return
+      }
+
+      const parsed = parseGooglePlace(best)
+      // The pin is the authority on where this is, so its own coordinates win
+      // over the ones the geocoder snapped to the nearest known address.
+      applyResolvedLocation({ ...parsed, latitude, longitude })
+    } catch {
+      setMapError("Address lookup failed, but your pin is saved. Please check the address fields below.")
+    } finally {
+      setIsResolvingPin(false)
+    }
+  }, [applyResolvedLocation])
+
+  /*
+   * The map itself.
+   *
+   * Kept separate from the autocomplete effect so a failure in one does not take
+   * the other down -- a restaurant that cannot load the map can still type an
+   * address, and vice versa. Both share the single loadGoogleMaps call.
+   */
+  useEffect(() => {
+    if (step !== 1) return
+    let cancelled = false
+
+    const init = async () => {
+      const ok = await loadGoogleMaps()
+      if (!ok || cancelled) {
+        if (!cancelled) setMapError("The map could not be loaded. You can still search for your address above.")
+        return
+      }
+
+      // The container mounts with the step, which may render after this runs.
+      let container = null
+      for (let i = 0; i < 50; i++) {
+        if (mapContainerRef.current) { container = mapContainerRef.current; break }
+        if (cancelled) return
+        await new Promise((r) => setTimeout(r, 100))
+      }
+      if (!container || cancelled) return
+
+      const storedLat = Number(step1.location?.latitude)
+      const storedLng = Number(step1.location?.longitude)
+      const hasStored = Number.isFinite(storedLat) && Number.isFinite(storedLng)
+        && !(storedLat === 0 && storedLng === 0)
+      const center = hasStored ? { lat: storedLat, lng: storedLng } : MAP_FALLBACK_CENTER
+
+      const map = new window.google.maps.Map(container, {
+        center,
+        zoom: hasStored ? MAP_PINNED_ZOOM : MAP_FALLBACK_ZOOM,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+        clickableIcons: false,
+      })
+
+      const marker = new window.google.maps.Marker({
+        map,
+        position: center,
+        draggable: true,
+        // Hidden until there is something to point at, so an unset location does
+        // not look like a pin someone deliberately placed in central India.
+        visible: hasStored,
+      })
+
+      mapInstanceRef.current = map
+      mapMarkerRef.current = marker
+
+      const place = (latLng) => {
+        marker.setPosition(latLng)
+        marker.setVisible(true)
+        resolvePinnedPosition(latLng.lat(), latLng.lng())
+      }
+
+      map.addListener("click", (e) => { if (e?.latLng) place(e.latLng) })
+      marker.addListener("dragend", () => {
+        const pos = marker.getPosition()
+        if (pos) resolvePinnedPosition(pos.lat(), pos.lng())
+      })
+
+      if (!cancelled) setIsMapReady(true)
+    }
+
+    init().catch(() => {
+      if (!cancelled) setMapError("The map could not be loaded. You can still search for your address above.")
+    })
+
+    return () => {
+      cancelled = true
+      if (mapMarkerRef.current) {
+        try { window.google?.maps?.event?.clearInstanceListeners(mapMarkerRef.current) } catch {}
+        mapMarkerRef.current.setMap?.(null)
+        mapMarkerRef.current = null
+      }
+      if (mapInstanceRef.current) {
+        try { window.google?.maps?.event?.clearInstanceListeners(mapInstanceRef.current) } catch {}
+        mapInstanceRef.current = null
+      }
+      setIsMapReady(false)
+    }
+    // step only: re-running on every coordinate change would rebuild the map
+    // underneath the pin the restaurant just dropped.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, loadGoogleMaps, resolvePinnedPosition])
+
+  /*
+   * Follow the form: searching an address moves the pin, so the two controls
+   * never disagree about where the restaurant is.
+   */
+  useEffect(() => {
+    if (!isMapReady || !mapInstanceRef.current || !mapMarkerRef.current) return
+    const lat = Number(step1.location?.latitude)
+    const lng = Number(step1.location?.longitude)
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return
+
+    const position = { lat, lng }
+    const current = mapMarkerRef.current.getPosition?.()
+    // Skip when the marker is already there, or dragging it would fight this.
+    if (current && Math.abs(current.lat() - lat) < 1e-7 && Math.abs(current.lng() - lng) < 1e-7) return
+
+    mapMarkerRef.current.setPosition(position)
+    mapMarkerRef.current.setVisible(true)
+    mapInstanceRef.current.panTo(position)
+    if (mapInstanceRef.current.getZoom() < MAP_PINNED_ZOOM) {
+      mapInstanceRef.current.setZoom(MAP_PINNED_ZOOM)
+    }
+  }, [isMapReady, step1.location?.latitude, step1.location?.longitude])
+
+  /** Drop the pin on wherever the device says it is. */
+  const useCurrentLocation = useCallback(() => {
+    if (!navigator?.geolocation) {
+      setMapError("This browser cannot share your location. Please pin your spot on the map instead.")
+      return
+    }
+    setMapError("")
+    setIsResolvingPin(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolvePinnedPosition(pos.coords.latitude, pos.coords.longitude),
+      () => {
+        setIsResolvingPin(false)
+        setMapError("We could not read your location. Please allow location access, or pin your spot on the map.")
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    )
+  }, [resolvePinnedPosition])
+
   // Initialize Google Places Autocomplete for Step 1 location search.
   useEffect(() => {
     if (step !== 1) return
@@ -1800,85 +2147,8 @@ export default function RestaurantOnboarding() {
 
       if (!inputElement || cancelled) return
 
-      const loadMaps = async () => {
-        // 1. If already available with places, return true
-        if (window.google?.maps?.places?.Autocomplete) {
-          mapsScriptLoadedRef.current = true
-          return true
-        }
 
-        // 2. Load API Key
-        const apiKey = await getGoogleMapsApiKey()
-        if (!apiKey) {
-          debugError("Google Maps API Key missing or invalid")
-          return false
-        }
-
-        // 3. Handle Auth Failure
-        window.gm_authFailure = () => {
-          debugError("Google Maps authentication failed.")
-          // Don't show toast here as we have Nominatim fallback
-        }
-
-        // 4. Check for existing script and force libraries=places if needed
-        const scripts = Array.from(document.getElementsByTagName("script"))
-        const mapsScript = scripts.find(s => s.src?.includes("maps.googleapis.com/maps/api/js"))
-        
-        if (mapsScript && !mapsScript.src.includes("libraries=places")) {
-          debugLog("Found maps script without places, removing to reload properly.")
-          mapsScript.remove()
-        } else if (mapsScript && mapsScript.src.includes("libraries=places")) {
-           // Wait if it's still loading
-           for (let i = 0; i < 60; i++) {
-             if (window.google?.maps?.places?.Autocomplete) return true
-             if (cancelled) return false
-             await new Promise(r => setTimeout(r, 100))
-           }
-        }
-
-        // 5. Create and append new script
-        return new Promise((resolve) => {
-          const script = document.createElement("script")
-          script.id = "google-maps-sdk"
-          script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&v=weekly`
-          script.async = true
-          script.defer = true
-          script.onload = () => {
-            setTimeout(() => {
-              const ok = !!window.google?.maps?.places?.Autocomplete
-              mapsScriptLoadedRef.current = ok
-              resolve(ok)
-            }, 200)
-          }
-          script.onerror = () => resolve(false)
-          document.head.appendChild(script)
-        })
-      }
-
-      const parsePlace = (place) => {
-        const formattedAddress = place?.formatted_address || ""
-        const comps = Array.isArray(place?.address_components) ? place.address_components : []
-        const get = (types) => comps.find((c) => types.some((t) => c.types?.includes(t)))?.long_name || ""
-
-        const area = get(["sublocality_level_1", "sublocality", "neighborhood"]) || get(["locality"])
-        const city = get(["locality"]) || get(["administrative_area_level_2"])
-        const state = get(["administrative_area_level_1"]) || get(["administrative_area_level_2"])
-        const pincode = get(["postal_code"])
-        const lat = place?.geometry?.location?.lat?.()
-        const lng = place?.geometry?.location?.lng?.()
-
-        return {
-          formattedAddress,
-          area,
-          city,
-          state,
-          pincode,
-          latitude: typeof lat === "number" ? Number(lat.toFixed(6)) : "",
-          longitude: typeof lng === "number" ? Number(lng.toFixed(6)) : "",
-        }
-      }
-
-      const ok = await loadMaps()
+      const ok = await loadGoogleMaps()
       if (!ok || cancelled || !inputElement) return
 
       if (inputElement.hasAttribute("data-google-places-initialized")) return
@@ -1897,23 +2167,7 @@ export default function RestaurantOnboarding() {
           const place = autocomplete.getPlace()
           if (!place?.geometry) return
 
-          const parsed = parsePlace(place)
-          setStep1((prev) => ({
-            ...prev,
-            location: {
-              ...prev.location,
-              formattedAddress: parsed.formattedAddress || prev.location.formattedAddress,
-              addressLine1: parsed.formattedAddress || prev.location.addressLine1 || "",
-              area: parsed.area || prev.location.area,
-              city: parsed.city || prev.location.city,
-              state: parsed.state || prev.location.state,
-              pincode: parsed.pincode || prev.location.pincode,
-              latitude: parsed.latitude !== "" ? parsed.latitude : prev.location.latitude,
-              longitude: parsed.longitude !== "" ? parsed.longitude : prev.location.longitude,
-            },
-          }))
-          
-          setLocationSearchValue(parsed.formattedAddress)
+          applyResolvedLocation(parseGooglePlace(place))
           inputElement.blur()
         })
 
