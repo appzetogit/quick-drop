@@ -35,10 +35,35 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
     /** The base a submitted size should end up with. */
     const resolveVariantBase = (entry, price) => {
         const explicit = Number(entry?.basePrice);
-        // A client that knows the difference and sends it outright wins.
-        if (Number.isFinite(explicit) && explicit > 0) return Math.round(explicit * 100) / 100;
-
         const prior = priorById.get(String(entry?._id || entry?.id || ''));
+
+        if (Number.isFinite(explicit) && explicit > 0) {
+            /*
+             * An explicit base is trusted -- unless it is the prior CHARGED price.
+             *
+             * That combination is the signature of a stale form, not an edit. A
+             * panel that was still displaying the post-adjustment figure in its
+             * base box posts that figure back as the base, and taking it at face
+             * value writes the discount into the base permanently: Margherita
+             * Pizza's Small went from a base of 120 to 108, which is 120 less the
+             * 10% that was standing at the time. The next such save would take it
+             * to 97.20.
+             *
+             * A restaurant genuinely retyping the base to the current selling
+             * price is indistinguishable from this, and loses -- their base stays
+             * put. That is the safe direction: a base that failed to change can be
+             * changed again, a base that silently absorbed a discount cannot be
+             * recovered.
+             */
+            const priorBase = Number(prior?.basePrice);
+            const priorPrice = Number(prior?.price);
+            const looksStale = prior
+                && Number.isFinite(priorPrice) && Math.abs(priorPrice - explicit) < 0.01
+                && Number.isFinite(priorBase) && priorBase > 0
+                && Math.abs(priorBase - priorPrice) >= 0.01;
+            if (!looksStale) return Math.round(explicit * 100) / 100;
+            return Math.round(priorBase * 100) / 100;
+        }
         if (prior) {
             const priorBase = Number(prior.basePrice);
             const priorPrice = Number(prior.price);

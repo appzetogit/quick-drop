@@ -133,6 +133,39 @@ const main = async () => {
         );
     });
 
+    console.log('\na stale form reposting the charged price as the base');
+
+    check('an explicit base equal to the prior CHARGED price is refused', () => {
+        /*
+         * How Margherita's Small actually lost its base. A panel still displaying
+         * the post-adjustment figure in its base box posted 108 back as the base,
+         * and "an explicit base always wins" took it -- writing the standing 10%
+         * into the base permanently. It went 120 -> 108, and the next such save
+         * would have made it 97.20.
+         */
+        const out = normalizeFoodVariantsInput(
+            [{ _id: 'v1', name: 'Small', price: 108, basePrice: 108 }],
+            { existing: { formulationDiscountPercent: 10, variants: [{ _id: 'v1', name: 'Small', price: 108, basePrice: 120 }] } },
+        );
+        assert.equal(out[0].basePrice, 120, 'the stored base must hold');
+    });
+
+    check('a genuine edit to a different base still lands', () => {
+        const out = normalizeFoodVariantsInput(
+            [{ _id: 'v1', name: 'Small', price: 108, basePrice: 130 }],
+            { existing: { formulationDiscountPercent: 10, variants: [{ _id: 'v1', name: 'Small', price: 108, basePrice: 120 }] } },
+        );
+        assert.equal(out[0].basePrice, 130);
+    });
+
+    check('a genuine edit downward still lands', () => {
+        const out = normalizeFoodVariantsInput(
+            [{ _id: 'v1', name: 'Small', price: 108, basePrice: 90 }],
+            { existing: { formulationDiscountPercent: 10, variants: [{ _id: 'v1', name: 'Small', price: 108, basePrice: 120 }] } },
+        );
+        assert.equal(out[0].basePrice, 90, 'the admin may still reprice downwards');
+    });
+
     console.log('\na client that does send a real base');
 
     const explicit = normalizeFoodVariantsInput(
