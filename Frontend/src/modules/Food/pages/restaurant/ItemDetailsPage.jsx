@@ -116,6 +116,13 @@ export default function ItemDetailsPage() {
   const [itemDescription, setItemDescription] = useState("")
   const [foodType, setFoodType] = useState("Non-Veg")
   const [basePrice, setBasePrice] = useState("")
+  /*
+   * The dish's one global adjustment, as a signed percent of the base. Read from
+   * the server and never edited here -- Global Price Adjustment owns it. Held so
+   * every size can show what that adjustment makes of ITS own base, using the
+   * same number the admin panel uses.
+   */
+  const [formulationPercent, setFormulationPercent] = useState(0)
   // Whether this dish sells by its variants. Off keeps them stored -- the
   // editor stays visible so nothing looks lost -- but the base price is what
   // customers are charged.
@@ -299,6 +306,7 @@ export default function ItemDetailsPage() {
         ? String(item.basePrice ?? item.price ?? "")
         : ""
     )
+    setFormulationPercent(Number(item.formulationPercent) || 0)
     // Absent flag on old rows means "sell by variants if any exist".
     setVariantsEnabled(item.variantsEnabled === true || (item.variantsEnabled == null && itemVariants.length > 0))
     setAddonIds(Array.isArray(item.addonIds) ? item.addonIds.map(String) : [])
@@ -1558,16 +1566,20 @@ export default function ItemDetailsPage() {
                                         </div>
                                       )
                                     }
-                                    const loadedBase = variant.basePriceAtLoad
-                                    const serverPays = variant.customerPrice
-                                    const serverStruck = variant.strikePrice
-                                    let percent = 0
-                                    if (Number.isFinite(loadedBase) && loadedBase > 0) {
-                                      const shown = (serverStruck != null && serverStruck > loadedBase)
-                                        ? serverStruck
-                                        : (serverPays != null ? serverPays : loadedBase)
-                                      percent = Math.round(((shown / loadedBase) - 1) * 1000) / 10
-                                    }
+                                    /*
+                                     * The dish's own formulationPercent, which the
+                                     * server already sends here -- the same number the
+                                     * admin panel reads.
+                                     *
+                                     * This used to derive the percent from this size's
+                                     * base against its charged and struck figures. That
+                                     * agreed with the admin panel on every dish checked,
+                                     * but by a different route: two formulas for one
+                                     * number, free to drift the moment either side's
+                                     * inputs changed. One source, read the same way in
+                                     * both panels, cannot.
+                                     */
+                                    const percent = Number(formulationPercent) || 0
                                     const formulation = Math.round(base * (1 + percent / 100) * 100) / 100
                                     const pays = Math.min(base, formulation)
                                     const struck = Math.max(base, formulation)
