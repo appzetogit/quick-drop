@@ -148,5 +148,33 @@ check('distance is not the same question as zone', () => {
     assert.equal(filterCandidatesToZone([inB], 'B', near).kept.length, 1);
 });
 
+// ---------------------------------------------------------------- taxi
+console.log('\ntaxi: the driver filter always carries the zone');
+
+const { buildDriverMatchFilters } = await import('../src/modules/taxi/services/matchingService.js');
+
+check('a zone is applied to the driver query', () => {
+    const f = buildDriverMatchFilters({ zoneId: INDORE, transportType: 'taxi' });
+    assert.equal(String(f.zoneId), INDORE, 'drivers must be restricted to the pickup zone');
+});
+
+check('online and not-on-a-ride are still required', () => {
+    const f = buildDriverMatchFilters({ zoneId: INDORE, transportType: 'taxi' });
+    assert.equal(f.isOnline, true);
+    assert.equal(f.isOnRide, false);
+});
+
+check('a blocked wallet is still excluded', () => {
+    const f = buildDriverMatchFilters({ zoneId: INDORE, transportType: 'taxi' });
+    assert.deepEqual(f['wallet.isBlocked'], { $ne: true });
+});
+
+check('no zone means no zone clause, not a null one', () => {
+    // A pickup outside every zone. `zoneId: null` would match only drivers whose
+    // own zone is literally null, which is not the same as "do not filter".
+    const f = buildDriverMatchFilters({ zoneId: null, transportType: 'taxi' });
+    assert.ok(!('zoneId' in f), 'the clause should be absent entirely');
+});
+
 console.log(failed ? `\n${failed} check(s) failed\n` : '\nall checks passed\n');
 process.exit(failed ? 1 : 0);

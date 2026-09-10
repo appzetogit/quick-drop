@@ -350,9 +350,23 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
   );
   drivers = drivers.filter((driver) => !blockedDriverIds.has(String(driver?._id || '')));
 
+  /*
+   * Nobody found inside the zone-boundary radius. Widen the radius -- never the
+   * zone.
+   *
+   * The first search caps its radius at the distance to the nearest zone
+   * boundary, a geometric way of not reaching past the zone edge. That cap can
+   * be small for a pickup near the edge and exclude drivers who are genuinely
+   * in the zone but further in, which is what this retry is for.
+   *
+   * It used to pass `zoneId: null` as well, which dropped the zone filter
+   * outright and matched drivers in a NEIGHBOURING zone as long as they were
+   * within maxDistance of the pickup. That is the cross-zone dispatch that was
+   * reported. The zone is kept now, so this only relaxes the distance.
+   */
   if (drivers.length === 0 && zone?._id) {
     drivers = await findDriversForZone({
-      zoneId: null,
+      zoneId: zone._id,
       coordinates,
       effectiveMaxDistance,
       limit,
