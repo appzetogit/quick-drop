@@ -688,6 +688,9 @@ export default function RestaurantOnboarding() {
   const [isMapReady, setIsMapReady] = useState(false)
   const [isResolvingPin, setIsResolvingPin] = useState(false)
   const [mapError, setMapError] = useState("")
+  // null = nothing to say yet. Otherwise { status, zoneName } where status is
+  // 'inside' | 'outside' | 'no_zone'.
+  const [zoneMatch, setZoneMatch] = useState(null)
 
   const getPreviewImageUrl = (value) => {
     if (!value) return null
@@ -1775,6 +1778,36 @@ export default function RestaurantOnboarding() {
                 Pinned at {Number(step1.location.latitude).toFixed(6)}, {Number(step1.location.longitude).toFixed(6)}
               </p>
             )}
+
+            {/* Advisory only -- onboarding is never blocked on this. */}
+            {zoneMatch?.status === "outside" && (
+              <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-[11px] font-semibold text-amber-800">
+                  This pin is inside {zoneMatch.zoneName}, not the zone you selected.
+                </p>
+                <p className="mt-0.5 text-[11px] text-amber-700">
+                  You can continue, but orders are matched by zone -- please check the zone above,
+                  or move the pin if it is in the wrong place.
+                </p>
+              </div>
+            )}
+
+            {zoneMatch?.status === "no_zone" && (
+              <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-[11px] font-semibold text-amber-800">
+                  This pin is outside every service zone.
+                </p>
+                <p className="mt-0.5 text-[11px] text-amber-700">
+                  You can still finish onboarding -- our team will confirm coverage before you go live.
+                </p>
+              </div>
+            )}
+
+            {zoneMatch?.status === "inside" && (
+              <p className="mt-2 text-[11px] font-medium text-emerald-700">
+                This pin is inside the zone you selected.
+              </p>
+            )}
           </div>
           <Input
             value={step1.location?.addressLine1 || ""}
@@ -2108,6 +2141,60 @@ export default function RestaurantOnboarding() {
       mapInstanceRef.current.setZoom(MAP_PINNED_ZOOM)
     }
   }, [isMapReady, step1.location?.latitude, step1.location?.longitude])
+
+  /*
+   * Does the pin fall inside the zone they picked?
+   *
+   * Asked of /zones/detect rather than answered in the browser, deliberately: the
+   * server owns the polygons and the containment test, and a second copy here
+   * could quietly disagree with the one that decides things at approval -- which
+   * is the worst version of this, a restaurant told they are fine and rejected
+   * later.
+   *
+   * A warning, never a block. A zone boundary is an operational guess, a
+   * restaurant on the edge of one is a normal situation, and refusing to let them
+   * finish onboarding over it would cost a real signup. The admin still sees the
+   * pin at approval.
+   */
+  useEffect(() => {
+    const lat = Number(step1.location?.latitude)
+    const lng = Number(step1.location?.longitude)
+    const selectedZoneId = String(step1.zoneId || "").trim()
+
+    if (!selectedZoneId || !Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) {
+      setZoneMatch(null)
+      return
+    }
+
+    let cancelled = false
+    const timer = setTimeout(() => {
+      zoneAPI.detectZone(lat, lng)
+        .then((res) => {
+          if (cancelled) return
+          const payload = res?.data?.data || res?.data || {}
+          const detectedId = payload.zoneId ? String(payload.zoneId) : ""
+
+          if (!detectedId) {
+            setZoneMatch({ status: "no_zone", zoneName: "" })
+            return
+          }
+          if (detectedId === selectedZoneId) {
+            setZoneMatch({ status: "inside", zoneName: "" })
+            return
+          }
+          const detected = payload.zone || {}
+          setZoneMatch({
+            status: "outside",
+            zoneName: detected.name || detected.zoneName || detected.serviceLocation || "another zone",
+          })
+        })
+        // Silent on failure: an unreachable check must not produce a warning
+        // about the restaurant's address.
+        .catch(() => { if (!cancelled) setZoneMatch(null) })
+    }, 400) // the pin can move a lot while being dragged
+
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [step1.zoneId, step1.location?.latitude, step1.location?.longitude])
 
   /** Drop the pin on wherever the device says it is. */
   const useCurrentLocation = useCallback(() => {
