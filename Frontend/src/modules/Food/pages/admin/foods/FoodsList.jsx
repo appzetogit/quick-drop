@@ -1264,7 +1264,7 @@ export default function FoodsList() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-slate-600 mb-1">Variant base price</label>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">Base Price</label>
                           <input
                             type="number"
                             min="0"
@@ -1273,24 +1273,54 @@ export default function FoodsList() {
                             onChange={(e) => handleVariantChange(variant.id, "price", e.target.value)}
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                           />
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            This size&rsquo;s own price. Global Price Adjustment never changes it.
+                          </p>
+
                           {/*
-                            * What the global adjustment turns this base into. Shown per
-                            * size because each is derived from its OWN base -- the dish's
-                            * saving is not a flat amount shared across sizes. Rendered
-                            * only when the two differ, so an unadjusted size stays clean.
-                            */}
+                            The same base/formulation pair the dish itself gets, per size.
+
+                            Each size is derived from its OWN base, so the saving is a
+                            different rupee amount on every one -- which is exactly what
+                            was wrong before, when a single flat figure was applied to
+                            them all.
+                          */}
+                          <label className="block text-xs font-medium text-slate-600 mt-3 mb-1">Formulation price</label>
                           {(() => {
-                            const typedBase = Number(variant.price)
-                            const pays = variant.customerPrice
-                            const struck = variant.strikePrice
-                            if (!Number.isFinite(typedBase) || typedBase <= 0) return null
-                            if (pays == null || Math.abs(pays - typedBase) < 0.01) return null
+                            const base = Number(variant.price)
+                            const percent = Number(foodForm.formulationPercent) || 0
+                            if (!Number.isFinite(base) || base <= 0) {
+                              return (
+                                <div className="w-full px-3 py-2 border border-dashed border-slate-300 rounded-lg text-xs text-slate-400 bg-slate-50">
+                                  Set a base price first
+                                </div>
+                              )
+                            }
+                            const formulation = Math.round(base * (1 + percent / 100) * 100) / 100
+                            const pays = Math.min(base, formulation)
+                            const struck = Math.max(base, formulation)
+                            const hasStrike = struck > pays
                             return (
-                              <p className="mt-1 text-[11px] text-slate-500">
-                                Customer pays <span className="font-semibold text-slate-700">{"₹"}{pays}</span>
-                                {struck != null && struck > pays ? <>, struck from {"₹"}{struck}</> : null}
-                                <span className="block text-slate-400">Set by Global Price Management, not editable here.</span>
-                              </p>
+                              <>
+                                <div className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-slate-50 text-slate-900 font-semibold tabular-nums">
+                                  {"₹"}{formulation.toFixed(2)}
+                                  <span className="ml-2 font-normal text-slate-500 text-xs">
+                                    {percent === 0 ? "no adjustment" : `${percent > 0 ? "+" : ""}${percent}% of base`}
+                                  </span>
+                                </div>
+                                <p className="mt-1 text-[11px] text-slate-600">
+                                  Customers pay <span className="font-semibold">{"₹"}{pays.toFixed(2)}</span>
+                                  {hasStrike ? (
+                                    <>
+                                      {" "}with <span className="line-through text-slate-400">{"₹"}{struck.toFixed(2)}</span>{" "}
+                                      struck through ({Math.round((1 - pays / struck) * 100)}% off).
+                                    </>
+                                  ) : (
+                                    <>, with nothing struck through.</>
+                                  )}
+                                  {" "}Set from Global Price Adjustment, not here.
+                                </p>
+                              </>
                             )
                           })()}
                         </div>

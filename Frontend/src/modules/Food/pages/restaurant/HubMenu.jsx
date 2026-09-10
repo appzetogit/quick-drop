@@ -350,6 +350,18 @@ export default function HubMenu() {
                 id: String(v.id || Date.now() + Math.random()),
                 name: v.name || "",
                 price: v.price || 0,
+                /*
+                 * Carried through, because this object is what gets handed to the
+                 * item editor in navigation state and becomes the form.
+                 *
+                 * Dropping them meant the editor's "Base Selling Price" box fell
+                 * back to `price` -- the figure AFTER the global adjustment -- so a
+                 * size based at 120 with 10% off still displayed 108 even once the
+                 * form was reading basePrice. The per-size "customer pays" note
+                 * never rendered either, for the same reason.
+                 */
+                basePrice: v.basePrice != null ? Number(v.basePrice) : null,
+                strikePrice: v.strikePrice != null ? Number(v.strikePrice) : null,
                 stock: v.stock || "Unlimited",
               })) : [],
               tags: Array.isArray(item.tags) ? item.tags : [],
@@ -390,6 +402,11 @@ export default function HubMenu() {
                   id: String(v.id || Date.now() + Math.random()),
                   name: v.name || "",
                   price: v.price || 0,
+                  // Same reason as the mapping above: this object becomes the
+                  // item editor's form, and without the base it shows the
+                  // post-adjustment price in the base box.
+                  basePrice: v.basePrice != null ? Number(v.basePrice) : null,
+                  strikePrice: v.strikePrice != null ? Number(v.strikePrice) : null,
                   stock: v.stock || "Unlimited",
                 })) : [],
                 tags: Array.isArray(item.tags) ? item.tags : [],

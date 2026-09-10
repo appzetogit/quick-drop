@@ -75,6 +75,9 @@ const createVariantDraft = (variant = {}) => ({
   price: variant?.basePrice != null ? String(variant.basePrice) : (variant?.price != null ? String(variant.price) : ""),
   /** What a customer currently pays for this size, for the note under the field. */
   customerPrice: variant?.price != null ? Number(variant.price) : null,
+  /** The base as loaded, so the adjustment percent can be derived and held while
+   *  a new base is typed. */
+  basePriceAtLoad: variant?.basePrice != null ? Number(variant.basePrice) : null,
   /** The size's struck-through comparison, when a markup stands. */
   strikePrice: variant?.strikePrice != null ? Number(variant.strikePrice) : null,
   // Per-size order limits. Blank means "not set for this size", which is not the
@@ -1531,31 +1534,65 @@ export default function ItemDetailsPage() {
                                     />
                                   </div>
                                   <FieldError field={`v-${variant.localId}-price`} />
+                                  <p className="mt-1 text-[11px] text-gray-500">
+                                    This size&rsquo;s own price. Global Price Adjustment never changes it.
+                                  </p>
+
                                   {/*
-                                    * What the platform's global adjustment turns this
-                                    * base into. Shown per size because each size is
-                                    * derived from its OWN base -- the dish's saving is
-                                    * not a flat amount that applies to all of them.
-                                    * Only rendered when it actually differs, so an
-                                    * unadjusted size stays uncluttered.
-                                    */}
+                                    The same base/formulation pair the dish itself gets,
+                                    per size.
+
+                                    The percent is derived from what the server already
+                                    sent for THIS size -- its base against its charged and
+                                    struck figures -- rather than from a dish-level number,
+                                    because each size is adjusted from its own base and the
+                                    rupee saving differs on every one.
+                                  */}
+                                  <label className="block text-xs font-semibold text-gray-700 mt-3 mb-1">Formulation price</label>
                                   {(() => {
-                                    const typedBase = Number(variant.price)
-                                    const pays = variant.customerPrice
-                                    const struck = variant.strikePrice
-                                    if (!Number.isFinite(typedBase) || typedBase <= 0) return null
-                                    if (pays == null || Math.abs(pays - typedBase) < 0.01) return null
+                                    const base = Number(variant.price)
+                                    if (!Number.isFinite(base) || base <= 0) {
+                                      return (
+                                        <div className="w-full px-3 py-2 border border-dashed border-gray-300 rounded-lg text-xs text-gray-400 bg-gray-50">
+                                          Set a base price first
+                                        </div>
+                                      )
+                                    }
+                                    const loadedBase = variant.basePriceAtLoad
+                                    const serverPays = variant.customerPrice
+                                    const serverStruck = variant.strikePrice
+                                    let percent = 0
+                                    if (Number.isFinite(loadedBase) && loadedBase > 0) {
+                                      const shown = (serverStruck != null && serverStruck > loadedBase)
+                                        ? serverStruck
+                                        : (serverPays != null ? serverPays : loadedBase)
+                                      percent = Math.round(((shown / loadedBase) - 1) * 1000) / 10
+                                    }
+                                    const formulation = Math.round(base * (1 + percent / 100) * 100) / 100
+                                    const pays = Math.min(base, formulation)
+                                    const struck = Math.max(base, formulation)
+                                    const hasStrike = struck > pays
                                     return (
-                                      <p className="mt-1 text-[11px] text-gray-500">
-                                        Customer pays{' '}
-                                        <span className="font-semibold text-gray-700">₹{pays}</span>
-                                        {struck != null && struck > pays ? (
-                                          <> , struck from ₹{struck}</>
-                                        ) : null}
-                                        <span className="block text-gray-400">
-                                          Set by the platform&apos;s global price adjustment, not editable here.
-                                        </span>
-                                      </p>
+                                      <>
+                                        <div className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-900 font-semibold tabular-nums">
+                                          ₹{formulation.toFixed(2)}
+                                          <span className="ml-2 font-normal text-gray-500 text-xs">
+                                            {percent === 0 ? "no adjustment" : `${percent > 0 ? "+" : ""}${percent}% of base`}
+                                          </span>
+                                        </div>
+                                        <p className="mt-1 text-[11px] text-gray-600">
+                                          Customers pay <span className="font-semibold">₹{pays.toFixed(2)}</span>
+                                          {hasStrike ? (
+                                            <>
+                                              {" "}with <span className="line-through text-gray-400">₹{struck.toFixed(2)}</span>{" "}
+                                              struck through ({Math.round((1 - pays / struck) * 100)}% off).
+                                            </>
+                                          ) : (
+                                            <>, with nothing struck through.</>
+                                          )}
+                                          {" "}Set from Global Price Adjustment, not here.
+                                        </p>
+                                      </>
                                     )
                                   })()}
                                 </div>
