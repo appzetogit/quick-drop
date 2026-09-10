@@ -8,6 +8,14 @@ import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js'
 import { logger } from '../../../../utils/logger.js';
 import { config } from '../../../../config/env.js';
 import { getIO, rooms } from '../../../../config/socket.js';
+/*
+ * Zone matching. A rider is only offered an order from their own zone.
+ *
+ * Every selection path below was zone-blind, and with a single rider online the
+ * fallback at the end handed him every order on the platform -- an Indore rider
+ * being offered Palampur orders 700km away.
+ */
+import { loadActiveZones, filterCandidatesToZone } from '../../shared/zoneMatching.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
 import {
   buildDeliverySocketPayload,
@@ -52,21 +60,33 @@ async function listNearbyOnlineDeliveryPartners(
 ) {
   const rId = (restaurantId?._id || restaurantId).toString();
   const restaurant = await FoodRestaurant.findById(rId)
-    .select("location")
+    .select("location zoneId")
     .lean();
+
+  // Resolved once and applied to every path below, including the fallbacks.
+  const zones = await loadActiveZones();
+  const orderZoneId = restaurant?.zoneId ? String(restaurant.zoneId) : null;
+  const zoneScope = (rows) => filterCandidatesToZone(rows, orderZoneId, zones);
 
   if (!restaurant?.location?.coordinates?.length) {
     const partners = await FoodDeliveryPartner.find({
       status: "approved",
       availabilityStatus: "online",
     })
-      .select("_id status name")
-      .limit(Math.max(1, limit))
+      .select("_id status name lastLat lastLng")
       .lean();
+
+    // The restaurant has no coordinates, so distance cannot be judged -- but the
+    // zone still can, from each rider's own position.
+    const { kept } = zoneScope(
+      partners.map((p) => ({ partnerId: p._id, lat: p.lastLat, lng: p.lastLng })),
+    );
 
     return {
       restaurant: null,
-      partners: partners.map((p) => ({ partnerId: p._id, distanceKm: null })),
+      partners: kept
+        .slice(0, Math.max(1, limit))
+        .map((p) => ({ partnerId: p.partnerId, distanceKm: null })),
     };
   }
 
@@ -90,31 +110,69 @@ async function listNearbyOnlineDeliveryPartners(
 
     const isStale = !p.lastLocationAt || (Date.now() - new Date(p.lastLocationAt).getTime()) > STALE_GPS_MS;
     if (p.lastLat == null || p.lastLng == null || isStale) {
-      scored.push({ partnerId: p._id, distanceKm: 999, status: p.status });
+      /*
+       * Position unknown, so the zone cannot be confirmed. Kept only where no
+       * zone is being enforced -- under enforcement this rider is exactly the
+       * one that must not be offered another city's order, since "we don't know
+       * where they are" is not a reason to assume they are nearby.
+       */
+      if (!orderZoneId || zones.length === 0) {
+        scored.push({ partnerId: p._id, distanceKm: 999, status: p.status, lat: null, lng: null });
+      }
       continue;
     }
 
     const d = haversineKm(rLat, rLng, p.lastLat, p.lastLng);
     if (Number.isFinite(d) && d <= maxKm) {
-      scored.push({ partnerId: p._id, distanceKm: d, status: p.status });
+      scored.push({ partnerId: p._id, distanceKm: d, status: p.status, lat: p.lastLat, lng: p.lastLng });
     }
   }
+
+  // Distance is not the same question as zone: two zones can sit inside 15km of
+  // each other, and an order must still stay in its own.
+  const zoneScoped = zoneScope(scored);
+  scored.length = 0;
+  scored.push(...zoneScoped.kept);
 
   scored.sort((a, b) => a.distanceKm - b.distanceKm);
   const picked = scored.slice(0, Math.max(1, limit));
 
   if (picked.length === 0) {
+    /*
+     * Nobody within range. The net widens past `maxKm` -- but never past the
+     * zone.
+     *
+     * This is the path that produced the report. It returned every online rider
+     * on the platform with no distance and no zone test, so with a single rider
+     * online he received every order from every city. Widening the radius is a
+     * reasonable last resort; ignoring the zone is not, and a rider 700km away
+     * cannot deliver the order however few candidates there are.
+     */
     const anyOnline = await FoodDeliveryPartner.find({
       status: { $in: allowedStatuses },
       availabilityStatus: "online",
     })
-      .select("_id status name")
-      .limit(Math.max(1, limit))
+      .select("_id status name lastLat lastLng")
       .lean();
 
-    return {
-      partners: anyOnline.map((p) => ({
+    const { kept, enforced, dropped } = zoneScope(
+      anyOnline.map((p) => ({
         partnerId: p._id,
+        status: p.status,
+        lat: p.lastLat,
+        lng: p.lastLng,
+      })),
+    );
+
+    if (enforced && dropped.length) {
+      logger.info(
+        `[dispatch] restaurant ${rId}: ${dropped.length} online rider(s) skipped, outside zone ${orderZoneId}`,
+      );
+    }
+
+    return {
+      partners: kept.slice(0, Math.max(1, limit)).map((p) => ({
+        partnerId: p.partnerId,
         distanceKm: null,
         status: p.status,
       })),

@@ -8,6 +8,18 @@ import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js'
 import { logger } from '../../../../utils/logger.js';
 import { config } from '../../../../config/env.js';
 import { getIO, rooms } from '../../../../config/socket.js';
+/*
+ * Zone matching, shared with food so the two verticals cannot drift apart on what
+ * "same zone" means. The zone MAP is not shared: quick commerce keys off
+ * qc_zones, food off food_zones, and the ids do not overlap -- hence passing the
+ * QC model in explicitly.
+ *
+ * The worldwide fallback was already removed here. What was still missing is the
+ * zone test itself: distance alone lets an order cross into a neighbouring zone
+ * whenever the two sit within the search radius.
+ */
+import { loadActiveZones, filterCandidatesToZone } from '../../../../../food/shared/zoneMatching.js';
+import { FoodZone as QCZone } from '../../admin/models/zone.model.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
 import {
   buildDeliverySocketPayload,
@@ -307,13 +319,16 @@ async function listNearbyOnlineDeliveryPartners(
 ) {
   const rId = (restaurantId?._id || restaurantId).toString();
   const restaurant = await FoodRestaurant.findById(rId)
-    .select("location")
+    .select("location zoneId")
     .lean();
 
   if (!restaurant?.location?.coordinates?.length) {
     // Without restaurant coords we cannot safely match riders by zone/proximity.
     return { restaurant: null, partners: [] };
   }
+
+  const zones = await loadActiveZones({ model: QCZone });
+  const orderZoneId = restaurant?.zoneId ? String(restaurant.zoneId) : null;
 
   const [rLng, rLat] = restaurant.location.coordinates;
   const allOnline = await FoodDeliveryPartner.find({
@@ -356,9 +371,22 @@ async function listNearbyOnlineDeliveryPartners(
 
     const d = haversineKm(rLat, rLng, p.lastLat, p.lastLng);
     if (Number.isFinite(d) && d <= maxKm) {
-      scored.push({ partnerId: p._id, distanceKm: d, status: p.status });
+      scored.push({ partnerId: p._id, distanceKm: d, status: p.status, lat: p.lastLat, lng: p.lastLng });
     }
   }
+
+  /*
+   * Within range is not the same as within the zone: two zones can sit inside
+   * the search radius of each other, and an order must stay in its own.
+   */
+  const zoneScoped = filterCandidatesToZone(scored, orderZoneId, zones);
+  if (zoneScoped.enforced && zoneScoped.dropped.length) {
+    logger.info(
+      `[Dispatch] restaurant ${rId}: ${zoneScoped.dropped.length} nearby rider(s) skipped, outside zone ${orderZoneId}`,
+    );
+  }
+  scored.length = 0;
+  scored.push(...zoneScoped.kept);
 
   // Without this, a starved dispatch is indistinguishable from "no riders online".
   if (droppedStale > 0) {
