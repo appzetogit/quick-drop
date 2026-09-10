@@ -116,13 +116,6 @@ export default function ItemDetailsPage() {
   const [itemDescription, setItemDescription] = useState("")
   const [foodType, setFoodType] = useState("Non-Veg")
   const [basePrice, setBasePrice] = useState("")
-  /*
-   * The dish's one global adjustment, as a signed percent of the base. Read from
-   * the server and never edited here -- Global Price Adjustment owns it. Held so
-   * every size can show what that adjustment makes of ITS own base, using the
-   * same number the admin panel uses.
-   */
-  const [formulationPercent, setFormulationPercent] = useState(0)
   // Whether this dish sells by its variants. Off keeps them stored -- the
   // editor stays visible so nothing looks lost -- but the base price is what
   // customers are charged.
@@ -306,7 +299,6 @@ export default function ItemDetailsPage() {
         ? String(item.basePrice ?? item.price ?? "")
         : ""
     )
-    setFormulationPercent(Number(item.formulationPercent) || 0)
     // Absent flag on old rows means "sell by variants if any exist".
     setVariantsEnabled(item.variantsEnabled === true || (item.variantsEnabled == null && itemVariants.length > 0))
     setAddonIds(Array.isArray(item.addonIds) ? item.addonIds.map(String) : [])
@@ -1326,21 +1318,13 @@ export default function ItemDetailsPage() {
                         <span>Commission rate:</span>
                         <span>{pricePreview.commissionLabel || "0%"} (₹{pricePreview.commissionAmount})</span>
                       </div>
-                      {pricePreview.gstRate > 0 && (
-                        <div className="flex items-center justify-between text-gray-500">
-                          <span>
-                            GST @ {pricePreview.gstRate}%
-                            {pricePreview.priceIncludesGst ? " (inside your price)" : " (added on top)"}:
-                          </span>
-                          <span>₹{pricePreview.gstAmount}</span>
-                        </div>
-                      )}
-                      {pricePreview.gstRate > 0 && (
-                        <div className="flex items-center justify-between text-gray-500 pt-1.5 border-t border-gray-200">
-                          <span>Customer pays for this dish:</span>
-                          <span>₹{pricePreview.customerPays}</span>
-                        </div>
-                      )}
+                      {/*
+                        "Customer pays" only ever appeared when GST applied, and it
+                        existed to show the GST-inclusive total. With the tax hidden
+                        from restaurants it would be a higher number than the price
+                        they typed with nothing on screen explaining the gap, so it
+                        goes with the rest of the GST display.
+                      */}
                     </div>
                   </div>
                 )}
@@ -1546,67 +1530,6 @@ export default function ItemDetailsPage() {
                                     This size&rsquo;s own price. Global Price Adjustment never changes it.
                                   </p>
 
-                                  {/*
-                                    The same base/formulation pair the dish itself gets,
-                                    per size.
-
-                                    The percent is derived from what the server already
-                                    sent for THIS size -- its base against its charged and
-                                    struck figures -- rather than from a dish-level number,
-                                    because each size is adjusted from its own base and the
-                                    rupee saving differs on every one.
-                                  */}
-                                  <label className="block text-xs font-semibold text-gray-700 mt-3 mb-1">Formulation price</label>
-                                  {(() => {
-                                    const base = Number(variant.price)
-                                    if (!Number.isFinite(base) || base <= 0) {
-                                      return (
-                                        <div className="w-full px-3 py-2 border border-dashed border-gray-300 rounded-lg text-xs text-gray-400 bg-gray-50">
-                                          Set a base price first
-                                        </div>
-                                      )
-                                    }
-                                    /*
-                                     * The dish's own formulationPercent, which the
-                                     * server already sends here -- the same number the
-                                     * admin panel reads.
-                                     *
-                                     * This used to derive the percent from this size's
-                                     * base against its charged and struck figures. That
-                                     * agreed with the admin panel on every dish checked,
-                                     * but by a different route: two formulas for one
-                                     * number, free to drift the moment either side's
-                                     * inputs changed. One source, read the same way in
-                                     * both panels, cannot.
-                                     */
-                                    const percent = Number(formulationPercent) || 0
-                                    const formulation = Math.round(base * (1 + percent / 100) * 100) / 100
-                                    const pays = Math.min(base, formulation)
-                                    const struck = Math.max(base, formulation)
-                                    const hasStrike = struck > pays
-                                    return (
-                                      <>
-                                        <div className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-900 font-semibold tabular-nums">
-                                          ₹{formulation.toFixed(2)}
-                                          <span className="ml-2 font-normal text-gray-500 text-xs">
-                                            {percent === 0 ? "no adjustment" : `${percent > 0 ? "+" : ""}${percent}% of base`}
-                                          </span>
-                                        </div>
-                                        <p className="mt-1 text-[11px] text-gray-600">
-                                          Customers pay <span className="font-semibold">₹{pays.toFixed(2)}</span>
-                                          {hasStrike ? (
-                                            <>
-                                              {" "}with <span className="line-through text-gray-400">₹{struck.toFixed(2)}</span>{" "}
-                                              struck through ({Math.round((1 - pays / struck) * 100)}% off).
-                                            </>
-                                          ) : (
-                                            <>, with nothing struck through.</>
-                                          )}
-                                          {" "}Set from Global Price Adjustment, not here.
-                                        </p>
-                                      </>
-                                    )
-                                  })()}
                                 </div>
 
                                 {/* Per-size order limits. Sizes do not sell alike:
@@ -1811,49 +1734,14 @@ export default function ItemDetailsPage() {
                     </div>
                   </div>
 
-                  {/* GST on this price */}
-                  <div className="pt-3 border-t border-gray-100">
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">Is this price inclusive of GST?</p>
-                      <p className="text-xs text-gray-500">
-                        Inclusive means the tax comes out of the price you typed and the
-                        customer pays exactly that. Exclusive means GST is added on top at
-                        the rate the platform has set
-                        {Number(taxSettings.gstRate) > 0 ? `, currently ${taxSettings.gstRate}%` : ""}.
-                      </p>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {[
-                        {
-                          value: "inherit",
-                          label: "Same as my menu",
-                          hint: taxSettings.priceIncludesGst ? "Inclusive" : "Exclusive",
-                        },
-                        { value: "inclusive", label: "Inclusive", hint: "Tax is inside the price" },
-                        { value: "exclusive", label: "Exclusive", hint: "Tax is added on top" },
-                      ].map((option) => {
-                        const active = gstMode === option.value
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => setGstMode(option.value)}
-                            className={`text-left px-3.5 py-2.5 rounded-xl border transition-colors ${
-                              active
-                                ? "border-gray-900 bg-gray-900 text-white shadow-sm"
-                                : "border-gray-300 bg-white text-gray-900 hover:bg-gray-50"
-                            }`}
-                          >
-                            <span className="block text-sm font-semibold">{option.label}</span>
-                            <span className={`block text-xs ${active ? "text-gray-300" : "text-gray-500"}`}>
-                              {option.hint}
-                            </span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
+                  {/*
+                    The GST inclusive/exclusive chooser is hidden from restaurants.
+                    Tax treatment is a platform decision, and a dish left on
+                    "inherit" follows the restaurant's own setting -- which is what
+                    every dish does while this is not shown. gstMode stays at its
+                    default so the save omits priceIncludesGst entirely rather than
+                    pinning a dish to a treatment nobody chose here.
+                  */}
 
                   {/* Packaging Charges */}
                   <div className="pt-3 border-t border-gray-100">
