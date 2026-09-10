@@ -39,7 +39,20 @@ const createFoodForm = () => ({
 const createVariantDraft = (variant = {}) => ({
   id: String(variant?.id || variant?._id || `variant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
   name: String(variant?.name || ""),
-  price: variant?.price != null ? String(variant.price) : "",
+  /*
+   * The BASE price, not what a customer pays.
+   *
+   * `price` on the server is the base after the platform's global adjustment, so
+   * a decrease moved this box: a size set to 120 with 10% off displayed as 108,
+   * and after another -10% run as 96. Nothing had changed the base -- it is still
+   * 120 -- but the field was showing the charged figure, so it read as though the
+   * global run had rewritten the restaurant's own price.
+   */
+  price: variant?.basePrice != null ? String(variant.basePrice) : (variant?.price != null ? String(variant.price) : ""),
+  /** What a customer currently pays for this size, for the note under the field. */
+  customerPrice: variant?.price != null ? Number(variant.price) : null,
+  /** This size's struck-through comparison, when a markup stands. */
+  strikePrice: variant?.strikePrice != null ? Number(variant.strikePrice) : null,
   // Per-size order limits. Blank means "not set for this size", which is not the
   // same as zero -- the dish's own limit then applies.
   minOrderQuantity: variant?.minOrderQuantity != null ? String(variant.minOrderQuantity) : "",
@@ -500,7 +513,11 @@ export default function FoodsList() {
         variants: normalizedVariants.map((variant) => ({
           ...(variant.id && !variant.id.startsWith("variant-") ? { _id: variant.id } : {}),
           name: variant.name,
+          // Both, deliberately: `price` is what the server validates, `basePrice`
+          // is what this field actually holds. The server derives the charged
+          // price back from the base and the dish's standing discount.
           price: variant.price,
+          basePrice: variant.price,
           // Blank goes as null, meaning "this size sets none" -- the dish's limit
           // then applies. Sending 0 for a minimum would be a different claim.
           minOrderQuantity:
@@ -1247,7 +1264,7 @@ export default function FoodsList() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-slate-600 mb-1">Variant price</label>
+                          <label className="block text-xs font-medium text-slate-600 mb-1">Variant base price</label>
                           <input
                             type="number"
                             min="0"
@@ -1256,6 +1273,26 @@ export default function FoodsList() {
                             onChange={(e) => handleVariantChange(variant.id, "price", e.target.value)}
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                           />
+                          {/*
+                            * What the global adjustment turns this base into. Shown per
+                            * size because each is derived from its OWN base -- the dish's
+                            * saving is not a flat amount shared across sizes. Rendered
+                            * only when the two differ, so an unadjusted size stays clean.
+                            */}
+                          {(() => {
+                            const typedBase = Number(variant.price)
+                            const pays = variant.customerPrice
+                            const struck = variant.strikePrice
+                            if (!Number.isFinite(typedBase) || typedBase <= 0) return null
+                            if (pays == null || Math.abs(pays - typedBase) < 0.01) return null
+                            return (
+                              <p className="mt-1 text-[11px] text-slate-500">
+                                Customer pays <span className="font-semibold text-slate-700">{"₹"}{pays}</span>
+                                {struck != null && struck > pays ? <>, struck from {"₹"}{struck}</> : null}
+                                <span className="block text-slate-400">Set by Global Price Management, not editable here.</span>
+                              </p>
+                            )
+                          })()}
                         </div>
 
                         {/* Per-size order limits. Sizes do not sell alike: a family
