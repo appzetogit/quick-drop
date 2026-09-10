@@ -131,7 +131,7 @@ export default function ItemDetailsPage() {
   const [availableAddons, setAvailableAddons] = useState([])
   const [variants, setVariants] = useState([])
   const [preparationTime, setPreparationTime] = useState("")
-  const [minOrderQuantity, setMinOrderQuantity] = useState("1")
+  const [minOrderQuantity, setMinOrderQuantity] = useState("0")
   const [maxOrderQuantity, setMaxOrderQuantity] = useState("0")
   /*
    * "inherit" | "inclusive" | "exclusive".
@@ -230,11 +230,14 @@ export default function ItemDetailsPage() {
       if (!Number.isFinite(price) || price <= 0) fail("basePrice", "Enter a price above 0")
     }
 
+    // 0 means "no minimum", the same thing 0 already means for the cap. A
+    // customer still cannot order zero of something -- the server turns a stored
+    // 0 into an effective minimum of 1.
     const minQty = Number(minOrderQuantity)
-    if (!Number.isInteger(minQty) || minQty < 1) fail("minQty", "Minimum quantity must be at least 1")
+    if (!Number.isInteger(minQty) || minQty < 0) fail("minQty", "Use 0 for no minimum, or a whole number")
     const maxQty = Number(maxOrderQuantity)
     if (!Number.isInteger(maxQty) || maxQty < 0) fail("maxQty", "Use 0 for no cap, or a whole number")
-    else if (maxQty !== 0 && Number.isInteger(minQty) && maxQty < minQty)
+    else if (maxQty !== 0 && minQty !== 0 && Number.isInteger(minQty) && maxQty < minQty)
       fail("maxQty", `Cap cannot be below the minimum of ${minQty}`)
 
     if (packagingEnabled) {
@@ -303,7 +306,7 @@ export default function ItemDetailsPage() {
     setVariantsEnabled(item.variantsEnabled === true || (item.variantsEnabled == null && itemVariants.length > 0))
     setAddonIds(Array.isArray(item.addonIds) ? item.addonIds.map(String) : [])
     setPreparationTime(item.preparationTime || "")
-    setMinOrderQuantity(String(item.minOrderQuantity ?? 1))
+    setMinOrderQuantity(String(item.minOrderQuantity ?? 0))
     setMaxOrderQuantity(String(item.maxOrderQuantity ?? 0))
     setAvailabilitySchedule(buildScheduleState(item.availabilitySchedule))
     // null means the dish never answered and follows the restaurant.
@@ -836,7 +839,11 @@ export default function ItemDetailsPage() {
       }))
 
       const orderRulesPayload = {
-        minOrderQuantity: Number(minOrderQuantity) || 1,
+        /*
+         * Not `|| 1`. That turned a typed 0 straight back into 1, so the field
+         * could never hold "no minimum" however it was validated or displayed.
+         */
+        minOrderQuantity: Number.isFinite(Number(minOrderQuantity)) ? Number(minOrderQuantity) : 0,
         maxOrderQuantity: Number(maxOrderQuantity) || 0,
         packagingCharge: {
           isEnabled: packagingEnabled,

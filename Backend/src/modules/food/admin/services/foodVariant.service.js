@@ -160,8 +160,11 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
                 if (raw === null || raw === '') variant.minOrderQuantity = null;
                 else {
                     const min = Math.floor(Number(raw));
-                    if (!Number.isFinite(min) || min < 1) {
-                        throw new ValidationError(`Minimum quantity for "${name}" must be 1 or more`);
+                    // 0 means "no minimum for this size", the same thing 0 already
+                    // means for the maximum. Ordering still requires at least one:
+                    // resolveOrderQuantityRules turns a stored 0 into an effective 1.
+                    if (!Number.isFinite(min) || min < 0) {
+                        throw new ValidationError(`Minimum quantity for "${name}" cannot be negative. Use 0 for no minimum.`);
                     }
                     variant.minOrderQuantity = min;
                 }

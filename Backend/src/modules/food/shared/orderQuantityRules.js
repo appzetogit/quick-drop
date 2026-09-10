@@ -78,7 +78,8 @@ export function resolveOrderQuantityRules(foodDoc = null, ceiling = ABSOLUTE_MAX
     const limits = resolveVariantQuantityLimits(foodDoc, variantId);
 
     const rawMin = toInt(limits.minOrderQuantity);
-    const min = Number.isFinite(rawMin) && rawMin > 0
+    const hasMin = Number.isFinite(rawMin) && rawMin > 0;
+    const min = hasMin
         ? Math.min(rawMin, cap)
         : DEFAULT_MIN_ORDER_QUANTITY;
 
@@ -91,14 +92,23 @@ export function resolveOrderQuantityRules(foodDoc = null, ceiling = ABSOLUTE_MAX
     // Carried on the result so assertOrderQuantity can enforce the platform cap
     // for items that set no cap of their own, without every caller having to
     // pass the ceiling twice.
-    return { min, max, hasCap, ceiling: cap };
+    return { min, max, hasMin, hasCap, ceiling: cap };
 }
 
-/** Stored shape to hand to clients (0 max = unlimited, so UIs can say so). */
+/**
+ * Stored shape to hand to clients. 0 means "not set" on BOTH ends -- max 0 is
+ * unlimited, min 0 is no minimum -- so an editor can show what was actually
+ * saved rather than the effective figure.
+ *
+ * Returning the effective min here meant a dish with no minimum came back as 1
+ * and the form redisplayed 1, so 0 could never be entered and never stayed.
+ * Ordering is unaffected: resolveOrderQuantityRules still yields an effective
+ * min of 1, because nobody can order zero of something.
+ */
 export function formatOrderQuantityLimits(foodDoc = null, ceiling = ABSOLUTE_MAX_ORDER_QUANTITY, variantId = null) {
-    const { min, max, hasCap } = resolveOrderQuantityRules(foodDoc, ceiling, variantId);
+    const { min, max, hasMin, hasCap } = resolveOrderQuantityRules(foodDoc, ceiling, variantId);
     return {
-        minOrderQuantity: min,
+        minOrderQuantity: hasMin ? min : 0,
         maxOrderQuantity: hasCap ? max : 0
     };
 }
@@ -156,9 +166,11 @@ export function normalizeOrderQuantityInput(body = {}, { label = 'This item', ce
 
     if (body.minOrderQuantity !== undefined && body.minOrderQuantity !== null && body.minOrderQuantity !== '') {
         const min = toInt(body.minOrderQuantity);
-        if (!Number.isFinite(min) || min < 1) {
+        // 0 is allowed and means "no minimum", matching what 0 already means for
+        // the maximum. Negative is still nonsense.
+        if (!Number.isFinite(min) || min < 0) {
             throw new ValidationError(
-                `"${label}": the smallest order quantity must be at least 1.`
+                `"${label}": the smallest order quantity cannot be negative. Use 0 for no minimum.`
             );
         }
         if (min > cap) {

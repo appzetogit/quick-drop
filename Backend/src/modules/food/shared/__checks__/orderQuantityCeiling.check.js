@@ -81,13 +81,29 @@ throws(() => normalizeOrderQuantityInput({ minOrderQuantity: 11 }, { ceiling: 10
 throws(() => normalizeOrderQuantityInput({ maxOrderQuantity: 100 }, {}), /largest order quantity can be at most 99/);
 
 // --- what the client is told reflects the ceiling ------------------------
+/*
+ * 0 means "not set" on BOTH ends now. It always did for the maximum; the minimum
+ * used to report its EFFECTIVE value of 1 instead, so an editor redisplayed 1 for
+ * a dish that had no minimum and 0 could never be entered or kept.
+ *
+ * Ordering is unchanged -- resolveOrderQuantityRules still turns a stored 0 into
+ * an effective min of 1, because nobody orders zero of something.
+ */
 assert.deepEqual(formatOrderQuantityLimits({ maxOrderQuantity: 0 }, 10), {
-    minOrderQuantity: 1,
+    minOrderQuantity: 0, // no minimum set
     maxOrderQuantity: 0, // 0 still means "no item cap"; the ceiling is not an item cap
 });
 assert.deepEqual(formatOrderQuantityLimits({ maxOrderQuantity: 50 }, 10), {
-    minOrderQuantity: 1,
+    minOrderQuantity: 0,
     maxOrderQuantity: 10, // clamped to the ceiling
 });
+// An explicit minimum is still reported as itself.
+assert.deepEqual(formatOrderQuantityLimits({ minOrderQuantity: 3, maxOrderQuantity: 0 }, 10), {
+    minOrderQuantity: 3,
+    maxOrderQuantity: 0,
+});
+// And a stored 0 still yields an effective minimum of 1 at order time.
+assert.equal(resolveOrderQuantityRules({ minOrderQuantity: 0 }, 10).min, 1);
+assert.equal(resolveOrderQuantityRules({ minOrderQuantity: 0 }, 10).hasMin, false);
 
 console.log('All order-quantity-ceiling checks passed.');
