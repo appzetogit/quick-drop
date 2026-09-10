@@ -335,6 +335,14 @@ export default function HubMenu() {
               // the platform's global adjustment, so on a marked-down dish the two
               // differ and only this one is theirs.
               basePrice: item.basePrice != null ? Number(item.basePrice) : null,
+              /*
+               * The dish's one global adjustment. Carried because this object is
+               * handed to the item editor in navigation state and becomes its form:
+               * without it the editor reads 0, and every size's formulation box
+               * says "no adjustment" and shows the base as the charged price on a
+               * dish that is actually marked down.
+               */
+              formulationPercent: Number(item.formulationPercent) || 0,
               stock: item.stock || "Unlimited",
               discount: item.discount || null,
               originalPrice: item.originalPrice || null,
@@ -387,6 +395,8 @@ export default function HubMenu() {
                 reviews: item.reviews || 0,
                 price: item.price || 0,
                 basePrice: item.basePrice != null ? Number(item.basePrice) : null,
+                // Same reason as above: this object becomes the editor's form.
+                formulationPercent: Number(item.formulationPercent) || 0,
                 stock: item.stock || "Unlimited",
                 discount: item.discount || null,
                 originalPrice: item.originalPrice || null,
