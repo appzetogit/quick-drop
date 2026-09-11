@@ -21,11 +21,14 @@ import {
   verifyRazorpayRideTip,
   validateLocation,
   getPoolGroupById,
+  quoteRide,
 } from '../controllers/rideController.js';
 
 export const rideRouter = Router();
 
 rideRouter.post('/', authenticateOrResolveUser(['user']), asyncHandler(createRide));
+// Public: the booking screen shows fares before the rider signs in.
+rideRouter.post('/quote', asyncHandler(quoteRide));
 rideRouter.post('/validate-location', asyncHandler(validateLocation));
 rideRouter.get('/', authenticateOrResolveUser(['user', 'driver']), asyncHandler(listMyRides));
 rideRouter.get('/app-settings/tip', asyncHandler(getRideAppTipSettings));

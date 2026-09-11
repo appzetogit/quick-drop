@@ -24,7 +24,7 @@ import { consumeUserSubscriptionRide, resolveApplicableUserSubscription } from '
 import { applyPromoToRideInTransaction } from './promoService.js';
 import { getTipSettings } from './appSettingsService.js';
 import { getBidRideSettings, getTransportRideSettings } from './transportSettingsService.js';
-import { resolvePlatformFee } from '../common/platformFee.js';
+import { computeRideFare } from '../common/rideFare.js';
 
 const clearUserActiveRideIfPresent = async (user) => {
   if (!user?.currentRideId) {
@@ -791,7 +791,87 @@ export const resolveSetPriceForRide = async ({ serviceLocationId = null, zoneId 
     }
   }
 
+  /*
+   * No price row of its own: borrow the row of an older vehicle with the same
+   * name, searched in the same priority order.
+   *
+   * A second "Bike" was added on 5 Sep and never given a price. Every ride on it
+   * then found no row here, and the booking charged whatever the app sent --
+   * which the app had priced at Sedan rates, so a 3.3 km bike ride was billed
+   * Rs 113 instead of Rs 45. A namesake is the price an admin would expect it to
+   * have; anything with no namesake still gets null, and the booking refuses it.
+   */
+  if (!mongoose.Types.ObjectId.isValid(String(vehicleTypeId))) {
+    return null;
+  }
+  const vehicle = await Vehicle.findById(vehicleTypeId).select('name').lean();
+  const name = String(vehicle?.name || '').trim();
+  if (!name) {
+    return null;
+  }
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const namesakes = await Vehicle.find({
+    _id: { $ne: vehicle._id },
+    name: new RegExp(`^\\s*${escapedName}\\s*$`, 'i'),
+  })
+    .sort({ createdAt: 1 })
+    .select('_id')
+    .lean();
+
+  for (const namesake of namesakes) {
+    for (const filter of filters) {
+      const match = await SetPrice.findOne({ ...filter, vehicle_type: namesake._id })
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .lean();
+      if (match) {
+        return { ...match, borrowedFromVehicleTypeId: namesake._id };
+      }
+    }
+  }
+
   return null;
+};
+
+/**
+ * The public tariff list, plus a row for every vehicle that prices itself from a
+ * namesake (see resolveSetPriceForRide).
+ *
+ * Apps already in the field look a vehicle's price up here by id and, finding
+ * none, fall back to whichever row happens to be first -- the Sedan's. Listing
+ * the borrowed row under the vehicle's own id makes them price it from the same
+ * row the booking will charge from.
+ */
+export const addBorrowedRidePriceRows = async (rows = []) => {
+  const list = Array.isArray(rows) ? rows : [];
+  const pricedIds = new Set(list.map((row) => String(row?.type_id || '')).filter(Boolean));
+
+  const vehicles = await Vehicle.find({}).select('_id name createdAt').sort({ createdAt: 1 }).lean();
+  const byName = new Map();
+  for (const entry of vehicles) {
+    const key = String(entry?.name || '').trim().toLowerCase();
+    if (!key) continue;
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key).push(entry);
+  }
+
+  const borrowed = [];
+  for (const entry of vehicles) {
+    const id = String(entry._id);
+    if (pricedIds.has(id)) continue;
+    const key = String(entry?.name || '').trim().toLowerCase();
+    const donor = (byName.get(key) || []).find(
+      (candidate) => String(candidate._id) !== id && pricedIds.has(String(candidate._id)),
+    );
+    if (!donor) continue;
+    const row = list.find(
+      (candidate) => String(candidate?.type_id) === String(donor._id)
+        && (candidate?.pricing_scope || 'ride') === 'ride',
+    );
+    if (!row) continue;
+    borrowed.push({ ...row, id: `${row.id}:${id}`, type_id: id, borrowed_from_type_id: String(donor._id) });
+  }
+
+  return [...list, ...borrowed];
 };
 
 export const getAllowedRidePaymentMethodsForPricing = async ({ serviceLocationId = null, zoneId = null, transportType = 'taxi', vehicleTypeId = null }) => {
@@ -811,6 +891,75 @@ const normalizeRideTransportType = (value = 'taxi') => {
   }
 
   return normalized;
+};
+
+/**
+ * The active zone a pickup falls in, which decides surge. Rides only: parcels
+ * have never carried surge.
+ */
+const findSurgeZoneForPickup = async ({ pickupPoint, serviceLocationId = null, transportType = 'taxi' }) => {
+  if (transportType === 'delivery') {
+    return null;
+  }
+
+  return Zone.findOne({
+    ...(serviceLocationId ? { service_location_id: serviceLocationId } : {}),
+    active: true,
+    geometry: {
+      $geoIntersects: {
+        $geometry: {
+          type: 'Point',
+          coordinates: pickupPoint,
+        },
+      },
+    },
+  })
+    .select('_id name ride_surge_enabled')
+    .lean();
+};
+
+/**
+ * What the booking screen shows: the fare each ride type would be booked at for
+ * this trip. Same zone, same price lookup (borrowing included) and the same
+ * calculation as createRideRecord, so the two cannot disagree.
+ */
+export const quoteRideFares = async ({
+  pickupCoords,
+  estimatedDistanceMeters = 0,
+  estimatedDurationMinutes = 0,
+  vehicleTypeIds = [],
+  transport_type,
+  service_location_id,
+}) => {
+  const transportType = normalizeRideTransportType(transport_type);
+  const serviceLocationId =
+    service_location_id && mongoose.Types.ObjectId.isValid(service_location_id)
+      ? new mongoose.Types.ObjectId(service_location_id)
+      : null;
+  const pickupPoint = normalizePoint(pickupCoords, 'pickupCoords');
+  const surgeZone = await findSurgeZoneForPickup({ pickupPoint, serviceLocationId, transportType });
+  const distanceMeters = Math.max(0, Number(estimatedDistanceMeters || 0));
+  const durationMinutes = Math.max(0, Number(estimatedDurationMinutes || 0));
+
+  const ids = [...new Set(
+    (Array.isArray(vehicleTypeIds) ? vehicleTypeIds : [vehicleTypeIds])
+      .map((id) => String(id || '').trim())
+      .filter((id) => mongoose.Types.ObjectId.isValid(id)),
+  )].slice(0, 20);
+
+  return Promise.all(ids.map(async (vehicleTypeId) => {
+    const { pricingRule } = await getAllowedRidePaymentMethodsForPricing({
+      serviceLocationId,
+      zoneId: surgeZone?._id || null,
+      transportType,
+      vehicleTypeId,
+    });
+    const surgeAmount = surgeZone?.ride_surge_enabled
+      ? Math.max(0, Number(pricingRule?.ride_surge_amount || 0))
+      : 0;
+    const fare = computeRideFare({ pricingRule, transportType, distanceMeters, durationMinutes, surgeAmount });
+    return { vehicleTypeId, available: Boolean(fare), fare };
+  }));
 };
 
 const buildDriverVehicleAcceptFilter = async (ride) => {
@@ -931,22 +1080,11 @@ export const createRideRecord = async ({
       ? new mongoose.Types.ObjectId(service_location_id)
       : null;
   const pickupPoint = normalizePoint(pickupCoords, 'pickupCoords');
-  const surgeZone = normalizedTransportType !== 'delivery'
-    ? await Zone.findOne({
-      ...(resolvedServiceLocationId ? { service_location_id: resolvedServiceLocationId } : {}),
-      active: true,
-      geometry: {
-        $geoIntersects: {
-          $geometry: {
-            type: 'Point',
-            coordinates: pickupPoint,
-          },
-        },
-      },
-    })
-      .select('_id name ride_surge_enabled')
-      .lean()
-    : null;
+  const surgeZone = await findSurgeZoneForPickup({
+    pickupPoint,
+    serviceLocationId: resolvedServiceLocationId,
+    transportType: normalizedTransportType,
+  });
 
   const { pricingRule, allowedPaymentMethods } = await getAllowedRidePaymentMethodsForPricing({
     serviceLocationId: resolvedServiceLocationId,
@@ -955,54 +1093,33 @@ export const createRideRecord = async ({
     vehicleTypeId: primaryVehicleTypeId,
   });
 
-  // ── Authoritative fare: recompute from DB pricing rule so user & driver see the same base price ──
-  // Surge is intentionally NOT added here; it is added later via rideSurgeAmount.
-  const safeFare = (() => {
-    if (!pricingRule) {
-      // No pricing rule found: trust the client-sent fare as fallback
-      return clientFare;
-    }
-    const isIntercity = normalizedTransportType === 'intercity';
-    const distanceKm = Math.max(0, safeEstimatedDistanceMeters / 1000);
-    const basePrice = isIntercity
-      ? Math.max(0, Number(pricingRule.outstation_base_price || 0))
-      : Math.max(0, Number(pricingRule.base_price || 0));
+  /*
+   * The fare, from the vehicle's price row -- by the same calculation as the
+   * quote on the booking screen (common/rideFare.js, unit-checked against real
+   * rides), so the fare a rider confirms is the fare they are charged. Surge is
+   * added below via rideSurgeAmount, as before.
+   */
+  const fareQuote = computeRideFare({
+    pricingRule,
+    transportType: normalizedTransportType,
+    distanceMeters: safeEstimatedDistanceMeters,
+    durationMinutes: safeEstimatedDurationMinutes,
+  });
 
-    const baseDistance = isIntercity
-      ? Math.max(0, Number(pricingRule.outstation_base_distance || 0))
-      : Math.max(0, Number(pricingRule.base_distance || 0));
+  if (!fareQuote && normalizedTransportType !== 'delivery') {
+    /*
+     * This used to charge whatever fare the app sent. With no price row that
+     * was the app's guess -- the new Bike was billed at Sedan rates -- and any
+     * modified app could book a ride for 0. A ride type nobody priced has
+     * nothing honest to charge, so it is not bookable until it is priced.
+     */
+    throw new ApiError(400, 'This ride type is not available here yet. Please choose another.');
+  }
 
-    const pricePerDistance = isIntercity
-      ? Math.max(0, Number(pricingRule.outstation_price_per_distance || 0))
-      : Math.max(0, Number(pricingRule.price_per_distance || 0));
-
-    const timePrice = isIntercity
-      ? Math.max(0, Number(pricingRule.outstation_time_price || 0))
-      : Math.max(0, Number(pricingRule.time_price || 0));
-    const serviceTaxPercent = Math.max(0, Number(pricingRule.service_tax || 0));
-    const isWithinBase = baseDistance > 0 && distanceKm <= baseDistance;
-    const extraDistanceKm = Math.max(0, distanceKm - baseDistance);
-    const subtotal = isWithinBase
-      ? basePrice
-      : basePrice + (extraDistanceKm * pricePerDistance) + (safeEstimatedDurationMinutes * timePrice);
-    if (subtotal <= 0) {
-      return clientFare;
-    }
-    // Platform fee, shown in the admin panel as "Platform Fee" on the vehicle's
-    // set-price row (stored as admin_commision for backwards compatibility).
-    //
-    // It was previously stored and echoed to the apps but never charged: the fare
-    // was subtotal + service tax and nothing else, so whatever an admin typed here
-    // made no difference to what the customer paid. Added on top of the taxed
-    // subtotal rather than folded into it, so it is not itself taxed and a fee of
-    // 0 reproduces the previous total exactly.
-    //
-    // Type and rounding live in common/platformFee.js, which is unit-checked.
-    const platformFee = resolvePlatformFee(pricingRule, subtotal);
-
-    const total = subtotal + (subtotal * serviceTaxPercent) / 100 + platformFee;
-    return Math.max(0, Math.round(total));
-  })();
+  // Parcels ('delivery') have no price rows yet and still take the app's
+  // figure, as they always have. That path is just as open to a doctored fare
+  // and needs its own prices before it can be closed.
+  const safeFare = fareQuote ? fareQuote.fareBeforeSurge : clientFare;
 
   const normalizedPaymentMethod = normalizeRidePaymentMethod(paymentMethod);
   const resolvedRequestedPaymentMethod = allowedPaymentMethods.includes(normalizedPaymentMethod)

@@ -24,6 +24,7 @@ import {
   submitRideFeedback,
   updateRideLifecycle,
   markUserCancellationDuesAsRecovered,
+  quoteRideFares,
 } from '../../services/rideService.js';
 import {
   cancelRideByUser,
@@ -328,6 +329,40 @@ const razorpayRequest = async ({ method, path, body, keyId, keySecret }) => {
   }
 
   return payload;
+};
+
+/**
+ * The fare each ride type would be booked at for this trip -- what the booking
+ * screen shows. Priced by the same lookup and calculation as createRide, so the
+ * fare a rider confirms is the fare they are charged. A ride type that cannot be
+ * booked here comes back with `available: false` and no fare.
+ */
+export const quoteRide = async (req, res) => {
+  const {
+    pickup,
+    estimatedDistanceMeters,
+    estimatedDurationMinutes,
+    vehicleTypeIds,
+    vehicleTypeId,
+    transport_type,
+    service_location_id,
+    serviceLocationId,
+  } = req.body || {};
+
+  if (!pickup) {
+    throw new ApiError(400, 'pickup is required');
+  }
+
+  const quotes = await quoteRideFares({
+    pickupCoords: normalizePoint(pickup, 'pickup'),
+    estimatedDistanceMeters: Number(estimatedDistanceMeters || 0),
+    estimatedDurationMinutes: Number(estimatedDurationMinutes || 0),
+    vehicleTypeIds: Array.isArray(vehicleTypeIds) ? vehicleTypeIds : [vehicleTypeId].filter(Boolean),
+    transport_type,
+    service_location_id: service_location_id || serviceLocationId,
+  });
+
+  res.json({ success: true, data: { quotes } });
 };
 
 export const createRide = async (req, res) => {

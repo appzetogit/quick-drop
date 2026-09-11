@@ -661,7 +661,12 @@ export const getPublicRentalVehicleCatalog = asyncHandler(async (_req, res) =>
  */
 export const getPublicSetPrices = asyncHandler(async (req, res) => {
   const data = await adminService.listSetPrices(req.query || {}, null);
-  res.json({ success: true, ...data });
+  // Public list only: vehicles with no row of their own are listed with the row
+  // they borrow from a namesake, so an app looking prices up by vehicle finds
+  // the one the booking charges from. The admin list is untouched.
+  const { addBorrowedRidePriceRows } = await import('../../services/rideService.js');
+  const results = await addBorrowedRidePriceRows(data.results);
+  res.json({ success: true, ...data, results });
 });
 
 export const getVehiclePreferenceOptions = asyncHandler(async (_req, res) =>
