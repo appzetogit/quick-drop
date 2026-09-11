@@ -2594,6 +2594,11 @@ export async function updateRestaurantById(id, body = {}) {
     if (body.gstNumber !== undefined) doc.gstNumber = toStr(body.gstNumber);
     if (body.gstLegalName !== undefined) doc.gstLegalName = toStr(body.gstLegalName);
     if (body.gstAddress !== undefined) doc.gstAddress = toStr(body.gstAddress);
+    // Whether this restaurant's menu prices already include GST. Set here, by the
+    // admin, and nowhere else -- the restaurant panel no longer offers it.
+    if (body.priceIncludesGst !== undefined) {
+        doc.priceIncludesGst = parseBooleanLike(body.priceIncludesGst, 'priceIncludesGst');
+    }
     if (body.fssaiNumber !== undefined) doc.fssaiNumber = toStr(body.fssaiNumber);
     if (body.fssaiExpiry !== undefined) doc.fssaiExpiry = body.fssaiExpiry ? new Date(body.fssaiExpiry) : undefined;
 

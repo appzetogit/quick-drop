@@ -156,24 +156,14 @@ export const getRestaurantTaxSettingsController = async (req, res, next) => {
     }
 };
 
-export const updateRestaurantTaxSettingsController = async (req, res, next) => {
-    try {
-        const restaurantId = req.user?.userId;
-        if (req.body?.priceIncludesGst === undefined) {
-            return sendResponse(res, 400, 'priceIncludesGst is required', null);
-        }
-        // Goes through the profile service so the one place that validates this
-        // flag stays the one place that writes it.
-        const profile = await updateRestaurantProfile(restaurantId, {
-            priceIncludesGst: req.body.priceIncludesGst,
-        });
-        return sendResponse(res, 200, 'Tax settings updated successfully', {
-            priceIncludesGst: profile?.priceIncludesGst === true,
-        });
-    } catch (error) {
-        next(error);
-    }
-};
+/**
+ * Whether a restaurant's menu prices include GST is set by the admin, per
+ * restaurant (PATCH /food/admin/restaurants/:id). Refused here: the setting
+ * changes what every price on the menu means and every bill that follows, so it
+ * is not the restaurant's to flip from its own panel.
+ */
+export const updateRestaurantTaxSettingsController = async (req, res) =>
+    sendResponse(res, 403, 'GST on menu prices is set by the admin. Please contact support to change it.', null);
 
 /**
  * The restaurant's own "spend this much, get this free" ladder.
@@ -331,7 +321,10 @@ export const deleteComboController = async (req, res, next) => {
 export const updateRestaurantProfileController = async (req, res, next) => {
     try {
         const restaurantId = req.user?.userId;
-        const restaurant = await updateRestaurantProfile(restaurantId, req.body || {});
+        // priceIncludesGst is the admin's to set (see updateRestaurantTaxSettingsController),
+        // so the restaurant's own profile save cannot change it either.
+        const { priceIncludesGst: _adminOnly, ...body } = req.body || {};
+        const restaurant = await updateRestaurantProfile(restaurantId, body);
         return sendResponse(res, 200, 'Restaurant updated successfully', { restaurant });
     } catch (error) {
         next(error);

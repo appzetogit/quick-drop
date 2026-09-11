@@ -71,6 +71,8 @@ const normalizeDetailsFormFromRestaurant = (restaurant) => {
       typeof restaurant?.pureVegRestaurant === "boolean"
         ? restaurant.pureVegRestaurant
         : false,
+    // Unset means exclusive -- how the bill treats it.
+    priceIncludesGst: restaurant?.priceIncludesGst === true,
     ownerName: restaurant?.ownerName || "",
     ownerEmail: restaurant?.ownerEmail || "",
     ownerPhone: restaurant?.ownerPhone || "",
@@ -303,6 +305,7 @@ export default function EditRestaurant() {
       const payload = {
         name: detailsForm.name,
         pureVegRestaurant: detailsForm.pureVegRestaurant === true,
+        priceIncludesGst: detailsForm.priceIncludesGst === true,
         ownerName: detailsForm.ownerName,
         ownerEmail: detailsForm.ownerEmail,
         ownerPhone: detailsForm.ownerPhone,
@@ -458,6 +461,42 @@ export default function EditRestaurant() {
                       No
                     </button>
                   </div>
+                </div>
+                {/*
+                  Set here and only here: the restaurant panel no longer offers it.
+                  It decides what every price on this menu means on the bill.
+                */}
+                <div>
+                  <Label>Menu prices include GST?</Label>
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDetailsForm((p) => ({ ...p, priceIncludesGst: true }))}
+                      className={`px-3 py-1.5 text-xs rounded-full border ${
+                        detailsForm.priceIncludesGst === true
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-white text-slate-700 border-slate-300"
+                      }`}
+                    >
+                      Inclusive
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDetailsForm((p) => ({ ...p, priceIncludesGst: false }))}
+                      className={`px-3 py-1.5 text-xs rounded-full border ${
+                        detailsForm.priceIncludesGst === false
+                          ? "bg-slate-900 text-white border-slate-900"
+                          : "bg-white text-slate-700 border-slate-300"
+                      }`}
+                    >
+                      Exclusive
+                    </button>
+                  </div>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    {detailsForm.priceIncludesGst
+                      ? "A dish listed at ₹200 is billed at ₹200. The GST inside it is shown on the bill, and the restaurant earns the price less that tax."
+                      : "GST is added on top: a dish listed at ₹200 is billed at ₹200 plus GST."}
+                  </p>
                 </div>
                 <div>
                   <Label>Primary Email</Label>
