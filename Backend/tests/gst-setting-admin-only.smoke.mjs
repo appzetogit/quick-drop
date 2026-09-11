@@ -1,15 +1,15 @@
 /**
- * Whether a restaurant's menu prices include GST is set by the admin, and only
- * the admin.
+ * Whether a restaurant's menu prices include GST is set in exactly two places:
+ * the restaurant's own "GST on menu prices" page, and the admin's Edit
+ * Restaurant. Nothing else may write it.
  *
  * Run: node tests/gst-setting-admin-only.smoke.mjs
  *
  * The setting decides what every price on a menu means -- inclusive, a Rs 200
- * dish is billed Rs 200; exclusive, Rs 200 plus GST -- so it was taken off the
- * restaurant panel. Hiding the page is not enough on its own: the restaurant's
- * tax-settings endpoint and its own profile save could both still write it.
- * This drives the real controllers and the admin service against an in-memory
- * Mongo.
+ * dish is billed Rs 200; exclusive, Rs 200 plus GST -- so it must only change
+ * when someone deliberately changes it. The restaurant's general profile save
+ * used to be able to write it as a side effect; that stays shut. This drives the
+ * real controllers and the admin service against an in-memory Mongo.
  */
 import assert from 'node:assert/strict';
 import mongoose from 'mongoose';
@@ -55,13 +55,19 @@ const main = async () => {
     const stored = async () => (await FoodRestaurant.findById(id).select('priceIncludesGst').lean()).priceIncludesGst;
     const asRestaurant = (body) => ({ user: { userId: String(id) }, body });
 
-    console.log('\nthe restaurant cannot change it');
-    await check('its tax-settings endpoint refuses, and nothing is written', async () => {
-        const res = mockRes();
+    console.log('\nthe restaurant sets it on its GST page');
+    await check('its GST page switches the menu to inclusive and back', async () => {
+        let res = mockRes();
         await controller.updateRestaurantTaxSettingsController(asRestaurant({ priceIncludesGst: true }), res, (e) => { throw e; });
-        assert.equal(res.code, 403, `status ${res.code}`);
+        assert.equal(res.code, 200, `status ${res.code}`);
+        assert.equal(await stored(), true);
+        res = mockRes();
+        await controller.updateRestaurantTaxSettingsController(asRestaurant({ priceIncludesGst: false }), res, (e) => { throw e; });
+        assert.equal(res.code, 200, `status ${res.code}`);
         assert.equal(await stored(), false);
     });
+
+    console.log('\nbut no other restaurant save changes it');
     await check('its own profile save ignores it', async () => {
         const res = mockRes();
         let error = null;

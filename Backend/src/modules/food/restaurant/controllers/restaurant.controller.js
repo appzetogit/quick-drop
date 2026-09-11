@@ -157,13 +157,32 @@ export const getRestaurantTaxSettingsController = async (req, res, next) => {
 };
 
 /**
- * Whether a restaurant's menu prices include GST is set by the admin, per
- * restaurant (PATCH /food/admin/restaurants/:id). Refused here: the setting
- * changes what every price on the menu means and every bill that follows, so it
- * is not the restaurant's to flip from its own panel.
+ * The restaurant's own "GST on menu prices" switch, on its GST page.
+ *
+ * The admin can set the same flag on Edit Restaurant; either side saving last
+ * wins, and both read the one stored field. This is the ONLY restaurant route
+ * that writes it -- the profile save and the dish save both ignore it -- so the
+ * restaurant changes it deliberately, on the page that explains what it does,
+ * and never as a side effect of editing something else.
  */
-export const updateRestaurantTaxSettingsController = async (req, res) =>
-    sendResponse(res, 403, 'GST on menu prices is set by the admin. Please contact support to change it.', null);
+export const updateRestaurantTaxSettingsController = async (req, res, next) => {
+    try {
+        const restaurantId = req.user?.userId;
+        if (req.body?.priceIncludesGst === undefined) {
+            return sendResponse(res, 400, 'priceIncludesGst is required', null);
+        }
+        // Goes through the profile service so the one place that validates this
+        // flag stays the one place that writes it.
+        const profile = await updateRestaurantProfile(restaurantId, {
+            priceIncludesGst: req.body.priceIncludesGst,
+        });
+        return sendResponse(res, 200, 'Tax settings updated successfully', {
+            priceIncludesGst: profile?.priceIncludesGst === true,
+        });
+    } catch (error) {
+        next(error);
+    }
+};
 
 /**
  * The restaurant's own "spend this much, get this free" ladder.
