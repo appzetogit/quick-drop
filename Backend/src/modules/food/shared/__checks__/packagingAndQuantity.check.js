@@ -22,15 +22,20 @@ import {
 const throws = (fn) => assert.throws(fn, { name: 'ValidationError' });
 
 // --- quantity rules -------------------------------------------------------
+// `hasMin` sits beside `hasCap` so a stored 0 ("no minimum") stays
+// distinguishable from an explicit minimum -- the effective `min` is 1 either
+// way, since nobody orders zero of something.
 assert.deepEqual(resolveOrderQuantityRules(null), {
     min: 1,
     max: ABSOLUTE_MAX_ORDER_QUANTITY,
+    hasMin: false,
     hasCap: false,
     ceiling: ABSOLUTE_MAX_ORDER_QUANTITY
 });
 assert.deepEqual(resolveOrderQuantityRules({ minOrderQuantity: 4, maxOrderQuantity: 10 }), {
     min: 4,
     max: 10,
+    hasMin: true,
     hasCap: true,
     ceiling: ABSOLUTE_MAX_ORDER_QUANTITY
 });
@@ -59,7 +64,11 @@ throws(() => assertOrderQuantity(100, resolveOrderQuantityRules(null), 'Coke'));
 // partial updates never reset a stored limit
 assert.equal(normalizeOrderQuantityInput({}), undefined);
 assert.deepEqual(normalizeOrderQuantityInput({ minOrderQuantity: 4 }), { minOrderQuantity: 4 });
-throws(() => normalizeOrderQuantityInput({ minOrderQuantity: 0 }));
+// 0 is a valid minimum -- it means "no minimum", matching what 0 already means
+// for the cap. It is stored as 0; the effective minimum at order time is still 1
+// (see line 59: ordering 0 items is refused). Only a negative is nonsense.
+assert.deepEqual(normalizeOrderQuantityInput({ minOrderQuantity: 0 }), { minOrderQuantity: 0 });
+throws(() => normalizeOrderQuantityInput({ minOrderQuantity: -1 }));
 throws(() => normalizeOrderQuantityInput({ maxOrderQuantity: 500 }));
 throws(() => assertOrderQuantityRange({ minOrderQuantity: 5, maxOrderQuantity: 2 }));
 assertOrderQuantityRange({ minOrderQuantity: 5, maxOrderQuantity: 0 }); // 0 = uncapped, valid
