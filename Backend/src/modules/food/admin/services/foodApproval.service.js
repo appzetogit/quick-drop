@@ -186,15 +186,50 @@ export async function approveFoodItem(id, options = {}) {
                          */
                         const struckFromBase = standing.lastDirection === 'decrease'
                             && standing.discountPercent > 0;
-                        const strike = struckFromBase
+                        const markupStrike = (b) =>
+                            Math.round(b * (1 + standing.markupPercent / 100) * 100) / 100;
+                        const strike = struckFromBase ? fields.basePrice : markupStrike(base);
+                        /*
+                         * Written in both directions, never left as it was.
+                         *
+                         * It used to be written only after a decrease. A dish a
+                         * restaurant had re-priced then kept the strike from its
+                         * OLD base -- and the stored strike is what the menu
+                         * shows -- so a Rs 200 dish struck at 240 under a +20%
+                         * hike, re-priced to Rs 300 and approved into the same
+                         * hike, went on striking 240: below its own price, so the
+                         * hike showed nowhere. A new dish had no stored strike and
+                         * derived 360, which is why only edits broke.
+                         */
+                        next.formulationStrikePrice = struckFromBase
                             ? fields.basePrice
-                            : Math.round(base * (1 + standing.markupPercent / 100) * 100) / 100;
-                        if (struckFromBase) {
-                            next.formulationStrikePrice = fields.basePrice;
-                        }
+                            : (standing.markupPercent > 0 ? strike : null);
                         next.discountPercent = strike > next.price
                             ? Math.round(((strike - next.price) / strike) * 10000) / 100
                             : 0;
+
+                        /*
+                         * Every size joins the adjustment, not only the headline.
+                         * Sizes carry their own base and strike and are what is
+                         * actually billed; approving only the dish's own figures
+                         * left each size at full price beside a headline that
+                         * advertised the discount.
+                         */
+                        if (Array.isArray(updated.variants) && updated.variants.length > 0) {
+                            next.variants = updated.variants.map((v) => {
+                                const vBase = Number(v?.basePrice) > 0 ? Number(v.basePrice) : Number(v?.price);
+                                if (!(vBase > 0)) return v;
+                                const roundedBase = Math.round(vBase * 100) / 100;
+                                return {
+                                    ...v,
+                                    basePrice: roundedBase,
+                                    price: Math.max(0.01, Math.round(vBase * (1 - standing.discountPercent / 100) * 100) / 100),
+                                    formulationStrikePrice: struckFromBase
+                                        ? roundedBase
+                                        : (standing.markupPercent > 0 ? markupStrike(vBase) : null),
+                                };
+                            });
+                        }
 
                         await FoodItem.updateOne({ _id: updated._id }, { $set: next });
                         Object.assign(updated, next);

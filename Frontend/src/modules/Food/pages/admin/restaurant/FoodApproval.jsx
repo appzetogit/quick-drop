@@ -533,8 +533,7 @@ export default function FoodApproval() {
                   {standing.standing.discountPercent > 0
                     ? `${standing.standing.discountPercent}% discount`
                     : null}
-                  {" "}applies to the other dishes here. This one was created afterwards, so it
-                  carries none of it.
+                  {" "}applies to the other dishes here.
                 </p>
 
                 <div className="mt-3 space-y-2">
@@ -548,10 +547,10 @@ export default function FoodApproval() {
                     />
                     <span className="text-xs">
                       <span className="block font-semibold text-slate-900">
-                        Leave it untouched
+                        Keep its current pricing
                       </span>
                       <span className="block text-slate-600">
-                        Goes live at its own price
+                        Goes live as it stands
                         {standing.preview?.untouched?.pays != null
                           ? ` — customers pay ${"\u20B9"}${standing.preview.untouched.pays}, nothing struck through`
                           : ""}

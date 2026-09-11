@@ -295,3 +295,66 @@ export function inferFormulationPercent(basePrice, price) {
     if (base === null || base <= 0 || selling === null || selling <= 0) return 0;
     return normalizeFormulationPercent(((selling - base) / base) * 100);
 }
+
+/**
+ * A dish's adjustment, carried onto a new base price.
+ *
+ * Used when a restaurant or an admin edits a dish's base. The base is theirs to
+ * set; the markup and discount are the platform's and are not on the form, so
+ * they are kept, and every figure derived from the base is worked out again:
+ *
+ *   price   new base x (1 - discount)        what the customer is charged
+ *   strike  unchanged base -> the stored strike, as it was
+ *           a decrease ran last -> the new base, what the dish is cut FROM
+ *           a markup stands     -> new base x (1 + markup)
+ *           neither             -> none; the menu falls back to the base
+ *
+ * The strike is the part that used to be missed. It is stored, and the stored
+ * figure wins on the menu, so a Rs 200 dish struck at 240 under a +20% hike,
+ * re-priced to Rs 300, kept striking 240 -- below its own price -- and the hike
+ * simply vanished from that dish. And the charged price was left at the bare new
+ * base while the menu re-applied the discount to it, so a discounted dish was
+ * shown at one price and billed at another until someone noticed.
+ *
+ * Null for an unpriced base, so the caller can leave the row alone.
+ */
+export function rebaseFormulationFields(existing = {}, newBasePrice) {
+    const base = toFiniteNumber(newBasePrice);
+    if (base === null || base <= 0) return null;
+
+    const current = resolveFormulationPricing(existing);
+    const markup = current.markupPercent;
+    const discount = current.discountAccumulatorPercent;
+    const newBase = round2(base);
+    const price = Math.max(MIN_RESULT_PRICE, round2(newBase * (1 - discount / 100)));
+
+    const storedStrike = toFiniteNumber(existing?.formulationStrikePrice);
+    const hasStoredStrike = storedStrike !== null && storedStrike > 0;
+    const baseUnchanged = Math.abs(newBase - current.basePrice) < 0.005;
+    // A decrease records the price it cut from, which sits at or below the base;
+    // an increase records base x (1 + markup), which sits above it. The same
+    // test resolveStandingAdjustment uses to tell the two apart.
+    const decreaseRanLast = hasStoredStrike && storedStrike <= current.basePrice + 0.005 && discount > 0;
+
+    let strike = null;
+    if (hasStoredStrike && baseUnchanged) strike = round2(storedStrike);
+    else if (decreaseRanLast) strike = newBase;
+    else if (markup > 0) strike = round2(newBase * (1 + markup / 100));
+
+    // The saving the customer reads, off the strike the menu will actually show.
+    const shownStrike = strike ?? Math.max(round2(newBase * (1 + markup / 100)), newBase);
+    const saving = shownStrike > price ? round2(((shownStrike - price) / shownStrike) * 100) : 0;
+
+    return {
+        basePrice: newBase,
+        price,
+        formulationPrice: price,
+        formulationMarkupPercent: markup,
+        formulationDiscountPercent: discount,
+        // The signed field older readers still consult; a markup wins when both
+        // stand, as elsewhere.
+        formulationPercent: markup > 0 ? markup : -discount,
+        formulationStrikePrice: strike,
+        discountPercent: saving,
+    };
+}

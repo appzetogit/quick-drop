@@ -52,23 +52,33 @@ export async function rejectFoodItemController(req, res, next) {
 export async function getStandingAdjustmentController(req, res, next) {
     try {
         const { resolveStandingAdjustment } = await import('../services/priceAdjustment.service.js');
-        const { formulationFieldsFor } = await import('../../shared/formulationPricing.js');
+        const { formulationFieldsFor, resolveFormulationPricing } = await import('../../shared/formulationPricing.js');
         const { FoodItem } = await import('../models/food.model.js');
 
         const food = await FoodItem.findById(req.params.id)
-            .select('name price basePrice restaurantId')
+            .select('name price basePrice restaurantId formulationPercent formulationMarkupPercent formulationDiscountPercent formulationStrikePrice')
             .lean();
         if (!food?._id) return sendError(res, 404, 'Food item not found');
 
         const standing = await resolveStandingAdjustment(food.restaurantId);
         const base = Number(food.basePrice) > 0 ? Number(food.basePrice) : Number(food.price);
         const applied = formulationFieldsFor(base, -standing.discountPercent);
-        const strike = Math.round(base * (1 + standing.markupPercent / 100) * 100) / 100;
+        // The strike approval will write -- the base after a decrease, the markup
+        // figure otherwise -- so the preview is the dish as it will go live.
+        const strike = standing.lastDirection === 'decrease' && standing.discountPercent > 0
+            ? base
+            : Math.round(base * (1 + standing.markupPercent / 100) * 100) / 100;
+        /*
+         * "As it stands" is the dish's own pricing, not its bare base. An edited
+         * dish already carries the adjustment it had, and approving it untouched
+         * keeps that; showing the base here told the admin it would drop.
+         */
+        const asItStands = resolveFormulationPricing(food);
 
         return sendResponse(res, 200, 'Standing adjustment', {
             standing,
             preview: {
-                untouched: { pays: base, cutout: null },
+                untouched: { pays: asItStands.price, cutout: asItStands.strikePrice },
                 applied: {
                     pays: applied ? applied.price : base,
                     cutout: strike > (applied ? applied.price : base) ? strike : null,

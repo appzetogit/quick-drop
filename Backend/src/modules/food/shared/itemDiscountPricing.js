@@ -22,7 +22,7 @@
  * existing rows keep their data rather than being silently erased.
  */
 
-import { resolveFormulationPricing, formulationFieldsFor } from './formulationPricing.js';
+import { resolveFormulationPricing, rebaseFormulationFields } from './formulationPricing.js';
 
 const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 
@@ -242,18 +242,16 @@ export function resolveItemPricingForWrite({
      * Re-derive against the dish's active adjustment.
      *
      * The base price is the restaurant's to set and this is where they set it.
-     * The percent is the platform's and is not in this form, so it is carried
-     * over from the stored dish -- otherwise editing a Rs 200 dish to Rs 250
-     * would keep a formulation figure computed from the old base, and the two
-     * would describe different dishes.
+     * The markup and discount are the platform's and are not in this form, so
+     * they are carried over from the stored dish and everything derived from the
+     * base -- the charged price, the struck figure, the saving -- is worked out
+     * again (see rebaseFormulationFields).
      *
-     * resolveFormulationPricing supplies the percent for a row that has never
-     * been migrated by reading it back out of its stored prices, so this works
-     * before and after the backfill.
+     * It used to carry one signed percent, which on a dish holding a hike AND a
+     * discount kept only the hike: a Rs 200 dish sold at 180 was re-saved at 200
+     * while the menu went on showing 180. And it never touched the stored strike,
+     * which is the figure the menu shows.
      */
-    const carried = resolveFormulationPricing(existing).formulationPercent;
-    const derived = formulationFieldsFor(resolved.basePrice, carried);
-    if (!derived) return resolved;
-
-    return derived;
+    const rebased = rebaseFormulationFields(existing, resolved.basePrice);
+    return rebased || resolved;
 }

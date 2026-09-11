@@ -23,6 +23,7 @@ import { normalizeItemPackagingChargeInput } from '../../shared/packagingCharge.
 import { normalizeAvailabilityScheduleInput } from '../../shared/itemAvailability.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { normalizeDiscountPricingInput } from '../../shared/itemDiscountPricing.js';
+import { rebaseFormulationFields } from '../../shared/formulationPricing.js';
 import { FoodAddon } from '../models/foodAddon.model.js';
 import { assertVariantAddonsOwned, normalizeAddonIdsInput } from '../../shared/orderAddons.js';
 
@@ -156,6 +157,11 @@ const getUpdatedFoodPricing = (existing = {}, body = {}) => {
         update.price = getFoodDisplayPrice({ variants });
         update.basePrice = bases.length ? Math.min(...bases) : update.price;
         update.discountPercent = 0;
+        // The headline's struck figure follows its new cheapest base, for the
+        // reason given below: a strike stored against the old base wins on the
+        // menu and can end up at or under the price.
+        const rebasedHeadline = rebaseFormulationFields(existing, update.basePrice);
+        if (rebasedHeadline) update.formulationStrikePrice = rebasedHeadline.formulationStrikePrice;
         return update;
     }
 
@@ -181,6 +187,18 @@ const getUpdatedFoodPricing = (existing = {}, body = {}) => {
     });
     if (!pricing || pricing.basePrice === null || !(pricing.basePrice > 0)) {
         throw new ValidationError('Enter a base price, or switch variants on');
+    }
+    /*
+     * The new base carries the dish's standing adjustment: the charged price,
+     * the struck figure and the saving are all worked out again from it (see
+     * rebaseFormulationFields). Setting only the price used to leave the
+     * discount on the dish while charging the bare base -- shown 270, billed
+     * 300 -- and left a strike from the old base that hid a hike entirely.
+     */
+    const rebased = rebaseFormulationFields(existing, pricing.basePrice);
+    if (rebased) {
+        Object.assign(update, rebased);
+        return update;
     }
     update.price = pricing.price;
     update.basePrice = pricing.basePrice;

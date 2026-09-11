@@ -19,6 +19,7 @@ import { FoodCommissionSchedule } from '../models/commissionSchedule.model.js';
 import { normalizeScheduleInput } from '../../shared/commissionSchedule.js';
 import { invalidateCommissionScheduleCache } from '../../orders/services/foodTransaction.service.js';
 import { resolveItemPricingForWrite, resolveItemDisplayPricing } from '../../shared/itemDiscountPricing.js';
+import { rebaseFormulationFields } from '../../shared/formulationPricing.js';
 import { normalizeItemOtherPriceInput } from '../../shared/otherPlatformPricing.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
@@ -3397,6 +3398,10 @@ const getAdminFoodUpdatedPricing = (existing = {}, body = {}) => {
         update.price = getFoodDisplayPrice({ variants });
         update.basePrice = cheapestVariantBase(variants) ?? update.price;
         update.discountPercent = 0;
+        // The headline's struck figure follows its new cheapest base; a strike
+        // stored against the old base wins on the menu and can sit under the price.
+        const rebasedHeadline = rebaseFormulationFields(existing, update.basePrice);
+        if (rebasedHeadline) update.formulationStrikePrice = rebasedHeadline.formulationStrikePrice;
         return update;
     }
 
@@ -3445,6 +3450,11 @@ const getAdminFoodUpdatedPricing = (existing = {}, body = {}) => {
      */
     if (pricing.formulationPercent !== undefined) update.formulationPercent = pricing.formulationPercent;
     if (pricing.formulationPrice !== undefined) update.formulationPrice = pricing.formulationPrice;
+    // Both accumulators and the struck figure, re-worked for the new base. The
+    // strike is the figure the menu shows; leaving the old one hid a hike.
+    for (const key of ['formulationMarkupPercent', 'formulationDiscountPercent', 'formulationStrikePrice']) {
+        if (pricing[key] !== undefined) update[key] = pricing[key];
+    }
     return update;
 };
 
@@ -3556,6 +3566,9 @@ export async function updateFood(id, body) {
     if (pricingUpdate.discountPercent !== undefined) doc.discountPercent = pricingUpdate.discountPercent;
     if (pricingUpdate.formulationPercent !== undefined) doc.formulationPercent = pricingUpdate.formulationPercent;
     if (pricingUpdate.formulationPrice !== undefined) doc.formulationPrice = pricingUpdate.formulationPrice;
+    for (const key of ['formulationMarkupPercent', 'formulationDiscountPercent', 'formulationStrikePrice']) {
+        if (pricingUpdate[key] !== undefined) doc[key] = pricingUpdate[key];
+    }
     // Comparison figure only. Global price adjustment moves this; it never
     // moves what the customer is charged.
     const otherPriceUpdate = normalizeItemOtherPriceInput(body);
