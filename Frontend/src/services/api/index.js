@@ -1497,10 +1497,16 @@ export const restaurantAPI = {
    * the platform's GST rate -- the flag alone tells the panel nothing it can
    * show the restaurant.
    */
-  // Read-only: whether menu prices include GST is the admin's to set, and the
-  // matching PUT answers 403. No updater here, so nothing can be wired to it.
   getTaxSettings: () =>
     apiClient.get("/food/restaurant/tax-settings", { contextModule: "restaurant" }),
+  // The "GST on menu prices" switch. The admin can set the same flag on
+  // Edit Restaurant; both write the one stored field.
+  updateTaxSettings: (priceIncludesGst) =>
+    apiClient.put(
+      "/food/restaurant/tax-settings",
+      { priceIncludesGst: Boolean(priceIncludesGst) },
+      { contextModule: "restaurant" },
+    ),
   /**
    * The restaurant's "spend this much, get this free" ladder. The admin panel
    * edits the same document, so both sides always show the offer that is
