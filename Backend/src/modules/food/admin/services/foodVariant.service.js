@@ -150,6 +150,36 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
             const incomingStrike = Number(entry?.formulationStrikePrice ?? entry?.strikePrice);
             if (Number.isFinite(incomingStrike) && incomingStrike > 0) {
                 variant.formulationStrikePrice = Math.round(incomingStrike * 100) / 100;
+            } else {
+                /*
+                 * Neither panel sends a size's strike back, so without this every
+                 * save dropped it -- Margherita's three sizes all lost theirs on a
+                 * restaurant edit. On a discount dish that is survivable, because a
+                 * customer is then shown the base as the struck figure. On a markup
+                 * dish it is not: the base IS the charged price there, so with the
+                 * strike gone nothing is struck and the increase vanishes from the
+                 * app until the next global run.
+                 *
+                 * Same rule the run itself uses, applied at save time:
+                 *   base unchanged  keep the strike the run decided; nothing about
+                 *                   this size was repriced
+                 *   base changed    re-derive it from the dish's standing markup,
+                 *                   measured against the NEW base
+                 *   no markup       leave it unset; customers fall back to the base
+                 */
+                const prior = priorById.get(String(entry?._id || entry?.id || ''));
+                const priorBase = Number(prior?.basePrice);
+                const priorStrike = Number(prior?.formulationStrikePrice);
+                const dishMarkup = Math.max(Number(existing?.formulationMarkupPercent) || 0, 0);
+                const baseUnchanged = Boolean(prior)
+                    && Number.isFinite(priorBase)
+                    && Math.abs(priorBase - variant.basePrice) < 0.01;
+                if (baseUnchanged && Number.isFinite(priorStrike) && priorStrike > 0) {
+                    variant.formulationStrikePrice = Math.round(priorStrike * 100) / 100;
+                } else if (dishMarkup > 0) {
+                    variant.formulationStrikePrice =
+                        Math.round(variant.basePrice * (1 + dishMarkup / 100) * 100) / 100;
+                }
             }
 
             // Optional per-size quantity limits. Absent or blank means "not set",

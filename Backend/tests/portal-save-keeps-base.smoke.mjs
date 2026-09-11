@@ -166,6 +166,46 @@ const main = async () => {
         assert.equal(out[0].basePrice, 90, 'the admin may still reprice downwards');
     });
 
+    console.log('\na save must not erase the formulation price from the app');
+
+    // Kadai Paneer as production holds it: 20% markup, so the base IS the charged
+    // price and the strike is the only thing that makes the increase visible.
+    const markupDish = {
+        formulationMarkupPercent: 20,
+        formulationDiscountPercent: 0,
+        variants: [{ _id: 'm1', name: 'Full', price: 429.3, basePrice: 429.3, formulationStrikePrice: 515.16 }],
+    };
+
+    check('an ordinary save keeps the strike the run decided', () => {
+        // What both panels post: no strike at all.
+        const out = normalizeFoodVariantsInput([{ _id: 'm1', name: 'Full', price: 429.3 }], { existing: markupDish });
+        assert.equal(out[0].formulationStrikePrice, 515.16, 'the markup would vanish from the app');
+    });
+
+    check('a deliberate reprice re-derives the strike from the new base', () => {
+        const out = normalizeFoodVariantsInput(
+            [{ _id: 'm1', name: 'Full', price: 500, basePrice: 500 }],
+            { existing: markupDish },
+        );
+        assert.equal(out[0].basePrice, 500);
+        assert.equal(out[0].formulationStrikePrice, 600, '20% on the NEW base of 500');
+    });
+
+    check('the Margherita case: a discount dish repriced leaves no stale strike', () => {
+        // 120 -> 100 with 10% off. Carrying the old strike of 120 would advertise
+        // "was 120" on a size that now has a base of 100.
+        const out = normalizeFoodVariantsInput(
+            [{ _id: 'd1', name: 'Small', price: 90, basePrice: 100 }],
+            { existing: {
+                formulationDiscountPercent: 10,
+                variants: [{ _id: 'd1', name: 'Small', price: 108, basePrice: 120, formulationStrikePrice: 120 }],
+            } },
+        );
+        assert.equal(out[0].basePrice, 100);
+        assert.equal(out[0].price, 90);
+        assert.equal(out[0].formulationStrikePrice, undefined, 'customers fall back to the base');
+    });
+
     console.log('\na client that does send a real base');
 
     const explicit = normalizeFoodVariantsInput(
