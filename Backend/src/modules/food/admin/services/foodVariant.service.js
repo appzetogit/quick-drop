@@ -267,39 +267,59 @@ export const serializeFoodVariants = (value = [], { strikeAsBase = false } = {})
             if (!name || !Number.isFinite(price) || price <= 0) return null;
 
             const variantId = entry?._id || entry?.id;
+
+            const realBase = Number.isFinite(Number(entry?.basePrice)) && Number(entry?.basePrice) > 0
+                ? Number(entry.basePrice)
+                : price;
+            const runStrike = Number(entry?.formulationStrikePrice);
+            /*
+             * `strikeAsBase` decides which number `basePrice` carries, and the
+             * split is deliberate.
+             *
+             * Customer-facing (true): the run's struck figure, so an increase is
+             * visible on a dish sold by size. Mirrors what the dish itself already
+             * does -- `display.strikePrice ?? display.basePrice` in publicFoods and
+             * restaurantMenu.
+             *
+             * Admin and approval (false): the real base, never the strike. The
+             * admin form loads this field and saves it straight back, so sending a
+             * strike here would write it into basePrice and ratchet the base
+             * UPWARDS on every save -- the same failure as a selling price being
+             * written into the base, in the other direction.
+             */
+            const shownBase = strikeAsBase && Number.isFinite(runStrike) && runStrike > realBase
+                ? runStrike
+                : realBase;
+
             return {
                 id: variantId ? String(variantId) : '',
                 _id: variantId ? String(variantId) : '',
                 name,
                 price,
-                /*
-                 * `strikeAsBase` decides which number this carries, and the split
-                 * is deliberate.
-                 *
-                 * Customer-facing (true): the run's struck figure, so an increase
-                 * is visible on a dish sold by size. Mirrors what the dish itself
-                 * already does -- `display.strikePrice ?? display.basePrice` in
-                 * publicFoods and restaurantMenu.
-                 *
-                 * Admin and approval (false): the real base, never the strike. The
-                 * admin form loads this field and saves it straight back, so
-                 * sending a strike here would write it into basePrice and ratchet
-                 * the base UPWARDS on every save -- the same failure as a selling
-                 * price being written into the base, in the other direction.
-                 */
-                basePrice: (() => {
-                    const realBase = Number.isFinite(Number(entry?.basePrice)) && Number(entry?.basePrice) > 0
-                        ? Number(entry.basePrice)
-                        : price;
-                    if (!strikeAsBase) return realBase;
-                    const strike = Number(entry?.formulationStrikePrice);
-                    return Number.isFinite(strike) && strike > realBase ? strike : realBase;
-                })(),
+                basePrice: shownBase,
                 // Always the run's own figure, unconflated, for clients that would
                 // rather read it directly than infer one.
-                strikePrice: Number.isFinite(Number(entry?.formulationStrikePrice)) && Number(entry?.formulationStrikePrice) > 0
-                    ? Number(entry.formulationStrikePrice)
-                    : null,
+                strikePrice: Number.isFinite(runStrike) && runStrike > 0 ? runStrike : null,
+                /*
+                 * The same struck figure again, as `otherPrice` -- customers only,
+                 * and only when there is something to strike.
+                 *
+                 * For app builds that predate reading a size's basePrice. Those
+                 * builds know two sources for a size's "was" price: otherPrice
+                 * first, then a guess that adds the DISH's rupee saving to the
+                 * size. That guess is a flat amount, right only for the size whose
+                 * price matches the dish's: with Margherita at -10% an old build
+                 * struck Medium at 255 instead of 270 and Large at 363 instead of
+                 * 390. Given the real figure here, it never reaches the guess.
+                 *
+                 * Newer builds take the larger of otherPrice and basePrice, which
+                 * are the same number, so nothing changes for them. Sizes have no
+                 * stored otherPrice of their own, so this overwrites nothing a
+                 * restaurant set.
+                 */
+                ...(strikeAsBase
+                    ? { otherPrice: shownBase > price ? shownBase : null }
+                    : {}),
                 // null means this size sets none of its own; the dish's applies.
                 minOrderQuantity: entry?.minOrderQuantity ?? null,
                 maxOrderQuantity: entry?.maxOrderQuantity ?? null,
