@@ -16,7 +16,7 @@
  * Runs automatically after `npm run build`; run manually with
  *   node scripts/prune-dist.mjs [--dry-run]
  */
-import { readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { chmodSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
