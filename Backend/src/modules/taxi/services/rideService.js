@@ -25,6 +25,7 @@ import { applyPromoToRideInTransaction } from './promoService.js';
 import { getTipSettings } from './appSettingsService.js';
 import { getBidRideSettings, getTransportRideSettings } from './transportSettingsService.js';
 import { computeRideFare } from '../common/rideFare.js';
+import { measureTrip } from '../common/tripMeasure.js';
 
 const clearUserActiveRideIfPresent = async (user) => {
   if (!user?.currentRideId) {
@@ -925,8 +926,8 @@ const findSurgeZoneForPickup = async ({ pickupPoint, serviceLocationId = null, t
  */
 export const quoteRideFares = async ({
   pickupCoords,
-  estimatedDistanceMeters = 0,
-  estimatedDurationMinutes = 0,
+  dropCoords,
+  stops = [],
   vehicleTypeIds = [],
   transport_type,
   service_location_id,
@@ -937,9 +938,12 @@ export const quoteRideFares = async ({
       ? new mongoose.Types.ObjectId(service_location_id)
       : null;
   const pickupPoint = normalizePoint(pickupCoords, 'pickupCoords');
+  const dropPoint = normalizePoint(dropCoords, 'dropCoords');
   const surgeZone = await findSurgeZoneForPickup({ pickupPoint, serviceLocationId, transportType });
-  const distanceMeters = Math.max(0, Number(estimatedDistanceMeters || 0));
-  const durationMinutes = Math.max(0, Number(estimatedDurationMinutes || 0));
+  // Measured exactly as createRideRecord measures it.
+  const trip = measureTrip({ pickup: pickupPoint, drop: dropPoint, stops });
+  const distanceMeters = trip ? trip.distanceMeters : 0;
+  const durationMinutes = trip ? trip.durationMinutes : 0;
 
   const ids = [...new Set(
     (Array.isArray(vehicleTypeIds) ? vehicleTypeIds : [vehicleTypeIds])
@@ -1027,8 +1031,8 @@ export const createRideRecord = async ({
   pickupAddress,
   dropAddress,
   fare,
-  estimatedDistanceMeters,
-  estimatedDurationMinutes,
+  // The trip's length is measured below, never taken from the caller.
+  stops = [],
   vehicleTypeId,
   vehicleTypeIds,
   vehicleIconType,
@@ -1053,8 +1057,15 @@ export const createRideRecord = async ({
 
   await clearUserActiveRideIfPresent(user);
 
-  const safeEstimatedDistanceMeters = Math.max(0, Number(estimatedDistanceMeters || 0));
-  const safeEstimatedDurationMinutes = Math.max(0, Number(estimatedDurationMinutes || 0));
+  /*
+   * Measured here rather than read from the app: the fare is priced from the
+   * distance and duration, and an app that reported 0 km paid the base fare for
+   * any trip. Measured the way the app measures it (common/tripMeasure.js), so
+   * an honest booking is priced exactly as before.
+   */
+  const measuredTrip = measureTrip({ pickup: pickupCoords, drop: dropCoords, stops });
+  const safeEstimatedDistanceMeters = measuredTrip ? measuredTrip.distanceMeters : 0;
+  const safeEstimatedDurationMinutes = measuredTrip ? measuredTrip.durationMinutes : 0;
   const clientFare = Number(fare);
 
   if (!Number.isFinite(clientFare) || clientFare < 0) {

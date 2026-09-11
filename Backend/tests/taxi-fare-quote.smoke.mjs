@@ -1,13 +1,15 @@
 /**
- * A ride is charged from its vehicle's price -- never from a figure the app sent
- * -- and the quote the app shows is that same price.
+ * A ride is charged from its vehicle's price and the server's own measurement
+ * of the trip -- never from a fare or a distance the app sent -- and the quote
+ * the app shows is that same figure.
  *
  * Run: node tests/taxi-fare-quote.smoke.mjs
  *
  * From production, 8-10 Sep: a second "Bike" was added with no price row. The
  * app, finding none, priced it at the first row it had -- the Sedan's -- and the
  * server, finding none either, charged whatever the app sent. A 3.3 km bike
- * ride was billed Rs 113; as a bike it is Rs 45.
+ * ride was billed Rs 113; as a bike it is Rs 45. The distance was the app's to
+ * report as well, so an app claiming 0 km paid the base fare for any trip.
  *
  * Drives the real rideService against an in-memory Mongo.
  */
@@ -57,10 +59,9 @@ const main = async () => {
         row(sedan, { base_price: 70, base_distance: 2, price_per_distance: 17, time_price: 2, admin_commision: 5, admin_commision_type: 1 }),
     ]);
 
-    // The 3.27 km trip from the bill.
-    const trip = { estimatedDistanceMeters: 3265.5576841561756, estimatedDurationMinutes: 7.837338441974822 };
-    const pickup = [75.8843529, 22.7282245];
-    const drop = [75.9143529, 22.7282245];
+    // Ride 8a4a1c from production: the 3.27 km bike trip billed Rs 113.
+    const pickup = [75.8843673, 22.728214];
+    const drop = [75.8968202, 22.75521];
 
     console.log('\nwhich price a vehicle is charged from');
     await check('a vehicle with no price borrows its older namesake\'s', async () => {
@@ -79,22 +80,33 @@ const main = async () => {
     });
 
     console.log('\nthe quote the booking screen shows');
-    const quotes = await svc.quoteRideFares({ pickupCoords: pickup, ...trip, vehicleTypeIds: [newBike, sedan, scooter], transport_type: 'taxi' });
-    const quoteFor = (v) => quotes.find((q) => q.vehicleTypeId === String(v));
+    const quote = (extra = {}) => svc.quoteRideFares({
+        pickupCoords: pickup, dropCoords: drop, vehicleTypeIds: [newBike, sedan, scooter], transport_type: 'taxi', ...extra,
+    });
+    const quotes = await quote();
+    const quoteFor = (list, v) => list.find((q) => q.vehicleTypeId === String(v));
     await check('THE BUG: the new Bike is quoted at bike rates, Rs 45 -- not Sedan\'s Rs 113', async () => {
-        assert.equal(quoteFor(newBike).fare.total, 45);
+        assert.equal(quoteFor(quotes, newBike).fare.total, 45);
     });
     await check('the Sedan is quoted at its own rates', async () => {
-        assert.equal(quoteFor(sedan).fare.total, 118);
+        assert.equal(quoteFor(quotes, sedan).fare.total, 118);
     });
     await check('a vehicle that cannot be priced is quoted as unavailable', async () => {
-        assert.equal(quoteFor(scooter).available, false);
-        assert.equal(quoteFor(scooter).fare, null);
+        assert.equal(quoteFor(quotes, scooter).available, false);
+        assert.equal(quoteFor(quotes, scooter).fare, null);
     });
     await check('the quote\'s rows add up to its total', async () => {
-        const f = quoteFor(newBike).fare;
+        const f = quoteFor(quotes, newBike).fare;
         const rows = f.baseFare + f.distanceFare + f.timeFare + f.serviceTax + f.platformFee + f.roundOff + f.surge;
         assert.equal(Math.round(rows * 100) / 100, f.total);
+    });
+    await check('the quote ignores a distance the app sends', async () => {
+        const lying = await quote({ estimatedDistanceMeters: 1, estimatedDurationMinutes: 0 });
+        assert.equal(quoteFor(lying, newBike).fare.total, 45);
+    });
+    await check('a stop on the way lengthens the quoted trip', async () => {
+        const withStop = await quote({ stops: [{ lat: 22.70, lng: 75.90 }] });
+        assert.ok(quoteFor(withStop, newBike).fare.total > 45, `quoted ${quoteFor(withStop, newBike).fare.total}`);
     });
 
     console.log('\nthe tariff list older apps read');
@@ -112,21 +124,29 @@ const main = async () => {
     console.log('\nthe booking itself');
     const userId = id();
     await User.collection.insertOne({ _id: userId, name: 'Test Rider', phone: '9999999999', createdAt: new Date() });
-    const book = (vehicleTypeId, fare) => svc.createRideRecord({
+    const reset = async () => {
+        await mongoose.connection.collection('taxirides').deleteMany({});
+        await User.collection.updateOne({ _id: userId }, { $set: { currentRideId: null } });
+    };
+    const book = (vehicleTypeId, fare, extra = {}) => svc.createRideRecord({
         userId, pickupCoords: pickup, dropCoords: drop, pickupAddress: 'A', dropAddress: 'B',
-        fare, ...trip, vehicleTypeId, paymentMethod: 'cash', serviceType: 'ride', transport_type: 'taxi',
+        fare, vehicleTypeId, paymentMethod: 'cash', serviceType: 'ride', transport_type: 'taxi', ...extra,
     });
     await check('THE BUG: a new-Bike ride sent at Rs 113 is charged Rs 45', async () => {
         const ride = await book(newBike, 113);
         assert.equal(Number(ride.fare), 45, `charged ${ride.fare}`);
-        await mongoose.connection.collection('taxirides').deleteMany({});
-        await User.collection.updateOne({ _id: userId }, { $set: { currentRideId: null } });
+        await reset();
     });
     await check('a ride sent at Rs 0 is still charged its price', async () => {
         const ride = await book(sedan, 0);
         assert.equal(Number(ride.fare), 118, `charged ${ride.fare}`);
-        await mongoose.connection.collection('taxirides').deleteMany({});
-        await User.collection.updateOne({ _id: userId }, { $set: { currentRideId: null } });
+        await reset();
+    });
+    await check('an app claiming 0 km is still charged the measured trip', async () => {
+        const ride = await book(newBike, 20, { estimatedDistanceMeters: 0, estimatedDurationMinutes: 0 });
+        assert.equal(Number(ride.fare), 45, `charged ${ride.fare}`);
+        assert.ok(Math.abs(ride.estimatedDistanceMeters - 3265.83) < 0.5, `stored ${ride.estimatedDistanceMeters} m`);
+        await reset();
     });
     await check('a vehicle nobody priced cannot be booked at the app\'s figure', async () => {
         await assert.rejects(() => book(scooter, 50), (err) => err.statusCode === 400 || err.status === 400);

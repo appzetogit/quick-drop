@@ -340,8 +340,8 @@ const razorpayRequest = async ({ method, path, body, keyId, keySecret }) => {
 export const quoteRide = async (req, res) => {
   const {
     pickup,
-    estimatedDistanceMeters,
-    estimatedDurationMinutes,
+    drop,
+    stops,
     vehicleTypeIds,
     vehicleTypeId,
     transport_type,
@@ -349,14 +349,16 @@ export const quoteRide = async (req, res) => {
     serviceLocationId,
   } = req.body || {};
 
-  if (!pickup) {
-    throw new ApiError(400, 'pickup is required');
+  // The trip is measured from these, exactly as the booking measures it: any
+  // distance or duration the app sends is ignored.
+  if (!pickup || !drop) {
+    throw new ApiError(400, 'pickup and drop are required');
   }
 
   const quotes = await quoteRideFares({
     pickupCoords: normalizePoint(pickup, 'pickup'),
-    estimatedDistanceMeters: Number(estimatedDistanceMeters || 0),
-    estimatedDurationMinutes: Number(estimatedDurationMinutes || 0),
+    dropCoords: normalizePoint(drop, 'drop'),
+    stops,
     vehicleTypeIds: Array.isArray(vehicleTypeIds) ? vehicleTypeIds : [vehicleTypeId].filter(Boolean),
     transport_type,
     service_location_id: service_location_id || serviceLocationId,
@@ -366,7 +368,7 @@ export const quoteRide = async (req, res) => {
 };
 
 export const createRide = async (req, res) => {
-  const { pickup, drop, pickupAddress, dropAddress, fare, estimatedDistanceMeters, estimatedDurationMinutes, vehicleTypeId, vehicleTypeIds, vehicleIconType, vehicleIconUrl, paymentMethod, serviceType, intercity, promo_code, service_location_id, transport_type, scheduledAt, bookingMode, userMaxBidFare, bidStepAmount } =
+  const { pickup, drop, stops, pickupAddress, dropAddress, fare, vehicleTypeId, vehicleTypeIds, vehicleIconType, vehicleIconUrl, paymentMethod, serviceType, intercity, promo_code, service_location_id, transport_type, scheduledAt, bookingMode, userMaxBidFare, bidStepAmount } =
     req.body;
 
   if (!pickup || !drop) {
@@ -380,8 +382,8 @@ export const createRide = async (req, res) => {
     pickupAddress,
     dropAddress,
     fare: Number(fare || 0),
-    estimatedDistanceMeters: Number(estimatedDistanceMeters || 0),
-    estimatedDurationMinutes: Number(estimatedDurationMinutes || 0),
+    // The server measures the trip itself; stops only ever lengthen it.
+    stops,
     vehicleTypeId,
     vehicleTypeIds,
     vehicleIconType,
