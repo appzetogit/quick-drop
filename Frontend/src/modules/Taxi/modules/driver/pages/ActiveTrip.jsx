@@ -964,6 +964,13 @@ const ActiveTrip = () => {
                     arrivedAt: payload.arrivedAt || prev.request?.raw?.arrivedAt,
                     completedAt: payload.completedAt || prev.request?.raw?.completedAt,
                     waitingChargeAmount: payload.waitingChargeAmount ?? prev.request?.raw?.waitingChargeAmount,
+                    // The fare the server finalised on arrival travels with the
+                    // status; without it this screen showed a new status with
+                    // the old fare until the next full ride:state.
+                    fare: payload.fare ?? prev.request?.raw?.fare,
+                    baseFare: payload.baseFare ?? prev.request?.raw?.baseFare,
+                    additionalCharge: payload.additionalCharge ?? prev.request?.raw?.additionalCharge,
+                    recovered_cancellation_due: payload.recovered_cancellation_due ?? prev.request?.raw?.recovered_cancellation_due,
                 };
                 return buildPersistedTripState(updatedRequestRaw, { phase });
             });
@@ -1323,9 +1330,18 @@ const ActiveTrip = () => {
     const promoDiscountAmount = Number(liveRaw?.promo?.discount_amount ?? effectiveState?.promo?.discount_amount ?? 0);
     const promoCodeApplied = liveRaw?.promo?.code || effectiveState?.promo?.code || '';
 
-    // Use the final consolidated fare computed and saved in the database if completed
-    const rawFareAmount = resolvedStatus === 'completed' && (liveRaw?.fare || effectiveState?.fare)
-        ? Number(liveRaw?.fare ?? effectiveState?.fare ?? 0)
+    /*
+     * From arrival at the destination the server's fare IS the fare: the
+     * server finalises it then, from the agreed fare (promo or accepted bid),
+     * its own waiting charge and any cancellation fee the rider owed. This
+     * screen's own sum is only a preview before that; collecting it is how the
+     * driver asked for Rs 148 while the rider app showed Rs 118, and it is also
+     * the amount a payment QR is raised for.
+     */
+    const isFareFinalisedByServer = resolvedStatus === 'completed' || ['arrived', 'completed'].includes(tripStatus);
+    const serverFareAmount = Number(liveRaw?.fare ?? effectiveState?.fare ?? 0);
+    const rawFareAmount = isFareFinalisedByServer && serverFareAmount > 0
+        ? serverFareAmount
         : Math.max(0, baseFareAmount + waitingCharge + timeCharge + additionalCharge + adminExtraChargeAmount + cancellationChargeAmount - promoDiscountAmount);
     const fareAmount = Math.ceil(rawFareAmount);
 

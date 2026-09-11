@@ -22,7 +22,9 @@ const { FoodItem } = await import('../src/modules/food/admin/models/food.model.j
 const { FoodRestaurant } = await import('../src/modules/food/restaurant/models/restaurant.model.js');
 const { FoodFeeSettings } = await import('../src/modules/food/admin/models/feeSettings.model.js');
 const { applyPriceAdjustment } = await import('../src/modules/food/admin/services/priceAdjustment.service.js');
-const { getRestaurantMenu } = await import('../src/modules/food/restaurant/services/restaurantMenu.service.js');
+// The customer menu: the portal one (getRestaurantMenu) sends the real base and
+// no strike by design, so it cannot show what the app is sent.
+const { getPublicApprovedRestaurantMenu } = await import('../src/modules/food/restaurant/services/restaurantMenu.service.js');
 
 // The blanket markup is ON in production at 20%, and it is exactly what used to
 // hijack the strike on a shallow markdown. Left on so this proves it cannot.
@@ -34,6 +36,7 @@ await FoodFeeSettings.create({
 const restaurant = await FoodRestaurant.create({
     restaurantName: 'API Kitchen',
     ownerName: 'Owner',
+    status: 'approved',
     email: `api${Date.now()}@example.com`,
     phone: `9${String(Date.now()).slice(-9)}`,
 });
@@ -67,7 +70,7 @@ const seed = async (fields) => {
 const fromApi = async () => {
     // `sections` carries the items; `categories` is the sibling index and has
     // none, so reading that first silently yields an empty menu.
-    const menu = await getRestaurantMenu(String(restaurant._id));
+    const menu = await getPublicApprovedRestaurantMenu(String(restaurant._id));
     const items = (menu?.sections || []).flatMap((s) => s?.items || []);
     assert.ok(items.length, 'the menu returned no items to inspect');
     return items[0];

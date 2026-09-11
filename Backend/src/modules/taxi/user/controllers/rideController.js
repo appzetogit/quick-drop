@@ -7,7 +7,7 @@ import { normalizePoint } from '../../../../utils/geo.js';
 import { resolveConfiguredGatewayCredentials } from '../../services/paymentGatewayService.js';
 import { Driver } from '../../driver/models/Driver.js';
 import { WalletTransaction } from '../../driver/models/WalletTransaction.js';
-import { applyDriverWalletAdjustment, serializeDriverWallet } from '../../driver/services/walletService.js';
+import { applyDriverWalletAdjustment, creditOnlineRideEarnings } from '../../driver/services/walletService.js';
 import { RIDE_LIVE_STATUS, RIDE_STATUS } from '../../constants/index.js';
 import {
   acceptRideBidAssignment,
@@ -87,6 +87,57 @@ const normalizeMoneyAmount = (value, fieldName = 'amount') => {
 };
 
 const roundMoney = (value) => Math.round(Number(value || 0) * 100) / 100;
+
+/*
+ * The `mock_order_<paise>_x` + 'mock_signature_bypass' pair lets a developer
+ * finish a payment without Razorpay. It was honoured in production: the
+ * amount was read out of the order id and Razorpay was never asked, so a cash
+ * ride could be marked paid online (the driver credited its fare from the
+ * platform) and a made-up Rs 5000 tip credited the driver Rs 5000. NODE_ENV
+ * alone decides, as in poolingController. Do not widen this.
+ */
+const isMockPaymentAllowed = () => process.env.NODE_ENV !== 'production';
+
+/*
+ * A real payment has to be for THIS ride, and for what it is being used as.
+ * The order is read back from Razorpay, and its notes were written by our own
+ * create-order endpoints, so they say which ride and what for. Checking only
+ * the amount let a payment for one ride (or for its tip) settle another ride
+ * of the same amount.
+ */
+const ensureOrderIsForRide = (order, { rideId, purpose }) => {
+  const notes = order?.notes || {};
+  const isForThisRide = String(notes.rideId || '').trim() === String(rideId);
+  const isForThisPurpose = purpose === 'tip'
+    ? String(notes.kind || '') === 'ride_tip'
+    : String(notes.source || '') === 'ride_completion';
+
+  if (!isForThisRide || !isForThisPurpose) {
+    throw new ApiError(400, 'This payment was not made for this ride');
+  }
+};
+
+/*
+ * A payment settles one thing, once. "Already used" was looked up only in the
+ * wallet history of this ride's driver, so one payment could settle a second
+ * ride with a different driver. Callers have already answered an idempotent
+ * replay of the same payment on the same ride, so any use found here is reuse.
+ */
+const ensurePaymentNotUsed = async (paymentId) => {
+  const [walletUse, rideUse] = await Promise.all([
+    WalletTransaction.findOne({ 'metadata.providerPaymentId': paymentId }).select('_id').lean(),
+    Ride.findOne({
+      $or: [
+        { 'driverPaymentCollection.providerPaymentId': paymentId },
+        { 'feedback.tipPaymentId': paymentId },
+      ],
+    }).select('_id').lean(),
+  ]);
+
+  if (walletUse || rideUse) {
+    throw new ApiError(409, 'This payment has already been used');
+  }
+};
 
 const ensureUserWallet = async (userId, session = null) => {
   if (!userId) return;
@@ -280,9 +331,24 @@ const finalizeRideCompletion = async ({
     markUserCancellationDuesAsRecovered(userId, ride._id, session),
   ]);
 
+  /*
+   * The rider has now paid an online ride's fare, and this -- not completion
+   * -- is when its earnings reach the driver (creditOnlineRideEarnings, once
+   * only). A cash ride was settled in cash at completion; a cash fare paid
+   * here instead is credited to the driver in full above.
+   */
+  let earningsResult = null;
+  if (fareDue > 0 && previousPaymentMethod === 'online') {
+    earningsResult = await creditOnlineRideEarnings({
+      rideId: ride._id,
+      session,
+      source: paymentSource || 'ride_completion',
+    });
+  }
+
   return {
     ride: await getRideDetails(ride._id),
-    walletResult,
+    walletResult: earningsResult || walletResult,
   };
 };
 
@@ -619,11 +685,7 @@ export const verifyRazorpayRideCompletion = async (req, res) => {
     });
   }
 
-  // The mock pair is for development only. It was honoured in production: the
-  // amount was read out of the order id and Razorpay never asked, so a cash
-  // ride could be marked paid online and a made-up tip credited to the driver.
-  const isMock = process.env.NODE_ENV !== 'production'
-    && orderId.startsWith("mock_order_") && signature === "mock_signature_bypass";
+  const isMock = isMockPaymentAllowed() && orderId.startsWith('mock_order_') && signature === 'mock_signature_bypass';
 
   let verifiedTotalCharge;
   let order;
@@ -653,6 +715,7 @@ export const verifyRazorpayRideCompletion = async (req, res) => {
       keySecret,
     });
     
+    ensureOrderIsForRide(order, { rideId, purpose: 'completion' });
     verifiedTotalCharge = roundMoney(Number(order?.amount || 0) / 100);
   }
 
@@ -665,6 +728,8 @@ export const verifyRazorpayRideCompletion = async (req, res) => {
     throw new ApiError(400, 'Verified payment amount does not match the payable ride total');
   }
 
+  await ensurePaymentNotUsed(paymentId);
+
   // Signature checked, amount read back from the gateway and matched against the ride
   // total -- the payment is real. Mirror it into the shared payments collection.
   // Cannot throw; see paymentMirror.service.js.
@@ -672,21 +737,6 @@ export const verifyRazorpayRideCompletion = async (req, res) => {
     orderId, paymentId, amount: verifiedTotalCharge, userId: req.auth.sub,
     subjectId: ride._id, purpose: 'ride', mock: isMock,
   });
-
-  const existingWalletCredit = await WalletTransaction.findOne({
-    driverId: ride.driverId,
-    'metadata.providerPaymentId': paymentId,
-  })
-    .select('_id')
-    .lean();
-
-  if (
-    existingWalletCredit &&
-    String(ride.driverPaymentCollection?.providerPaymentId || '') !== paymentId &&
-    String(ride.feedback?.tipPaymentId || '') !== paymentId
-  ) {
-    throw new ApiError(409, 'This ride completion payment was already processed');
-  }
 
   const session = await mongoose.startSession();
 
@@ -833,7 +883,8 @@ export const payRideCompletionWithWallet = async (req, res) => {
 
 export const createRazorpayRideTipOrder = async (req, res) => {
   const rideId = String(req.params.rideId || '').trim();
-  const tipAmount = normalizeMoneyAmount(req.body?.tipAmount, 'tipAmount');
+  // `amount` is what the rider app's tip order has always sent.
+  const tipAmount = normalizeMoneyAmount(req.body?.tipAmount ?? req.body?.amount, 'tipAmount');
   const tipSettings = await getTipSettings();
   const tipsEnabled = String(tipSettings.enable_tips || '1') === '1';
   const minimumTipAmount = Number(tipSettings.min_tip_amount || 0);
@@ -860,8 +911,14 @@ export const createRazorpayRideTipOrder = async (req, res) => {
     throw new ApiError(409, 'Ride has no assigned driver');
   }
 
-  if (ride.feedback?.submittedAt) {
-    throw new ApiError(409, 'Feedback already submitted for this ride');
+  /*
+   * Paying an online fare records feedback along with it, so "feedback
+   * already submitted" shut the tip out of exactly the rides whose tip has
+   * to be paid this way (rideService.submitRideFeedback refuses it as cash).
+   * Only a tip already paid rules out another.
+   */
+  if (Number(ride.feedback?.tipAmount || 0) > 0) {
+    throw new ApiError(409, 'A tip has already been paid for this ride');
   }
 
   const { keyId, keySecret } = await resolveRazorpayCredentials();
@@ -957,15 +1014,11 @@ export const verifyRazorpayRideTip = async (req, res) => {
     return;
   }
 
-  if (ride.feedback?.submittedAt) {
-    throw new ApiError(409, 'Feedback already submitted for this ride');
+  if (Number(ride.feedback?.tipAmount || 0) > 0) {
+    throw new ApiError(409, 'A tip has already been paid for this ride');
   }
 
-  // The mock pair is for development only. It was honoured in production: the
-  // amount was read out of the order id and Razorpay never asked, so a cash
-  // ride could be marked paid online and a made-up tip credited to the driver.
-  const isMock = process.env.NODE_ENV !== 'production'
-    && orderId.startsWith("mock_order_") && signature === "mock_signature_bypass";
+  const isMock = isMockPaymentAllowed() && orderId.startsWith('mock_order_') && signature === 'mock_signature_bypass';
 
   let amountPaise;
   let order;
@@ -994,6 +1047,7 @@ export const verifyRazorpayRideTip = async (req, res) => {
       keySecret,
     });
     
+    ensureOrderIsForRide(order, { rideId, purpose: 'tip' });
     amountPaise = Number(order?.amount);
   }
   if (!Number.isFinite(amountPaise) || amountPaise <= 0) {
@@ -1005,6 +1059,8 @@ export const verifyRazorpayRideTip = async (req, res) => {
     throw new ApiError(400, 'Verified tip amount does not match selected tip');
   }
 
+  await ensurePaymentNotUsed(paymentId);
+
   await mirrorTaxiPayment({
     orderId, paymentId, amount: verifiedTipAmount, userId: req.auth.sub,
     subjectId: ride._id, purpose: 'tip', mock: isMock,
@@ -1015,23 +1071,22 @@ export const verifyRazorpayRideTip = async (req, res) => {
     throw new ApiError(404, 'Driver not found');
   }
 
-  const existingWalletCredit = await WalletTransaction.findOne({
-    driverId: ride.driverId,
-    'metadata.providerPaymentId': paymentId,
-  })
-    .select('_id')
-    .lean();
+  /*
+   * The tip may follow feedback already given -- paying an online fare records
+   * feedback with it -- so a rating already counted is kept, not counted
+   * twice. A rating of 0 means "not rated" and is never counted.
+   */
+  const previousRating = Number(ride.feedback?.rating || 0);
+  const previousComment = String(ride.feedback?.comment || '');
+  const previousSubmittedAt = ride.feedback?.submittedAt || null;
+  const isNewRating = previousRating <= 0 && rating > 0;
 
-  if (existingWalletCredit && String(ride.feedback?.tipPaymentId || '') !== paymentId) {
-    throw new ApiError(409, 'This tip payment was already processed');
-  }
+  let walletResult;
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
 
-  const walletResult = existingWalletCredit
-    ? {
-      wallet: await serializeDriverWallet(driver),
-      transaction: null,
-    }
-    : await applyDriverWalletAdjustment({
+    walletResult = await applyDriverWalletAdjustment({
       driverId: ride.driverId,
       rideId: ride._id,
       amount: verifiedTipAmount,
@@ -1045,27 +1100,35 @@ export const verifyRazorpayRideTip = async (req, res) => {
         rideId: String(ride._id),
         userId: String(req.auth.sub),
       },
+      session,
     });
 
-  ride.feedback = {
-    rating,
-    comment: comment.trim(),
-    tipAmount: verifiedTipAmount,
-    tipPaymentId: paymentId,
-    tipOrderId: orderId,
-    tipPaidAt: new Date(),
-    submittedAt: new Date(),
-  };
+    ride.feedback = {
+      rating: isNewRating ? rating : previousRating,
+      comment: comment.trim() || previousComment,
+      tipAmount: verifiedTipAmount,
+      tipPaymentId: paymentId,
+      tipOrderId: orderId,
+      tipPaidAt: new Date(),
+      submittedAt: previousSubmittedAt || new Date(),
+    };
 
-  driver.ratingCount = Number(driver.ratingCount || 0) + 1;
-  driver.totalRatingScore = Number(driver.totalRatingScore || 0) + rating;
-  driver.rating = Number((driver.totalRatingScore / driver.ratingCount).toFixed(1));
+    if (isNewRating) {
+      driver.ratingCount = Number(driver.ratingCount || 0) + 1;
+      driver.totalRatingScore = Number(driver.totalRatingScore || 0) + rating;
+      driver.rating = Number((driver.totalRatingScore / driver.ratingCount).toFixed(1));
+    }
 
-  if (verifiedTipAmount > 0) {
     ride.driverEarnings = roundMoney((ride.driverEarnings || 0) + verifiedTipAmount);
-  }
 
-  await Promise.all([ride.save(), driver.save()]);
+    await Promise.all([ride.save({ session }), driver.save({ session })]);
+    await session.commitTransaction();
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
 
   if (walletResult.transaction) {
     emitToDriver(ride.driverId, 'driver:wallet:updated', {

@@ -2548,7 +2548,8 @@ export const createBusBookingOrder = async (req, res) => {
       String(error.message || '').toLowerCase().includes('authentication failed') ||
       String(error.message || '').toLowerCase().includes('api key');
 
-    const isMockAllowed = env.nodeEnv !== 'production' || env.useDefaultOtp;
+    // NODE_ENV alone; see verifyBusBookingPayment.
+    const isMockAllowed = process.env.NODE_ENV !== 'production';
     if (isAuthError && isMockAllowed) {
       console.warn(`[Razorpay] Bus order creation failed with auth error, falling back to mock order:`, error.message);
       order = {
@@ -2644,7 +2645,10 @@ export const verifyBusBookingPayment = async (req, res) => {
     throw new ApiError(400, 'Payment verification fields are required');
   }
 
-  const isMockAllowed = env.nodeEnv !== 'production' || env.useDefaultOtp;
+  // NODE_ENV alone, as in poolingController. USE_DEFAULT_OTP is an SMS switch
+  // production may run with (ALLOW_INSECURE_DEFAULT_OTP), and it made this
+  // accept 'mock_signature_bypass' on the live server: free bus seats.
+  const isMockAllowed = process.env.NODE_ENV !== 'production';
   const isMock = isMockAllowed && orderId.startsWith('mock_order_') && signature === 'mock_signature_bypass';
 
   if (!isMock) {

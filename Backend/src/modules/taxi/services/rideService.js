@@ -23,7 +23,7 @@ import { UserWallet } from '../user/models/UserWallet.js';
 import { consumeUserSubscriptionRide, resolveApplicableUserSubscription } from '../user/services/subscriptionService.js';
 import { applyPromoToRideInTransaction } from './promoService.js';
 import { getTipSettings } from './appSettingsService.js';
-import { getBidRideSettings, getTransportRideSettings } from './transportSettingsService.js';
+import { getBidRideSettings } from './transportSettingsService.js';
 import { computeRideFare } from '../common/rideFare.js';
 import { measureTrip } from '../common/tripMeasure.js';
 
@@ -1217,6 +1217,10 @@ export const createRideRecord = async ({
     ride_surge_enabled: Boolean(surgeZone?.ride_surge_enabled) && rideSurgeAmount > 0,
     ride_surge_amount: rideSurgeAmount,
     fare_before_surge: effectiveStartingFareWithoutSurge,
+    // What the rider agreed to. A promo lowers it below (see the promo branch);
+    // an accepted bid replaces it (acceptRideBidAssignment).
+    agreed_fare: effectiveStartingFare,
+    promo_discount_applied: 0,
     surge_zone_id: surgeZone?._id || null,
     surge_zone_name: surgeZone?.name || '',
     allowed_payment_methods: allowedPaymentMethods,
@@ -1234,6 +1238,11 @@ export const createRideRecord = async ({
     max_cancellation_fee: Number(pricingRule?.max_cancellation_fee ?? 0),
     enable_cancellation_reasons: pricingRule?.enable_cancellation_reasons !== false,
     cancellation_policy_message: pricingRule?.cancellation_policy_message || '',
+    // Snapshotted so a cancellation on this ride pays the fee to whoever the
+    // price row names. Without it every fee was treated as the admin's.
+    cancellation_fee_goes_to: String(pricingRule?.cancellation_fee_goes_to || 'admin').trim().toLowerCase() === 'driver'
+      ? 'driver'
+      : 'admin',
     resolvedAt: pricingRule ? new Date() : null,
   };
 
@@ -1407,6 +1416,19 @@ export const createRideRecord = async ({
         transport_type: transport_type || 'taxi',
         surgeAmount: rideSurgeAmount,
       });
+
+      /*
+       * The promo has set ride.fare to the discounted price. Record that as
+       * the agreed fare, and the discount the platform is funding, so
+       * completion charges the rider this and not the undiscounted
+       * starting_fare, and the driver is still settled on the full price.
+       */
+      rideDoc.set('pricingSnapshot.agreed_fare', Number(rideDoc.fare || 0));
+      rideDoc.set(
+        'pricingSnapshot.promo_discount_applied',
+        Math.max(0, Math.round((effectiveStartingFare - Number(rideDoc.fare || 0)) * 100) / 100),
+      );
+      await rideDoc.save({ session });
 
       await session.commitTransaction();
       await syncDeliveryWithRide(rideDoc);
@@ -1979,6 +2001,64 @@ export const acceptRideAssignment = async ({ rideId, driverId }) => {
   throw lastError || new ApiError(500, 'Failed to accept ride');
 };
 
+const roundRideMoney = (value) => Math.round(Number(value || 0) * 100) / 100;
+
+/*
+ * Waiting at pickup, charged from the ride's own clock and price row: the
+ * driver reported arriving (arrivedAt) and the trip started (startedAt); the
+ * first free_waiting_before minutes are free and each minute after costs
+ * waiting_charge. Rounded up to the minute, as the driver app displays it.
+ *
+ * free_waiting_after (waiting once the trip has started) is not charged: no
+ * timestamp records a stop mid-trip, and the figure the app sent for it was
+ * exactly the unchecked charge this replaces.
+ */
+const computeRideWaitingCharge = (ride) => {
+  if (!ride?.arrivedAt || !ride?.startedAt) {
+    return 0;
+  }
+
+  const ratePerMinute = Math.max(0, Number(ride.pricingSnapshot?.waiting_charge ?? 0));
+  const freeMinutes = Math.max(0, Number(ride.pricingSnapshot?.free_waiting_before ?? 0));
+  const waitedMs = new Date(ride.startedAt).getTime() - new Date(ride.arrivedAt).getTime();
+  const waitedMinutes = Number.isFinite(waitedMs) ? Math.max(0, Math.ceil(waitedMs / 60000)) : 0;
+
+  return roundRideMoney(Math.max(0, waitedMinutes - freeMinutes) * ratePerMinute);
+};
+
+/*
+ * The fare the rider agreed to, before anything the trip itself adds. Rides
+ * booked since agreed_fare existed carry it; for one booked before, it is
+ * rebuilt the same way: the accepted bid if there was one, else the starting
+ * fare less its promo.
+ */
+const resolveAgreedFare = async (ride) => {
+  const snapshotted = ride?.pricingSnapshot?.agreed_fare;
+  if (snapshotted !== null && snapshotted !== undefined && Number.isFinite(Number(snapshotted))) {
+    return roundRideMoney(Math.max(0, Number(snapshotted)));
+  }
+
+  if (ride?.acceptedBidId) {
+    const bid = await RideBid.findById(ride.acceptedBidId).select('bidFare').lean();
+    if (Number(bid?.bidFare) > 0) {
+      return roundRideMoney(bid.bidFare);
+    }
+  }
+
+  const startingFare = Number(ride?.pricingSnapshot?.starting_fare || ride?.baseFare || 0);
+  return roundRideMoney(Math.max(0, startingFare - resolvePromoDiscountApplied(ride)));
+};
+
+const resolvePromoDiscountApplied = (ride) => {
+  const snapshotted = ride?.pricingSnapshot?.promo_discount_applied;
+  if (snapshotted !== null && snapshotted !== undefined && Number.isFinite(Number(snapshotted))) {
+    return roundRideMoney(Math.max(0, Number(snapshotted)));
+  }
+
+  // An accepted bid replaced the promo-discounted price.
+  return ride?.acceptedBidId ? 0 : roundRideMoney(Math.max(0, Number(ride?.promo?.discount_amount || 0)));
+};
+
 const rideStatusConfig = {
   [RIDE_LIVE_STATUS.ACCEPTED]: {
     persistedStatus: RIDE_STATUS.ACCEPTED,
@@ -2107,85 +2187,80 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
     ride.paymentMethod = normalizeRidePaymentMethod(paymentMethod);
   }
 
-  if (waitingChargeAmount !== undefined && waitingChargeAmount !== null) {
-    ride.waitingChargeAmount = Number(waitingChargeAmount) || 0;
-  }
-
-  if (additionalCharge !== undefined && additionalCharge !== null) {
-    ride.additionalCharge = Number(additionalCharge) || 0;
+  /*
+   * No money figure is taken from the driver's app. The fare, base fare and
+   * the waiting / time / distance / additional charges it sends are all
+   * ignored: completing a Rs 118 ride with additionalCharge 500 and
+   * waitingChargeAmount 300 billed the rider Rs 918. Waiting is measured here
+   * from the ride's own timestamps and price row; an additional charge is
+   * whatever an admin put on the ride; the rest of the fare is the agreed fare.
+   */
+  if (nextStatus === RIDE_LIVE_STATUS.STARTED) {
+    // Shown on the driver's "on trip" screen, so it is set as the wait ends.
+    ride.waitingChargeAmount = computeRideWaitingCharge(ride);
   }
 
   if (nextStatus === RIDE_LIVE_STATUS.COMPLETED) {
     ride.completedAt = new Date();
   }
 
-  // Calculate final fare when arriving at destination or completing (if not already done)
+  // The fare is finalised on arrival at the destination and again on
+  // completion. Both runs give the same figure: nothing below depends on
+  // what the fare was before.
   const isFinalizingFare = (nextStatus === RIDE_LIVE_STATUS.ARRIVED || nextStatus === RIDE_LIVE_STATUS.COMPLETED);
-  
-  if (isFinalizingFare && !ride.recovered_cancellation_due) {
-    const userDoc = await User.findById(ride.userId).select('pending_cancellation_due');
-    if (userDoc && userDoc.pending_cancellation_due > 0) {
-      ride.recovered_cancellation_due = userDoc.pending_cancellation_due;
-    }
 
-    if (ride.arrivedAt && ride.startedAt && !ride.waitingChargeAmount) {
-      const freeWaitingMinutes = Number(ride.pricingSnapshot?.free_waiting_before ?? 0);
-      const waitingRatePerMinute = Number(ride.pricingSnapshot?.waiting_charge ?? 0);
-
-      const waitingTimeMs = new Date(ride.startedAt).getTime() - new Date(ride.arrivedAt).getTime();
-      const waitingTimeMinutes = Math.max(0, Math.ceil(waitingTimeMs / 60000));
-      const billableWaitingTimeMinutes = Math.max(0, waitingTimeMinutes - freeWaitingMinutes);
-      const calculatedWaitingCharge = billableWaitingTimeMinutes * waitingRatePerMinute;
-
-      ride.waitingChargeAmount = calculatedWaitingCharge;
-    }
-
-    const transportSettings = await getTransportRideSettings();
-    const enableEtaPriceOnComplete = String(transportSettings.enable_eta_price_on_complete ?? '1') === '1';
-
-    if (enableEtaPriceOnComplete) {
-      const baseEtaFare = Number(ride.pricingSnapshot?.starting_fare || ride.baseFare || 0);
-      ride.baseFare = baseEtaFare;
-
-      const waitAmt = Number(ride.waitingChargeAmount || 0);
-      const timeAmt = Number(timeChargeAmount !== undefined && timeChargeAmount !== null ? timeChargeAmount : ride.timeChargeAmount || 0);
-      const distAmt = Number(distanceChargeAmount !== undefined && distanceChargeAmount !== null ? distanceChargeAmount : ride.distanceChargeAmount || 0);
-      const addAmt = Number(additionalCharge !== undefined && additionalCharge !== null ? additionalCharge : ride.additionalCharge || 0);
-
-      ride.fare = baseEtaFare + waitAmt + timeAmt + distAmt + addAmt;
-      ride.waitingChargeAmount = waitAmt;
-      ride.timeChargeAmount = timeAmt;
-      ride.distanceChargeAmount = distAmt;
-      ride.additionalCharge = addAmt;
-    } else {
-      if (fare !== undefined && fare !== null) {
-        ride.fare = Number(fare) || ride.fare;
-      }
-
-      if (baseFare !== undefined && baseFare !== null) {
-        ride.baseFare = Number(baseFare) || ride.baseFare || 0;
-      }
-
-      if (timeChargeAmount !== undefined && timeChargeAmount !== null) {
-        ride.timeChargeAmount = Number(timeChargeAmount) || 0;
-      }
-
-      if (distanceChargeAmount !== undefined && distanceChargeAmount !== null) {
-        ride.distanceChargeAmount = Number(distanceChargeAmount) || 0;
-      }
-
-      if (additionalCharge !== undefined && additionalCharge !== null) {
-        ride.additionalCharge = Number(additionalCharge) || 0;
+  if (isFinalizingFare) {
+    /*
+     * A cancellation fee the rider still owes is added to what this ride
+     * charges them, once. It used to be recorded on the ride and wiped from
+     * the rider without ever being added to the fare, so the rider was never
+     * asked for it -- and settlement, assuming the fare included it, took it
+     * out of the driver's earnings instead.
+     */
+    if (!(Number(ride.recovered_cancellation_due || 0) > 0)) {
+      const userDoc = await User.findById(ride.userId).select('pending_cancellation_due');
+      const pendingDue = roundRideMoney(userDoc?.pending_cancellation_due || 0);
+      if (pendingDue > 0) {
+        ride.recovered_cancellation_due = pendingDue;
+        await User.findByIdAndUpdate(ride.userId, { $set: { pending_cancellation_due: 0 } });
       }
     }
 
-    // Reset user cancellation due after adding it to ride
-    if (ride.recovered_cancellation_due > 0) {
-      await User.findByIdAndUpdate(ride.userId, { $set: { pending_cancellation_due: 0 } });
-    }
+    /*
+     * Built on the fare the rider agreed to -- the promo-discounted fare, or
+     * the bid they accepted -- not on starting_fare. Rebuilding from
+     * starting_fare completed a Rs 59 promo ride at Rs 118, and an accepted
+     * Rs 148 bid at Rs 118.
+     *
+     * enable_eta_price_on_complete no longer changes this. Switched off, it
+     * charged whatever fare the driver's app sent; the server has no meter of
+     * its own to check that against, so there is nothing honest to charge but
+     * the agreed fare.
+     */
+    const agreedFare = await resolveAgreedFare(ride);
+    const promoDiscount = resolvePromoDiscountApplied(ride);
+    const waitingCharge = computeRideWaitingCharge(ride);
+    const adminAdditionalCharge = roundRideMoney(Math.max(0, Number(ride.additionalCharge || 0)));
+    const recoveredDue = roundRideMoney(Math.max(0, Number(ride.recovered_cancellation_due || 0)));
+
+    // baseFare is the pre-promo figure, so the breakdown the apps show
+    // (base - promo + waiting + additional + recovered due) adds up to fare.
+    ride.baseFare = roundRideMoney(agreedFare + promoDiscount);
+    ride.waitingChargeAmount = waitingCharge;
+    ride.timeChargeAmount = 0;
+    ride.distanceChargeAmount = 0;
+    ride.fare = roundRideMoney(agreedFare + waitingCharge + adminAdditionalCharge + recoveredDue);
   }
 
-  if (driverPaymentCollection) {
+  /*
+   * The driver's own record of how they were paid is kept only for a cash
+   * ride, where it is their own word about cash in their own hand. For an
+   * online ride it is not: the web driver app sends { status: 'paid' } for a
+   * QR it merely polled, and doing so overwrote the server's verified record
+   * of that QR (driverController.refreshDriverPaymentCollection). An online
+   * ride's collection is only ever written by the server.
+   */
+  if (driverPaymentCollection && normalizeRidePaymentMethod(ride.paymentMethod) === 'cash') {
     ride.driverPaymentCollection = driverPaymentCollection;
   }
 
@@ -2558,6 +2633,14 @@ export const acceptRideBidAssignment = async ({ rideId, bidId, userId }) => {
 
       ride.driverId = driver._id;
       ride.fare = Number(bid.bidFare || ride.fare || 0);
+      /*
+       * The accepted bid is now the price. Completion used to rebuild the fare
+       * from starting_fare and so paid the driver the base fare instead of his
+       * bid (or charged the rider more than the bid he accepted). A bid is its
+       * own price, so no promo reduction applies to it.
+       */
+      ride.set('pricingSnapshot.agreed_fare', ride.fare);
+      ride.set('pricingSnapshot.promo_discount_applied', 0);
       ride.acceptedBidId = bid._id;
       ride.status = RIDE_STATUS.ACCEPTED;
       ride.liveStatus = RIDE_LIVE_STATUS.ACCEPTED;
@@ -2650,6 +2733,31 @@ export const submitRideFeedback = async ({ rideId, userId, rating, comment = '',
     throw new ApiError(409, 'Feedback already submitted for this ride');
   }
 
+  /*
+   * A tip given here is recorded as cash the rider handed the driver, and it
+   * is only that on a cash ride. On a ride paid online (booked online, or a
+   * cash ride the rider then paid through the app) this used to be taken as a
+   * rating-only update and the tip dropped without a word -- while the rating
+   * screen had shown the rider "Total = fare + tip". Such a tip has to be
+   * charged, through the tip payment (POST /rides/:id/tip/razorpay/order and
+   * /verify), so it is refused here rather than lost.
+   *
+   * 400, not 409: the web rider app (RideComplete.jsx) reads any 409 from
+   * this endpoint as "already submitted" and shows success -- the silent drop
+   * all over again.
+   */
+  const isPaidOnline = String(ride.paymentMethod || 'cash').trim().toLowerCase() === 'online';
+  if (numericTip > 0 && isPaidOnline) {
+    throw new ApiError(
+      400,
+      'This ride was paid online, so a tip has to be paid online too. Please pay the tip to add it.',
+    );
+  }
+
+  if (numericTip > 0 && Number(ride.feedback?.tipAmount || 0) > 0) {
+    throw new ApiError(409, 'A tip has already been recorded for this ride');
+  }
+
   const driver = await Driver.findById(ride.driverId);
 
   if (!driver) {
@@ -2668,12 +2776,11 @@ export const submitRideFeedback = async ({ rideId, userId, rating, comment = '',
     ride.feedback.comment = String(comment || '').trim();
   }
   
-  // Only update tipAmount if we are not just updating the rating of an already-paid tip
-  const isUpdatingRatingOnly = Boolean(ride.feedback?.submittedAt);
-  if (!isUpdatingRatingOnly) {
+  // A tip already paid is never overwritten by a later rating-only call.
+  if (numericTip > 0) {
     ride.feedback.tipAmount = numericTip;
   }
-  
+
   ride.feedback.submittedAt = new Date();
 
   if (numericRating > 0) {
@@ -2682,7 +2789,7 @@ export const submitRideFeedback = async ({ rideId, userId, rating, comment = '',
     driver.rating = Number((driver.totalRatingScore / driver.ratingCount).toFixed(1));
   }
 
-  if (numericTip > 0 && !isUpdatingRatingOnly) {
+  if (numericTip > 0) {
     ride.driverEarnings = Math.round(((ride.driverEarnings || 0) + numericTip) * 100) / 100;
     
     // Log the cash tip in the wallet transaction history

@@ -545,6 +545,26 @@ const rideSchema = new mongoose.Schema(
         default: 0,
         min: 0,
       },
+      /*
+       * The fare the rider agreed to before any charge the trip itself adds
+       * (waiting, an admin's extra, a recovered cancellation fee): the priced
+       * fare less a promo, plus surge -- or the driver's bid the rider accepted.
+       * Completion builds the final fare from this. It used to rebuild it from
+       * starting_fare, which silently dropped the promo and the accepted bid.
+       * null on rides booked before this existed; see resolveAgreedFare.
+       */
+      agreed_fare: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
+      // How much of agreed_fare's reduction is a promo. The platform funds it,
+      // so the driver is settled on agreed_fare + this.
+      promo_discount_applied: {
+        type: Number,
+        default: null,
+        min: 0,
+      },
       surge_zone_id: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'TaxiZone',
@@ -619,6 +639,13 @@ const rideSchema = new mongoose.Schema(
         type: String,
         default: '',
       },
+      // Who a rider's cancellation fee on this ride is paid to. Not being in
+      // the schema, it was stripped on save and every fee read as the admin's.
+      cancellation_fee_goes_to: {
+        type: String,
+        enum: ['admin', 'driver'],
+        default: 'admin',
+      },
       resolvedAt: {
         type: Date,
         default: null,
@@ -635,6 +662,16 @@ const rideSchema = new mongoose.Schema(
       min: 0,
     },
     walletSettledAt: {
+      type: Date,
+      default: null,
+    },
+    /*
+     * When an online ride's earnings reached the driver's wallet. That happens
+     * once the rider's payment is confirmed, not at completion -- an unpaid
+     * online ride used to be paid out of the platform's pocket. The atomic
+     * claim on this field is what keeps the credit to exactly once.
+     */
+    driverEarningsCreditedAt: {
       type: Date,
       default: null,
     },

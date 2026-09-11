@@ -42,6 +42,7 @@ import {
   ensureDriverWalletCanAcceptRide,
   serializeDriverWallet,
   topUpDriverWallet,
+  creditOnlineRideEarnings,
 } from "../services/walletService.js";
 import {
   startDriverLoginOtp,
@@ -1364,6 +1365,20 @@ const refreshDriverPaymentCollection = async (ride) => {
 
   ride.driverPaymentCollection = nextCollection;
   await ride.save();
+
+  /*
+   * Razorpay has confirmed the rider paid this QR. If the ride is already
+   * completed, this is the payment its online earnings were waiting for
+   * (walletService.creditOnlineRideEarnings). A QR paid before completion is
+   * credited by the completion's own settlement instead; either way, once.
+   */
+  if (isPaid) {
+    await creditOnlineRideEarnings({
+      rideId: ride._id,
+      requireConfirmedCollection: true,
+      source: "driver_payment_qr",
+    });
+  }
 
   return serializeDriverPaymentCollection(nextCollection);
 };
@@ -4947,7 +4962,15 @@ export const verifyDriverWalletTopup = async (req, res) => {
     throw new ApiError(400, "Payment verification fields are required");
   }
 
-  const isMock = orderId.startsWith("mock_order_") && signature === "mock_signature_bypass";
+  /*
+   * The mock pair was honoured in production here too, with the top-up amount
+   * read out of the order id: any driver could mint wallet balance. NODE_ENV
+   * alone decides, as in poolingController.
+   */
+  const isMock =
+    process.env.NODE_ENV !== "production" &&
+    orderId.startsWith("mock_order_") &&
+    signature === "mock_signature_bypass";
 
   let amountPaise;
   if (isMock) {
