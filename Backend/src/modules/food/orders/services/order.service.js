@@ -370,14 +370,18 @@ export async function createOrder(userId, dto) {
     normalizedPricing.restaurantCommission = restaurantCommission;
     if (monetizationMode) normalizedPricing.monetizationMode = monetizationMode;
 
-    const platformProfit = Math.max(
-      0,
+    // A first figure only: replaced below by the ledger's platformNetProfit,
+    // which also counts packaging, coupons and the round-off, so the order and
+    // its transaction can never report two different profits. Not floored at
+    // zero -- an order on free delivery costs the platform the rider's pay, and
+    // a floor only stopped that loss being recorded.
+    const platformProfit = Math.round((
       (Number.isFinite(normalizedPricing.deliveryFee) ? normalizedPricing.deliveryFee : 0) +
-        (Number.isFinite(normalizedPricing.platformFee) ? normalizedPricing.platformFee : 0) +
-        (Number.isFinite(normalizedPricing.surgeAmount) ? normalizedPricing.surgeAmount : 0) +
-        restaurantCommission -
-        riderTotalPayout,
-    );
+      (Number.isFinite(normalizedPricing.platformFee) ? normalizedPricing.platformFee : 0) +
+      (Number.isFinite(normalizedPricing.surgeAmount) ? normalizedPricing.surgeAmount : 0) +
+      restaurantCommission -
+      riderTotalPayout
+    ) * 100) / 100;
 
     const initialStatus = (paymentMethod === "razorpay" || paymentMethod === "card") ? "pending_payment" : "created";
 
@@ -445,7 +449,14 @@ export async function createOrder(userId, dto) {
 
     // Phase 2: Create initial transaction (Non-blocking but logged)
     try {
-      await foodTransactionService.createInitialTransaction(order);
+      const transaction = await foodTransactionService.createInitialTransaction(order);
+      // The ledger's figure is the complete one (packaging, coupons, round-off).
+      // The order carries the same number so a report reading either agrees.
+      const ledgerProfit = Number(transaction?.amounts?.platformNetProfit);
+      if (Number.isFinite(ledgerProfit) && ledgerProfit !== order.platformProfit) {
+        order.platformProfit = ledgerProfit;
+        await FoodOrder.updateOne({ _id: order._id }, { $set: { platformProfit: ledgerProfit } });
+      }
     } catch (err) {
       logger.error(`[CRITICAL] Initial transaction failed for order ${order._id}: ${err.message}`);
       // We don't throw here to avoid failing the whole order if transaction logging fails

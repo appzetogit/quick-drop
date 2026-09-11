@@ -110,7 +110,9 @@ export async function createInitialTransaction(order) {
     const tax = Number(order.pricing?.tax) || 0;
 
     let restaurantNet = subtotal + packagingFee - restaurantCommission;
-    let platformNetProfit = platformFee + deliveryFee + deliveryFeeGst + restaurantCommission - riderShare;
+    // The 18% GST on the delivery fee is collected for the government, like the
+    // item GST, so it is booked as tax below rather than as platform profit.
+    let platformNetProfit = platformFee + deliveryFee + restaurantCommission - riderShare;
     let adminDiscountShare = 0;
     let restaurantDiscountShare = 0;
     let discountAdminBearPercentage = 0;
@@ -176,7 +178,9 @@ export async function createInitialTransaction(order) {
             restaurantCommission: restaurantCommission,
             riderShare: riderShare,
             platformNetProfit: platformNetProfit,
-            taxAmount: tax,
+            // Item GST plus the GST on the delivery fee: both are owed to the
+            // government, neither is platform profit.
+            taxAmount: Math.round((tax + deliveryFeeGst) * 100) / 100,
             adminDiscountShare,
             restaurantDiscountShare,
             discountAdminBearPercentage,

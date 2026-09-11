@@ -497,6 +497,9 @@ export default function EditRestaurant() {
                       ? "A dish listed at ₹200 is billed at ₹200. The GST inside it is shown on the bill, and the restaurant earns the price less that tax."
                       : "GST is added on top: a dish listed at ₹200 is billed at ₹200 plus GST."}
                   </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    The GST rate itself is set in Fee Settings and applies to every restaurant.
+                  </p>
                 </div>
                 <div>
                   <Label>Primary Email</Label>

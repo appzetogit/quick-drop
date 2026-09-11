@@ -316,12 +316,21 @@ export async function createInitialTransaction(order) {
      */
     const platformPackagingEarnings = packagingMode === 'ADMIN' ? netPackagingFee : 0;
 
+    /*
+     * The bill rounds the grand total to a whole rupee and the customer pays the
+     * rounded figure. The difference is the platform's -- it was collected and
+     * nobody else is credited it -- so it belongs here. Left out, every order's
+     * ledger came up to 50 paise short of what the customer paid.
+     */
+    const roundOff = Number(order.pricing?.roundOff ?? order.pricing?.bill?.roundOff) || 0;
+
     let platformNetProfit =
         platformFee
         + deliveryFee
         + surgeAmount
         + restaurantCommission
         + platformPackagingEarnings
+        + roundOff
         - riderShare;
 
     /*

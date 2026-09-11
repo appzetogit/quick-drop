@@ -1496,6 +1496,16 @@ export default function RestaurantsList() {
                                 {restaurant.name}
                               </span>
                               <span className="text-xs text-slate-500">ID #{formatRestaurantId(restaurant.originalData?.restaurantId || restaurant.originalData?._id || restaurant._id || restaurant.id)}</span>
+                              {/* Set on Edit Restaurant; shown here so it can be checked at a glance. */}
+                              <span
+                                className={`mt-0.5 inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                  restaurant.originalData?.priceIncludesGst === true
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : "bg-amber-50 text-amber-700"
+                                }`}
+                              >
+                                {restaurant.originalData?.priceIncludesGst === true ? "GST inclusive" : "GST exclusive"}
+                              </span>
                               <span className="text-xs text-slate-500">{renderStars(restaurant.rating)}</span>
                             </div>
                           </div>

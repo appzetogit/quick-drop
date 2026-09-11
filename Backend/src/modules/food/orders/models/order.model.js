@@ -484,7 +484,10 @@ const orderSchema = new mongoose.Schema(
         riderIncentivePay: { type: Number, default: 0, min: 0 },
         riderTotalPayout: { type: Number, default: 0, min: 0 },
         riderEarning: { type: Number, default: 0, min: 0 },
-        platformProfit: { type: Number, default: 0, min: 0 },
+        // Mirrors the ledger's platformNetProfit and, like it, can be negative:
+        // an order on free delivery or a platform-funded coupon costs the
+        // platform money, and a floor at 0 only stopped that being recorded.
+        platformProfit: { type: Number, default: 0 },
         /** Plain 4-digit OTP for handover; cleared after successful verify (never expose to partner in API responses). */
         deliveryOtp: { type: String, default: '', select: false },
         deliveryVerification: {

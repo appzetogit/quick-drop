@@ -243,10 +243,13 @@ try {
   // Every rupee the customer paid is credited to somebody: the restaurant, the
   // rider, the platform, or the government. A split that does not add back up
   // to what was charged is money the ledger has invented or lost.
+  // The bill's round-off is no longer a loose remainder added on here -- the
+  // customer pays it and the ledger credits it to the platform, so it arrives
+  // inside platformNetProfit.
   const a = txn?.amounts || {};
   const b = ip2.bill;
   const accounted = a.restaurantShare + a.riderShare + a.platformNetProfit
-    + b.gstOnItems + b.platformFeeGst + b.roundOff;
+    + b.gstOnItems + b.platformFeeGst;
   console.log("    rider share (tip)  :", a.riderShare);
   console.log("    accounted for      :", Math.round(accounted * 100) / 100,
     "of", b.grandTotal);

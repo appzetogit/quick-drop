@@ -1422,6 +1422,30 @@ export default function ItemDetailsPage() {
                     <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Pricing & Variants</h2>
                   </div>
 
+                  {/*
+                    Read-only. Whether these prices include GST is set by the admin
+                    for the whole restaurant; shown so the restaurant knows what the
+                    number it types means on the customer's bill.
+                  */}
+                  <div
+                    className={`rounded-xl border px-3.5 py-2.5 text-xs ${
+                      taxSettings.priceIncludesGst
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                        : "border-amber-200 bg-amber-50 text-amber-900"
+                    }`}
+                  >
+                    <p className="font-semibold">
+                      {taxSettings.priceIncludesGst ? "GST inclusive" : "GST exclusive"}
+                      {Number(taxSettings.gstRate) > 0 ? ` · ${taxSettings.gstRate}%` : ""}
+                    </p>
+                    <p className="mt-0.5">
+                      {taxSettings.priceIncludesGst
+                        ? "The price you enter already includes GST, so the customer pays exactly this price."
+                        : `GST${Number(taxSettings.gstRate) > 0 ? ` of ${taxSettings.gstRate}%` : ""} is added on top of the price you enter, at checkout.`}
+                      {" "}Set by Quick Drop admin.
+                    </p>
+                  </div>
+
                   {/* Single Base Price (if no variants) */}
                   {!variantsEnabled ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

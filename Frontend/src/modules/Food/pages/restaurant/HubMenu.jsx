@@ -195,6 +195,27 @@ export default function HubMenu() {
 
   // Menu groups are now directly from menuData (fetched from backend)
 
+  /*
+   * Whether this menu's prices include GST, and the rate. Read-only here: the
+   * admin sets it per restaurant. Shown under the restaurant name so the
+   * restaurant always knows what the prices it types mean on the bill.
+   */
+  const [gstSetting, setGstSetting] = useState(null)
+  useEffect(() => {
+    let cancelled = false
+    restaurantAPI.getTaxSettings()
+      .then((response) => {
+        const data = response?.data?.data || response?.data || null
+        if (!cancelled && data) {
+          setGstSetting({ inclusive: data.priceIncludesGst === true, rate: Number(data.gstRate) || 0 })
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Fetch restaurant data on mount
   useEffect(() => {
     const fetchRestaurantData = async () => {
@@ -1222,6 +1243,20 @@ export default function HubMenu() {
               >
                 <h2 className="text-lg font-bold text-gray-900">{restaurantName}</h2>
                 <p className="text-sm text-gray-600">{restaurantExpertise}</p>
+                {gstSetting && (
+                  <span
+                    className={`mt-1.5 inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                      gstSetting.inclusive
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                        : "border-amber-200 bg-amber-50 text-amber-800"
+                    }`}
+                    title="Set by Quick Drop admin"
+                  >
+                    {gstSetting.inclusive
+                      ? `Prices include GST${gstSetting.rate > 0 ? ` (${gstSetting.rate}%)` : ""}`
+                      : `GST${gstSetting.rate > 0 ? ` ${gstSetting.rate}%` : ""} added on top of prices`}
+                  </span>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
