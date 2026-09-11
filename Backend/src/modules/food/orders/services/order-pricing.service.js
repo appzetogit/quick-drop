@@ -25,7 +25,6 @@ import {
 import { assertFoodAvailableNow } from '../../shared/itemAvailability.js';
 import { resolveFreebieForOrder } from '../../shared/freebieOffer.service.js';
 import { applyBogoToItems } from '../../shared/bogoOffer.service.js';
-import { computeSellingPrice } from '../../shared/itemDiscountPricing.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
 import { loadSellableAddons, normalizeRequestedAddonIds, resolveLineAddons } from '../../shared/orderAddons.js';
@@ -85,11 +84,27 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
     if (chosenVariantId) {
       const variant = (menu.variants || []).find((v) => String(v._id) === String(chosenVariantId));
       if (!variant) throw new ValidationError(`Selected option for "${menu.name}" is not available`);
-      // The item's discount is a single percentage that applies to whichever
-      // option is chosen, so a variant is charged from its own price less that
-      // discount. Taking variant.price raw would have billed the large size at
-      // full price while the menu advertised it as discounted.
-      price = computeSellingPrice(variant.price, menu.discountPercent) ?? Number(variant.price);
+      /*
+       * A size is billed at its own price, exactly as the menu shows it.
+       *
+       * This used to take variant.price less menu.discountPercent, on the
+       * assumption that variant.price was pre-discount and discountPercent a
+       * discount still to apply. Under formulation pricing neither is true:
+       *
+       *   variant.price    is ALREADY the charged figure -- the global run
+       *                    writes base x (1 - discount) into it directly
+       *   discountPercent  is the SAVING shown to the customer, which the run
+       *                    stores as (struck - price) / struck
+       *
+       * So the saving came off twice. On a +20% markup the displayed saving is
+       * 16.67%, and every size at Rainbow Restro was billed 16.67% under its
+       * menu price: Mutton Masala Full reads Rs 486 and was billed Rs 404.98.
+       * On a discount dish it would have discounted the size a second time.
+       *
+       * A plain dish was never affected -- it is billed menu.price directly,
+       * above -- which is why only dishes sold by size came out wrong.
+       */
+      price = Number(variant.price);
       variantName = variant.name;
     }
 
