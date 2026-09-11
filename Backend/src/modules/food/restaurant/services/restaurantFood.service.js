@@ -26,6 +26,7 @@ import { normalizeDiscountPricingInput } from '../../shared/itemDiscountPricing.
 import { rebaseFormulationFields } from '../../shared/formulationPricing.js';
 import { FoodAddon } from '../models/foodAddon.model.js';
 import { assertVariantAddonsOwned, normalizeAddonIdsInput } from '../../shared/orderAddons.js';
+import { normalizeSuggestedItemIdsInput } from '../../shared/suggestedItems.js';
 
 import { resolveSeedOtherPriceForRestaurant } from '../../shared/otherPlatformSeed.service.js';
 import { invalidateMenuCaches } from '../../../../middleware/cache.js';
@@ -324,6 +325,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     const packagingCharge = normalizeItemPackagingChargeInput(body.packagingCharge, { label: name });
     const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
     const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
+    const suggestedUpdate = await normalizeSuggestedItemIdsInput(FoodItem, restaurantId, body);
     await assertVariantAddonsOwned(FoodAddon, restaurantId, variants);
     // The struck-through comparison figure. Stored per item, and the only thing
     // a global price adjustment moves -- what we charge stays where the
@@ -364,6 +366,7 @@ export async function createRestaurantFood(restaurantId, body = {}) {
         ...(packagingCharge ? { packagingCharge } : {}),
         ...(availabilitySchedule ? { availabilitySchedule } : {}),
         ...(addonUpdate || {}),
+        ...(suggestedUpdate || {}),
         approvalStatus: 'pending',
         requestedAt: new Date()
     });
@@ -400,7 +403,9 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     // availabilitySchedule counts as operational: when a dish is served does not
     // change what the admin approved, and forcing re-approval would pull a live
     // item off the menu just for a timing tweak.
-    const operationalOnlyKeys = ['isActive', 'isAvailable', 'isRecommended', 'availabilitySchedule'];
+    // So are the "goes well with" pairings: they change what is shown beside
+    // the dish, not anything the admin approved about it.
+    const operationalOnlyKeys = ['isActive', 'isAvailable', 'isRecommended', 'availabilitySchedule', 'suggestedItemIds'];
     const isOperationalOnlyUpdate =
         providedKeys.length > 0 &&
         providedKeys.every((key) => operationalOnlyKeys.includes(key));
@@ -433,6 +438,8 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
 
     const addonUpdate = await normalizeAddonIdsInput(FoodAddon, restaurantId, body);
     if (addonUpdate) update.addonIds = addonUpdate.addonIds;
+    const suggestedUpdate = await normalizeSuggestedItemIdsInput(FoodItem, restaurantId, body, foodId);
+    if (suggestedUpdate) update.suggestedItemIds = suggestedUpdate.suggestedItemIds;
     // otherPrice ignored on purpose -- admin-owned; see the create path.
     // Checked against the variants that will actually be stored, so a partial
     // update cannot slip in an add-on belonging to another restaurant.

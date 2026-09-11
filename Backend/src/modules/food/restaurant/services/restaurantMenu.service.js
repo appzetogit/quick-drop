@@ -10,6 +10,7 @@ import { describeTodaysWindow, isFoodAvailableNow } from '../../shared/itemAvail
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { resolveItemDisplayPricing } from '../../shared/itemDiscountPricing.js';
 import { normalizeOtherPlatformSettings, resolveComparisonPrice, resolveItemOtherPlatformPrice } from '../../shared/otherPlatformPricing.js';
+import { buildSuggestionMap } from '../../shared/suggestedItems.js';
 
 /**
  * @param {object} [options]
@@ -27,6 +28,11 @@ const buildMenuFromFoods = async (foods = [], { forCustomer = false } = {}) => {
     // Admin-configurable platform cap, so the limits the seller UI shows match
     // what checkout will actually enforce. Read once per menu, not per item.
     const quantityCeiling = await getOrderQuantityCeiling();
+
+    // "Goes well with", both ways, limited to dishes on this menu. Built from
+    // the whole menu at once because a dish's list includes the dishes that
+    // picked it.
+    const suggestionMap = buildSuggestionMap(foods);
 
     // Which dishes are on a buy-one-get-one right now, in one query for the whole
     // menu. Read here rather than stored on the dish so a run window opening or
@@ -143,6 +149,12 @@ const buildMenuFromFoods = async (foods = [], { forCustomer = false } = {}) => {
             // Which add-ons this dish offers, so the editor can show the picker
             // pre-filled and the app can offer only the relevant ones.
             addonIds: (food.addonIds || []).map((x) => String(x)),
+            // Customers get the pairings both ways. The portal gets only the
+            // dish's own picks: its editor posts this list back, and saving the
+            // reverse links would copy them onto every dish on each save.
+            suggestedItemIds: forCustomer
+                ? (suggestionMap.get(String(food._id)) || [])
+                : (food.suggestedItemIds || []).map((x) => String(x)),
             // Variant rows are withheld while the toggle is off. They stay in the
             // database on purpose -- switching variants off is meant to be
             // reversible -- but serving them let clients price from a row the

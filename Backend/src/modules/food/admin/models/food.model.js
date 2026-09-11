@@ -233,6 +233,16 @@ const foodSchema = new mongoose.Schema(
             type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'FoodAddon' }],
             default: [],
         },
+        /*
+         * "Goes well with": dishes of the same restaurant chosen to be shown
+         * beside this one and in the cart. Linked once, shown both ways -- see
+         * shared/suggestedItems.js. Empty means none are shown, never the
+         * whole menu.
+         */
+        suggestedItemIds: {
+            type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'FoodItem' }],
+            default: [],
+        },
         image: { type: String, trim: true, default: '' },
         foodType: { type: String, enum: ['Veg', 'Non-Veg'], default: 'Non-Veg' },
         isActive: { type: Boolean, default: true, index: true },

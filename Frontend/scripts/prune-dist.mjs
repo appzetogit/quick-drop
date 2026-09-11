@@ -83,3 +83,26 @@ console.log(
     `[prune-dist] kept ${keep.size}, ${dryRun ? 'would remove' : 'removed'} ${removed} ` +
     `(${(freed / 1024 / 1024).toFixed(1)} MB)`
 );
+
+/*
+ * nginx reads dist as another user, so every folder must be listable and
+ * every file readable by it. On 11 Sep dist/assets was left 700 after a
+ * deploy and the whole site went blank: index.html loaded, and every script
+ * under /assets/ answered 404 ("stat() failed (13: Permission denied)").
+ * Put the modes back on each build, whatever tightened them.
+ */
+if (!dryRun) {
+    const open = (dir) => {
+        chmodSync(dir, 0o755);
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const full = join(dir, entry.name);
+            if (entry.isDirectory()) open(full);
+            else if (entry.isFile()) chmodSync(full, 0o644);
+        }
+    };
+    try {
+        open(dist);
+    } catch (err) {
+        console.error(`[prune-dist] could not open up dist permissions: ${err.message}`);
+    }
+}

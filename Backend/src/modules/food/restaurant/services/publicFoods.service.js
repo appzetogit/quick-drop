@@ -197,6 +197,10 @@ export async function listPublicFoods(query = {}) {
             // The add-ons this dish offers. The order API re-checks the list, so
             // this is for showing the right picker, not for deciding what is allowed.
             addonIds: (food.addonIds || []).map((x) => String(x)),
+            // The dish's own "goes well with" picks. The restaurant menu adds
+            // the reverse links; this cross-restaurant feed has no whole menu to
+            // build them from.
+            suggestedItemIds: (food.suggestedItemIds || []).map((x) => String(x)),
             // Both keys, exactly as the restaurant-menu payload sends them.
             //
             // These were missing entirely, so a dish with sizes arrived here

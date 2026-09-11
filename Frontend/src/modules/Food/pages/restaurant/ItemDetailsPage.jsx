@@ -128,6 +128,10 @@ export default function ItemDetailsPage() {
    */
   const [taxSettings, setTaxSettings] = useState({ priceIncludesGst: false, gstRate: 0 })
   const [addonIds, setAddonIds] = useState([])
+  // "Goes well with": other dishes of this restaurant shown beside this one.
+  const [suggestedItemIds, setSuggestedItemIds] = useState([])
+  const [pairingOptions, setPairingOptions] = useState([])
+  const [pairingSearch, setPairingSearch] = useState("")
   const [availableAddons, setAvailableAddons] = useState([])
   const [variants, setVariants] = useState([])
   const [preparationTime, setPreparationTime] = useState("")
@@ -305,6 +309,7 @@ export default function ItemDetailsPage() {
     // Absent flag on old rows means "sell by variants if any exist".
     setVariantsEnabled(item.variantsEnabled === true || (item.variantsEnabled == null && itemVariants.length > 0))
     setAddonIds(Array.isArray(item.addonIds) ? item.addonIds.map(String) : [])
+    setSuggestedItemIds(Array.isArray(item.suggestedItemIds) ? item.suggestedItemIds.map(String) : [])
     setPreparationTime(item.preparationTime || "")
     setMinOrderQuantity(String(item.minOrderQuantity ?? 0))
     setMaxOrderQuantity(String(item.maxOrderQuantity ?? 0))
@@ -368,6 +373,30 @@ export default function ItemDetailsPage() {
       setAllergens(item.allergies.join(", "))
     }
   }
+
+  // Every other dish on the menu, for the "goes well with" picker. Loaded for
+  // new items too, which the edit fetch below skips.
+  useEffect(() => {
+    let cancelled = false
+    restaurantAPI.getMenu()
+      .then((res) => {
+        if (cancelled) return
+        const sections = res?.data?.data?.menu?.sections || []
+        const all = sections.flatMap((s) => [
+          ...(s.items || []),
+          ...(s.subsections || []).flatMap((sub) => sub.items || []),
+        ])
+        const self = String(id || "")
+        const seen = new Set()
+        setPairingOptions(
+          all
+            .map((i) => ({ id: String(i.id || i._id || ""), name: i.name || "Item", price: i.price, foodType: i.foodType }))
+            .filter((i) => i.id && i.id !== self && !seen.has(i.id) && seen.add(i.id))
+        )
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [id])
 
   // Fetch item data from menu API when editing
   useEffect(() => {
@@ -856,6 +885,7 @@ export default function ItemDetailsPage() {
         discountPercent: 0,
         variantsEnabled,
         addonIds,
+        suggestedItemIds,
       }
 
       let itemId
@@ -1870,6 +1900,71 @@ export default function ItemDetailsPage() {
                         )
                       })}
                     </div>
+                  )}
+                </div>
+
+                {/* Goes well with -- the dishes shown beside this one and in the cart */}
+                <div className="bg-white border border-gray-200 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-gray-600" />
+                      <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Goes well with</h2>
+                    </div>
+                    <span className="text-xs font-semibold text-gray-500">{suggestedItemIds.length}/10</span>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Customers see these beside this dish and in their cart. Link a pair once and it shows on both dishes. Pick none and nothing is suggested.
+                  </p>
+                  {pairingOptions.length === 0 ? (
+                    <p className="text-xs text-gray-500 italic">No other dishes on your menu yet.</p>
+                  ) : (
+                    <>
+                      <input
+                        type="search"
+                        value={pairingSearch}
+                        onChange={(e) => setPairingSearch(e.target.value)}
+                        placeholder="Search your menu"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto">
+                        {pairingOptions
+                          .filter((o) => suggestedItemIds.includes(o.id) || o.name.toLowerCase().includes(pairingSearch.trim().toLowerCase()))
+                          .map((option) => {
+                            const isChecked = suggestedItemIds.includes(option.id)
+                            const isFull = !isChecked && suggestedItemIds.length >= 10
+                            return (
+                              <label
+                                key={option.id}
+                                className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                                  isChecked
+                                    ? "bg-gray-50 border-gray-900 shadow-sm cursor-pointer"
+                                    : isFull
+                                      ? "bg-white border-gray-100 opacity-50 cursor-not-allowed"
+                                      : "bg-white border-gray-200 hover:border-gray-300 cursor-pointer"
+                                }`}
+                              >
+                                <span className="flex items-center gap-2.5 min-w-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    disabled={isFull}
+                                    onChange={(e) =>
+                                      setSuggestedItemIds((prev) =>
+                                        e.target.checked ? [...prev, option.id] : prev.filter((x) => x !== option.id)
+                                      )
+                                    }
+                                    className="w-4 h-4 rounded text-gray-900 focus:ring-gray-900"
+                                  />
+                                  <span className="text-sm font-medium text-gray-900 truncate">{option.name}</span>
+                                </span>
+                                {option.price != null && (
+                                  <span className="text-xs font-bold text-gray-700 shrink-0 ml-2">₹{option.price}</span>
+                                )}
+                              </label>
+                            )
+                          })}
+                      </div>
+                    </>
                   )}
                 </div>
 

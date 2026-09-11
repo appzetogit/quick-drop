@@ -34,6 +34,7 @@ const createFoodForm = () => ({
   freeDelivery: false,
   preparationTime: "",
   availabilitySchedule: buildScheduleState(null),
+  suggestedItemIds: [],
 })
 
 const createVariantDraft = (variant = {}) => ({
@@ -178,6 +179,9 @@ export default function FoodsList() {
               formulationPercent: Number(f.formulationPercent) || 0,
               formulationPrice: Number(f.formulationPrice) || 0,
               otherPrice: f.otherPrice ?? 0,
+              // null when the list did not carry the field, so the edit form
+              // leaves the pairings alone instead of saving an empty list.
+              suggestedItemIds: Array.isArray(f.suggestedItemIds) ? f.suggestedItemIds.map(String) : null,
               variants: getStoredFoodVariants(f),
               foodType: f.foodType || "Non-Veg",
               approvalStatus: f.approvalStatus || "approved",
@@ -340,6 +344,7 @@ export default function FoodsList() {
       isAvailable: food.isAvailable !== false,
       preparationTime: String(food.preparationTime || ""),
       availabilitySchedule: buildScheduleState(food.availabilitySchedule),
+      suggestedItemIds: food.suggestedItemIds ?? null,
     })
     setSelectedImageFile(null)
     setImagePreviewUrl(String(food.image || ""))
@@ -542,6 +547,7 @@ export default function FoodsList() {
         isAvailable: foodForm.isAvailable !== false,
         preparationTime: String(foodForm.preparationTime || "").trim(),
         availabilitySchedule: foodForm.availabilitySchedule,
+        ...(Array.isArray(foodForm.suggestedItemIds) ? { suggestedItemIds: foodForm.suggestedItemIds } : {}),
       }
 
       if (foodFormMode === "edit") {
@@ -1163,6 +1169,39 @@ export default function FoodsList() {
                   className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm"
                 />
               </div>
+              {Array.isArray(foodForm.suggestedItemIds) && foodForm.restaurantId && (
+                <div className="col-span-full">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Goes well with <span className="text-slate-400 font-normal">({foodForm.suggestedItemIds.length}/10, shown both ways)</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-2">
+                    {foods
+                      .filter((f) => f.restaurantId === foodForm.restaurantId && f.id !== String(editingFood?.id || editingFood?._id || ""))
+                      .map((f) => {
+                        const checked = foodForm.suggestedItemIds.includes(f.id)
+                        const full = !checked && foodForm.suggestedItemIds.length >= 10
+                        return (
+                          <label key={f.id} className={`flex items-center gap-2 text-sm ${full ? "opacity-50" : "cursor-pointer"}`}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={full}
+                              onChange={(e) =>
+                                setFoodForm((prev) => ({
+                                  ...prev,
+                                  suggestedItemIds: e.target.checked
+                                    ? [...prev.suggestedItemIds, f.id]
+                                    : prev.suggestedItemIds.filter((x) => x !== f.id),
+                                }))
+                              }
+                            />
+                            <span className="truncate">{f.name}</span>
+                          </label>
+                        )
+                      })}
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Timing</label>
                 <div className="relative">

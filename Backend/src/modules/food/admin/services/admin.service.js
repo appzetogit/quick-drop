@@ -3279,6 +3279,9 @@ export async function getFoods(query) {
         foodType: f.foodType || 'Non-Veg',
         isAvailable: f.isAvailable !== false,
         preparationTime: f.preparationTime || '',
+        // The dish's own "goes well with" picks, which the admin form edits and
+        // posts back. Not returned, the next admin save would clear them.
+        suggestedItemIds: (f.suggestedItemIds || []).map((x) => String(x)),
         approvalStatus: f.approvalStatus || 'approved',
         createdAt: f.createdAt,
         updatedAt: f.updatedAt
@@ -3505,6 +3508,8 @@ export async function createFood(body) {
     });
 
     const availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
+    const { normalizeSuggestedItemIdsInput } = await import('../../shared/suggestedItems.js');
+    const suggestedUpdate = await normalizeSuggestedItemIdsInput(FoodItem, restaurantId, body);
 
     /*
      * Start the comparison figure where this restaurant's other dishes sit.
@@ -3538,6 +3543,7 @@ export async function createFood(body) {
         isAvailable: body.isAvailable !== false,
         preparationTime: typeof body.preparationTime === 'string' ? body.preparationTime.trim() : '',
         ...(availabilitySchedule ? { availabilitySchedule } : {}),
+        ...(suggestedUpdate || {}),
         approvalStatus: 'approved'
     });
     // Born approved, so the approval hook never sees it: decide the shelf here.
@@ -3613,6 +3619,9 @@ export async function updateFood(id, body) {
     if (body.availabilitySchedule !== undefined) {
         doc.availabilitySchedule = normalizeAvailabilityScheduleInput(body.availabilitySchedule);
     }
+    const { normalizeSuggestedItemIdsInput } = await import('../../shared/suggestedItems.js');
+    const suggestedUpdate = await normalizeSuggestedItemIdsInput(FoodItem, doc.restaurantId, body, doc._id);
+    if (suggestedUpdate) doc.suggestedItemIds = suggestedUpdate.suggestedItemIds;
 
     if (body.categoryId !== undefined || body.categoryName !== undefined || body.category !== undefined || body.foodType !== undefined) {
         const nextCategoryName = body.categoryName !== undefined
