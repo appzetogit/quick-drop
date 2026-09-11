@@ -4,7 +4,7 @@ import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { computeBill, normalizeTip, DEFAULT_PLATFORM_FEE_GST_RATE } from '../../shared/billing.js';
 import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
-import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
+import { ORDER_STATUSES_NOT_COUNTED_FOR_COUPONS } from './couponUsage.service.js';
 import { FoodDeliverySurgeZone } from '../../admin/models/deliverySurgeZone.model.js';
 import { FoodDeliveryCommissionRule } from '../../admin/models/deliveryCommissionRule.model.js';
 import { FoodZone } from '../../admin/models/zone.model.js';
@@ -522,7 +522,14 @@ export async function calculateOrderPricing(userId, dto) {
    * is why riderDeliveryEarningAfterAdminCommission is left untouched and the
    * platform absorbs the difference. That is also why this is admin-only.
    */
-  const orderedMenuItems = Array.isArray(items) ? items : [];
+  /*
+   * The spend-threshold reward is left out of the check. It was appended above
+   * with no freeDelivery flag of its own, so an all-free-delivery cart that
+   * earned a reward lost its free delivery: the customer was charged Rs 30 for
+   * spending enough to get a gift. The reward is not something the customer
+   * ordered, so it has no say in how the order ships.
+   */
+  const orderedMenuItems = (Array.isArray(items) ? items : []).filter((line) => !line?.isFreebie);
   const allItemsShipFree = orderedMenuItems.length > 0
     && orderedMenuItems.every((line) => line?.freeDelivery === true);
 
@@ -621,29 +628,48 @@ export async function calculateOrderPricing(userId, dto) {
         usageOk = false;
       }
 
+      /*
+       * Per-user and first-order limits count only orders that happened.
+       *
+       * Both used to count every order document the customer had, and an online
+       * checkout abandoned at the payment sheet leaves one behind in
+       * pending_payment for good. So one failed payment spent a first-order
+       * coupon, and the FoodOfferUsage counter had already been bumped for it.
+       * The customer's own orders are the record here: the ones paid for or
+       * placed on cash, and not cancelled. That also forgives uses the old
+       * counter took for attempts nobody paid for.
+       *
+       * The second branch of the $or covers orders saved before appliedCoupon
+       * was stored, which carry only the code and the discount it gave.
+       */
+      const countedOrders = userId
+        ? {
+            userId: new mongoose.Types.ObjectId(userId),
+            orderStatus: { $nin: ORDER_STATUSES_NOT_COUNTED_FOR_COUPONS },
+          }
+        : null;
+
       let perUserOk = true;
-      if (userId && Number(offer.perUserLimit) > 0) {
-        const usage = await FoodOfferUsage.findOne({
-          offerId: offer._id,
-          userId,
-        }).lean();
-        if (usage && Number(usage.count) >= Number(offer.perUserLimit)) {
+      if (countedOrders && Number(offer.perUserLimit) > 0) {
+        const used = await FoodOrder.countDocuments({
+          ...countedOrders,
+          $or: [
+            { "pricing.appliedCoupon.code": codeRaw },
+            { "pricing.couponCode": codeRaw, "pricing.discount": { $gt: 0 } },
+          ],
+        });
+        if (used >= Number(offer.perUserLimit)) {
           perUserOk = false;
         }
       }
 
       let firstOrderOk = true;
-      if (userId && offer.customerScope === "first-time") {
-        const c = await FoodOrder.countDocuments({
-          userId: new mongoose.Types.ObjectId(userId),
-        });
-        firstOrderOk = c === 0;
-      }
-      if (userId && offer.isFirstOrderOnly === true) {
-        const c2 = await FoodOrder.countDocuments({
-          userId: new mongoose.Types.ObjectId(userId),
-        });
-        if (c2 > 0) firstOrderOk = false;
+      if (
+        countedOrders &&
+        (offer.customerScope === "first-time" || offer.isFirstOrderOnly === true)
+      ) {
+        const previousOrders = await FoodOrder.countDocuments(countedOrders);
+        if (previousOrders > 0) firstOrderOk = false;
       }
 
       const allowed =

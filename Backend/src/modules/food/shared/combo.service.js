@@ -14,11 +14,12 @@
  * teaching every one of those paths about a second kind of sellable thing, which
  * is a lot of new surface for something the customer thinks of as just a dish.
  *
- * The combo price is stored as `price`, and the component total as `basePrice`.
- * That is not a trick: the component total is genuinely what these dishes cost
- * separately, which is exactly what a struck-through "was" price means. It also
- * means the saving renders on the menu through the discount machinery that
- * already exists, with no change to the app.
+ * The combo price is stored as both `price` and `basePrice`, and the component
+ * total as `formulationStrikePrice` -- the struck-through "was" price, which is
+ * genuinely what these dishes cost separately. The saving then renders on the
+ * menu through the discount machinery that already exists, with no change to
+ * the app. (The component total used to be the base, which the menu read as the
+ * price to show -- see saveCombo.)
  *
  * The pure rules -- composition limits, price validation, the pro-rata split --
  * live in ./combo.js and are tested without a database.
@@ -208,8 +209,24 @@ export async function saveCombo(restaurantId, payload = {}, { comboId = null, up
         foodType: anyNonVeg ? 'Non-Veg' : 'Veg',
         isCombo: true,
         comboComponents: stampComponentNames(built.components, built.docsById, built.allocation),
+        /*
+         * The combo price is the base, and the parts total is the struck figure.
+         *
+         * The parts total used to be stored as `basePrice`. But the menu derives
+         * what it shows from the base (base x (1 - discount)), while the bill
+         * charges `price` -- so a Rs 150 combo of Rs 200 of dishes was shown at
+         * Rs 200 with nothing struck and billed Rs 150. Storing the parts total as
+         * the strike shows "Rs 150, was Rs 200" and bills Rs 150. The adjustment
+         * fields are zeroed: combos are kept out of global price runs (see
+         * priceAdjustment.service), so nothing else ever moves these figures.
+         */
         price: built.price,
-        basePrice: built.componentTotal,
+        basePrice: built.price,
+        formulationPrice: built.price,
+        formulationStrikePrice: built.componentTotal,
+        formulationPercent: 0,
+        formulationMarkupPercent: 0,
+        formulationDiscountPercent: 0,
         discountPercent: computeDiscountPercent(built.componentTotal, built.price),
         variantsEnabled: false,
         variants: [],

@@ -69,6 +69,10 @@ export const invalidateMenuCaches = async () => {
         invalidateCache('restaurants:*'),
         invalidateCache('search_unified:*'),
         invalidateCache('search_products:*'),
+        // The add-on picker's price list. Cached for ten minutes under its own
+        // prefix and left out of this clear, so an add-on's new price showed in
+        // the picker only after the bill had already started charging it.
+        invalidateCache('restaurant_addons:*'),
     ]);
 };
 

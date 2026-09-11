@@ -238,6 +238,87 @@ export async function updateTransactionStatus(orderId, kind, details = {}) {
 }
 
 /**
+ * Book a post-delivery return refund against the order's ledger.
+ *
+ * Returns used to move money without touching the ledger at all: the seller kept its
+ * full payout for goods it had failed to supply, and the refunded money still showed
+ * as earned. The refund is now taken out of the shares it came from:
+ *
+ *   - GST first: the item GST and, when fees came back, the delivery-fee GST. That
+ *     money was owed to the government only because the sale stood.
+ *   - The seller, on a seller-fault return: the part of its original payout that the
+ *     returned goods earned (payout x goods / subtotal), so commission and any
+ *     seller-funded discount come off in proportion.
+ *   - The platform bears the rest: the fees it refunds, its commission on the goods,
+ *     and -- on a customer-fault return, where the seller is not at fault -- the goods.
+ *
+ * So restaurant + rider + platform + tax always equals totalCustomerPaid minus
+ * refundedAmount: every rupee the customer still paid for is credited exactly once.
+ *
+ * Applied with a compare-and-swap on refundedAmount, because two refunds on one order
+ * can land together and a read-modify-save would let one overwrite the other.
+ */
+export async function recordReturnRefund(orderId, {
+    amount = 0,
+    tax = 0,
+    goods = 0,
+    subtotal = 0,
+    sellerFault = false,
+    returnCode = '',
+    recordedById,
+} = {}) {
+    const toP = (n) => Math.round((Number(n) || 0) * 100);
+    const amountP = toP(amount);
+    if (amountP <= 0) return null;
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        const tx = await FoodTransaction.findOne({ orderId }).lean();
+        if (!tx) return null;
+        const a = tx.amounts || {};
+
+        const taxBackP = Math.max(0, Math.min(toP(tax), toP(a.taxAmount), amountP));
+        let sellerP = 0;
+        if (sellerFault && Number(subtotal) > 0) {
+            const originalShareP = toP(a.restaurantShare) + toP(a.sellerReturnDebit);
+            const earnedByGoodsP = Math.round((originalShareP * Number(goods)) / Number(subtotal));
+            sellerP = Math.max(0, Math.min(earnedByGoodsP, toP(a.restaurantShare), amountP - taxBackP));
+        }
+        const platformP = amountP - taxBackP - sellerP;
+
+        const refundedP = toP(a.refundedAmount) + amountP;
+        const set = {
+            'amounts.taxAmount': (toP(a.taxAmount) - taxBackP) / 100,
+            'amounts.restaurantShare': (toP(a.restaurantShare) - sellerP) / 100,
+            'amounts.platformNetProfit': (toP(a.platformNetProfit) - platformP) / 100,
+            'amounts.refundedAmount': refundedP / 100,
+            'amounts.sellerReturnDebit': (toP(a.sellerReturnDebit) + sellerP) / 100,
+        };
+        // Fully given back: reports stop counting it as earned revenue.
+        if (refundedP >= toP(a.totalCustomerPaid)) set.status = 'refunded';
+
+        const entry = {
+            kind: 'return_refunded',
+            amount: amountP / 100,
+            at: new Date(),
+            note: `Return ${returnCode}: refunded ${amountP / 100} (GST ${taxBackP / 100}, seller ${sellerP / 100}, platform ${platformP / 100})`,
+            recordedBy: {
+                role: 'ADMIN',
+                ...(mongoose.Types.ObjectId.isValid(String(recordedById || '')) ? { id: recordedById } : {}),
+            },
+        };
+
+        // Matches only if nobody booked a refund since the read; null also matches a
+        // ledger written before the field existed.
+        const res = await FoodTransaction.updateOne(
+            { _id: tx._id, 'amounts.refundedAmount': a.refundedAmount ?? null },
+            { $set: set, $push: { history: entry } },
+        );
+        if (res.modifiedCount === 1) return FoodTransaction.findById(tx._id).lean();
+    }
+    throw new Error(`Ledger for order ${orderId} kept changing; return refund not booked`);
+}
+
+/**
  * Updates the rider in the transaction when an order is accepted.
  */
 export async function updateTransactionRider(orderId, riderId) {

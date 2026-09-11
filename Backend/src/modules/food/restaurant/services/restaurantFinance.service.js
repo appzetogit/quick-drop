@@ -63,6 +63,67 @@ function parseISODateParamEnd(v) {
     return d;
 }
 
+/**
+ * What a restaurant has earned and what has been paid or queued against it.
+ *
+ * Split out of getRestaurantFinance so the admin's withdrawal approval can
+ * re-check the balance from the same arithmetic the restaurant sees. It needs
+ * `unpaid` (earned - approved), which the clamped `available` figure cannot
+ * give back: a restaurant over-queued by a race reads available 0 either way.
+ */
+export async function getRestaurantPayoutPosition(restaurantId) {
+    const rid = new mongoose.Types.ObjectId(String(restaurantId));
+
+    // Global estimated payout (all unsettled transactions)
+    const allUnsettledTransactions = await FoodTransaction.find({
+        restaurantId: rid,
+        status: { $in: ['captured', 'authorized'] },
+        'settlement.isRestaurantSettled': { $ne: true }
+    }).select('amounts.restaurantShare').lean();
+
+    const globalEstimatedPayout = allUnsettledTransactions.reduce(
+        (sum, tx) => sum + (Number(tx.amounts?.restaurantShare) || 0),
+        0
+    );
+
+    /*
+     * Money already paid out has to stay deducted.
+     *
+     * globalEstimatedPayout above is every unsettled transaction the restaurant
+     * has ever earned on -- nothing marks a transaction settled, so it only
+     * grows. Deducting pending requests alone meant the balance dropped while a
+     * request sat in the queue and sprang back the moment an admin approved it:
+     * a restaurant paid Rs 3000 saw Rs 3000 available again and could request
+     * the same earnings indefinitely.
+     *
+     * Rejected requests are correctly excluded -- no money left, so nothing is
+     * owed against them. This mirrors deliveryFinance.service.js, which has
+     * always subtracted approved and pending separately.
+     */
+    const status = { $toLower: { $trim: { input: '$status' } } };
+    const withdrawalsAgg = await FoodRestaurantWithdrawal.aggregate([
+        { $match: { restaurantId: rid } },
+        {
+            $group: {
+                _id: null,
+                pending: { $sum: { $cond: [{ $eq: [status, 'pending'] }, '$amount', 0] } },
+                approved: { $sum: { $cond: [{ $eq: [status, 'approved'] }, '$amount', 0] } },
+            }
+        }
+    ]);
+    const pending = Number(withdrawalsAgg?.[0]?.pending || 0);
+    const approved = Number(withdrawalsAgg?.[0]?.approved || 0);
+    const round2 = (n) => Math.round(n * 100) / 100;
+
+    return {
+        earned: round2(globalEstimatedPayout),
+        pending: round2(pending),
+        approved: round2(approved),
+        available: Math.max(0, globalEstimatedPayout - pending - approved),
+        unpaid: round2(globalEstimatedPayout - approved),
+    };
+}
+
 export async function getRestaurantFinance(restaurantId, query = {}) {
     if (!restaurantId || !mongoose.Types.ObjectId.isValid(restaurantId)) return null;
     const rid = new mongoose.Types.ObjectId(restaurantId);
@@ -118,49 +179,10 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         0
     );
 
-    // Calculate global estimated payout (all unsettled transactions)
-    const allUnsettledTransactions = await FoodTransaction.find({
-        restaurantId: rid,
-        status: { $in: ['captured', 'authorized'] },
-        'settlement.isRestaurantSettled': { $ne: true }
-    }).select('amounts.restaurantShare').lean();
-
-    const globalEstimatedPayout = allUnsettledTransactions.reduce(
-        (sum, tx) => sum + (Number(tx.amounts?.restaurantShare) || 0),
-        0
-    );
-
-    /*
-     * Money already paid out has to stay deducted.
-     *
-     * globalEstimatedPayout above is every unsettled transaction the restaurant
-     * has ever earned on -- nothing marks a transaction settled, so it only
-     * grows. Deducting pending requests alone meant the balance dropped while a
-     * request sat in the queue and sprang back the moment an admin approved it:
-     * a restaurant paid Rs 3000 saw Rs 3000 available again and could request
-     * the same earnings indefinitely.
-     *
-     * Rejected requests are correctly excluded -- no money left, so nothing is
-     * owed against them. This mirrors deliveryFinance.service.js, which has
-     * always subtracted approved and pending separately.
-     */
-    const status = { $toLower: { $trim: { input: '$status' } } };
-    const withdrawalsAgg = await FoodRestaurantWithdrawal.aggregate([
-        { $match: { restaurantId: rid } },
-        {
-            $group: {
-                _id: null,
-                pending: { $sum: { $cond: [{ $eq: [status, 'pending'] }, '$amount', 0] } },
-                approved: { $sum: { $cond: [{ $eq: [status, 'approved'] }, '$amount', 0] } },
-            }
-        }
-    ]);
-    const totalPendingWithdrawals = Number(withdrawalsAgg?.[0]?.pending || 0);
-    const totalApprovedWithdrawals = Number(withdrawalsAgg?.[0]?.approved || 0);
-    const availableBalance = Math.max(
-        0,
-        globalEstimatedPayout - totalPendingWithdrawals - totalApprovedWithdrawals,
-    );
+    const {
+        approved: totalApprovedWithdrawals,
+        available: availableBalance,
+    } = await getRestaurantPayoutPosition(rid);
     const withdrawalSettings = await getRestaurantWithdrawalSettings();
     const minimumWithdrawalAmount = Number(withdrawalSettings?.minimumWithdrawalAmount) || 0;
 

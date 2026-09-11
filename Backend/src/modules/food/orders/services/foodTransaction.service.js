@@ -236,7 +236,25 @@ export async function createInitialTransaction(order) {
     
     // Split logic - Ensure all values are finite numbers
     const totalCustomerPaid = Number(order.pricing?.total) || 0;
-    const riderShare = Number(order.riderTotalPayout) || Number(order.riderEarning) || 0;
+    /*
+     * The tip is the rider's in full.
+     *
+     * The bill charges it and the customer pays it, so leaving it out of the
+     * payout collected money on the rider's behalf and credited it to nobody.
+     */
+    const riderTipPay = Number(order.pricing?.tip) || 0;
+    /*
+     * On the order, riderTotalPayout is the rider's pay BEFORE the tip and
+     * riderEarning is that plus the tip. riderEarning is what the rider's
+     * balance is built from, so it has to hold the tip. The tip is added below,
+     * exactly once. So when this falls back to riderEarning (a payout of zero,
+     * e.g. no distance slab matched) the tip is taken back out first. Otherwise
+     * a tipped order would pay the tip twice and book it as a platform cost.
+     */
+    const storedPayoutBeforeTip =
+        Number(order.riderTotalPayout) ||
+        Math.max(0, (Number(order.riderEarning) || 0) - riderTipPay);
+    const riderShare = storedPayoutBeforeTip;
     
     // Prefer commission already computed & stored on the order (source of truth for this order),
     // fallback to rule snapshot for older orders.
@@ -265,18 +283,9 @@ export async function createInitialTransaction(order) {
     const riderDeliveryFeeShare = Number(order.riderDeliveryFeeShare) || riderDeliveryEarningAfterAdminCommission;
     const riderSurgePay = Number(order.riderSurgePay) || surgeAmount;
     const riderIncentivePay = Number(order.riderIncentivePay) || deliveryPartnerIncentiveAmount;
-    /*
-     * The tip is the rider's in full.
-     *
-     * The bill charges it and the customer pays it, so leaving it out of the
-     * payout collected money on the rider's behalf and credited it to nobody.
-     * It is added on top of a stored riderTotalPayout as well, because that
-     * figure was computed before tips existed.
-     */
-    const riderTipPay = Number(order.pricing?.tip) || 0;
+    // Added on top of the stored pre-tip payout, never folded into it.
     const riderPayoutBeforeTip =
-        Number(order.riderTotalPayout) ||
-        Number(order.riderEarning) ||
+        storedPayoutBeforeTip ||
         Math.round((riderBasePay + riderDeliveryFeeShare + riderSurgePay + riderIncentivePay) * 100) / 100;
     const riderTotalPayout = Math.round((riderPayoutBeforeTip + riderTipPay) * 100) / 100;
 

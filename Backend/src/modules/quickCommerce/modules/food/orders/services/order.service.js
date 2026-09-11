@@ -386,6 +386,26 @@ async function expireUnacceptedOrders(filter = {}) {
       logger.warn(`expireUnacceptedOrders refund failed for ${updated._id}: ${err?.message || err}`);
     }
 
+    // Tell the ledger, as every other cancel path does. Without this the transaction
+    // stayed 'captured' and the admin reports kept counting money already refunded.
+    // Money that went back is 'refunded'; an order that never collected anything
+    // (COD, unpaid) is 'failed'. A paid order whose refund did NOT go through keeps
+    // its status: the platform still holds that money, and the note says why.
+    try {
+      const payStatus = String(updated.payment?.status || '').toLowerCase();
+      const refunded = payStatus === 'refunded';
+      const stillHeld = payStatus === 'paid';
+      await foodTransactionService.updateTransactionStatus(updated._id, 'cancelled_by_restaurant', {
+        ...(refunded ? { status: 'refunded' } : stillHeld ? {} : { status: 'failed' }),
+        note: stillHeld
+          ? 'Not accepted by restaurant in time; auto-cancelled, refund NOT processed'
+          : 'Not accepted by restaurant in time; auto-cancelled',
+        recordedByRole: 'SYSTEM',
+      });
+    } catch (err) {
+      logger.warn(`expireUnacceptedOrders transaction sync failed for ${updated._id}: ${err?.message || err}`);
+    }
+
     try {
       const io = getIO();
       if (io) {
@@ -536,6 +556,11 @@ export async function createOrder(userId, dto) {
     const normalizedPricing = {
       subtotal: Number(pricingResult.pricing?.subtotal) || 0,
       tax: Number(pricingResult.pricing?.tax) || 0,
+      // Kept so a return can refund an untagged line at the rate it was charged,
+      // even after the fee settings have moved on.
+      gstFallbackRate: Number.isFinite(Number(pricingResult.pricing?.gstFallbackRate))
+        ? Number(pricingResult.pricing.gstFallbackRate)
+        : null,
       packagingFee: Number(pricingResult.pricing?.packagingFee) || 0,
       deliveryFee: Number(pricingResult.pricing?.deliveryFee) || 0,
       deliveryFeeGst: Number(pricingResult.pricing?.deliveryFeeGst) || 0,

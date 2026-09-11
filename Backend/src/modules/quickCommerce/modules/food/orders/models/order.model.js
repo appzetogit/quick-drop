@@ -84,6 +84,13 @@ const pricingSchema = new mongoose.Schema(
     {
         subtotal: { type: Number, required: true, min: 0 },
         tax: { type: Number, default: 0, min: 0 },
+        /**
+         * The order-wide GST rate that lines with no slab of their own (gstRate null)
+         * were taxed at. Snapshotted because the fee settings can change afterwards,
+         * and a return must refund such a line at the rate it was charged. null on
+         * orders placed before it was recorded; returns then derive it from `tax`.
+         */
+        gstFallbackRate: { type: Number, default: null, min: 0, max: 100 },
         packagingFee: { type: Number, default: 0, min: 0 },
         deliveryFee: { type: Number, default: 0, min: 0 },
         deliveryFeeGst: { type: Number, default: 0, min: 0 },
@@ -289,10 +296,33 @@ const orderSchema = new mongoose.Schema(
             ref: 'QCTransaction',
             index: true
         },
+        /**
+         * Paise already paid back to the customer through returns on this order.
+         *
+         * The single counter every return refund reserves against, with a
+         * compare-and-swap, before any money moves (return.service.js refundReturn).
+         * Summing refunded returns instead let two refunds that started together both
+         * see the same headroom and pay out more than the order was worth. Integer
+         * paise so repeated increments never drift. Absent on orders that predate it;
+         * the first refund seeds it from the returns already refunded.
+         */
+        returnRefundedPaise: { type: Number, min: 0 },
+        /**
+         * At least one line -- except on a prescription-only order, which is placed
+         * from a photograph and carries no items until the pharmacist prices it (see
+         * prescriptionOnly below). Refusing it here meant no prescription order could
+         * ever be saved. A function, not an arrow, so `this` is the order.
+         */
         items: {
             type: [orderItemSchema],
             required: true,
-            validate: (v) => Array.isArray(v) && v.length > 0
+            validate: {
+                validator: function (v) {
+                    if (Array.isArray(v) && v.length > 0) return true;
+                    return this?.prescriptionOnly === true;
+                },
+                message: 'An order needs at least one item',
+            }
         },
         deliveryAddress: {
             type: deliveryAddressSchema,

@@ -11,7 +11,18 @@ const orderItemSchema = z.object({
     quantity: z.number().int().min(1),
     isVeg: z.boolean().optional().default(true),
     image: z.string().optional(),
-    notes: z.string().optional()
+    notes: z.string().optional(),
+    /*
+     * The add-ons chosen for this line. The web sends ids as `addonIds`; the
+     * Flutter app sends them as `addons` (a list of id strings). Neither was
+     * declared, so zod stripped both before pricing saw them: a Rs 200 dish with
+     * a Rs 30 add-on was billed Rs 200 and the kitchen never saw the add-on.
+     * Only ids get through. Pricing looks each one up in the published record
+     * and refuses any add-on the dish does not offer, so a price sent here is
+     * never used.
+     */
+    addonIds: z.array(z.string()).optional(),
+    addons: z.array(z.union([z.string(), z.object({}).passthrough()])).optional()
 });
 
 const addressSchema = z.object({
@@ -61,7 +72,11 @@ const pricingSchema = z.object({
     surgeAmount: z.number().min(0).optional(),
     discount: z.number().min(0).optional(),
     total: z.number().min(0),
-    currency: z.string().optional()
+    currency: z.string().optional(),
+    // Both apps send the coupon only here, echoing /calculate's pricing. It is
+    // nullable because /calculate reports `couponCode: null` when there is none,
+    // and refusing that would refuse every order placed without a coupon.
+    couponCode: z.string().nullable().optional()
 });
 
 function zodMessage(error) {
@@ -136,7 +151,19 @@ export function validateCreateOrderDto(body) {
     if (!result.success) {
         throw new ValidationError(zodMessage(result.error));
     }
-    return result.data;
+    /*
+     * The coupon, wherever the client put it.
+     *
+     * Placement re-prices from the top-level couponCode, but the shipped web and
+     * Flutter apps send it only inside `pricing`, echoing /calculate. So the cart
+     * quoted Rs 199 with the coupon, and the order charged Rs 252 without it
+     * and never counted a use. Reading both keeps the apps already installed
+     * working. The code is re-validated from scratch by pricing, so accepting it
+     * here grants nothing /calculate would not.
+     */
+    const data = result.data;
+    const couponCode = data.couponCode || data.pricing?.couponCode || undefined;
+    return couponCode ? { ...data, couponCode } : data;
 }
 
 export function validateVerifyPaymentDto(body) {

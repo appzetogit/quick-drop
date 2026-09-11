@@ -182,10 +182,13 @@ export async function createCollectQr(
       amounts: {
         totalCustomerPaid: order.pricing?.total || 0,
         restaurantShare: 0,
-        riderShare: Number(order.riderTotalPayout || order.riderEarning || 0),
+        // riderEarning includes the tip and riderTotalPayout does not. This
+        // fallback ledger row must pay the rider what createInitialTransaction
+        // would have: the payout plus the tip, counted once.
+        riderShare: Number(order.riderEarning || order.riderTotalPayout || 0),
         riderBasePay: Number(order.riderBasePay || 0),
         riderSurgePay: Number(order.riderSurgePay || 0),
-        riderTotalPayout: Number(order.riderTotalPayout || order.riderEarning || 0),
+        riderTotalPayout: Number(order.riderEarning || order.riderTotalPayout || 0),
         restaurantCommission: 0,
         platformNetProfit: 0,
         riderDeliveryFeeShare: Number(order.riderDeliveryFeeShare || order.pricing?.riderDeliveryEarningAfterAdminCommission || 0),

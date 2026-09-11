@@ -231,6 +231,16 @@ check('fresh produce CAN be reported damaged, within 4 hours', () => {
     assert.equal(late.eligible, false);
 });
 
+check('a stored order, whose delivery time lives under deliveryState, is returnable', () => {
+    // The order schema has no top-level deliveredAt; reading only that name refused
+    // every real return as "no delivery time on record".
+    const { deliveredAt, ...stored } = order();
+    const r = checkEligibility({
+        order: { ...stored, deliveryState: { deliveredAt } }, reasonCode: 'damaged', now: at(1),
+    });
+    assert.equal(r.eligible, true, r.reason);
+});
+
 check('the reason fixes the fault, so a caller cannot choose it', () => {
     assert.equal(checkEligibility({ order: order(), reasonCode: 'expired', now: at(1) }).fault, 'seller');
     assert.equal(checkEligibility({ order: order(), reasonCode: 'changed_mind', now: at(1) }).fault, 'customer');
@@ -325,6 +335,106 @@ check('reducing capability surfaces what must come off the shelf', () => {
     ];
     const blocked = unstockableProducts(seller, catalogue).map((p) => p.sku);
     assert.deepEqual(blocked, ['MILK', 'PEAS']);
+});
+
+console.log('\n[9] Lines exactly as order creation stores them');
+
+/**
+ * The fixture at the top has variantPrice 0, which no real order has:
+ * resolveFoodItemPrice() stamps variantPrice with the unit price on every line, sized
+ * or not. Adding it to the price refunded every line twice and nothing here noticed.
+ *
+ * Atta 100 at 18% + Salt 100 with no slab of its own (taxed at the 5% fallback):
+ * subtotal 200, tax 18 + 5 = 23, delivery 30 + 5.40 GST, platform 10 => 268.40.
+ */
+const realOrder = (pricing = {}) => ({
+    orderStatus: 'delivered',
+    deliveredAt: new Date('2026-08-20T10:00:00Z'),
+    items: [
+        { itemId: 'ATTA', name: 'Atta 1kg', quantity: 1, price: 100, variantPrice: 100, variantId: '', gstRate: 18 },
+        { itemId: 'SALT', name: 'Salt 1kg', quantity: 1, price: 100, variantPrice: 100, variantId: '', gstRate: null },
+    ],
+    pricing: {
+        subtotal: 200, discount: 0, tax: 23, deliveryFee: 30, deliveryFeeGst: 5.4,
+        platformFee: 10, total: 268.4, ...pricing,
+    },
+});
+
+check('returning the Atta refunds 100 + 18 GST, not twice the price', () => {
+    const r = calculateReturnRefund({
+        order: realOrder(), returnedLines: [{ itemId: 'ATTA', quantity: 1 }], fault: FAULT.CUSTOMER,
+    });
+    assert.equal(r.goods, 100);
+    assert.equal(r.total, 118, `refunded ${r.total}`);
+    assert.equal(r.lines[0].unitPrice, 100);
+});
+
+check('a full return of real lines still refunds exactly the order total', () => {
+    const r = calculateReturnRefund({
+        order: realOrder(),
+        returnedLines: [{ itemId: 'ATTA', quantity: 1 }, { itemId: 'SALT', quantity: 1 }],
+        fault: FAULT.CUSTOMER,
+    });
+    assert.equal(r.total, 268.4, `refunded ${r.total}`);
+    assert.equal(r.capApplied, false, 'the line maths alone must reach the total, not the cap');
+});
+
+check('with no stored subtotal the discount share is still taken against the real basket', () => {
+    // 20 off a 200 basket: the Atta's share is 10. Summing price + variantPrice made the
+    // basket 400 and the share 5, under-reversing the discount on every such order.
+    const r = calculateReturnRefund({
+        order: realOrder({ subtotal: undefined, discount: 20 }),
+        returnedLines: [{ itemId: 'ATTA', quantity: 1 }],
+        fault: FAULT.CUSTOMER,
+    });
+    assert.equal(r.discountReversed, 10);
+});
+
+check('a line with no slab of its own refunds its own tax, not a share of the order tax', () => {
+    // Salt was taxed 5 (5% fallback on 100). Apportioning the whole order tax of 23 by
+    // value gave it 11.50 -- more than half of it the Atta's 18% GST.
+    const r = calculateReturnRefund({
+        order: realOrder(), returnedLines: [{ itemId: 'SALT', quantity: 1 }], fault: FAULT.CUSTOMER,
+    });
+    assert.equal(r.tax, 5, `tax was ${r.tax}`);
+    assert.equal(r.total, 105, `refunded ${r.total}`);
+});
+
+check('the fallback rate recorded on the order is used when it is there', () => {
+    const r = calculateReturnRefund({
+        order: realOrder({ gstFallbackRate: 5 }), returnedLines: [{ itemId: 'SALT', quantity: 1 }], fault: FAULT.CUSTOMER,
+    });
+    assert.equal(r.tax, 5);
+});
+
+check('a discounted untagged line refunds GST on its post-discount value', () => {
+    // 20 off 200: Salt net 90, Atta net 90. Tax charged 90 * 18% + 90 * 5% = 16.20 + 4.50 = 20.70.
+    const r = calculateReturnRefund({
+        order: realOrder({ discount: 20, tax: 20.7, total: 246.1 }),
+        returnedLines: [{ itemId: 'SALT', quantity: 1 }],
+        fault: FAULT.CUSTOMER,
+    });
+    assert.equal(r.tax, 4.5, `tax was ${r.tax}`);
+    assert.equal(r.total, 94.5);
+});
+
+check('unit returns of a line taxed in paise give back exactly the GST charged', () => {
+    // Oil 105 at 5%, three units: 15.75 GST, which is what computeItemsTax now charges.
+    const oil = {
+        orderStatus: 'delivered',
+        deliveredAt: new Date('2026-08-20T10:00:00Z'),
+        items: [{ itemId: 'OIL', name: 'Oil 1L', quantity: 3, price: 105, variantPrice: 105, variantId: '', gstRate: 5 }],
+        pricing: { subtotal: 315, discount: 0, tax: 15.75, deliveryFee: 0, deliveryFeeGst: 0, platformFee: 0, total: 330.75 },
+    };
+    let refunded = 0;
+    for (let i = 0; i < 3; i += 1) {
+        const r = calculateReturnRefund({
+            order: oil, returnedLines: [{ itemId: 'OIL', quantity: 1 }], fault: FAULT.CUSTOMER, alreadyRefunded: refunded,
+        });
+        assert.equal(r.tax, 5.25);
+        refunded = Math.round((refunded + r.total) * 100) / 100;
+    }
+    assert.equal(refunded, 330.75);
 });
 
 console.log(fails === 0 ? '\nAll quick-commerce return rules hold.\n' : `\n${fails} FAILED\n`);

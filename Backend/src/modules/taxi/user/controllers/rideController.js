@@ -619,7 +619,11 @@ export const verifyRazorpayRideCompletion = async (req, res) => {
     });
   }
 
-  const isMock = orderId.startsWith("mock_order_") && signature === "mock_signature_bypass";
+  // The mock pair is for development only. It was honoured in production: the
+  // amount was read out of the order id and Razorpay never asked, so a cash
+  // ride could be marked paid online and a made-up tip credited to the driver.
+  const isMock = process.env.NODE_ENV !== 'production'
+    && orderId.startsWith("mock_order_") && signature === "mock_signature_bypass";
 
   let verifiedTotalCharge;
   let order;
@@ -957,7 +961,11 @@ export const verifyRazorpayRideTip = async (req, res) => {
     throw new ApiError(409, 'Feedback already submitted for this ride');
   }
 
-  const isMock = orderId.startsWith("mock_order_") && signature === "mock_signature_bypass";
+  // The mock pair is for development only. It was honoured in production: the
+  // amount was read out of the order id and Razorpay never asked, so a cash
+  // ride could be marked paid online and a made-up tip credited to the driver.
+  const isMock = process.env.NODE_ENV !== 'production'
+    && orderId.startsWith("mock_order_") && signature === "mock_signature_bypass";
 
   let amountPaise;
   let order;

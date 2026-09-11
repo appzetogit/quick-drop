@@ -577,8 +577,11 @@ export async function processBulkMenuUpload(restaurantId, fileBuffer) {
 
     if (results.success > 0) {
         try {
-            const { invalidateCache } = await import('../../../../middleware/cache.js');
-            await invalidateCache(`restaurant_menu:${restaurantId}`);
+            // The whole menu clear. `restaurant_menu:<id>` could never match a
+            // key -- they are prefix:METHOD:url -- so this cleared nothing and a
+            // bulk upload's prices reached customers only once the cache expired.
+            const { invalidateMenuCaches } = await import('../../../../middleware/cache.js');
+            await invalidateMenuCaches();
         } catch (cacheErr) {
             console.error('Failed to invalidate cache after bulk upload:', cacheErr);
         }

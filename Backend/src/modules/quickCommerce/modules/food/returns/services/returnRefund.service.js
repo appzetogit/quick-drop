@@ -105,7 +105,11 @@ export const calculateReturnRefund = ({
         ));
         if (quantity === 0) continue;
 
-        const unitPaise = toPaise(line.price) + toPaise(line.variantPrice || 0);
+        // `price` alone is the unit the customer paid: order creation folds the chosen
+        // size and every add-on into it (resolveOrderCartItems). `variantPrice` is not
+        // an extra on top -- resolveFoodItemPrice() stamps it with the same unit price
+        // on every line, sized or not -- so adding it refunded every line twice.
+        const unitPaise = toPaise(line.price);
         matched.push({
             itemId: String(line.itemId),
             variantId: String(line.variantId || ''),
@@ -133,7 +137,7 @@ export const calculateReturnRefund = ({
     // line's share of the ORDER subtotal, not of the returned subset, otherwise a
     // partial return reverses the entire discount.
     const orderSubtotalPaise = toPaise(pricing.subtotal)
-        || items.reduce((s, it) => s + (toPaise(it.price) + toPaise(it.variantPrice || 0)) * (it.quantity || 0), 0);
+        || items.reduce((s, it) => s + toPaise(it.price) * (it.quantity || 0), 0);
     const discountPaise = toPaise(pricing.discount);
     const discountSharePaise = orderSubtotalPaise > 0
         ? Math.round((discountPaise * goodsPaise) / orderSubtotalPaise)
@@ -149,25 +153,19 @@ export const calculateReturnRefund = ({
     //
     // Each line's own snapshotted rate wins over the order-wide one, because a
     // product's GST slab can be reclassified after the order and the refund has to
-    // match what was actually charged. Lines with no rate fall back to a pro-rata
-    // share of the order's recorded tax.
+    // match what was actually charged. A line with no rate of its own was taxed at
+    // the order-wide fallback rate in force when the order was placed, so it refunds
+    // at that rate on its own net value -- see untaggedLineRate() for where the rate
+    // comes from. It used to take a value share of the ORDER's whole tax instead,
+    // which handed a 5% line part of its neighbour's 18%.
+    const fallbackRate = untaggedLineRate(items, pricing, orderSubtotalPaise);
     let taxPaise = 0;
-    const untaxedLines = [];
     for (const line of matched) {
-        if (line.gstRate === null || line.gstRate === undefined) {
-            untaxedLines.push(line);
-            continue;
-        }
-        const rate = Number(line.gstRate);
+        const own = line.gstRate;
+        const rate = own === null || own === undefined ? fallbackRate : Number(own);
+        if (!(rate > 0)) continue;
         const net = line.grossPaise - discountShareOf(line, goodsPaise, discountSharePaise);
         taxPaise += Math.round((net * rate) / 100);
-    }
-    if (untaxedLines.length > 0) {
-        const orderTaxPaise = toPaise(pricing.tax);
-        const untaxedGross = untaxedLines.reduce((s, l) => s + l.grossPaise, 0);
-        if (orderSubtotalPaise > 0 && orderTaxPaise > 0) {
-            taxPaise += Math.round((orderTaxPaise * untaxedGross) / orderSubtotalPaise);
-        }
     }
 
     // ── Fees ──────────────────────────────────────────────────────────────────
@@ -221,6 +219,36 @@ export const calculateReturnRefund = ({
         })),
     };
 };
+
+/**
+ * The GST rate a line with no slab of its own was charged at.
+ *
+ * computeItemsTax() taxes such a line at the fee settings' order-wide `gstRate`.
+ * Orders placed since that rate was recorded carry it as pricing.gstFallbackRate.
+ * Older orders do not, and the fee settings may have changed since, so the rate is
+ * worked back out of the order itself: whatever tax the order recorded beyond what its
+ * own-slab lines account for was charged on its untagged lines. Derived that way, the
+ * untagged lines of an order refund exactly the tax they were charged, rounding included.
+ */
+function untaggedLineRate(items, pricing, orderSubtotalPaise) {
+    const stored = pricing?.gstFallbackRate;
+    if (stored !== null && stored !== undefined && Number.isFinite(Number(stored))) {
+        return Math.max(0, Number(stored));
+    }
+    if (!(orderSubtotalPaise > 0)) return 0;
+
+    const taxableShare = Math.max(0, orderSubtotalPaise - toPaise(pricing?.discount)) / orderSubtotalPaise;
+    let ownTaxPaise = 0;
+    let untaggedNetPaise = 0;
+    for (const it of items) {
+        const net = toPaise(it.price) * (Number(it.quantity) || 0) * taxableShare;
+        const own = it.gstRate;
+        if (own === null || own === undefined) untaggedNetPaise += net;
+        else ownTaxPaise += (net * (Number(own) || 0)) / 100;
+    }
+    if (!(untaggedNetPaise > 0)) return 0;
+    return Math.max(0, ((toPaise(pricing?.tax) - ownTaxPaise) * 100) / untaggedNetPaise);
+}
 
 /** This line's slice of the returned-set discount, by gross value. */
 function discountShareOf(line, goodsPaise, discountSharePaise) {

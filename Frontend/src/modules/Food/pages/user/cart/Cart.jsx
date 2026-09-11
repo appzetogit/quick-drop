@@ -862,7 +862,10 @@ export default function Cart() {
           quantity: item.quantity || 1,
           image: item.image,
           description: item.description,
-          isVeg: item.isVeg !== false
+          isVeg: item.isVeg !== false,
+          // Same as placement below. Without them the quote leaves out the
+          // add-ons the order is then charged for.
+          addonIds: Array.isArray(item.addonIds) ? item.addonIds : []
         }))
 
         const resolvedRestaurantId = restaurantData?._id || restaurantData?.restaurantId || restaurantId || undefined
@@ -1073,7 +1076,6 @@ export default function Cart() {
   const billDiscountShown = gstIsIncludedInItems
     ? (Number(bill?.discount ?? billDiscount) || 0)
     : billDiscount
-  const totalBeforeDiscount = subtotal + deliveryFee + platformFee + gstCharges + surgeAmount
   const total = pricing?.total ?? (subtotal + deliveryFee + platformFee + gstCharges + surgeAmount - (pricing?.discount ?? discount))
   /*
    * What the customer actually saved: the coupon plus any free buy-one-get-one
@@ -1084,6 +1086,16 @@ export default function Cart() {
    * tipped order and quietly hid a real discount.
    */
   const savings = Number(pricing?.savings ?? (Number(discount || 0) + bogoSavings)) || 0
+  /*
+   * The struck-through "before" figure: the amount charged plus what was saved.
+   *
+   * It used to be rebuilt from a handful of lines (food, delivery, platform
+   * fee, GST, surge) and left out packaging, the GST on the platform fee and
+   * the tip. So on most orders it sat below the total it was meant to be
+   * above. Built this way it always includes every line the total does, and
+   * the gap between the two is exactly the "You saved" figure beside them.
+   */
+  const totalBeforeDiscount = total + savings
 
   const showCodOption = useMemo(() => {
     if (feeSettings?.codOrderLimit !== undefined && feeSettings?.codOrderLimit !== null && total >= feeSettings.codOrderLimit) {
@@ -1721,6 +1733,9 @@ export default function Cart() {
         restaurantId: finalRestaurantId,
         restaurantName: finalRestaurantName || undefined,
         pricing: orderPricing,
+        // Top-level as well: this is the field placement re-prices from. The
+        // server also reads pricing.couponCode, for builds that only send that.
+        couponCode: orderPricing.couponCode || undefined,
         note: note || "",
         sendCutlery: sendCutlery !== false,
         paymentMethod: selectedPaymentMethod,

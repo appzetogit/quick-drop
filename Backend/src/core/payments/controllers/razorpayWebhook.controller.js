@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { FoodOrder } from '../../../modules/food/orders/models/order.model.js';
 import * as foodTransactionService from '../../../modules/food/orders/services/foodTransaction.service.js';
 import { notifyRestaurantNewOrder } from '../../../modules/food/orders/services/order.helpers.js';
+import { countCouponUseOnPayment } from '../../../modules/food/orders/services/couponUsage.service.js';
 import { config } from '../../../config/env.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -85,6 +86,9 @@ export const handleRazorpayWebhook = async (req, res) => {
                 } catch (ledgerErr) {
                     logger.error(`Webhook Ledger Error (Order ${order.orderId}): ${ledgerErr.message}`);
                 }
+                // The order is paid, so its coupon now counts as used. Idempotent
+                // against /verify, which may arrive before or after this.
+                await countCouponUseOnPayment(order);
                 // Notify restaurant (idempotent-ish: only reached when webhook won the paid race).
                 try {
                     await notifyRestaurantNewOrder(order);

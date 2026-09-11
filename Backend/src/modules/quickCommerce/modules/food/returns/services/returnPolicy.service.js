@@ -120,7 +120,12 @@ export const checkEligibility = ({ order, reasonCode, perishability = PERISHABIL
     const reason = getReason(reasonCode);
     if (!reason) return deny('Unknown return reason');
 
-    const deliveredAt = order.deliveredAt ? new Date(order.deliveredAt) : null;
+    // A stored order keeps the delivery time under deliveryState -- the order schema
+    // has no top-level deliveredAt -- so reading only order.deliveredAt refused every
+    // real return as "no delivery time on record". The top-level name is still read
+    // first for callers that pass a plain object.
+    const deliveredAtRaw = order.deliveredAt || order.deliveryState?.deliveredAt;
+    const deliveredAt = deliveredAtRaw ? new Date(deliveredAtRaw) : null;
     if (!deliveredAt || Number.isNaN(deliveredAt.getTime())) {
         return deny('Order has no delivery time on record; contact support');
     }

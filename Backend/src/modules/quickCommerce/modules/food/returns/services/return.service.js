@@ -4,10 +4,11 @@ import { QCReturn } from '../models/qcReturn.model.js';
 import { FoodOrder } from '../../orders/models/order.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { incrementStock } from '../../orders/services/inventory.service.js';
-import { initiateRefund } from '../../../../core/payments/refund.service.js';
-import { Payment } from '../../../../core/payments/models/payment.model.js';
+import { initiateRazorpayRefund } from '../../orders/helpers/razorpay.helper.js';
+import { recordReturnRefund } from '../../orders/services/foodTransaction.service.js';
+import { refundWalletBalance } from '../../user/services/userWallet.service.js';
 import { logger } from '../../../../utils/logger.js';
-import { calculateReturnRefund, FAULT } from './returnRefund.service.js';
+import { calculateReturnRefund, apportion, FAULT } from './returnRefund.service.js';
 import {
     checkEligibility,
     assertTransition,
@@ -273,38 +274,182 @@ export const inspectReturn = async ({ returnId, conditions = [], notes = '', ins
     return doc;
 };
 
+const toPaise = (rupees) => Math.round((Number(rupees) || 0) * 100);
+
+/**
+ * Where a return's money goes, decided from what the order itself holds.
+ *
+ * This used to require a core Payment document for the order. Nothing on the
+ * quick-commerce order path writes one -- the order carries its payment in
+ * order.payment -- so every refund failed with 409 and no approved return could ever
+ * be paid. The destinations are the two the quick-commerce cancellation refund
+ * (applyCancellationRefund in orders/services/order.service.js) already uses:
+ *
+ *   - Razorpay: refunded to the card/UPI it came from, via the same helper, unless
+ *     the admin chooses the wallet (refundTo 'wallet').
+ *   - Wallet, and cash collected on delivery: credited to the customer's
+ *     quick-commerce wallet. Cash cannot be pushed back to a card, and a rider cannot
+ *     be sent back with notes.
+ *
+ * An order whose money was never collected has nothing to refund.
+ */
+const resolveRefundDestination = (order, refundTo) => {
+    const method = String(order?.payment?.method || 'cash').toLowerCase();
+    const status = String(order?.payment?.status || '').toLowerCase();
+    if (status !== 'paid') {
+        throw new ReturnError('No payment was collected on this order, so there is nothing to refund', 409);
+    }
+
+    const paymentId = String(order.payment?.razorpay?.paymentId || '').trim();
+    if (refundTo === 'wallet') return { to: 'wallet' };
+    if (refundTo === 'gateway' && !(method === 'razorpay' && paymentId)) {
+        throw new ReturnError('This order was not paid online, so it can only be refunded to the wallet');
+    }
+    if (method === 'razorpay' && paymentId) return { to: 'gateway', paymentId };
+    return { to: 'wallet' };
+};
+
+/**
+ * Reserve `wantedPaise` of the order's refundable headroom, or as much as is left.
+ *
+ * A compare-and-swap on order.returnRefundedPaise: the increment lands only if nobody
+ * else reserved since the read, so two refunds on one order can never both spend the
+ * same headroom. The cap in calculateReturnRefund() is not enough on its own -- it
+ * runs when a return is REQUESTED, and two returns opened before either is paid both
+ * see the whole order as unrefunded.
+ */
+const reserveRefund = async (order, wantedPaise) => {
+    const paidPaise = toPaise(order.pricing?.total);
+
+    // Orders refunded before the counter existed: seed it from the returns already
+    // paid, once, so their money is not handed out a second time.
+    if (order.returnRefundedPaise === undefined || order.returnRefundedPaise === null) {
+        const prior = await QCReturn.find({ orderId: order._id, status: RETURN_STATUS.REFUNDED })
+            .select('refund.total').lean();
+        const priorPaise = prior.reduce((s, r) => s + toPaise(r.refund?.total), 0);
+        await FoodOrder.updateOne(
+            { _id: order._id, returnRefundedPaise: null },
+            { $set: { returnRefundedPaise: priorPaise } },
+        );
+    }
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        const fresh = await FoodOrder.findById(order._id).select('returnRefundedPaise').lean();
+        const already = Number(fresh?.returnRefundedPaise) || 0;
+        const grant = Math.min(wantedPaise, paidPaise - already);
+        if (grant <= 0) return 0;
+        const res = await FoodOrder.updateOne(
+            { _id: order._id, returnRefundedPaise: already },
+            { $inc: { returnRefundedPaise: grant } },
+        );
+        if (res.modifiedCount === 1) return grant;
+    }
+    throw new ReturnError('Another refund on this order is in progress. Try again.', 409);
+};
+
+const payOut = async (destination, { order, doc, amount }) => {
+    if (destination.to === 'gateway') {
+        let result;
+        try {
+            result = await initiateRazorpayRefund(destination.paymentId, amount);
+        } catch (err) {
+            result = { success: false, error: err?.message || String(err) };
+        }
+        if (!result?.success) {
+            throw new ReturnError(
+                `The refund to the original payment failed (${result?.error || 'gateway error'}). Nothing was refunded; try again or refund to the wallet.`,
+                502,
+            );
+        }
+        return { method: 'gateway', reference: String(result.refundId || '') };
+    }
+
+    await refundWalletBalance(order.userId, amount, `Refund for return ${doc.returnCode}`, {
+        orderId: String(order._id),
+        returnId: String(doc._id),
+        returnCode: doc.returnCode,
+    });
+    return { method: 'wallet', reference: '' };
+};
+
 /**
  * Move the money.
  *
- * Delegates to core/payments/refund.service.js rather than crediting a wallet here,
- * so quick-commerce refunds land in the same ledger, with the same records, as every
- * other refund on the platform.
+ * Four steps, in an order that means a failure never pays twice and never strands
+ * money: claim the return, reserve its amount against what the order has left to
+ * give, pay, then record. A payout that fails releases both the claim and the
+ * reservation, so the return can be retried. Once money has moved nothing is undone:
+ * a failure after that point leaves the claim in place, so a retry cannot pay again.
  */
 export const refundReturn = async ({ returnId, adminId, refundTo }) => {
-    const doc = await QCReturn.findById(returnId);
-    if (!doc) throw new ReturnError('Return not found', 404);
-    if (doc.refundId) return doc; // already paid out; replay is a no-op
+    const existing = await QCReturn.findById(returnId);
+    if (!existing) throw new ReturnError('Return not found', 404);
+    if (existing.status === RETURN_STATUS.REFUNDED) return existing; // replay is a no-op
+    assertTransition(existing.status, RETURN_STATUS.REFUNDED);
 
-    if (!(doc.refund.total > 0)) {
+    if (!(existing.refund.total > 0)) {
         throw new ReturnError('This return has no refundable amount');
     }
 
-    const payment = await Payment.findOne({ orderId: doc.orderId, status: 'success' }).lean();
-    if (!payment) throw new ReturnError('No successful payment found for this order', 409);
+    const order = await FoodOrder.findById(existing.orderId).lean();
+    if (!order) throw new ReturnError('Order not found', 404);
+    const destination = resolveRefundDestination(order, refundTo);
 
-    const refund = await initiateRefund({
-        paymentId: payment._id,
-        orderId: doc.orderId,
-        userId: doc.userId,
-        amount: doc.refund.total,
-        reason: `Return ${doc.returnCode} (${doc.reasonCode})`,
-        refundTo,
-    });
+    const doc = await QCReturn.findOneAndUpdate(
+        { _id: existing._id, status: existing.status, 'refundClaim.at': null },
+        { $set: { 'refundClaim.at': new Date(), 'refundClaim.by': String(adminId || '') } },
+        { new: true },
+    );
+    if (!doc) throw new ReturnError('This return is already being refunded', 409);
 
-    doc.refundId = refund?._id || null;
+    let grantedPaise = 0;
+    let payout;
+    try {
+        grantedPaise = await reserveRefund(order, toPaise(doc.refund.total));
+        if (grantedPaise <= 0) {
+            throw new ReturnError('Everything paid on this order has already been refunded', 409);
+        }
+        payout = await payOut(destination, { order, doc, amount: grantedPaise / 100 });
+    } catch (err) {
+        if (grantedPaise > 0) {
+            await FoodOrder.updateOne({ _id: order._id }, { $inc: { returnRefundedPaise: -grantedPaise } });
+        }
+        await QCReturn.updateOne({ _id: doc._id }, { $set: { 'refundClaim.at': null, 'refundClaim.by': '' } });
+        throw err;
+    }
+
+    // Earlier refunds on this order used up part of what this return was quoted: the
+    // record says what was actually paid, and its lines still add up to it.
+    if (grantedPaise < toPaise(doc.refund.total)) {
+        doc.refund.total = grantedPaise / 100;
+        doc.refund.capApplied = true;
+        const shares = apportion(grantedPaise, doc.items.map((l) => toPaise(l.refundAmount)));
+        doc.items.forEach((line, i) => { line.refundAmount = shares[i] / 100; });
+    }
+
+    doc.payout = { ...payout, amount: grantedPaise / 100 };
     doc.refundedAt = new Date();
     recordStatus(doc, RETURN_STATUS.REFUNDED, { byRole: 'ADMIN', byId: String(adminId || '') });
     await doc.save();
+
+    // The GST that came back: item GST, plus the delivery-fee GST when fees did.
+    const taxBack = (Number(doc.refund.tax) || 0)
+        + ((Number(doc.refund.deliveryFee) || 0) > 0 ? Number(order.pricing?.deliveryFeeGst) || 0 : 0);
+    try {
+        await recordReturnRefund(order._id, {
+            amount: grantedPaise / 100,
+            tax: taxBack,
+            goods: doc.refund.goods,
+            subtotal: order.pricing?.subtotal,
+            sellerFault: doc.fault === FAULT.SELLER,
+            returnCode: doc.returnCode,
+            recordedById: adminId,
+        });
+    } catch (err) {
+        // The customer has been paid; a ledger that failed to follow is a finance
+        // correction, not a reason to report the refund as failed.
+        logger.error(`[QC returns] ledger not updated for ${doc.returnCode}: ${err?.message || err}`);
+    }
     return doc;
 };
 

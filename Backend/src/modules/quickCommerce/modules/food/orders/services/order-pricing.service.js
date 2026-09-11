@@ -228,7 +228,11 @@ export function computeItemsTax(items = [], { subtotal = 0, discount = 0, fallba
     tax += lineValue * taxableShare * (rate / 100);
   }
 
-  return Math.round(tax);
+  // To the paisa, like every other figure on the bill. Whole-rupee rounding charged
+  // oil at 105 and 5% a GST of 5 instead of 5.25, and three bottles 16 instead of
+  // 15.75 -- while a return refunds GST line by line in paise, so the two never
+  // agreed. Still summed before rounding, so a long basket gains no per-line error.
+  return round2(tax);
 }
 
 export function resolveUserDeliveryFee(feeSettings = {}, { subtotal = 0, distanceKm = null } = {}) {
@@ -449,10 +453,11 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
   }
 
   // GST is charged on the post-discount item value (discount is already clamped to <= subtotal).
+  const gstFallbackRate = Number(feeSettings.gstRate || 0);
   const tax = computeItemsTax(items, {
     subtotal,
     discount,
-    fallbackRate: Number(feeSettings.gstRate || 0),
+    fallbackRate: gstFallbackRate,
   });
 
   const deliveryFeeGst = computeDeliveryFeeGst(deliveryFee);
@@ -467,6 +472,10 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
   const basePricing = {
     subtotal,
     tax,
+    // The rate lines with no slab of their own were taxed at. Recorded because the fee
+    // settings can change after the order, and a return has to refund such a line at
+    // the rate it was actually charged.
+    gstFallbackRate,
     packagingFee,
     deliveryFee,
     deliveryFeeGst,
@@ -495,21 +504,34 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
     Number(feeSettings.quickDeliveryFee) || 0,
   );
 
+  // Compared like with like. The shipped app sends each line's price WITHOUT its
+  // add-ons, while resolved.price has them folded in, so every line carrying an add-on
+  // was reported as "price changed" on every checkout. The line's own price is the
+  // comparison; a client that sends the add-on-inclusive figure is accepted too, so a
+  // corrected app does not start seeing the notice the other way round. Matched on the
+  // size as well, since two sizes of one product are two lines with the same itemId.
   const priceChanges = (Array.isArray(dto.items) ? dto.items : [])
     .map((rawItem) => {
       const itemId = String(rawItem?.itemId || rawItem?.id || '').trim();
-      const resolved = items.find((entry) => String(entry.itemId) === itemId);
+      const variantId = String(rawItem?.variantId || '').trim();
+      const resolved =
+        items.find((entry) => String(entry.itemId) === itemId && String(entry.variantId || '') === variantId) ||
+        items.find((entry) => String(entry.itemId) === itemId);
       if (!resolved) return null;
 
       const previousPrice = Number(rawItem?.price);
-      const nextPrice = Number(resolved.price);
-      if (!Number.isFinite(previousPrice) || previousPrice === nextPrice) return null;
+      const withAddons = Number(resolved.price) || 0;
+      const addonsTotal = (Array.isArray(resolved.addons) ? resolved.addons : [])
+        .reduce((sum, addon) => sum + (Number(addon?.price) || 0), 0);
+      const ownPrice = round2(withAddons - addonsTotal);
+      if (!Number.isFinite(previousPrice)) return null;
+      if (previousPrice === ownPrice || previousPrice === withAddons) return null;
 
       return {
         itemId,
         name: resolved.name,
         previousPrice,
-        price: nextPrice,
+        price: ownPrice,
       };
     })
     .filter(Boolean);

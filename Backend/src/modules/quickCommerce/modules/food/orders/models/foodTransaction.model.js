@@ -69,7 +69,16 @@ const foodTransactionSchema = new mongoose.Schema({
         adminDiscountShare: { type: Number, default: 0, min: 0 },
         restaurantDiscountShare: { type: Number, default: 0, min: 0 },
         discountAdminBearPercentage: { type: Number, default: 0, min: 0, max: 100 },
-        discountRestaurantBearPercentage: { type: Number, default: 0, min: 0, max: 100 }
+        discountRestaurantBearPercentage: { type: Number, default: 0, min: 0, max: 100 },
+        /**
+         * Money given back through returns after delivery. The shares above are
+         * reduced by exactly this much between them (recordReturnRefund), so they
+         * always sum to totalCustomerPaid - refundedAmount: what the customer kept
+         * paying for, credited once.
+         */
+        refundedAmount: { type: Number, default: 0, min: 0 },
+        /** The part of refundedAmount taken back from the seller (seller-fault returns). */
+        sellerReturnDebit: { type: Number, default: 0, min: 0 }
     },
 
     // Gateway / Provider Metadata

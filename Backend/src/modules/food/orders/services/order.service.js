@@ -8,8 +8,6 @@ import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { ValidationError, ForbiddenError, NotFoundError } from '../../../../core/auth/errors.js';
 import { buildPaginationOptions, buildPaginatedResult } from '../../../../utils/helpers.js';
-import { FoodOffer } from '../../admin/models/offer.model.js';
-import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
 import { FoodDeliverySurgeZone } from '../../admin/models/deliverySurgeZone.model.js';
 import { FoodRestaurantCommission } from '../../admin/models/restaurantCommission.model.js';
 import { FoodTransaction } from '../models/foodTransaction.model.js';
@@ -48,7 +46,15 @@ import {
   buildDeliverySocketPayload,
   notifyRestaurantNewOrder,
   isStatusAdvance,
+  STATUS_PRIORITY,
 } from './order.helpers.js';
+import {
+  COUPON_USAGE,
+  takeCouponUse,
+  giveBackCouponUse,
+  countCouponUseOnPayment,
+  releaseCouponUse,
+} from './couponUsage.service.js';
 // 🗑️ Moved to foodTransaction.service.js to centralize finance logic.
 
 async function getZoneSurgeSnapshot(zoneId) {
@@ -347,7 +353,20 @@ export async function createOrder(userId, dto) {
     const riderSurgePay = Number(normalizedPricing.surgeAmount) || 0;
     const riderIncentivePay = Math.round((Number(normalizedPricing.deliveryPartnerIncentiveAmount || 0) * 100)) / 100;
     const riderTotalPayout = Math.round((riderBasePay + riderSurgePay + riderDeliveryFeeShare + riderIncentivePay) * 100) / 100;
-    const riderEarning = riderTotalPayout;
+    /*
+     * The tip goes to the rider, in full.
+     *
+     * riderEarning is what the rider's balance is built from, both what they
+     * earned and, on COD, what offsets the cash they collected. Without the tip
+     * here a tipped order paid the rider nothing extra, and on cash they had to
+     * deposit the customer's tip as though it were the platform's money.
+     *
+     * riderTotalPayout stays the pay BEFORE the tip. The ledger
+     * (foodTransaction.service.js) adds the tip on top of it, so folding it in
+     * here as well would count it twice.
+     */
+    const riderTipPay = Math.round((Number(normalizedPricing.tip) || 0) * 100) / 100;
+    const riderEarning = Math.round((riderTotalPayout + riderTipPay) * 100) / 100;
     
     // Calculate restaurant commission from subtotal
     let restaurantCommission = 0;
@@ -438,14 +457,77 @@ export async function createOrder(userId, dto) {
       }
     }
 
-    if (isWallet) {
-      // ponytail: debit the wallet BEFORE persisting the order. Saving a 'paid' wallet order and
-      // deducting afterwards left a window where a crash produced a paid order with no debit.
-      // order._id exists at instantiation, so the ledger reference is valid pre-save.
-      await userWalletService.deductWalletBalance(userId, order.pricing.total, `Payment for order #${order.order_id || order._id}`, { orderId: order._id });
+    /*
+     * The coupon's use, taken BEFORE the order is saved.
+     *
+     * The global cap is claimed with an atomic conditional increment. If another
+     * order took the last slot after this one was priced, the order is refused
+     * here, before any money moves. Previously the increment was attempted after
+     * the save, a lost race only logged a warning, and the order kept a
+     * discount the coupon no longer allowed.
+     *
+     * Online orders are not counted yet. They are counted when the payment is
+     * verified (couponUsage.service.js), so a checkout abandoned at the payment
+     * sheet no longer spends the coupon.
+     */
+    const appliedCouponCode = normalizedPricing.appliedCoupon?.code
+      ? String(normalizedPricing.appliedCoupon.code).trim().toUpperCase()
+      : "";
+    let couponUseTaken = false;
+    if (appliedCouponCode) {
+      if (paymentMethod === "razorpay") {
+        order.couponUsage = COUPON_USAGE.PENDING;
+      } else {
+        const use = await takeCouponUse(appliedCouponCode, userId, { enforceLimit: true });
+        if (use.exhausted) {
+          throw new ValidationError(
+            `Coupon ${appliedCouponCode} has just reached its usage limit. Please remove it and check your total before ordering again.`
+          );
+        }
+        couponUseTaken = use.taken;
+        if (use.taken) order.couponUsage = COUPON_USAGE.COUNTED;
+      }
     }
 
-    await order.save();
+    let walletDebited = false;
+    try {
+      if (isWallet) {
+        // ponytail: debit the wallet BEFORE persisting the order. Saving a 'paid' wallet order and
+        // deducting afterwards left a window where a crash produced a paid order with no debit.
+        // order._id exists at instantiation, so the ledger reference is valid pre-save.
+        await userWalletService.deductWalletBalance(userId, order.pricing.total, `Payment for order #${order.order_id || order._id}`, { orderId: order._id });
+        walletDebited = true;
+      }
+
+      await order.save();
+    } catch (err) {
+      /*
+       * The other half of debiting first: if the save fails, the debit is
+       * credited straight back. Otherwise the customer is charged for an order
+       * that does not exist, and nothing would ever refund it. A coupon use
+       * taken above is given back for the same reason.
+       */
+      if (walletDebited) {
+        try {
+          await userWalletService.refundWalletBalance(
+            userId,
+            order.pricing.total,
+            `Refund: order #${order.order_id || order._id} could not be placed`,
+            { orderId: order._id },
+          );
+        } catch (refundErr) {
+          logger.error(`[CRITICAL] Wallet debited for unsaved order ${order._id} and NOT refunded: ${refundErr.message}`);
+        }
+      }
+      if (couponUseTaken) {
+        try {
+          await giveBackCouponUse(appliedCouponCode, userId);
+        } catch (couponErr) {
+          logger.error(`Coupon ${appliedCouponCode} use not given back for unsaved order ${order._id}: ${couponErr.message}`);
+        }
+      }
+      throw err;
+    }
 
     // Phase 2: Create initial transaction (Non-blocking but logged)
     try {
@@ -490,33 +572,8 @@ export async function createOrder(userId, dto) {
       logger.warn(`Notifications failed for order ${order._id}: ${err.message}`);
     }
 
-    // Handle Coupon usage — base it on the coupon the SERVER actually applied (not a client
-    // field, which used to be stripped so usage never incremented / discount was dropped), and
-    // enforce the global usage cap atomically so it can't be exceeded under concurrency.
-    const appliedCouponCode = normalizedPricing.appliedCoupon?.code
-      ? String(normalizedPricing.appliedCoupon.code).trim().toUpperCase()
-      : "";
-    if (appliedCouponCode) {
-      try {
-        const offer = await FoodOffer.findOne({ couponCode: appliedCouponCode }).lean();
-        if (offer) {
-          const capFilter = Number(offer.usageLimit) > 0
-            ? { _id: offer._id, usedCount: { $lt: Number(offer.usageLimit) } }
-            : { _id: offer._id };
-          const incRes = await FoodOffer.updateOne(capFilter, { $inc: { usedCount: 1 } });
-          if (incRes.matchedCount === 0) {
-            logger.warn(`Coupon ${appliedCouponCode} hit its usage limit during a concurrent order (order ${order._id}).`);
-          }
-          await FoodOfferUsage.updateOne(
-            { offerId: offer._id, userId: toObjectId(userId, 'User ID') },
-            { $inc: { count: 1 }, $set: { lastUsedAt: new Date() } },
-            { upsert: true },
-          );
-        }
-      } catch (err) {
-        logger.error(`Coupon usage update failed: ${err.message}`);
-      }
-    }
+    // Coupon usage is taken before the save above (cash / wallet) or on payment
+    // verification (online) -- see couponUsage.service.js.
 
     const saved = normalizeOrderForClient(order);
     return { order: saved, razorpay: razorpayPayload };
@@ -591,6 +648,9 @@ export async function verifyPayment(userId, dto) {
     note: "Payment verified, order confirmed",
   });
   await order.save();
+
+  // Paid, so the coupon now counts as used. Idempotent against the webhook.
+  await countCouponUseOnPayment(order);
 
   await foodTransactionService.updateTransactionStatus(order._id, 'captured', {
     status: 'captured',
@@ -918,6 +978,9 @@ export async function cancelOrder(orderId, userId, reason) {
 
   await order.save();
 
+  // A cancelled order is not a use of its coupon.
+  await releaseCouponUse(order);
+
   enqueueOrderEvent("order_cancelled_by_user", {
     orderMongoId: order._id?.toString?.(),
     orderId: order._id.toString(),
@@ -1180,6 +1243,36 @@ export async function updateOrderStatusRestaurant(
   }
 
   const from = order.orderStatus;
+
+  /*
+   * No cancelling once the rider has the food.
+   *
+   * isStatusAdvance treats a cancel as valid from anywhere short of delivered,
+   * including picked_up and reached_drop. But a rider is only ever paid for a
+   * DELIVERED order: every earnings total filters on it. An online customer is
+   * refunded in full, delivery fee included, and there is no cancellation
+   * charge. So a cancel at this stage leaves the rider unpaid for a trip
+   * already made.
+   *
+   * Refused for the admin as well as the restaurant. The alternative, crediting
+   * the rider's delivery share on an undelivered order, has no home today: rider
+   * balances are built from delivered orders only (core/finance, owned
+   * elsewhere). A credit written anywhere else would go unread, or be read twice
+   * if that ever changes. A problem this late is handled by completing the
+   * delivery, or by a refund and payout through support.
+   */
+  const riderHasTheFood =
+    ((STATUS_PRIORITY[from] || 0) >= STATUS_PRIORITY.picked_up &&
+      (STATUS_PRIORITY[from] || 0) < STATUS_PRIORITY.delivered) ||
+    ["en_route_to_delivery", "at_drop"].includes(order.deliveryState?.currentPhase);
+  if (String(orderStatus).startsWith("cancelled") && riderHasTheFood) {
+    throw new ValidationError(
+      isAdmin
+        ? "This order has already been picked up by the delivery partner, so it can no longer be cancelled: the partner would go unpaid for the trip. Let the delivery complete, or resolve it through a refund."
+        : "This order has already been picked up by the delivery partner and can no longer be cancelled."
+    );
+  }
+
   if (!isStatusAdvance(from, orderStatus)) {
     throw new ValidationError(
       `Current order status '${from}' is further ahead than '${orderStatus}'. Order cannot be moved backwards.`
@@ -1360,6 +1453,8 @@ export async function updateOrderStatusRestaurant(
     if (String(orderStatus).includes("cancel")) {
       await processOrderRefundOnce(order, order.userId);
       await order.save();
+      // A cancelled order is not a use of its coupon.
+      await releaseCouponUse(order);
     }
 
     return normalizeOrderForClient(order);
@@ -1637,6 +1732,28 @@ export async function deleteOrderAdmin(orderId, adminId) {
 
   const order = await FoodOrder.findOne(identity).lean();
   if (!order) throw new NotFoundError("Order not found");
+
+  /*
+   * An order that money has moved on cannot be deleted.
+   *
+   * Deleting removes the order AND its ledger row. On a delivered COD order
+   * that erased the rider's cash debt and earning and the restaurant's share,
+   * because every balance is summed from these documents. The same goes for
+   * one that was paid or refunded: the payment and the refund are real and have
+   * to stay traceable. Such an order is cancelled (and refunded) instead. Only
+   * orders nobody has paid for and that were never delivered can be removed.
+   */
+  const paymentStatus = String(order.payment?.status || "").toLowerCase();
+  const refundStatus = String(order.payment?.refund?.status || "").toLowerCase();
+  if (
+    order.orderStatus === "delivered" ||
+    ["paid", "authorized", "refunded"].includes(paymentStatus) ||
+    ["pending", "processed"].includes(refundStatus)
+  ) {
+    throw new ValidationError(
+      "This order has been delivered or paid, so it cannot be deleted: its payment and payouts must stay on record. Cancel it instead if it should not stand."
+    );
+  }
 
   // Keep support tickets but detach deleted order reference.
   await Promise.all([

@@ -284,11 +284,18 @@ router.post('/bulk-upload', authMiddleware, requireRestaurant, upload.single('fi
 // switched to call /item-extras everywhere -- so the restaurant panel's add-on
 // list came back empty and the item form had nothing to suggest when a dish was
 // being created.
+// The customer picker's list is cached for ten minutes; a restaurant switching
+// an add-on off or deleting it has to drop that copy, or the picker keeps
+// offering something the kitchen no longer makes.
+const clearAddonCache = async (req, res, next) => {
+    await invalidateCache('restaurant_addons:*');
+    next();
+};
 ['/addons', '/item-extras'].forEach((base) => {
     router.get(base, authMiddleware, requireRestaurant, listAddonsController);
-    router.post(base, authMiddleware, requireRestaurant, createAddonController);
-    router.patch(`${base}/:id`, authMiddleware, requireRestaurant, updateAddonController);
-    router.delete(`${base}/:id`, authMiddleware, requireRestaurant, deleteAddonController);
+    router.post(base, authMiddleware, requireRestaurant, clearAddonCache, createAddonController);
+    router.patch(`${base}/:id`, authMiddleware, requireRestaurant, clearAddonCache, updateAddonController);
+    router.delete(`${base}/:id`, authMiddleware, requireRestaurant, clearAddonCache, deleteAddonController);
 });
 
 // Orders (restaurant dashboard)

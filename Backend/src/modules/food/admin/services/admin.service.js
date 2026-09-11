@@ -3074,7 +3074,20 @@ export async function updateRestaurantAddonAdmin(addonId, body) {
     }
 
     await addon.save();
+    // An approved add-on's price is live: the picker's cached list has to drop
+    // it now, or the customer is shown the old price while charged the new one.
+    await clearAddonCaches();
     return addon.toObject();
+}
+
+/** Clears every cached response carrying an add-on's price, never throwing. */
+async function clearAddonCaches() {
+    try {
+        const { invalidateMenuCaches } = await import('../../../../middleware/cache.js');
+        await invalidateMenuCaches();
+    } catch (err) {
+        console.error('Failed to invalidate caches after an add-on change:', err);
+    }
 }
 
 /**
@@ -3085,11 +3098,14 @@ export async function updateRestaurantAddonAdmin(addonId, body) {
 export async function deleteRestaurantAddonAdmin(addonId) {
     if (!addonId || !mongoose.Types.ObjectId.isValid(String(addonId))) return null;
     const _id = new mongoose.Types.ObjectId(String(addonId));
-    return FoodAddon.findOneAndUpdate(
+    const deleted = await FoodAddon.findOneAndUpdate(
         { _id, isDeleted: { $ne: true } },
         { $set: { isDeleted: true, isAvailable: false } },
         { new: true }
     ).lean();
+    // A deleted add-on must leave the picker now, not when its cache expires.
+    if (deleted) await clearAddonCaches();
+    return deleted;
 }
 
 export async function approveRestaurantAddon(addonId) {
@@ -3134,6 +3150,8 @@ export async function approveRestaurantAddon(addonId) {
         }
     }
 
+    // Approval publishes the draft's price; the picker must stop serving the old one.
+    if (updated) await clearAddonCaches();
     return updated || null;
 }
 
@@ -5160,25 +5178,88 @@ export async function getWithdrawals(query = {}) {
     return { requests, total, page, limit };
 }
 
+/*
+ * Withdrawal status changes, restaurant and rider alike, follow one rule:
+ * a request is decided ONCE, pending -> approved or pending -> rejected.
+ *
+ * Both balances subtract approved withdrawals as paid. Letting a decided
+ * request move again un-did real money: Approved -> Rejected on a PAID Rs 400
+ * withdrawal put the 400 back in the balance, withdrawable a second time. And
+ * findByIdAndUpdate skipped the schema validators, so a status outside the enum
+ * ('processed') was stored and then fell out of the balance maths entirely.
+ * Mirrors the quick-commerce updateDeliveryWithdrawalStatus, which already
+ * guarded transitions and read 'processed' as 'approved'.
+ *
+ * The status flip is conditional on the row still being pending, so two admins
+ * clicking approve and reject together cannot both win. Re-saving the same
+ * status is allowed and only updates the notes (e.g. adding the bank reference).
+ */
+const WITHDRAWAL_STATUSES = ['pending', 'approved', 'rejected'];
+const normalizeWithdrawalStatus = (status) => {
+    const s = String(status || '').trim().toLowerCase();
+    return s === 'processed' ? 'approved' : s;
+};
+
 export async function updateWithdrawalStatus(id, { status, adminNote, rejectionReason, transactionId }) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) throw new ValidationError('Invalid withdrawal ID');
-    
-    const update = {
-        status: String(status).toLowerCase(),
-        adminNote,
-        rejectionReason,
-        transactionId,
-        processedAt: new Date()
+
+    const nextStatus = normalizeWithdrawalStatus(status);
+    if (!WITHDRAWAL_STATUSES.includes(nextStatus)) throw new ValidationError('Invalid withdrawal status');
+
+    const existing = await FoodRestaurantWithdrawal.findById(id).lean();
+    if (!existing) throw new ValidationError('Withdrawal request not found');
+
+    const previousStatus = String(existing.status || '').toLowerCase();
+    if (previousStatus !== 'pending' && previousStatus !== nextStatus) {
+        throw new ValidationError(`Cannot change a ${previousStatus} withdrawal request`);
+    }
+
+    const notes = { adminNote, rejectionReason, transactionId };
+    if (previousStatus === nextStatus) {
+        const same = await FoodRestaurantWithdrawal.findOneAndUpdate(
+            { _id: id, status: previousStatus },
+            { $set: notes },
+            { new: true, runValidators: true }
+        ).populate('restaurantId', 'restaurantName').lean();
+        if (!same) throw new ValidationError('This withdrawal request was changed by someone else. Refresh and retry.');
+        return same;
+    }
+
+    const decide = async () => {
+        /*
+         * Approving pays money out, so the restaurant must still have it. Unpaid
+         * earnings (earned - already approved) must cover this request; pending
+         * rows are not subtracted, because this request is one of them and each
+         * is checked again when it is approved. Two Rs 800 requests queued
+         * against Rs 1000 -- what the old request race left behind -- can no
+         * longer both be paid.
+         */
+        if (nextStatus === 'approved') {
+            const { getRestaurantPayoutPosition } = await import('../../restaurant/services/restaurantFinance.service.js');
+            const position = await getRestaurantPayoutPosition(existing.restaurantId);
+            if (position.unpaid < Number(existing.amount || 0)) {
+                throw new ValidationError(
+                    `Restaurant balance is lower than this withdrawal. Unpaid earnings: Rs ${position.unpaid}`
+                );
+            }
+        }
+
+        const updated = await FoodRestaurantWithdrawal.findOneAndUpdate(
+            { _id: id, status: 'pending' },
+            { $set: { status: nextStatus, ...notes, processedAt: new Date() } },
+            { new: true, runValidators: true }
+        ).populate('restaurantId', 'restaurantName').lean();
+
+        if (!updated) throw new ValidationError('This withdrawal request was already processed');
+        return updated;
     };
 
-    const updated = await FoodRestaurantWithdrawal.findByIdAndUpdate(
-        id,
-        { $set: update },
-        { new: true }
-    ).populate('restaurantId', 'restaurantName').lean();
+    if (nextStatus !== 'approved') return decide();
 
-    if (!updated) throw new ValidationError('Withdrawal request not found');
-    return updated;
+    // Under the same lock as new requests, so a request cannot slip in between
+    // the balance check and the approval.
+    const { withFinanceLock, restaurantWithdrawalLockKey } = await import('../../../../core/finance/financeLock.js');
+    return withFinanceLock(restaurantWithdrawalLockKey(existing.restaurantId), decide);
 }
 
 export async function getDeliveryWithdrawals(query = {}) {
@@ -5222,40 +5303,84 @@ export async function getDeliveryWithdrawals(query = {}) {
 
 export async function updateDeliveryWithdrawalStatus(id, { status, adminNote, rejectionReason, transactionId }) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) throw new ValidationError('Invalid withdrawal ID');
-    
-    const update = {
-        status: String(status).toLowerCase(),
-        adminNote,
-        rejectionReason,
-        transactionId,
-        processedAt: new Date()
-    };
 
-    const updated = await FoodDeliveryWithdrawal.findByIdAndUpdate(
-        id,
-        { $set: update },
-        { new: true }
-    ).populate('deliveryPartnerId', 'name phone profilePartnerId').lean();
+    // Same one-decision rule as updateWithdrawalStatus above.
+    const nextStatus = normalizeWithdrawalStatus(status);
+    if (!WITHDRAWAL_STATUSES.includes(nextStatus)) throw new ValidationError('Invalid withdrawal status');
 
-    if (!updated) throw new ValidationError('Withdrawal request not found');
+    const existing = await FoodDeliveryWithdrawal.findById(id).lean();
+    if (!existing) throw new ValidationError('Withdrawal request not found');
 
-    // If approved, deduct from wallet balance
-    if (status.toLowerCase() === 'approved' || status.toLowerCase() === 'processed') {
-        const amount = Number(updated.amount || 0);
-        if (amount > 0) {
-            await FoodDeliveryWallet.findOneAndUpdate(
-                { deliveryPartnerId: updated.deliveryPartnerId?._id || updated.deliveryPartnerId },
-                { 
-                    $inc: { 
-                        balance: -amount,
-                        totalSettled: amount 
-                    } 
-                }
-            );
-        }
+    const previousStatus = String(existing.status || '').toLowerCase();
+    if (previousStatus !== 'pending' && previousStatus !== nextStatus) {
+        throw new ValidationError(`Cannot change a ${previousStatus} withdrawal request`);
     }
 
-    return updated;
+    const notes = { adminNote, rejectionReason, transactionId };
+    if (previousStatus === nextStatus) {
+        const same = await FoodDeliveryWithdrawal.findOneAndUpdate(
+            { _id: id, status: previousStatus },
+            { $set: notes },
+            { new: true, runValidators: true }
+        ).populate('deliveryPartnerId', 'name phone profilePartnerId').lean();
+        if (!same) throw new ValidationError('This withdrawal request was changed by someone else. Refresh and retry.');
+        return same;
+    }
+
+    const amount = Number(existing.amount || 0);
+    const deliveryPartnerId = existing.deliveryPartnerId;
+
+    const decide = async () => {
+        /*
+         * Approving pays money out, so the rider must still have it -- measured on
+         * the ONE balance (rides + deliveries), not the food figure alone.
+         *
+         * Money not yet paid out = taxi wallet + delivery earnings + bonuses -
+         * approved withdrawals. That is pocketBalanceRaw (which also subtracts
+         * pending) with pending added back: this request is itself pending, and
+         * every other pending one is checked again when IT is approved. Two Rs 400
+         * requests queued against Rs 500 -- what the old request race left
+         * behind -- can no longer both be paid.
+         */
+        if (nextStatus === 'approved') {
+            const { getRiderFinance } = await import('../../../../core/finance/riderFinance.service.js');
+            const finance = await getRiderFinance(deliveryPartnerId);
+            const unpaid = Math.round((
+                Number(finance.breakdown?.taxi?.walletPortion || 0)
+                + Number(finance.breakdown?.delivery?.pocketBalanceRaw || 0)
+                + Number(finance.breakdown?.delivery?.pendingWithdrawals || 0)
+            ) * 100) / 100;
+            if (unpaid < amount) {
+                throw new ValidationError(`Rider balance is lower than this withdrawal. Unpaid balance: Rs ${unpaid}`);
+            }
+        }
+
+        const updated = await FoodDeliveryWithdrawal.findOneAndUpdate(
+            { _id: id, status: 'pending' },
+            { $set: { status: nextStatus, ...notes, processedAt: new Date() } },
+            { new: true, runValidators: true }
+        ).populate('deliveryPartnerId', 'name phone profilePartnerId').lean();
+
+        if (!updated) throw new ValidationError('This withdrawal request was already processed');
+
+        // The legacy stored wallet moves only on the one pending -> approved step,
+        // never again for a re-save or a later flip.
+        if (nextStatus === 'approved' && amount > 0) {
+            await FoodDeliveryWallet.findOneAndUpdate(
+                { deliveryPartnerId },
+                { $inc: { balance: -amount, totalSettled: amount } }
+            );
+        }
+
+        return updated;
+    };
+
+    if (nextStatus !== 'approved') return decide();
+
+    // Under the rider's withdrawal lock, so a new request cannot slip in between
+    // the balance check and the approval.
+    const { withFinanceLock, riderWithdrawalLockKey } = await import('../../../../core/finance/financeLock.js');
+    return withFinanceLock(await riderWithdrawalLockKey(deliveryPartnerId), decide);
 }
 
 /**

@@ -44,7 +44,14 @@ const resolveActor = async (actor = {}) => {
 };
 
 const buildFilter = (restaurantId) => {
-    const filter = {};
+    /*
+     * Combos are left out. A combo is already a deal -- its price sits under
+     * what its dishes cost separately, and that parts total is the figure it
+     * strikes through. A run moved it like any dish: a decrease replaced the
+     * parts-total strike with the combo's own pre-cut price, and an increase
+     * struck a number unrelated to what the dishes cost.
+     */
+    const filter = { isCombo: { $ne: true } };
     if (restaurantId) filter.restaurantId = new mongoose.Types.ObjectId(String(restaurantId));
     return filter;
 };

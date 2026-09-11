@@ -9,6 +9,7 @@ import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { createRazorpayCheckoutOrder, fetchRazorpayPayment, isRazorpayConfigured, verifyPaymentSignature } from '../../orders/helpers/razorpay.helper.js';
 import { getRiderFinance } from '../../../../core/finance/riderFinance.service.js';
+import { withFinanceLock, riderWithdrawalLockKey } from '../../../../core/finance/financeLock.js';
 
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
@@ -242,37 +243,49 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
  * Submits a new withdrawal request for a delivery partner.
  */
 export const requestDeliveryWithdrawal = async (deliveryPartnerId, payload) => {
-    const { amount, bankDetails, paymentMethod = 'bank_transfer' } = payload;
+    const amount = Number(payload?.amount);
+    const { bankDetails, paymentMethod = 'bank_transfer' } = payload || {};
 
-    if (!amount || amount < 1) throw new ValidationError('Invalid amount');
+    if (!Number.isFinite(amount) || amount < 1) throw new ValidationError('Invalid amount');
 
-    const wallet = await getDeliveryPartnerWalletEnhanced(deliveryPartnerId);
-    if (amount < wallet.deliveryWithdrawalLimit) {
-        throw new ValidationError(`Minimum withdrawal amount is ₹${wallet.deliveryWithdrawalLimit}`);
-    }
-    if (amount > wallet.pocketBalance) {
-        throw new ValidationError('Insufficient balance for this withdrawal');
-    }
+    /*
+     * The balance check and the insert run under one per-rider lock.
+     *
+     * The balance is derived on every read, so "read it, then create the
+     * request" had a gap: two Rs 400 requests against Rs 500, sent together,
+     * both read 500 and both were created -- Rs 800 pending. Under the lock the
+     * second request waits for the first to be written, then reads the balance
+     * again (now Rs 100) and is refused. The key is the PERSON, so a request
+     * from the quick-commerce app queues behind this one too.
+     */
+    const lockKey = await riderWithdrawalLockKey(deliveryPartnerId);
+    return withFinanceLock(lockKey, async () => {
+        const wallet = await getDeliveryPartnerWalletEnhanced(deliveryPartnerId);
+        if (amount < wallet.deliveryWithdrawalLimit) {
+            throw new ValidationError(`Minimum withdrawal amount is ₹${wallet.deliveryWithdrawalLimit}`);
+        }
+        if (amount > wallet.pocketBalance) {
+            throw new ValidationError('Insufficient balance for this withdrawal');
+        }
 
-    const partner = await FoodDeliveryPartner.findById(deliveryPartnerId).lean();
-    if (!partner) throw new ValidationError('Delivery partner not found');
+        const partner = await FoodDeliveryPartner.findById(deliveryPartnerId).lean();
+        if (!partner) throw new ValidationError('Delivery partner not found');
 
-    const withdrawal = await FoodDeliveryWithdrawal.create({
-        deliveryPartnerId,
-        amount,
-        paymentMethod,
-        bankDetails: bankDetails || {
-            accountNumber: partner.bankAccountNumber,
-            ifscCode: partner.bankIfscCode,
-            bankName: partner.bankName,
-            accountHolderName: partner.bankAccountHolderName
-        },
-        upiId: partner.upiId,
-        upiQrCode: partner.upiQrCode,
-        status: 'pending'
-    });
-
-    return withdrawal;
+        return FoodDeliveryWithdrawal.create({
+            deliveryPartnerId,
+            amount,
+            paymentMethod,
+            bankDetails: bankDetails || {
+                accountNumber: partner.bankAccountNumber,
+                ifscCode: partner.bankIfscCode,
+                bankName: partner.bankName,
+                accountHolderName: partner.bankAccountHolderName
+            },
+            upiId: partner.upiId,
+            upiQrCode: partner.upiQrCode,
+            status: 'pending'
+        });
+    }, { busyMessage: 'Another withdrawal is being processed. Please try again.' });
 };
 
 export const createDeliveryCashDepositOrder = async (deliveryPartnerId, amountInr) => {
@@ -380,28 +393,56 @@ export const verifyDeliveryCashDepositPayment = async (deliveryPartnerId, payloa
         }
     }
 
-    const deposit = existing
-        ? await FoodDeliveryCashDeposit.findByIdAndUpdate(
-            existing._id,
-            {
-                $set: {
-                    amount: settledAmount,
-                    paymentMethod: 'razorpay',
-                    status: 'Completed',
-                    razorpayOrderId: orderId,
-                    razorpayPaymentId: paymentId
-                }
-            },
-            { new: true }
-        )
-        : await FoodDeliveryCashDeposit.create({
-            deliveryPartnerId,
-            amount: settledAmount,
-            paymentMethod: 'razorpay',
-            status: 'Completed',
-            razorpayOrderId: orderId,
-            razorpayPaymentId: paymentId
-        });
+    /*
+     * Only one row may ever become Completed for a payment.
+     *
+     * The findOne above and a create here were two steps with a gap, and nothing
+     * in the database forbade a second row. Two verifications of one Rs 200
+     * payment sent together both found nothing and both created a Completed
+     * deposit: cash-in-hand went 302 -> 0 instead of 102, so a rider could replay
+     * one genuine signature and clear all their COD cash.
+     *
+     * Now the write itself is the claim: an upsert keyed on razorpayPaymentId,
+     * backed by the unique index on the model. Whoever loses the race gets the
+     * winner's row back instead of writing a second one.
+     */
+    const fields = {
+        amount: settledAmount,
+        paymentMethod: 'razorpay',
+        status: 'Completed',
+        razorpayOrderId: orderId,
+        razorpayPaymentId: paymentId
+    };
+
+    let deposit = null;
+    try {
+        if (existing) {
+            deposit = await FoodDeliveryCashDeposit.findOneAndUpdate(
+                { _id: existing._id, status: { $ne: 'Completed' } },
+                { $set: fields },
+                { new: true }
+            );
+        } else {
+            const claim = await FoodDeliveryCashDeposit.findOneAndUpdate(
+                { razorpayPaymentId: paymentId },
+                { $setOnInsert: { deliveryPartnerId, ...fields } },
+                { upsert: true, new: true, includeResultMetadata: true }
+            );
+            deposit = claim?.lastErrorObject?.upserted ? claim.value : null;
+        }
+    } catch (err) {
+        if (err?.code !== 11000) throw err;
+    }
+
+    if (!deposit) {
+        // Somebody else recorded this payment first. Hand back their row if it is
+        // this rider's; a payment belonging to another rider is never theirs to settle.
+        const winner = await FoodDeliveryCashDeposit.findOne({ razorpayPaymentId: paymentId }).lean();
+        if (!winner || winner.status !== 'Completed' || String(winner.deliveryPartnerId) !== String(deliveryPartnerId)) {
+            throw new ValidationError('This payment has already been used');
+        }
+        deposit = winner;
+    }
 
     return {
         deposit,

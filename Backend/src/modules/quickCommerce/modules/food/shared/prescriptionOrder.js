@@ -80,11 +80,22 @@ export function normalizeQuoteItems(rawItems) {
             throw new ValidationError(`Line ${index + 1}: that line total looks wrong. Check the price.`);
         }
 
+        // The line's own GST slab, when the pharmacist gives one. Omitted, the line is
+        // taxed at the order-wide rate, exactly like an untagged catalogue product.
+        let gstRate = null;
+        if (raw?.gstRate !== undefined && raw?.gstRate !== null && raw?.gstRate !== '') {
+            gstRate = Number(raw.gstRate);
+            if (!Number.isFinite(gstRate) || gstRate < 0 || gstRate > 100) {
+                throw new ValidationError(`Line ${index + 1}: enter a valid GST rate.`);
+            }
+        }
+
         return {
             itemId: `rx-${index + 1}`,
             name,
             price: Math.round(price * 100) / 100,
             quantity,
+            gstRate,
             packSize: toTrimmed(raw?.packSize).slice(0, 60),
             notes: toTrimmed(raw?.notes).slice(0, 200),
             // A pharmacy line is not food. Left explicitly rather than defaulted,

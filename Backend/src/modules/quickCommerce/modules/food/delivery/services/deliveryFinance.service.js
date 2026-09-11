@@ -376,28 +376,54 @@ export const verifyDeliveryCashDepositPayment = async (deliveryPartnerId, payloa
         throw new ValidationError('Deposit amount cannot exceed cash in hand');
     }
 
-    const deposit = existing
-        ? await FoodDeliveryCashDeposit.findByIdAndUpdate(
-            existing._id,
-            {
-                $set: {
-                    amount,
-                    paymentMethod: isRazorpayConfigured() ? 'razorpay' : 'cash',
-                    status: 'Completed',
-                    razorpayOrderId: orderId,
-                    razorpayPaymentId: paymentId
-                }
-            },
-            { new: true }
-        )
-        : await FoodDeliveryCashDeposit.create({
-            deliveryPartnerId,
-            amount: settledAmount,
-            paymentMethod: isRazorpayConfigured() ? 'razorpay' : 'cash',
-            status: 'Completed',
-            razorpayOrderId: orderId,
-            razorpayPaymentId: paymentId
-        });
+    /*
+     * Only one row may ever become Completed for a payment.
+     *
+     * The findOne above and a create here were two steps; two verifications of
+     * one payment sent together both saw nothing and both created a Completed
+     * row, so one real deposit cleared its amount twice. Now the write itself is
+     * the claim: an upsert keyed on razorpayPaymentId, backed by the unique index
+     * on the model. Whoever loses the race gets the winner's row back instead of
+     * a second one. The existing-row branch also used to write the CLIENT's
+     * amount -- it now records what the gateway settled, like the insert does.
+     */
+    const fields = {
+        amount: settledAmount,
+        paymentMethod: isRazorpayConfigured() ? 'razorpay' : 'cash',
+        status: 'Completed',
+        razorpayOrderId: orderId,
+        razorpayPaymentId: paymentId
+    };
+
+    let deposit = null;
+    try {
+        if (existing) {
+            deposit = await FoodDeliveryCashDeposit.findOneAndUpdate(
+                { _id: existing._id, status: { $ne: 'Completed' } },
+                { $set: fields },
+                { new: true }
+            );
+        } else {
+            const claim = await FoodDeliveryCashDeposit.findOneAndUpdate(
+                { razorpayPaymentId: paymentId },
+                { $setOnInsert: { deliveryPartnerId, ...fields } },
+                { upsert: true, new: true, includeResultMetadata: true }
+            );
+            deposit = claim?.lastErrorObject?.upserted ? claim.value : null;
+        }
+    } catch (err) {
+        if (err?.code !== 11000) throw err;
+    }
+
+    if (!deposit) {
+        // Somebody else recorded this payment first. Hand back their row if it is
+        // this rider's; a payment belonging to another rider is never theirs to settle.
+        const winner = await FoodDeliveryCashDeposit.findOne({ razorpayPaymentId: paymentId }).lean();
+        if (!winner || winner.status !== 'Completed' || String(winner.deliveryPartnerId) !== String(deliveryPartnerId)) {
+            throw new ValidationError('This payment has already been used');
+        }
+        deposit = winner;
+    }
 
     return {
         deposit,

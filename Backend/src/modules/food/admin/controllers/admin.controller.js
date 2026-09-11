@@ -1671,37 +1671,27 @@ export async function deleteZone(req, res, next) {
 export async function processRefund(req, res, next) {
     try {
         const { orderId } = req.params;
-        const { refundAmount } = req.body;
         if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
             return res.status(400).json({ success: false, message: 'Invalid order id' });
         }
-        
-        // This is a stub for the actual refund logic.
-        // We will assume adminService.processRefund exists and handles the refund.
-        const updated = await adminService.processRefund(orderId, refundAmount);
-        
-        // Let's add the push notification here if we have access to the user ID
-        // First we need to get the order to find the user ID
-        const order = await mongoose.model('FoodOrder').findById(orderId).lean();
-        
-        if (order && order.userId) {
-            const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
-            await notifyOwnersSafely(
-                [{ ownerType: 'USER', ownerId: order.userId }],
-                {
-                    title: 'Refund Processed! 💸',
-                    body: `Your refund of ₹${refundAmount || order.totalAmount || order.total || 0} for Order #${order.orderId} has been processed successfully.`,
-                    image: 'https://i.ibb.co/5GzXz7r/Quick Drop-Brand-Image.png',
-                    data: {
-                        type: 'refund_processed',
-                        orderId: String(order.orderId),
-                        orderMongoId: String(order._id)
-                    }
-                }
-            );
-        }
-        
-        res.status(200).json({ success: true, message: 'Refund processed successfully', data: updated });
+
+        /*
+         * Deliberately not implemented, rather than wired to the wrong thing.
+         *
+         * This called adminService.processRefund, which has never existed, so
+         * every call threw -- and had it not, it would then have pushed the
+         * customer "Refund processed" for a refund nobody made. The food side's
+         * only real refund path is processOrderRefundOnce in
+         * orders/services/order.service.js: private to that module, full-amount
+         * only, and run as part of cancelling an order. A standalone admin refund
+         * needs its own guarded service there -- amount <= paid, one claim per
+         * order -- before this can be switched on. No route mounts this handler
+         * today; the 501 is for when one does.
+         */
+        return res.status(501).json({
+            success: false,
+            message: 'Admin refunds are not available here yet. Cancel the order to refund a paid order in full.'
+        });
     } catch (error) {
         next(error);
     }

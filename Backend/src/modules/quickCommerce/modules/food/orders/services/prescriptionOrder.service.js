@@ -10,9 +10,13 @@ import {
     loadActiveFeeSettings,
     resolveUserDeliveryFee,
     computeDeliveryFeeGst,
+    computeItemsTax,
     calculateRiderEarning,
     estimateDeliveryPromiseMinutes,
 } from './order-pricing.service.js';
+import { getRestaurantCommissionSnapshot } from './foodTransaction.service.js';
+
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 import { normalizeDeliveryAddress } from '../../shared/geo.utils.js';
 import { findZoneForPoint, readAddressPoint } from '../../shared/zoneServiceability.js';
 import { buildOrderPrescription, PRESCRIPTION_STATUS } from '../../shared/prescriptionRules.js';
@@ -209,18 +213,44 @@ export async function fillPrescriptionOrder(orderId, restaurantId, dto = {}) {
     const distanceKm = await getDeliveryDistanceKm(restaurant, order.deliveryAddress);
     const feeSettings = await loadActiveFeeSettings();
 
-    const deliveryFee = resolveUserDeliveryFee(feeSettings, { subtotal, distanceKm });
+    // resolveUserDeliveryFee() returns { deliveryFee, distanceKm, source }. Storing
+    // the whole object as the fee made its GST 0 and the total NaN, and the save
+    // failed -- no prescription order could be priced.
+    const { deliveryFee: resolvedFee } = resolveUserDeliveryFee(feeSettings, { subtotal, distanceKm });
+    const deliveryFee = round2(resolvedFee);
     const deliveryFeeGst = computeDeliveryFeeGst(deliveryFee);
     const platformFee = Number(feeSettings?.platformFee) || 0;
-    const total = Math.round((subtotal + deliveryFee + deliveryFeeGst + platformFee) * 100) / 100;
+
+    // Item GST and seller commission, exactly as the catalogue path charges them
+    // (calculateOrderPricing / createOrder). Left at 0 here, a medicine sold on a
+    // prescription paid no GST and earned the platform nothing, where the same box
+    // bought from the catalogue pays both. No coupon applies, so nothing is discounted.
+    const gstFallbackRate = Number(feeSettings?.gstRate || 0);
+    const tax = computeItemsTax(items, { subtotal, discount: 0, fallbackRate: gstFallbackRate });
+
+    let restaurantCommission = 0;
+    try {
+        const snapshot = await getRestaurantCommissionSnapshot({
+            pricing: { subtotal },
+            restaurantId: order.restaurantId,
+        });
+        restaurantCommission = Number(snapshot?.commissionAmount) || 0;
+    } catch (err) {
+        logger.error(`Commission calculation failed for prescription order ${order._id}: ${err?.message || err}`);
+    }
+
+    const total = round2(subtotal + tax + deliveryFee + deliveryFeeGst + platformFee);
 
     order.items = items;
     order.pricing = {
         ...emptyPricing(),
         subtotal,
+        tax,
+        gstFallbackRate,
         deliveryFee,
         deliveryFeeGst,
         platformFee,
+        restaurantCommission,
         total,
         distanceKm: Number.isFinite(distanceKm) ? distanceKm : null,
     };

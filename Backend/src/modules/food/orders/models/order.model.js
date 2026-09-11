@@ -488,6 +488,14 @@ const orderSchema = new mongoose.Schema(
         // an order on free delivery or a platform-funded coupon costs the
         // platform money, and a floor at 0 only stopped that being recorded.
         platformProfit: { type: Number, default: 0 },
+        /**
+         * Where this order's coupon stands in the offer's usage count: `pending`
+         * for an online order not yet paid, `counted` once it is, and `released`
+         * after a cancellation gives it back. Unset when there is no coupon, and
+         * on orders placed before this existed, which were counted at placement
+         * and are left alone. See services/couponUsage.service.js.
+         */
+        couponUsage: { type: String, enum: ['pending', 'counted', 'released'] },
         /** Plain 4-digit OTP for handover; cleared after successful verify (never expose to partner in API responses). */
         deliveryOtp: { type: String, default: '', select: false },
         deliveryVerification: {

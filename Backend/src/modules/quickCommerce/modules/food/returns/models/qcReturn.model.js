@@ -113,6 +113,27 @@ const qcReturnSchema = new mongoose.Schema(
         refundId: { type: mongoose.Schema.Types.ObjectId, ref: 'QCRefund', default: null },
         refundedAt: { type: Date, default: null },
 
+        /**
+         * Set atomically by the one refundReturn() call allowed to pay this return,
+         * and cleared if the payout fails. Without it two admins pressing Refund at
+         * once could both pass the status check and pay the same return twice.
+         */
+        refundClaim: {
+            at: { type: Date, default: null },
+            by: { type: String, default: '' },
+        },
+
+        /**
+         * Where the money went and how much: `gateway` is a Razorpay refund to the
+         * card/UPI the order was paid with (reference = Razorpay refund id), `wallet`
+         * a credit to the customer's quick-commerce wallet.
+         */
+        payout: {
+            method: { type: String, enum: ['wallet', 'gateway', null], default: null },
+            reference: { type: String, default: '' },
+            amount: { type: Number, default: 0, min: 0 },
+        },
+
         pickup: {
             scheduledFor: { type: Date, default: null },
             partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'QCDeliveryPartner', default: null },
