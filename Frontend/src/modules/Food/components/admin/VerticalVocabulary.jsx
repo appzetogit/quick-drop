@@ -33,7 +33,7 @@ import { translate, isDataNode, VERTICAL } from "@food/utils/verticalVocabulary"
  * `data-no-vocab`.
  */
 
-const rewriteTextNodes = (root) => {
+const rewriteTextNodes = (root, vertical) => {
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
         acceptNode(node) {
             // Walk the whole ancestor chain, not just the immediate parent: a seller
@@ -48,12 +48,12 @@ const rewriteTextNodes = (root) => {
 
     let node
     while ((node = walker.nextNode())) {
-        const next = translate(node.nodeValue, VERTICAL.QUICK_COMMERCE)
+        const next = translate(node.nodeValue, vertical)
         if (next !== node.nodeValue) node.nodeValue = next
     }
 }
 
-export default function VerticalVocabulary({ children }) {
+export default function VerticalVocabulary({ children, vertical = VERTICAL.QUICK_COMMERCE }) {
     const ref = useRef(null)
 
     useEffect(() => {
@@ -65,15 +65,15 @@ export default function VerticalVocabulary({ children }) {
         // re-trigger it.
         const apply = () => {
             observer.disconnect()
-            rewriteTextNodes(root)
+            rewriteTextNodes(root, vertical)
             observer.observe(root, { childList: true, characterData: true, subtree: true })
         }
         observer = new MutationObserver(apply)
         observer.observe(root, { childList: true, characterData: true, subtree: true })
-        rewriteTextNodes(root)
+        rewriteTextNodes(root, vertical)
 
         return () => observer.disconnect()
-    }, [])
+    }, [vertical])
 
     // display:contents keeps this wrapper out of the layout entirely.
     return (

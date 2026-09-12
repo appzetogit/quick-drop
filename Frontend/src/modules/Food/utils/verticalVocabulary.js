@@ -17,6 +17,13 @@
 export const VERTICAL = Object.freeze({
     FOOD: 'food',
     QUICK_COMMERCE: 'quickCommerce',
+    /**
+     * Pharmacies, which are quick-commerce sellers narrowed to storeType
+     * 'pharmacy'. Same screens, same API, so the same rewrites plus the two
+     * words that genuinely differ: a seller is a pharmacy and a product is a
+     * medicine.
+     */
+    MEDICAL: 'medical',
 });
 
 /**
@@ -24,7 +31,7 @@ export const VERTICAL = Object.freeze({
  * "Restaurant" -- the shorter rule would otherwise turn it into "Sellers" via
  * "Seller" + a stranded "s".
  */
-const RULES = Object.freeze({
+const RULES = {
     [VERTICAL.QUICK_COMMERCE]: [
         [/\bFoods\b/g, 'Products'],
         [/\bFood\b/g, 'Product'],
@@ -36,7 +43,25 @@ const RULES = Object.freeze({
         [/\brestaurant\b/g, 'seller'],
     ],
     [VERTICAL.FOOD]: [],
-});
+};
+
+/*
+ * Medical builds on quick-commerce rather than restating it, so a word added
+ * there is never missing here. Its own pairs come second: they rewrite the
+ * OUTPUT of the quick-commerce pass ("Seller" is already "Seller" by then), and
+ * they are ordered longest-first for the same reason as above.
+ */
+RULES[VERTICAL.MEDICAL] = [
+    ...RULES[VERTICAL.QUICK_COMMERCE],
+    [/\bSellers\b/g, 'Pharmacies'],
+    [/\bSeller\b/g, 'Pharmacy'],
+    [/\bsellers\b/g, 'pharmacies'],
+    [/\bseller\b/g, 'pharmacy'],
+    [/\bProducts\b/g, 'Medicines'],
+    [/\bProduct\b/g, 'Medicine'],
+    [/\bproducts\b/g, 'medicines'],
+    [/\bproduct\b/g, 'medicine'],
+];
 
 /** Rewrite one string into a vertical's vocabulary. Unknown verticals pass through. */
 export const translate = (text, vertical = VERTICAL.FOOD) => {

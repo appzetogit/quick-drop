@@ -48,6 +48,7 @@ import {
   PiggyBank,
   Lock,
   ShoppingBasket,
+  Pill,
 } from "lucide-react"
 import { cn } from "@food/utils/utils"
 import { Input } from "@food/components/ui/input"
@@ -146,13 +147,16 @@ const iconMap = {
  * Add a base here when another vertical starts reusing these screens.
  */
 const FOOD_ADMIN_BASE = "/admin/food"
-const REUSED_ADMIN_BASES = ["/admin/quick-commerce"]
+const REUSED_ADMIN_BASES = ["/admin/quick-commerce", "/admin/medical"]
 
 export const currentAdminBase = (pathname = "") =>
   REUSED_ADMIN_BASES.find((base) => pathname.startsWith(base)) || FOOD_ADMIN_BASE
 
 export const getVerticalTitle = (base = "", customName = "") => {
   const name = (customName || "Quick Drop").trim()
+  if (base === "/admin/medical") {
+    return name.toLowerCase().endsWith("medical") ? name : `${name} Medical`
+  }
   if (base === "/admin/quick-commerce") {
     return name.toLowerCase().endsWith("quick") ? name : `${name} Quick`
   }
@@ -183,6 +187,24 @@ const VERTICAL_BRANDING = {
     // the in-page shim cannot drift apart -- this copy had only the title-case half
     // of the table and would have missed a lower-case label.
     words: rulesFor(VERTICAL.QUICK_COMMERCE),
+    hiddenPaths: [],
+    hiddenSections: [],
+  },
+  /*
+   * Medical is quick-commerce narrowed to pharmacies (the API scope lives in
+   * services/api/axios.js), so it inherits quick-commerce's word rewrites and
+   * then renames the two things that are genuinely different: the sellers are
+   * pharmacies and the products are medicines.
+   */
+  "/admin/medical": {
+    title: "Quick Drop Medical",
+    labels: {
+      "FOOD MANAGEMENT": "MEDICINE MANAGEMENT",
+      "RESTAURANT MANAGEMENT": "PHARMACY MANAGEMENT",
+    },
+    // Sourced from verticalVocabulary.js, like quick-commerce above, so the
+    // sidebar and the in-page shim cannot drift apart.
+    words: rulesFor(VERTICAL.MEDICAL),
     hiddenPaths: [],
     hiddenSections: [],
   },
@@ -1004,6 +1026,28 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                   )}
                 />
                 Quick
+              </button>
+              )}
+              {/* Medical: the quick-commerce panel narrowed to pharmacies. Gated
+                  on quick-commerce access because that is whose data it shows. */}
+              {serviceAccess.quickCommerce && (
+              <button
+                type="button"
+                onClick={() => navigate("/admin/medical")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                  location.pathname.startsWith("/admin/medical")
+                    ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)] scale-[1.02]"
+                    : "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
+                )}
+              >
+                <Pill
+                  className={cn(
+                    "w-3.5 h-3.5",
+                    location.pathname.startsWith("/admin/medical") ? "text-[var(--sb-active-ink)]" : "text-[var(--sb-ink-faint)]"
+                  )}
+                />
+                Medical
               </button>
               )}
             </div>

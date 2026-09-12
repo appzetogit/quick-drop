@@ -1,6 +1,7 @@
 import { Suspense, lazy } from "react";
 import { Routes, Route, Navigate, Outlet } from "react-router-dom";
 import VerticalVocabulary from "./VerticalVocabulary";
+import { VERTICAL } from "@food/utils/verticalVocabulary";
 import ProtectedRoute from "./ProtectedRoute";
 import AdminLayout from "./AdminLayout";
 import Loader from "@food/components/Loader";
@@ -375,6 +376,27 @@ export default function AdminRouter() {
             path="quick-commerce/*"
             element={
               <VerticalVocabulary>
+                <Outlet />
+              </VerticalVocabulary>
+            }
+          >
+            {verticalAdminRoutes}
+          </Route>
+
+          {/* MEDICAL ADMIN - the same screens again, on the same quick-commerce
+              API, narrowed to sellers whose storeType is 'pharmacy'.
+
+              A pharmacy is not a separate vertical: it is a quick-commerce
+              seller that must produce a drug licence and may only dispense
+              against a prescription. Forking a fourth copy of these screens to
+              say so would mean maintaining three copies of every fix. The
+              narrowing is one request parameter, added in the axios interceptor
+              for this path and enforced by the server, which refuses a store
+              type it does not recognise rather than widening the list. */}
+          <Route
+            path="medical/*"
+            element={
+              <VerticalVocabulary vertical={VERTICAL.MEDICAL}>
                 <Outlet />
               </VerticalVocabulary>
             }

@@ -24,6 +24,7 @@ import {
     normalizeDrugLicenceInput,
     normalizeStoreTypeInput,
 } from '../../shared/storeType.js';
+import { normalizeStoreTypeFilter, sellerIdsOfStoreType, applySellerScope } from '../../shared/storeScope.js';
 import { FoodEarningAddon } from '../models/earningAddon.model.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
@@ -373,6 +374,11 @@ export async function getRestaurants(query) {
     const includeStats = query.includeStats === 'true' || query.includeStats === true;
 
     const filter = {};
+    // The Medical panel is this same list scoped to pharmacies. An unknown type
+    // is refused rather than ignored, so a bad value can never widen the list
+    // back to every seller.
+    const storeTypeFilter = normalizeStoreTypeFilter(query.storeType);
+    if (storeTypeFilter) filter.storeType = storeTypeFilter;
     if (status && ['pending', 'approved', 'rejected'].includes(status)) {
         filter.status = status;
     }
@@ -3822,6 +3828,8 @@ export async function getFoods(query) {
     if (query.approvalStatus && ['pending', 'approved', 'rejected'].includes(String(query.approvalStatus))) {
         filter.approvalStatus = String(query.approvalStatus);
     }
+    // A product carries no store type of its own; it inherits its seller's.
+    applySellerScope(filter, await sellerIdsOfStoreType(FoodRestaurant, query.storeType));
 
     const [list, total] = await Promise.all([
         FoodItem.find(filter)

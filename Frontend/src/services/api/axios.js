@@ -293,17 +293,61 @@ function onRefreshFailed(module) {
  */
 const SHARED_FOOD_PREFIXES = ["auth"];
 
+/**
+ * The admin bases that speak to the quick-commerce API.
+ *
+ * Medical is not a fifth vertical: a pharmacy is a quick-commerce seller whose
+ * storeType is 'pharmacy', so /admin/medical is these same screens on the same
+ * API, narrowed to that one type. `scope` is what narrows them.
+ */
+const QC_ADMIN_BASES = [
+  { base: "/admin/quick-commerce", scope: null },
+  { base: "/admin/medical", scope: "pharmacy" },
+];
+
+const currentQcBase = () => {
+  if (typeof window === "undefined") return null;
+  const path = window.location.pathname;
+  return QC_ADMIN_BASES.find((entry) => path.startsWith(entry.base)) || null;
+};
+
 const rewriteAdminVertical = (url) => {
   if (typeof url !== "string" || !url) return url;
-  if (typeof window === "undefined") return url;
-  if (!window.location.pathname.startsWith("/admin/quick-commerce")) return url;
+  if (!currentQcBase()) return url;
   const shared = SHARED_FOOD_PREFIXES.join("|");
   return url.replace(new RegExp(`(^|/)food/(?!(?:${shared})(?:/|$))`), "$1qc/");
+};
+
+/**
+ * Narrow every admin read to the store type the panel is showing.
+ *
+ * Sent as a request parameter rather than filtered in the browser: the lists
+ * are paginated server-side, so filtering the page after it arrives would show
+ * "20 sellers" of which three are pharmacies, and page two might hold none. The
+ * server refuses a store type it does not know, so a typo here fails loudly
+ * instead of quietly widening the list back to every seller.
+ *
+ * Writes are left alone. They address one record by id, which is already
+ * scoped by what the operator could see and click.
+ */
+const applyVerticalScope = (config) => {
+  const entry = currentQcBase();
+  if (!entry?.scope) return config;
+  const method = String(config.method || "get").toLowerCase();
+  if (method !== "get") return config;
+  // An explicit storeType from a screen wins: a medical screen may legitimately
+  // ask a narrower question, and overriding it here would answer a different one.
+  const params = config.params || {};
+  if (params.storeType === undefined) {
+    config.params = { ...params, storeType: entry.scope };
+  }
+  return config;
 };
 
 apiClient.interceptors.request.use(
   (config) => {
     config.url = rewriteAdminVertical(config.url);
+    applyVerticalScope(config);
     config.contextModule = getModuleFromConfig(config);
 
     // If sending FormData, let the browser set proper multipart boundary.

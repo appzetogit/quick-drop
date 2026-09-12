@@ -10,6 +10,7 @@ import { FoodZone } from '../../admin/models/zone.model.js';
 import { ValidationError, ForbiddenError, NotFoundError } from '../../../../core/auth/errors.js';
 import { reserveStockForItems, releaseReservations, restoreOrderStock } from './inventory.service.js';
 import { findZoneForPoint, readAddressPoint } from '../../shared/zoneServiceability.js';
+import { sellerIdsOfStoreType, applySellerScope } from '../../shared/storeScope.js';
 import { buildPaginationOptions, buildPaginatedResult } from '../../../../utils/helpers.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
@@ -2463,6 +2464,15 @@ export async function listOrdersAdmin(query) {
       filter.createdAt = createdAt;
     }
   }
+
+  /*
+   * Scope to one kind of shop, for the Medical panel: this same list pointed at
+   * pharmacies. Applied LAST, and it intersects -- every filter above may set
+   * the seller (a named seller, or every seller in a zone), and any of them
+   * applied afterwards would replace the scope and put a grocery seller's
+   * orders on a medical screen.
+   */
+  applySellerScope(filter, await sellerIdsOfStoreType(FoodRestaurant, query.storeType));
 
   await applyAdminOrderSearchFilter(filter, searchRaw);
   applyAdminPaymentStatusFilter(filter, paymentStatusRaw);
