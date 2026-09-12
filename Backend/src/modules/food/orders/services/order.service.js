@@ -6,6 +6,7 @@ import { FoodUser } from '../../../../core/users/user.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
 import { FoodZone } from '../../admin/models/zone.model.js';
+import { attachRestaurantPayout } from '../../shared/restaurantPayout.js';
 import { ValidationError, ForbiddenError, NotFoundError } from '../../../../core/auth/errors.js';
 import { buildPaginationOptions, buildPaginatedResult } from '../../../../utils/helpers.js';
 import { FoodDeliverySurgeZone } from '../../admin/models/deliverySurgeZone.model.js';
@@ -756,7 +757,11 @@ export async function getOrderById(
     throw new ForbiddenError("Not assigned to you");
 
   if (deliveryPartnerId || restaurantId) {
-    return sanitizeOrderForExternal(order);
+    const external = sanitizeOrderForExternal(order);
+    // The restaurant is shown what it earns on the order, not just what the
+    // customer paid. The rider is not: none of it is the rider's money.
+    if (restaurantId) await attachRestaurantPayout([external]);
+    return external;
   }
 
   if (userId) {
@@ -1203,7 +1208,8 @@ export async function listOrdersRestaurant(restaurantId, query) {
       .lean(),
     FoodOrder.countDocuments(filter),
   ]);
-  return buildPaginatedResult({ docs: docs.map(d => normalizeOrderForClient(d)), total, page, limit });
+  const orders = await attachRestaurantPayout(docs.map((d) => normalizeOrderForClient(d)));
+  return buildPaginatedResult({ docs: orders, total, page, limit });
 }
 
 export async function updateOrderStatusRestaurant(
