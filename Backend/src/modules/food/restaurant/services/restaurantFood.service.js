@@ -399,16 +399,27 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     const existing = await FoodItem.findOne({ _id: foodId, restaurantId }).lean();
     if (!existing) return null;
 
-    const providedKeys = Object.keys(body || {});
-    // availabilitySchedule counts as operational: when a dish is served does not
-    // change what the admin approved, and forcing re-approval would pull a live
-    // item off the menu just for a timing tweak.
-    // So are the "goes well with" pairings: they change what is shown beside
-    // the dish, not anything the admin approved about it.
-    const operationalOnlyKeys = ['isActive', 'isAvailable', 'isRecommended', 'availabilitySchedule', 'suggestedItemIds'];
-    const isOperationalOnlyUpdate =
-        providedKeys.length > 0 &&
-        providedKeys.every((key) => operationalOnlyKeys.includes(key));
+    /*
+     * What the admin actually approves about a dish. A real change to one of
+     * these re-opens approval; nothing else does.
+     *
+     * Listed rather than excluded, because most of what a save writes is
+     * neither: the in-stock switch, the serving window, the "goes well with"
+     * pairings and the highlight flag all belong to the restaurant, and the
+     * formulation/comparison figures are bookkeeping the save recomputes from
+     * the price -- formulationPrice alone counted as an edit on dishes the
+     * backfill had not reached, which sent them for approval on every save.
+     *
+     * A new field that the admin should vet has to be added here.
+     */
+    const APPROVAL_WORTHY_KEYS = [
+        'name', 'description', 'image', 'foodType', 'preparationTime',
+        'categoryId', 'categoryName',
+        'price', 'basePrice', 'discountPercent', 'priceIncludesGst',
+        'variants', 'variantsEnabled',
+        'packagingCharge', 'minOrderQuantity', 'maxOrderQuantity',
+        'addonIds',
+    ];
 
     const update = {};
 
@@ -487,7 +498,33 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
         update.categoryName = categoryName || '';
     }
 
-    const shouldResubmitForApproval = Object.keys(update).length > 0 && !isOperationalOnlyUpdate;
+    /*
+     * Approval is re-opened by a real change to an approval-worthy field, not
+     * by the mere presence of one in the payload.
+     *
+     * The item editor posts the whole dish on every save, so flipping the
+     * in-stock switch there arrived as name + price + image + isAvailable and
+     * counted as an edit: the dish went pending and vanished from the customer
+     * menu, and switching it back on could not bring it back -- it stayed
+     * pending until an admin approved it. That is the "the toggle does nothing"
+     * report. The stock switch on the Inventory page, which posts isActive on
+     * its own, was always fine.
+     *
+     * A value that only LOOKS changed (a re-serialised variant array, say) is
+     * treated as changed, which is exactly today's behaviour -- this can only
+     * ever spare an approval that was never warranted, never skip a real one.
+     */
+    const asComparable = (value) => {
+        if (value === undefined || value === null) return null;
+        if (value instanceof Date) return value.toISOString();
+        if (mongoose.Types.ObjectId.isValid(value) && typeof value !== 'object') return String(value);
+        if (typeof value === 'object') return JSON.stringify(value, (k, v) => (v && v._bsontype === 'ObjectId' ? String(v) : v));
+        return value;
+    };
+    const changedApprovalKeys = APPROVAL_WORTHY_KEYS.filter(
+        (key) => key in update && asComparable(update[key]) !== asComparable(existing[key]),
+    );
+    const shouldResubmitForApproval = changedApprovalKeys.length > 0;
 
     if (shouldResubmitForApproval) {
         update.approvalStatus = 'pending';
