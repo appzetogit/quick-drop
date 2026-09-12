@@ -317,11 +317,44 @@ export default function Analytics() {
       return s.includes("deliver") && !s.includes("out")
     })
 
-    const grossSales = deliveredOrders.reduce((s, o) => s + Number(o.pricing?.total || o.pricing?.subtotal || o.totalPrice || 0), 0)
-    const discounts = deliveredOrders.reduce((s, o) => s + Number(o.pricing?.discount || 0), 0)
-    const commission = Math.round(grossSales * 0.12)
-    const tax = Math.round(grossSales * 0.05)
-    const netPayout = Math.max(0, grossSales - discounts - commission)
+    /*
+     * Every figure below is the order's own, never a percentage assumed here.
+     *
+     * This used to read gross sales off the customer's GRAND TOTAL -- delivery
+     * fee, platform fee and the tax itself included, none of it the
+     * restaurant's -- and then invent "commission" as 12% of it and "GST" as
+     * 5% of it. Both percentages were wrong for anyone on a different
+     * commission or GST rate, and the GST was wrong for EVERY restaurant whose
+     * menu prices include tax, where the tax is inside the price and is
+     * extracted (Rs 100 carries Rs 4.76 at 5%), not added on top.
+     *
+     * `restaurantPayout` is the server's own breakdown of the order, summing to
+     * what the payout ledger credits. The fallback reads the stored figures for
+     * an order that predates it, and still never guesses a rate.
+     */
+    const sum = (fn) => deliveredOrders.reduce((total, o) => total + (Number(fn(o)) || 0), 0)
+    const payoutOf = (o) => o?.restaurantPayout || null
+    const grossSales = sum((o) => {
+      const p = payoutOf(o)
+      if (p) return Number(p.subTotal || 0) + Number(p.packagingCharge || 0)
+      return o.pricing?.subtotal ?? o.totalPrice ?? 0
+    })
+    // Only offers the restaurant funded itself. A platform coupon costs it
+    // nothing, and counting those as its discounts overstated them.
+    const discounts = sum((o) => payoutOf(o)?.discountFundedByRestaurant ?? 0)
+    const commission = sum((o) => payoutOf(o)?.commissionAmount ?? o.pricing?.restaurantCommission ?? 0)
+    const tax = sum((o) => {
+      const p = payoutOf(o)
+      if (p) return p.gstOnFood
+      // Pre-breakdown orders: the tax the bill actually charged.
+      return o.pricing?.tax ?? 0
+    })
+    const netPayout = sum((o) => {
+      const p = payoutOf(o)
+      if (p) return p.payout
+      const food = Number(o.pricing?.commissionableAmount ?? o.pricing?.subtotal ?? 0)
+      return food - Number(o.pricing?.restaurantCommission || 0)
+    })
     const avgOrderValue = total > 0 ? Math.round(grossSales / total) : 0
 
     // Delivery vs dining
@@ -353,7 +386,13 @@ export default function Analytics() {
       dayMap[key].orders.push(o)
       if (s.includes("deliver") && !s.includes("out")) {
         dayMap[key].delivered++
-        dayMap[key].sales += Number(o.pricing?.total || o.pricing?.subtotal || o.totalPrice || 0)
+        // The restaurant's own sales, as above: its menu and its packaging,
+        // not the customer's grand total.
+        dayMap[key].sales += Number(
+          o.restaurantPayout
+            ? Number(o.restaurantPayout.subTotal || 0) + Number(o.restaurantPayout.packagingCharge || 0)
+            : (o.pricing?.subtotal ?? o.totalPrice ?? 0),
+        ) || 0
       }
       if (s.includes("cancel")) dayMap[key].cancelled++
       if (s.includes("reject")) dayMap[key].rejected++
@@ -363,9 +402,22 @@ export default function Analytics() {
       .map((d) => ({
         ...d,
         totalOrders: d.orders.length,
-        commission: Math.round(d.sales * 0.12),
-        discounts: d.orders.reduce((s, o) => s + Number(o.pricing?.discount || 0), 0),
-        netPayout: Math.max(0, d.sales - Math.round(d.sales * 0.12)),
+        // Each day's real commission and payout, per order -- never a flat
+        // percentage of the day's sales.
+        commission: d.orders.reduce(
+          (sum, o) => sum + (Number(o.restaurantPayout?.commissionAmount ?? o.pricing?.restaurantCommission ?? 0) || 0),
+          0,
+        ),
+        discounts: d.orders.reduce(
+          (sum, o) => sum + (Number(o.restaurantPayout?.discountFundedByRestaurant ?? 0) || 0),
+          0,
+        ),
+        netPayout: d.orders.reduce((sum, o) => {
+          const payout = o.restaurantPayout;
+          if (payout) return sum + (Number(payout.payout) || 0);
+          const food = Number(o.pricing?.commissionableAmount ?? o.pricing?.subtotal ?? 0);
+          return sum + food - Number(o.pricing?.restaurantCommission || 0);
+        }, 0),
         deliveryPct: d.orders.length > 0 ? Math.round(d.orders.filter((o) => o.deliveryAddress).length / d.orders.length * 100) : 100,
       }))
       .sort((a, b) => new Date(b.date) - new Date(a.date))
@@ -623,7 +675,7 @@ export default function Analytics() {
                               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Financial Details</span>
                               <StatRow label="Gross Sales" value={fmt(day.sales)} right={fmt(day.sales)} />
                               <StatRow label="Discounts" right={`- ${fmt(day.discounts)}`} rightColor="text-red-500" />
-                              <StatRow label="Platform Commission (12%)" right={`- ${fmt(day.commission)}`} rightColor="text-red-500" />
+                              <StatRow label="Platform Commission" right={`- ${fmt(day.commission)}`} rightColor="text-red-500" />
                               <div className="border-t border-gray-200 pt-2 mt-2">
                                 <StatRow label="Net Payout" right={fmt(day.netPayout)} rightColor="text-green-600" />
                               </div>
@@ -702,9 +754,9 @@ export default function Analytics() {
           <div className="mt-4 space-y-3">
             {[
               { label: "Gross Sales", val: fmt(metrics.grossSales), color: "text-gray-900" },
-              { label: "Restaurant Discounts", val: `- ${fmt(metrics.discounts)}`, color: "text-red-500" },
-              { label: "Platform Commission (12%)", val: `- ${fmt(metrics.commission)}`, color: "text-red-500" },
-              { label: "Taxes & GST (5%)", val: fmt(metrics.tax), color: "text-gray-700" },
+              { label: "Your own offers", val: `- ${fmt(metrics.discounts)}`, color: "text-red-500" },
+              { label: "Platform Commission", val: `- ${fmt(metrics.commission)}`, color: "text-red-500" },
+              { label: "GST collected from customers", val: fmt(metrics.tax), color: "text-gray-700" },
             ].map(({ label, val, color }) => (
               <div key={label} className="flex justify-between text-xs">
                 <span className="font-semibold text-gray-500">{label}</span>
