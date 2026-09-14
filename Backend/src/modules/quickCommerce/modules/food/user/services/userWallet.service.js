@@ -14,6 +14,53 @@ const ensureWallet = async (userId) => {
     return FoodUserWallet.create({ userId: oid, balance: 0, transactions: [] });
 };
 
+/**
+ * One wallet move, applied atomically.
+ *
+ * Every move used to be load, mutate, save: read the balance, push a row onto
+ * the embedded transactions array, write the whole document back. Two moves
+ * landing together on one wallet then raced, and Mongoose's version key turned
+ * the loser into a thrown VersionError -- "No matching document found for id
+ * ... modifiedPaths transactions, balance". Two refunds on the same order,
+ * which is one customer returning two items, was enough: the second refund
+ * failed and the customer was paid once for two returns until someone noticed
+ * and retried it. Without the version key it would have been worse -- a silent
+ * lost update, one balance overwriting the other.
+ *
+ * `$inc` and `$push` are applied by the database in one step, so concurrent
+ * moves queue rather than collide. `$position: 0` keeps the newest row first,
+ * which is the order the wallet screen reads.
+ *
+ * `filter` narrows which document may be updated -- a debit passes
+ * `{ balance: { $gte: amount } }` so an overdraft cannot happen between the
+ * check and the write, which is exactly what a read-then-save allowed.
+ */
+const applyWalletMove = async (userId, { amount, transaction, filter = {} }) => {
+    const id = String(userId || '');
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+        throw new ValidationError('User not found');
+    }
+    const oid = new mongoose.Types.ObjectId(id);
+
+    // The wallet has to exist before a conditional update can match it: an
+    // upsert carrying `balance: { $gte: … }` in its filter would insert a
+    // second wallet rather than fail the condition.
+    await FoodUserWallet.updateOne(
+        { userId: oid },
+        { $setOnInsert: { userId: oid, balance: 0, transactions: [] } },
+        { upsert: true },
+    );
+
+    return FoodUserWallet.findOneAndUpdate(
+        { userId: oid, ...filter },
+        {
+            $inc: { balance: amount },
+            $push: { transactions: { $each: [transaction], $position: 0 } },
+        },
+        { new: true },
+    );
+};
+
 export const creditReferralReward = async (userId, amountInr, metadata = {}) => {
     const amount = Number(amountInr);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -148,21 +195,25 @@ export const deductWalletBalance = async (userId, amountInr, description = 'Orde
         throw new ValidationError('Invalid deduction amount');
     }
 
-    const wallet = await ensureWallet(userId);
-    if (wallet.balance < amount) {
+    /*
+     * The balance check is the update's own filter, not a read before it. Two
+     * orders paid from one wallet at the same moment both passed a separate
+     * check and both saved, taking the balance negative between them.
+     */
+    const updated = await applyWalletMove(userId, {
+        amount: -amount,
+        filter: { balance: { $gte: amount } },
+        transaction: {
+            type: 'deduction',
+            amount,
+            status: 'Completed',
+            description,
+            metadata: { source: 'order_payment', ...(metadata || {}) }
+        },
+    });
+    if (!updated) {
         throw new ValidationError('Insufficient wallet balance');
     }
-
-    wallet.transactions.unshift({
-        type: 'deduction',
-        amount,
-        status: 'Completed',
-        description,
-        metadata: { source: 'order_payment', ...(metadata || {}) }
-    });
-
-    wallet.balance = Number(wallet.balance) - amount;
-    await wallet.save();
 
     return { wallet: await getUserWallet(userId) };
 };
@@ -173,17 +224,16 @@ export const refundWalletBalance = async (userId, amountInr, description = 'Orde
         return { wallet: await getUserWallet(userId) };
     }
 
-    const wallet = await ensureWallet(userId);
-    wallet.transactions.unshift({
-        type: 'refund',
+    await applyWalletMove(userId, {
         amount,
-        status: 'Completed',
-        description,
-        metadata: { source: 'order_refund', ...(metadata || {}) }
+        transaction: {
+            type: 'refund',
+            amount,
+            status: 'Completed',
+            description,
+            metadata: { source: 'order_refund', ...(metadata || {}) }
+        },
     });
-
-    wallet.balance = Number(wallet.balance) + amount;
-    await wallet.save();
 
     return { wallet: await getUserWallet(userId) };
 };
