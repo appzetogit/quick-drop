@@ -84,21 +84,20 @@ export async function resolveSeedRatioForRestaurant(restaurantId) {
 
         /*
          * Nothing on this menu carries a figure yet -- a restaurant on its first
-         * dishes. Widen to the platform so it starts where everyone else already
-         * is, rather than on the blanket markup, which is the one number no
-         * adjustment has ever touched.
+         * dishes -- so nothing is seeded.
          *
-         * A wider sample than the per-restaurant one: this median stands in for
-         * every menu rather than a single kitchen, and it is read once per menu
-         * upload rather than per dish.
+         * This used to widen to a platform-wide median, on the reasoning that a
+         * new shop should start where everyone else already is. It meant a
+         * restaurant that had just onboarded had a comparison price invented for
+         * it from other people's menus: a dish typed at Rs 200 went live struck
+         * through at Rs 290, advertising a saving its owner had never offered
+         * and could not explain. No adjustment had been applied to that
+         * restaurant; the platform simply decided on its behalf.
+         *
+         * A restaurant's own dishes still seed each other above -- that is its
+         * own pricing, carried forward. What another kitchen charges is not.
          */
-        const platformWide = await FoodItem.find({ otherPrice: { $gt: 0 } })
-            .select('price otherPrice')
-            .sort({ createdAt: -1 })
-            .limit(200)
-            .lean();
-
-        return medianRatio(collectOtherPriceRatios(platformWide));
+        return 0;
     } catch (err) {
         console.error('Other-platform seed lookup failed:', err?.message || err);
         return 0;
