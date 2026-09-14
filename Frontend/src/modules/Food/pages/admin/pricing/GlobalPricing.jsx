@@ -30,6 +30,11 @@ export default function GlobalPricing() {
   // move every figure correctly and still blank the whole menu.
   const [noComparisonCount, setNoComparisonCount] = useState(0)
   const [history, setHistory] = useState([])
+  // What the menus carry right now. The history above records what was asked
+  // for, which is not the same thing -- a direct correction or a reset never
+  // appears there -- and an admin who cannot see the standing figure compounds
+  // a markup that is already applied.
+  const [standing, setStanding] = useState([])
   // Real dishes at their real values. A generic "Rs 500 becomes Rs 550"
   // cannot tell you whether the last run actually landed; these can.
   const [samples, setSamples] = useState([])
@@ -53,6 +58,18 @@ export default function GlobalPricing() {
     }
   }, [])
 
+  const loadStanding = useCallback(async () => {
+    try {
+      const response = await adminAPI.getStandingAdjustments()
+      setStanding(response?.data?.data?.standing || [])
+    } catch {
+      // Silent: the form and the history are still usable without it, and a
+      // second red toast on a page that already reports its own failures
+      // teaches the operator to dismiss them.
+      setStanding([])
+    }
+  }, [])
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -61,7 +78,7 @@ export default function GlobalPricing() {
         setRestaurants(
           response?.data?.data?.restaurants || response?.data?.restaurants || [],
         )
-        await loadHistory()
+        await Promise.all([loadHistory(), loadStanding()])
       } catch {
         toast.error("Failed to load restaurants")
       } finally {
@@ -69,7 +86,7 @@ export default function GlobalPricing() {
       }
     }
     load()
-  }, [loadHistory])
+  }, [loadHistory, loadStanding])
 
   useEffect(() => {
     let cancelled = false
@@ -136,7 +153,7 @@ export default function GlobalPricing() {
           : baseMessage,
       )
       setConfirmOpen(false)
-      await loadHistory()
+      await Promise.all([loadHistory(), loadStanding()])
     } catch (error) {
       toast.error(error?.response?.data?.message || "Failed to update prices")
     } finally {
@@ -151,7 +168,7 @@ export default function GlobalPricing() {
       setRevertingId(id)
       const response = await adminAPI.revertPriceAdjustment(id)
       toast.success(response?.data?.message || "Adjustment reverted")
-      await loadHistory()
+      await Promise.all([loadHistory(), loadStanding()])
     } catch (error) {
       toast.error(error?.response?.data?.message || "Failed to revert adjustment")
     } finally {
@@ -364,6 +381,79 @@ export default function GlobalPricing() {
         </button>
       </div>
 
+
+      {/* What is standing right now, per menu. Placed ABOVE the history on
+          purpose: the history is what was asked for, and an admin about to
+          apply another percent needs to see what is already on the menu first
+          -- that is how a markup gets compounded twice. */}
+      <div className="rounded-xl border border-slate-200 bg-white">
+        <div className="px-4 md:px-6 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Currently applied</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Read from the menus themselves, so a correction made outside this page still shows.
+            </p>
+          </div>
+          <span className="text-xs font-medium text-slate-500 shrink-0">
+            {standing.length} {standing.length === 1 ? "restaurant" : "restaurants"}
+          </span>
+        </div>
+        {standing.length === 0 ? (
+          <p className="px-4 md:px-6 py-8 text-sm text-slate-500">
+            No approved dishes to read a formulation from yet.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+            {standing.map((row) => {
+              const isSelected = restaurantId && String(restaurantId) === String(row.restaurantId)
+              return (
+                <li
+                  key={row.restaurantId}
+                  className={`px-4 md:px-6 py-3 flex items-center justify-between gap-4 ${
+                    isSelected ? "bg-slate-50" : ""
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-900 truncate">{row.restaurantName}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {row.totalItems} {row.totalItems === 1 ? "dish" : "dishes"}
+                      {row.isMixed
+                        ? ` · ${row.onThisFormulation} on this formulation, the rest differ`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {row.isUntouched ? (
+                      <span className="text-xs font-medium text-slate-400">Nothing applied</span>
+                    ) : (
+                      <>
+                        {row.markupPercent > 0 && (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            +{row.markupPercent}% markup
+                          </span>
+                        )}
+                        {row.discountPercent > 0 && (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                            -{row.discountPercent}% off
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {row.isMixed && (
+                      <span
+                        className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200"
+                        title="Part of this menu sits on a different formulation"
+                      >
+                        mixed
+                      </span>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white">
         <div className="px-4 md:px-6 py-4 border-b border-slate-200">

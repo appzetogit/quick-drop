@@ -1828,6 +1828,15 @@ export async function bulkApproveFoodItems(req, res, next) {
 
 
 // ----- Global Menu Price Adjustment -----
+export async function getStandingAdjustments(req, res, next) {
+    try {
+        const data = await priceAdjustmentService.listStandingAdjustments();
+        res.status(200).json({ success: true, message: 'Standing adjustments fetched successfully', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export async function getPriceAdjustments(req, res, next) {
     try {
         const data = await priceAdjustmentService.listPriceAdjustments(req.query || {});

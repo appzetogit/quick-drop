@@ -253,6 +253,78 @@ export async function listPriceAdjustments({ limit = 20 } = {}) {
     return { adjustments };
 }
 
+/**
+ * What each restaurant's menu is actually carrying right now.
+ *
+ * The history below this page answers "what did an admin ask for?", which is
+ * not the same question and has been known to disagree with the menu: a run
+ * records a request, not a direct correction, a bulk reset or a migration, and
+ * this platform has had all three. An admin about to run another adjustment
+ * needs the standing figure, or they compound a markup they cannot see.
+ *
+ * Read from the dishes for that reason, the same source and the same rule as
+ * resolveStandingAdjustment: the MODE of (markup, discount) across a
+ * restaurant's approved dishes, because a menu is usually uniform and a single
+ * hand-priced outlier should not speak for it.
+ *
+ * `isMixed` says the mode does not cover the whole menu, which is the case an
+ * admin most needs to see before applying anything to "all dishes".
+ */
+export async function listStandingAdjustments() {
+    const rows = await FoodItem.aggregate([
+        { $match: { approvalStatus: 'approved', price: { $gt: 0 }, isCombo: { $ne: true } } },
+        {
+            $group: {
+                _id: {
+                    restaurantId: '$restaurantId',
+                    markup: { $ifNull: ['$formulationMarkupPercent', 0] },
+                    discount: { $ifNull: ['$formulationDiscountPercent', 0] },
+                },
+                count: { $sum: 1 },
+            },
+        },
+        // Sorted before the second group so $first is the most common pairing.
+        { $sort: { count: -1 } },
+        {
+            $group: {
+                _id: '$_id.restaurantId',
+                markupPercent: { $first: '$_id.markup' },
+                discountPercent: { $first: '$_id.discount' },
+                onThisFormulation: { $first: '$count' },
+                totalItems: { $sum: '$count' },
+            },
+        },
+    ]);
+
+    const restaurants = await FoodRestaurant.find({ _id: { $in: rows.map((r) => r._id).filter(Boolean) } })
+        .select('restaurantName')
+        .lean();
+    const nameById = new Map(restaurants.map((r) => [String(r._id), r.restaurantName]));
+
+    return {
+        standing: rows
+            .map((row) => {
+                const markupPercent = round2(Number(row.markupPercent) || 0);
+                const discountPercent = round2(Number(row.discountPercent) || 0);
+                return {
+                    restaurantId: String(row._id || ''),
+                    restaurantName: nameById.get(String(row._id)) || 'Unknown restaurant',
+                    markupPercent,
+                    discountPercent,
+                    totalItems: row.totalItems,
+                    onThisFormulation: row.onThisFormulation,
+                    // Part of the menu sits on a different pairing, so the figures
+                    // above describe most of it rather than all of it.
+                    isMixed: row.onThisFormulation < row.totalItems,
+                    // Nothing has ever been applied here, which reads differently
+                    // from "0% after a revert" only in that no run is standing.
+                    isUntouched: markupPercent === 0 && discountPercent === 0,
+                };
+            })
+            .sort((a, b) => a.restaurantName.localeCompare(b.restaurantName)),
+    };
+}
+
 export async function getPriceAdjustmentPreview({ restaurantId, percent } = {}) {
     const { restaurantName } = await resolveRestaurant(restaurantId);
     const filter = buildFilter(restaurantId);

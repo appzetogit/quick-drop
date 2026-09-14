@@ -139,6 +139,8 @@ router.post('/foods/bulk-approve', adminController.bulkApproveFoodItems);
 
 // ----- Global Menu Price Adjustment -----
 router.get('/price-adjustments', adminController.getPriceAdjustments);
+// What each menu currently carries, as opposed to what was asked for.
+router.get('/price-adjustments/standing', adminController.getStandingAdjustments);
 router.get('/price-adjustments/preview', adminController.getPriceAdjustmentPreview);
 router.post('/price-adjustments', adminController.applyPriceAdjustment);
 router.post('/price-adjustments/:id/revert', adminController.revertPriceAdjustment);

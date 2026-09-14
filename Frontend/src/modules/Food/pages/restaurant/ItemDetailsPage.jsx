@@ -131,7 +131,6 @@ export default function ItemDetailsPage() {
   // "Goes well with": other dishes of this restaurant shown beside this one.
   const [suggestedItemIds, setSuggestedItemIds] = useState([])
   const [pairingOptions, setPairingOptions] = useState([])
-  const [pairingSearch, setPairingSearch] = useState("")
   const [availableAddons, setAvailableAddons] = useState([])
   const [variants, setVariants] = useState([])
   const [preparationTime, setPreparationTime] = useState("")
@@ -1919,51 +1918,62 @@ export default function ItemDetailsPage() {
                     <p className="text-xs text-gray-500 italic">No other dishes on your menu yet.</p>
                   ) : (
                     <>
-                      <input
-                        type="search"
-                        value={pairingSearch}
-                        onChange={(e) => setPairingSearch(e.target.value)}
-                        placeholder="Search your menu"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
-                      />
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto">
+                      {/* Pick from the menu one at a time. A grid of checkboxes
+                          made the card as tall as the menu is long, and the
+                          dishes already picked were lost among the ones that
+                          were not. */}
+                      <select
+                        value=""
+                        disabled={suggestedItemIds.length >= 10}
+                        onChange={(e) => {
+                          const picked = e.target.value
+                          if (!picked) return
+                          setSuggestedItemIds((prev) => (prev.includes(picked) ? prev : [...prev, picked]))
+                        }}
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm font-medium text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+                      >
+                        <option value="">
+                          {suggestedItemIds.length >= 10
+                            ? "10 picked - remove one to add another"
+                            : "Select a dish to add"}
+                        </option>
                         {pairingOptions
-                          .filter((o) => suggestedItemIds.includes(o.id) || o.name.toLowerCase().includes(pairingSearch.trim().toLowerCase()))
-                          .map((option) => {
-                            const isChecked = suggestedItemIds.includes(option.id)
-                            const isFull = !isChecked && suggestedItemIds.length >= 10
+                          .filter((option) => !suggestedItemIds.includes(option.id))
+                          .map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.price != null ? `${option.name} - Rs ${option.price}` : option.name}
+                            </option>
+                          ))}
+                      </select>
+
+                      {suggestedItemIds.length === 0 ? (
+                        <p className="text-xs text-gray-500 italic">Nothing picked yet.</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {suggestedItemIds.map((id) => {
+                            const option = pairingOptions.find((o) => o.id === id)
                             return (
-                              <label
-                                key={option.id}
-                                className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                                  isChecked
-                                    ? "bg-gray-50 border-gray-900 shadow-sm cursor-pointer"
-                                    : isFull
-                                      ? "bg-white border-gray-100 opacity-50 cursor-not-allowed"
-                                      : "bg-white border-gray-200 hover:border-gray-300 cursor-pointer"
-                                }`}
+                              <span
+                                key={id}
+                                className="inline-flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-full border border-gray-900 bg-gray-50 text-sm font-medium text-gray-900"
                               >
-                                <span className="flex items-center gap-2.5 min-w-0">
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    disabled={isFull}
-                                    onChange={(e) =>
-                                      setSuggestedItemIds((prev) =>
-                                        e.target.checked ? [...prev, option.id] : prev.filter((x) => x !== option.id)
-                                      )
-                                    }
-                                    className="w-4 h-4 rounded text-gray-900 focus:ring-gray-900"
-                                  />
-                                  <span className="text-sm font-medium text-gray-900 truncate">{option.name}</span>
-                                </span>
-                                {option.price != null && (
-                                  <span className="text-xs font-bold text-gray-700 shrink-0 ml-2">₹{option.price}</span>
-                                )}
-                              </label>
+                                {/* A dish deleted since it was picked still has to be
+                                    removable, so the chip renders without its name
+                                    rather than disappearing and leaving a slot used. */}
+                                <span className="truncate max-w-[12rem]">{option ? option.name : "Removed dish"}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSuggestedItemIds((prev) => prev.filter((x) => x !== id))}
+                                  className="w-5 h-5 rounded-full flex items-center justify-center text-gray-500 hover:text-white hover:bg-gray-900 transition-colors"
+                                  aria-label={`Remove ${option ? option.name : "this dish"}`}
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </span>
                             )
                           })}
-                      </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>

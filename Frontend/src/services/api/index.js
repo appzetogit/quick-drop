@@ -575,6 +575,11 @@ export const adminAPI = {
       params,
       contextModule: "admin",
     }),
+  /** What each menu currently carries, as opposed to what was asked for. */
+  getStandingAdjustments: () =>
+    apiClient.get("/food/admin/price-adjustments/standing", {
+      contextModule: "admin",
+    }),
   getPriceAdjustmentPreview: (params = {}) =>
     apiClient.get("/food/admin/price-adjustments/preview", {
       params,
