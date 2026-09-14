@@ -177,6 +177,53 @@ async function deletePendingPaymentOrder(orderLike) {
   return true;
 }
 
+/**
+ * An abandoned payment on a prescription order is put back, not thrown away.
+ *
+ * Deleting it is right for a catalogue order: the customer committed to
+ * nothing, and rebuilding a cart takes seconds. A prescription order is the
+ * opposite. The customer photographed a prescription, a pharmacist read and
+ * verified it, and priced a bill against it -- and deleting all of that
+ * because someone opened the payment sheet and put their phone down means the
+ * customer starts again and the pharmacist reads the same prescription twice.
+ *
+ * So it returns to where it was before they tapped pay: the bill still sent,
+ * still unanswered. They can pay it later or take cash on delivery, and the
+ * stale gateway order is cleared so the next attempt mints a fresh one.
+ */
+async function releaseAbandonedPrescriptionPayment(orderLike) {
+    const order = await FoodOrder.findOne({
+        _id: orderLike._id,
+        orderStatus: 'pending_payment',
+        'payment.status': { $nin: ['paid', 'refunded'] },
+    });
+    if (!order) return false;
+
+    order.orderStatus = 'created';
+    order.payment.status = 'cod_pending';
+    order.payment.razorpay = { orderId: '', paymentId: '', signature: '' };
+    pushStatusHistory(order, {
+        byRole: 'SYSTEM',
+        byId: null,
+        from: 'pending_payment',
+        to: 'created',
+        note: 'Online payment abandoned; the bill is still waiting to be answered',
+    });
+    await order.save();
+    return true;
+}
+
+/**
+ * What to do with a pending-payment order nobody completed. Exported for the
+ * tests, which must be able to prove the two kinds part company here.
+ */
+export async function expirePendingPaymentOrder(orderLike) {
+    if (orderLike?.prescriptionOnly) {
+        return releaseAbandonedPrescriptionPayment(orderLike);
+    }
+    return deletePendingPaymentOrder(orderLike);
+}
+
 let lastExpiredCleanupAt = 0;
 const EXPIRE_CLEANUP_INTERVAL_MS = 60_000;
 
@@ -224,12 +271,13 @@ async function expireStalePendingPaymentOrders() {
     "payment.status": { $in: ["created", "pending", "failed"] },
     createdAt: { $lte: cutoff },
   })
-    .select("_id orderStatus payment stockReservedAt stockRestoredAt")
+    // prescriptionOnly decides whether this order is deleted or put back.
+    .select("_id orderStatus payment stockReservedAt stockRestoredAt prescriptionOnly")
     .lean();
 
   for (const doc of stale) {
     try {
-      await deletePendingPaymentOrder(doc);
+      await expirePendingPaymentOrder(doc);
     } catch (err) {
       logger.warn(
         `expireStalePendingPaymentOrders cleanup failed for ${doc._id}: ${err?.message || err}`,

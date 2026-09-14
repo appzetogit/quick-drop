@@ -27,6 +27,7 @@ const { FoodOrder } = await import('../src/modules/quickCommerce/modules/food/or
 const { FoodRestaurant } = await import('../src/modules/quickCommerce/modules/food/restaurant/models/restaurant.model.js');
 const bill = await import('../src/modules/quickCommerce/modules/food/orders/services/prescriptionOrder.service.js');
 const rules = await import('../src/modules/quickCommerce/modules/food/shared/prescriptionOrder.js');
+const orders = await import('../src/modules/quickCommerce/modules/food/orders/services/order.service.js');
 
 let failures = 0;
 const check = async (label, fn) => {
@@ -195,6 +196,59 @@ console.log('\nan ordinary catalogue order is untouched by any of this');
 await check('it has no bill to approve, and the gate lets it through', () => {
     const catalogueOrder = { prescriptionOnly: false, prescription: { bill: { status: 'none' } } };
     assert.doesNotThrow(() => rules.assertBillApproved(catalogueOrder, 'confirmed'));
+});
+
+console.log('');
+console.log('the customer opens the payment sheet and wanders off');
+await check('THE BUG: the order is put back, not deleted with the prescription in it', async () => {
+    const abandoned = await placeOrder();
+    await submit(abandoned, goodBill);
+    // Exactly what an abandoned online approval leaves behind.
+    await FoodOrder.collection.updateOne(
+        { _id: abandoned },
+        {
+            $set: {
+                orderStatus: 'pending_payment',
+                'payment.method': 'razorpay',
+                'payment.status': 'created',
+                'payment.razorpay': { orderId: 'order_stale', paymentId: '', signature: '' },
+            },
+        },
+    );
+    await orders.expirePendingPaymentOrder({ _id: abandoned, prescriptionOnly: true });
+
+    const doc = await load(abandoned);
+    assert.ok(doc, 'the order was deleted -- the prescription and the bill went with it');
+    assert.equal(doc.orderStatus, 'created');
+    assert.equal(doc.prescription.status, 'approved', 'the verification survived');
+    assert.equal(doc.prescription.bill.status, 'submitted', 'the bill is still waiting to be answered');
+    assert.equal(doc.prescription.bill.amount, 850);
+    // The stale gateway order is cleared so the next attempt mints a fresh one
+    // rather than reusing an order the gateway has since expired.
+    assert.equal(doc.payment.razorpay.orderId, '');
+});
+await check('an ordinary abandoned cart order is still deleted', async () => {
+    const cartOrder = new mongoose.Types.ObjectId();
+    await FoodOrder.collection.insertOne({
+        _id: cartOrder,
+        order_id: 'QC-CART-1',
+        userId,
+        restaurantId: pharmacy._id,
+        items: [{ name: 'Thing', quantity: 1, price: 50 }],
+        prescriptionOnly: false,
+        pricing: { subtotal: 50, total: 50 },
+        payment: { method: 'razorpay', status: 'created', razorpay: { orderId: 'order_x' } },
+        orderStatus: 'pending_payment',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    });
+    await orders.expirePendingPaymentOrder({
+        _id: cartOrder,
+        orderStatus: 'pending_payment',
+        payment: { status: 'created' },
+        prescriptionOnly: false,
+    });
+    assert.equal(await FoodOrder.findById(cartOrder).lean(), null);
 });
 
 await mongoose.disconnect();
