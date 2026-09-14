@@ -2,7 +2,7 @@ import express from 'express';
 import { authMiddleware } from '../../../core/auth/auth.middleware.js';
 import multer from 'multer';
 import { config } from '../../../config/env.js';
-import { saveImageFile } from '../../../services/storage.service.js';
+import { saveDocumentFile, saveImageFile } from '../../../services/storage.service.js';
 
 const router = express.Router();
 
@@ -102,6 +102,44 @@ router.post('/image', authMiddleware, runUpload, async (req, res, next) => {
         return res.status(200).json({
             success: true,
             message: 'Image uploaded successfully',
+            data: {
+                url: stored.url,
+                publicId: null,
+                path: stored.path,
+                size: stored.size,
+                mimeType: stored.mimeType
+            }
+        });
+    } catch (error) {
+        next(error);
+    }
+});
+
+// POST /v1/uploads/document
+/*
+ * A photograph OR a PDF, for the documents this platform has to keep rather
+ * than merely display: a prescription and the pharmacy bill raised against it.
+ *
+ * Kept off /image on purpose. That route pushes everything through the image
+ * optimiser, which a PDF cannot survive, and widening its whitelist would let
+ * PDFs into every avatar and menu photo as well. Same auth, same size cap.
+ */
+router.post('/document', authMiddleware, runUpload, async (req, res, next) => {
+    try {
+        if (!req.file || !req.file.buffer) {
+            return res.status(400).json({
+                success: false,
+                message: 'No file provided'
+            });
+        }
+
+        const stored = await saveDocumentFile(req.file, normalizeFolder(req.body?.folder));
+
+        // Same response shape as /image, so a client that already reads
+        // `data.url` needs no second code path to upload a prescription.
+        return res.status(200).json({
+            success: true,
+            message: 'Document uploaded successfully',
             data: {
                 url: stored.url,
                 publicId: null,

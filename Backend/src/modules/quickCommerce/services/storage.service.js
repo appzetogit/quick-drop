@@ -205,6 +205,52 @@ export const saveImageFile = async (file, folder) => {
     };
 };
 
+const PDF_MIME = 'application/pdf';
+
+/**
+ * A prescription or a pharmacy bill, which is a photograph OR a PDF.
+ *
+ * Separate from saveImageFile rather than widening it. That function exists to
+ * put every uploaded picture through the optimiser, and a PDF cannot go
+ * through it -- sharp would reject the buffer, and a "PDF" that survived being
+ * re-encoded as WebP would be a blank image where a prescription used to be.
+ * Widening the whitelist there would also let a PDF into every avatar and menu
+ * photo on the platform.
+ *
+ * PDFs are written byte for byte: this is a legal document someone may have to
+ * produce later, so it is stored exactly as it was sent. Images still take the
+ * ordinary optimised path.
+ */
+export const saveDocumentFile = async (file, folder) => {
+    if (!file?.buffer?.length) {
+        throw new ValidationError('File is required');
+    }
+
+    const mimeType = String(file.mimetype || '').toLowerCase();
+    if (mimeType !== PDF_MIME) {
+        if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+            throw new ValidationError('Upload a photo (JPEG, PNG, WebP) or a PDF');
+        }
+        return saveImageFile(file, folder);
+    }
+
+    const safeFolder = sanitizeUploadFolder(folder);
+    const filename = buildFilename('.pdf');
+    const relativePath = path.posix.join(safeFolder, filename);
+    const absolutePath = getAbsolutePath(relativePath);
+
+    await ensureUploadStorageReady(safeFolder);
+    await fs.writeFile(absolutePath, file.buffer);
+
+    return {
+        url: buildPublicUrl(relativePath),
+        path: relativePath,
+        filename,
+        mimeType: PDF_MIME,
+        size: file.buffer.length
+    };
+};
+
 export const saveImageBuffer = async (buffer, folder, options = {}) => {
     return saveImageFile(
         {
