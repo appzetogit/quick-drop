@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { Search, Download, ChevronDown, Eye, Settings, ArrowUpDown, Loader2, X, MapPin, Phone, Mail, Clock, Star, Building2, User, FileText, CreditCard, Calendar, Image as ImageIcon, ExternalLink, ShieldX, AlertTriangle, Trash2, Plus } from "lucide-react"
+import { toast } from "sonner"
 import { adminAPI, restaurantAPI, uploadAPI } from "@food/api"
 import { clearModuleAuth } from "@food/utils/auth"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
@@ -131,6 +132,9 @@ export default function RestaurantsList() {
   const [loadingDetails, setLoadingDetails] = useState(false)
   const [banConfirmDialog, setBanConfirmDialog] = useState(null) // { restaurant, action: 'ban' | 'unban' }
   const [banning, setBanning] = useState(false)
+  // The row whose outlet switch is in flight, so it can be disabled without
+  // freezing the rest of the table.
+  const [togglingId, setTogglingId] = useState("")
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState(null) // { restaurant }
   const [deleting, setDeleting] = useState(false)
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" })
@@ -305,7 +309,17 @@ export default function RestaurantsList() {
             ownerPhone: restaurant.ownerPhone || restaurant.phone || "N/A",
             zone: zoneLabelFromRestaurant(restaurant),
             approvalStatus: normalizeApprovalStatus(restaurant),
-            isActive: restaurant.isActive !== false,
+            /*
+             * The outlet's operational on/off, and the only one the platform
+             * acts on: order placement refuses a restaurant with it off.
+             *
+             * This row used to read `isActive`, which the restaurant record has
+             * never had -- so `!== false` was true for every outlet, the list
+             * showed all of them as active whatever their real state, and the
+             * Active/Inactive filter and counts beside it were reporting on a
+             * field that does not exist.
+             */
+            isAcceptingOrders: restaurant.isAcceptingOrders !== false,
             rating: restaurant.ratings?.average || restaurant.rating || 0,
             logo: getPrimaryRestaurantImage(restaurant, PLACEHOLDER_40),
             originalData: restaurant,
@@ -371,9 +385,9 @@ export default function RestaurantsList() {
 
     if (filters.all !== "All") {
       if (filters.all === "Active") {
-        result = result.filter(restaurant => restaurant.isActive === true)
+        result = result.filter(restaurant => restaurant.isAcceptingOrders === true)
       } else if (filters.all === "Inactive") {
-        result = result.filter(restaurant => restaurant.isActive !== true)
+        result = result.filter(restaurant => restaurant.isAcceptingOrders !== true)
       }
     }
 
@@ -433,8 +447,50 @@ export default function RestaurantsList() {
   }
 
   const totalRestaurants = restaurants.length
-  const activeRestaurants = restaurants.filter(r => r.isActive === true).length
-  const inactiveRestaurants = restaurants.filter(r => r.isActive !== true).length
+  const activeRestaurants = restaurants.filter(r => r.isAcceptingOrders === true).length
+  const inactiveRestaurants = restaurants.filter(r => r.isAcceptingOrders !== true).length
+
+  /**
+   * Take an outlet off the platform, or put it back, without touching whether
+   * it is approved.
+   *
+   * Two different decisions were tangled here: approval is whether the platform
+   * accepts this business at all, and this is whether the kitchen is taking
+   * orders today. The only control on this page routed through the approval
+   * endpoint, which stamped a rejection and a reason of "Disabled by admin" on
+   * a restaurant that was merely being paused.
+   *
+   * The order path already refuses a restaurant with this off, so switching it
+   * here is enough to stop new orders.
+   */
+  const handleToggleAcceptingOrders = async (restaurant) => {
+    const restaurantId = String(restaurant?._id || restaurant?.id || "")
+    if (!restaurantId || togglingId) return
+    const next = !restaurant.isAcceptingOrders
+
+    const applyLocally = (value) =>
+      setRestaurants((prev) =>
+        prev.map((r) => (String(r.id) === String(restaurant.id) ? { ...r, isAcceptingOrders: value } : r)),
+      )
+
+    setTogglingId(restaurantId)
+    applyLocally(next)
+    try {
+      await adminAPI.updateRestaurant(restaurantId, { isAcceptingOrders: next })
+      toast.success(next ? `${restaurant.name} is taking orders` : `${restaurant.name} is now offline`)
+    } catch (error) {
+      /*
+       * Put the switch back. The ban flow on this page does the opposite --
+       * it keeps the new state and tells the operator it worked "locally" --
+       * which leaves the panel disagreeing with the platform until a reload,
+       * and an operator believing a closed kitchen is closed when it is not.
+       */
+      applyLocally(!next)
+      toast.error(error?.response?.data?.message || "Could not change this outlet. Nothing was saved.")
+    } finally {
+      setTogglingId("")
+    }
+  }
 
   // Show full phone number without masking
   const formatPhone = (phone) => {
@@ -1039,7 +1095,7 @@ export default function RestaurantsList() {
       estimatedDeliveryTime: estimatedDeliveryTimeValue,
       openingTime: openingTimeValue,
       closingTime: closingTimeValue,
-      isActive: restaurant.isActive !== false,
+      isActive: restaurant.isAcceptingOrders !== false,
     }
   }
 
@@ -1102,7 +1158,7 @@ export default function RestaurantsList() {
         estimatedDeliveryTime: detailsForm.estimatedDeliveryTime.trim(),
         openingTime: normalizedOpeningTime,
         closingTime: normalizedClosingTime,
-        isActive: detailsForm.isActive,
+        isAcceptingOrders: detailsForm.isActive,
       }
 
       if (profileImage) {
@@ -1123,7 +1179,7 @@ export default function RestaurantsList() {
                 ownerName: updatedRestaurant.ownerName || item.ownerName,
                 ownerPhone: updatedRestaurant.ownerPhone || updatedRestaurant.phone || item.ownerPhone,
                 zone: updatedRestaurant.location?.area || updatedRestaurant.location?.city || item.zone,
-                isActive: updatedRestaurant.isActive !== false,
+                isAcceptingOrders: updatedRestaurant.isAcceptingOrders !== false,
                 approvalStatus: normalizeApprovalStatus(updatedRestaurant),
                 logo: getPrimaryRestaurantImage(updatedRestaurant, item.logo),
                 originalData: {
@@ -1159,7 +1215,7 @@ export default function RestaurantsList() {
 
   // Handle ban/unban restaurant
   const handleBanRestaurant = (restaurant) => {
-    const isBanned = !restaurant.isActive
+    const isBanned = String(restaurant.approvalStatus || "").toLowerCase() === "rejected"
     setBanConfirmDialog({
       restaurant,
       action: isBanned ? 'unban' : 'ban'
@@ -1185,7 +1241,7 @@ export default function RestaurantsList() {
         setRestaurants(prevRestaurants =>
           prevRestaurants.map(r =>
             r.id === restaurant.id || r._id === restaurant._id
-              ? { ...r, isActive: newStatus }
+              ? { ...r, approvalStatus: newStatus ? "approved" : "rejected" }
               : r
           )
         )
@@ -1201,7 +1257,7 @@ export default function RestaurantsList() {
         setRestaurants(prevRestaurants =>
           prevRestaurants.map(r =>
             r.id === restaurant.id || r._id === restaurant._id
-              ? { ...r, isActive: newStatus }
+              ? { ...r, approvalStatus: newStatus ? "approved" : "rejected" }
               : r
           )
         )
@@ -1532,9 +1588,41 @@ export default function RestaurantsList() {
                             <span className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold ${approvalStatusBadgeClass(restaurant.approvalStatus)}`}>
                               {approvalStatusLabel(restaurant.approvalStatus)}
                             </span>
-                            <span className="text-[11px] text-slate-500">
-                              Outlet: {restaurant.isActive ? "Active" : "Inactive"}
-                            </span>
+                            {/* The outlet switch. Flipping it off stops new
+                                orders reaching this kitchen immediately; it
+                                does not un-approve the restaurant. */}
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={restaurant.isAcceptingOrders}
+                              disabled={togglingId === String(restaurant._id || restaurant.id)}
+                              onClick={() => handleToggleAcceptingOrders(restaurant)}
+                              title={
+                                restaurant.isAcceptingOrders
+                                  ? "Taking orders — click to take this outlet offline"
+                                  : "Offline — click to start taking orders"
+                              }
+                              className="flex items-center gap-2 w-fit group disabled:opacity-50 disabled:cursor-wait"
+                            >
+                              <span
+                                className={`relative inline-flex h-4 w-8 shrink-0 items-center rounded-full transition-colors ${
+                                  restaurant.isAcceptingOrders ? "bg-emerald-500" : "bg-slate-300"
+                                }`}
+                              >
+                                <span
+                                  className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+                                    restaurant.isAcceptingOrders ? "translate-x-4" : "translate-x-1"
+                                  }`}
+                                />
+                              </span>
+                              <span
+                                className={`text-[11px] font-semibold ${
+                                  restaurant.isAcceptingOrders ? "text-emerald-700" : "text-slate-500"
+                                }`}
+                              >
+                                {restaurant.isAcceptingOrders ? "Taking orders" : "Offline"}
+                              </span>
+                            </button>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -1548,11 +1636,15 @@ export default function RestaurantsList() {
                             </button>
                             <button
                               onClick={() => handleBanRestaurant(restaurant)}
-                              className={`p-1.5 rounded transition-colors ${!restaurant.isActive
+                              className={`p-1.5 rounded transition-colors ${restaurant.approvalStatus === "rejected"
                                 ? "text-green-600 hover:bg-green-50"
                                 : "text-red-600 hover:bg-red-50"
                                 }`}
-                              title={!restaurant.isActive ? "Unban Restaurant" : "Ban Restaurant"}
+                              title={
+                                restaurant.approvalStatus === "rejected"
+                                  ? "Banned — restore this restaurant"
+                                  : "Ban restaurant (removes its approval)"
+                              }
                             >
                               <ShieldX className="w-4 h-4" />
                             </button>
@@ -1836,8 +1928,8 @@ export default function RestaurantsList() {
                           {r?.restaurantName || r?.name || "N/A"}
                         </h3>
                         <div className="flex items-center justify-center md:justify-start gap-2">
-                          <span className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${r?.isActive !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {r?.isActive !== false ? 'Active' : 'Inactive'}
+                          <span className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${r?.isAcceptingOrders !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {r?.isAcceptingOrders !== false ? 'Active' : 'Inactive'}
                           </span>
                         </div>
                       </div>
@@ -1994,7 +2086,7 @@ export default function RestaurantsList() {
                             {approvalStatusLabel(detailsApprovalStatus)}
                           </span>
                           <p className="mt-2 text-xs text-slate-500">
-                            Outlet: {(r?.isActive !== false) ? "Active" : "Inactive"}
+                            Outlet: {(r?.isAcceptingOrders !== false) ? "Taking orders" : "Offline"}
                           </p>
                         </div>
                       </div>

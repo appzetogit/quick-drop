@@ -302,7 +302,10 @@ export async function getRestaurants(query) {
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
-            .select('restaurantName slug location area city status ownerName ownerPhone zoneId profileImage coverImages menuImages priceIncludesGst')
+            // isAcceptingOrders is the operational on/off the list toggles. Left
+            // out, the panel had nothing real to read and showed every outlet as
+            // active whatever its true state.
+            .select('restaurantName slug location area city status isAcceptingOrders ownerName ownerPhone zoneId profileImage coverImages menuImages priceIncludesGst')
             .populate('zoneId', 'name zoneName')
             .lean(),
         FoodRestaurant.countDocuments(filter)
