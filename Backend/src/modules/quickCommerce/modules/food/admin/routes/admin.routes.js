@@ -19,6 +19,8 @@ import {
 } from '../../restaurant/controllers/bulkUpload.controller.js';
 import { FoodAdmin } from '../../../../core/admin/admin.model.js';
 import { requireAdminPermission, requireAnyAdminPermission } from '../../../../core/roles/adminPermission.middleware.js';
+import prescriptionAdminRoutes from './prescriptionAdmin.routes.js';
+import drugLicenceAdminRoutes from './drugLicenceAdmin.routes.js';
 import * as driverRegField from '../../delivery/controllers/driverRegistrationField.controller.js';
 import * as cashbackSettings from '../controllers/cashbackSettings.controller.js';
 import * as restaurantAppBanner from '../controllers/restaurantAppBanner.controller.js';
@@ -445,6 +447,15 @@ router.patch('/dining/categories/:id', diningAdminController.updateDiningCategor
 router.delete('/dining/categories/:id', diningAdminController.deleteDiningCategory);
 router.get('/dining/restaurants', diningAdminController.getDiningRestaurants);
 router.patch('/dining/restaurants/:restaurantId', diningAdminController.updateDiningRestaurant);
+
+// ----- Medical -----
+// The two screens that exist only in the Medical panel: the prescription queue
+// and the drug-licence register. Both read-only -- the pharmacist reviews
+// prescriptions and the seller update owns licences -- and both scoped to
+// pharmacies inside their own services rather than from the query, so a missing
+// parameter cannot widen them to the whole platform.
+router.use('/prescriptions', prescriptionAdminRoutes);
+router.use('/drug-licences', drugLicenceAdminRoutes);
 
 // ----- Orders -----
 router.get(

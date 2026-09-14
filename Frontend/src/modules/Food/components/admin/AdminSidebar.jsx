@@ -49,6 +49,7 @@ import {
   Lock,
   ShoppingBasket,
   Pill,
+  ShieldCheck,
 } from "lucide-react"
 import { cn } from "@food/utils/utils"
 import { Input } from "@food/components/ui/input"
@@ -95,6 +96,8 @@ const debugError = (...args) => {}
 // Icon mapping
 const iconMap = {
   LayoutDashboard,
+  ShieldCheck,
+  Pill,
   UtensilsCrossed,
   Building2,
   FileText,
@@ -207,6 +210,35 @@ const VERTICAL_BRANDING = {
     words: rulesFor(VERTICAL.MEDICAL),
     hiddenPaths: [],
     hiddenSections: [],
+    /*
+     * Screens that exist only here. A prescription queue and a drug-licence
+     * register have no meaning in food or general quick-commerce, so they are
+     * added for this base rather than put in the shared menu and hidden from
+     * the other two -- a hidden entry is one someone forgets to hide when the
+     * next vertical arrives.
+     *
+     * Paths are already based here, so rebaseAdminMenu leaves them alone.
+     */
+    extraSections: [
+      {
+        type: "section",
+        label: "MEDICAL",
+        items: [
+          {
+            type: "link",
+            label: "Prescription Orders",
+            path: "/admin/medical/prescriptions",
+            icon: "FileText",
+          },
+          {
+            type: "link",
+            label: "Drug Licences",
+            path: "/admin/medical/drug-licences",
+            icon: "ShieldCheck",
+          },
+        ],
+      },
+    ],
   },
 }
 
@@ -225,7 +257,7 @@ export const rebaseAdminMenu = (nodes, base) => {
     if (labels[label]) return labels[label]
     return words.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), label)
   }
-  return nodes
+  const rebased = nodes
     .filter((node) => !(node.path && hiddenPaths.includes(node.path)))
     .filter((node) => !(node.label && hiddenSections.includes(node.label)))
     .map((node) => ({
@@ -235,6 +267,12 @@ export const rebaseAdminMenu = (nodes, base) => {
       ...(node.items ? { items: rebaseAdminMenu(node.items, base) } : {}),
       ...(node.subItems ? { subItems: rebaseAdminMenu(node.subItems, base) } : {}),
     }))
+  // Only at the top level: a nested call would append the vertical's own
+  // sections inside every expandable item it recursed into.
+  const { extraSections = [] } = brandingFor(base)
+  return nodes === adminSidebarMenu && extraSections.length > 0
+    ? [...rebased, ...extraSections]
+    : rebased
 }
 
 export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange }) {

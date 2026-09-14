@@ -141,6 +141,8 @@ const AdminForgotPassword = lazy(() => import("@food/pages/admin/auth/AdminForgo
 // Hidden with the /admin/sp route below; uncomment both together.
 // const SPAdminRoutes = lazy(() => import("@sp/admin/routes"));
 const FoodSubadmins = lazy(() => import("@food/pages/admin/management/FoodSubadmins"));
+const MedicalPrescriptionOrders = lazy(() => import("@food/pages/admin/medical/PrescriptionOrders"));
+const MedicalDrugLicences = lazy(() => import("@food/pages/admin/medical/DrugLicences"));
 const FoodSubadminCreate = lazy(() => import("@food/pages/admin/management/FoodSubadminCreate"));
 
 /**
@@ -402,6 +404,11 @@ export default function AdminRouter() {
             }
           >
             {verticalAdminRoutes}
+            {/* Only here: a prescription queue and a drug-licence register have
+                no meaning in food or in general quick-commerce, so they are not
+                in the shared route table. */}
+            <Route path="prescriptions" element={<MedicalPrescriptionOrders />} />
+            <Route path="drug-licences" element={<MedicalDrugLicences />} />
           </Route>
         </Route>
 

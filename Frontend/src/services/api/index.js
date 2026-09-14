@@ -575,6 +575,22 @@ export const adminAPI = {
       params,
       contextModule: "admin",
     }),
+  /*
+   * Medical panel only. The paths say /food because the axios interceptor
+   * rewrites them to /qc on /admin/medical -- see services/api/axios.js. Both
+   * endpoints scope themselves to pharmacies server-side; nothing here can
+   * widen them.
+   */
+  getPrescriptionOrders: (params = {}) =>
+    apiClient.get("/food/admin/prescriptions", { params, contextModule: "admin" }),
+  getPrescriptionOrderCounts: (params = {}) =>
+    apiClient.get("/food/admin/prescriptions/counts", { params, contextModule: "admin" }),
+  getPrescriptionOrder: (orderId) =>
+    apiClient.get(`/food/admin/prescriptions/${String(orderId)}`, { contextModule: "admin" }),
+  getDrugLicences: (params = {}) =>
+    apiClient.get("/food/admin/drug-licences", { params, contextModule: "admin" }),
+  getDrugLicenceSummary: (params = {}) =>
+    apiClient.get("/food/admin/drug-licences/summary", { params, contextModule: "admin" }),
   /** What each menu currently carries, as opposed to what was asked for. */
   getStandingAdjustments: () =>
     apiClient.get("/food/admin/price-adjustments/standing", {
