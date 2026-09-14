@@ -23,9 +23,16 @@ import { buildOrderPrescription, PRESCRIPTION_STATUS } from '../../shared/prescr
 import {
     assertFillable,
     assertSellerDispensesMedicine,
+    BILL_STATUS,
     computeQuoteSubtotal,
+    normalizeBillSubmission,
     normalizeQuoteItems,
 } from '../../shared/prescriptionOrder.js';
+import {
+    createRazorpayOrder,
+    getRazorpayKeyId,
+    isRazorpayConfigured,
+} from '../helpers/razorpay.helper.js';
 import {
     buildOrderIdentityFilter,
     enqueueOrderEvent,
@@ -294,6 +301,333 @@ export async function fillPrescriptionOrder(orderId, restaurantId, dto = {}) {
         orderId: order._id.toString(),
         restaurantId: String(restaurantId),
         total,
+    });
+
+    return payload;
+}
+
+/**
+ * The pharmacy's bill, and the customer's answer to it.
+ *
+ * A prescription order is placed with no price: the customer photographs a
+ * prescription and the pharmacist decides what it comes to. That leaves a gap
+ * the catalogue path never has -- an order everyone is committed to at an
+ * amount the customer has never seen. These three functions close it: the
+ * pharmacist submits the paper bill and its total, the customer approves it
+ * (paying then, if they are paying online) or declines it, and only an approved
+ * bill lets the order be prepared and dispatched.
+ *
+ * The payment itself is the ordinary one. A priced order moves to
+ * `pending_payment` and takes the same Razorpay order, the same signature and
+ * amount cross-check in verifyPayment, and the same transition back to
+ * `created` as any other online order. A second payment path for medicines
+ * would be a second place for money to go missing.
+ */
+export async function submitPrescriptionBill(orderId, restaurantId, dto = {}) {
+    const identity = buildOrderIdentityFilter(orderId);
+    if (!identity) throw new ValidationError('Order id required');
+
+    const order = await FoodOrder.findOne({
+        ...identity,
+        restaurantId: new mongoose.Types.ObjectId(restaurantId),
+    });
+    if (!order) throw new NotFoundError('Order not found');
+
+    assertFillable(order);
+    if (order.prescription?.status !== PRESCRIPTION_STATUS.APPROVED) {
+        throw new ValidationError('Verify the prescription before billing this order.');
+    }
+    /*
+     * A bill the customer has already paid is not re-openable here. Re-pricing
+     * it would move the amount away from the one they authorised, and the
+     * payment on file would no longer match what verifyPayment expects.
+     */
+    if (order.prescription?.bill?.status === BILL_STATUS.APPROVED) {
+        throw new ValidationError('This bill has already been approved by the customer.');
+    }
+
+    const { imageUrl, amount } = normalizeBillSubmission(dto);
+
+    const restaurant = await loadRestaurantForOrdering(order.restaurantId);
+    const distanceKm = await getDeliveryDistanceKm(restaurant, order.deliveryAddress);
+    const feeSettings = await loadActiveFeeSettings();
+
+    /*
+     * The medicines are the bill total, as one line.
+     *
+     * The pharmacist reads a paper bill that already itemises them; asking for
+     * every row again is transcription work that would not change the total and
+     * would invite it to disagree with the document beside it. The bill image is
+     * stored precisely so the detail is not lost.
+     */
+    const items = normalizeQuoteItems([
+        { name: 'Medicines as per pharmacy bill', quantity: 1, price: amount },
+    ]);
+    const subtotal = computeQuoteSubtotal(items);
+
+    const { deliveryFee: resolvedFee } = resolveUserDeliveryFee(feeSettings, { subtotal, distanceKm });
+    const deliveryFee = round2(resolvedFee);
+    const deliveryFeeGst = computeDeliveryFeeGst(deliveryFee);
+    const platformFee = Number(feeSettings?.platformFee) || 0;
+    const gstFallbackRate = Number(feeSettings?.gstRate || 0);
+    const tax = computeItemsTax(items, { subtotal, discount: 0, fallbackRate: gstFallbackRate });
+
+    let restaurantCommission = 0;
+    try {
+        const snapshot = await getRestaurantCommissionSnapshot({
+            pricing: { subtotal },
+            restaurantId: order.restaurantId,
+        });
+        restaurantCommission = Number(snapshot?.commissionAmount) || 0;
+    } catch (err) {
+        logger.error(`Commission calculation failed for prescription order ${order._id}: ${err?.message || err}`);
+    }
+
+    const total = round2(subtotal + tax + deliveryFee + deliveryFeeGst + platformFee);
+
+    order.items = items;
+    order.pricing = {
+        ...emptyPricing(),
+        subtotal,
+        tax,
+        gstFallbackRate,
+        deliveryFee,
+        deliveryFeeGst,
+        platformFee,
+        restaurantCommission,
+        total,
+        distanceKm: Number.isFinite(distanceKm) ? distanceKm : null,
+    };
+    order.prescription.bill = {
+        imageUrl,
+        amount,
+        uploadedAt: new Date(),
+        uploadedBy: new mongoose.Types.ObjectId(restaurantId),
+        status: BILL_STATUS.SUBMITTED,
+        approvedAt: null,
+        declinedAt: null,
+        declineReason: '',
+    };
+    order.riderEarning = calculateRiderEarning(feeSettings, distanceKm);
+
+    const promiseMinutes = estimateDeliveryPromiseMinutes(distanceKm);
+    if (Number.isFinite(promiseMinutes)) order.deliveryPromiseMinutes = promiseMinutes;
+
+    pushStatusHistory(order, {
+        byRole: 'RESTAURANT',
+        byId: restaurantId,
+        from: order.orderStatus,
+        to: order.orderStatus,
+        note: `Pharmacy bill Rs ${amount} submitted, payable Rs ${total}`,
+    });
+
+    await order.save();
+
+    const payload = sanitizeOrderForExternal(order);
+    emitToCustomer(order, 'order_status_update', payload);
+    notifyOwnerSafely(
+        { ownerType: 'USER', ownerId: String(order.userId) },
+        {
+            title: 'Your bill is ready',
+            body: `Medicines Rs ${amount} + delivery Rs ${round2(deliveryFee + deliveryFeeGst)} — Rs ${total} to pay.`,
+            data: {
+                type: 'prescription_bill_submitted',
+                orderId: String(order._id),
+                billAmount: String(amount),
+                total: String(total),
+            },
+        },
+    ).catch(() => {});
+
+    enqueueOrderEvent('prescription_bill_submitted', {
+        orderMongoId: order._id?.toString?.(),
+        orderId: order._id.toString(),
+        restaurantId: String(restaurantId),
+        billAmount: amount,
+        total,
+    });
+
+    return payload;
+}
+
+/**
+ * The customer accepts the bill.
+ *
+ * Paying online does NOT approve it here: the order moves to `pending_payment`
+ * and the approval is stamped when the payment verifies, so a customer who
+ * opens the payment sheet and abandons it has not agreed to anything and the
+ * pharmacy is not left preparing an order nobody paid for. Cash on delivery has
+ * no such moment, so there the approval is the agreement.
+ */
+export async function approvePrescriptionBill(orderId, userId, dto = {}) {
+    const identity = buildOrderIdentityFilter(orderId);
+    if (!identity) throw new ValidationError('Order id required');
+
+    const order = await FoodOrder.findOne({
+        ...identity,
+        userId: new mongoose.Types.ObjectId(userId),
+    });
+    if (!order) throw new NotFoundError('Order not found');
+    if (!order.prescriptionOnly) {
+        throw new ValidationError('This order was not placed from a prescription photo.');
+    }
+
+    const billStatus = String(order.prescription?.bill?.status || BILL_STATUS.NONE);
+    if (billStatus === BILL_STATUS.APPROVED) {
+        // Idempotent: a double tap, a retried request or a second device must
+        // not create a second Razorpay order against the same bill.
+        return { order: sanitizeOrderForExternal(order), payment: null };
+    }
+    if (billStatus !== BILL_STATUS.SUBMITTED) {
+        throw new ValidationError('The pharmacy has not sent a bill for this order yet.');
+    }
+    if (String(order.orderStatus) === 'pending_payment' && order.payment?.razorpay?.orderId) {
+        // Already waiting on the gateway for this same amount: hand back the
+        // existing Razorpay order rather than opening another one, or two
+        // payments exist for one bill and only one can ever be verified.
+        return {
+            order: sanitizeOrderForExternal(order),
+            payment: {
+                key: getRazorpayKeyId(),
+                orderId: order.payment.razorpay.orderId,
+                amount: Math.round((Number(order.pricing?.total) || 0) * 100),
+                currency: 'INR',
+            },
+        };
+    }
+
+    const method = String(dto.paymentMethod || order.payment?.method || 'cash').toLowerCase();
+    const payingOnline = method === 'razorpay' || method === 'online';
+
+    if (!payingOnline) {
+        order.prescription.bill.status = BILL_STATUS.APPROVED;
+        order.prescription.bill.approvedAt = new Date();
+        order.payment.method = 'cash';
+        pushStatusHistory(order, {
+            byRole: 'USER',
+            byId: userId,
+            from: order.orderStatus,
+            to: order.orderStatus,
+            note: `Bill approved, paying cash on delivery (Rs ${order.pricing?.total})`,
+        });
+        await order.save();
+
+        const payload = sanitizeOrderForExternal(order);
+        notifyOwnerSafely(
+            { ownerType: 'RESTAURANT', ownerId: String(order.restaurantId) },
+            {
+                title: 'Bill approved',
+                body: 'The customer approved the bill. You can prepare this order.',
+                data: { type: 'prescription_bill_approved', orderId: String(order._id) },
+            },
+        ).catch(() => {});
+        enqueueOrderEvent('prescription_bill_approved', {
+            orderMongoId: order._id?.toString?.(),
+            orderId: order._id.toString(),
+            paymentMethod: 'cash',
+        });
+        return { order: payload, payment: null };
+    }
+
+    if (!isRazorpayConfigured()) {
+        throw new ValidationError('Online payment is unavailable right now. Choose cash on delivery.');
+    }
+    const amountPaise = Math.round((Number(order.pricing?.total) || 0) * 100);
+    if (amountPaise < 100) throw new ValidationError('Amount too low for online payment');
+
+    let rzOrder;
+    try {
+        rzOrder = await createRazorpayOrder(amountPaise, 'INR', order._id.toString());
+    } catch (err) {
+        logger.error(`Razorpay order creation failed for prescription order ${order._id}: ${err?.message || err}`);
+        throw new ValidationError(err?.message || 'Payment gateway error');
+    }
+
+    order.payment.method = 'razorpay';
+    order.payment.status = 'created';
+    order.payment.razorpay = { orderId: rzOrder.id, paymentId: '', signature: '' };
+    order.payment.amountDue = Number(order.pricing?.total) || 0;
+    const from = order.orderStatus;
+    order.orderStatus = 'pending_payment';
+    pushStatusHistory(order, {
+        byRole: 'USER',
+        byId: userId,
+        from,
+        to: 'pending_payment',
+        note: `Bill approved, awaiting online payment of Rs ${order.pricing?.total}`,
+    });
+    await order.save();
+
+    return {
+        order: sanitizeOrderForExternal(order),
+        payment: {
+            key: getRazorpayKeyId(),
+            orderId: rzOrder.id,
+            amount: rzOrder.amount,
+            currency: rzOrder.currency || 'INR',
+        },
+    };
+}
+
+/**
+ * The customer refuses the bill, which cancels the order.
+ *
+ * Nothing has been paid and nothing has left the pharmacy, so this is a plain
+ * cancellation rather than a refund. The reason is kept and sent on: a
+ * pharmacist who is told "too expensive" can offer a substitute next time,
+ * where a silent disappearance teaches them nothing.
+ */
+export async function declinePrescriptionBill(orderId, userId, dto = {}) {
+    const identity = buildOrderIdentityFilter(orderId);
+    if (!identity) throw new ValidationError('Order id required');
+
+    const order = await FoodOrder.findOne({
+        ...identity,
+        userId: new mongoose.Types.ObjectId(userId),
+    });
+    if (!order) throw new NotFoundError('Order not found');
+    if (!order.prescriptionOnly) {
+        throw new ValidationError('This order was not placed from a prescription photo.');
+    }
+    if (order.payment?.status === 'paid') {
+        throw new ValidationError('This order is already paid. Cancel it instead so the refund is recorded.');
+    }
+    if (String(order.prescription?.bill?.status || '') !== BILL_STATUS.SUBMITTED) {
+        throw new ValidationError('There is no bill to decline on this order.');
+    }
+
+    const reason = String(dto.reason || '').trim().slice(0, 200);
+    order.prescription.bill.status = BILL_STATUS.REJECTED;
+    order.prescription.bill.declinedAt = new Date();
+    order.prescription.bill.declineReason = reason;
+    const from = order.orderStatus;
+    order.orderStatus = 'cancelled_by_user';
+    order.cancelledBy = 'user';
+    order.cancellationReason = reason || 'Customer declined the pharmacy bill';
+    pushStatusHistory(order, {
+        byRole: 'USER',
+        byId: userId,
+        from,
+        to: 'cancelled_by_user',
+        note: reason ? `Bill declined: ${reason}` : 'Bill declined',
+    });
+    await order.save();
+
+    const payload = sanitizeOrderForExternal(order);
+    notifyOwnerSafely(
+        { ownerType: 'RESTAURANT', ownerId: String(order.restaurantId) },
+        {
+            title: 'Bill declined',
+            body: reason
+                ? `The customer declined the bill: ${reason}`
+                : 'The customer declined the bill, so the order is cancelled.',
+            data: { type: 'prescription_bill_declined', orderId: String(order._id) },
+        },
+    ).catch(() => {});
+    enqueueOrderEvent('prescription_bill_declined', {
+        orderMongoId: order._id?.toString?.(),
+        orderId: order._id.toString(),
+        reason,
     });
 
     return payload;

@@ -378,6 +378,35 @@ const orderSchema = new mongoose.Schema(
             reviewedAt: { type: Date, default: null },
             reviewedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
             rejectionReason: { type: String, trim: true, default: '' },
+            /**
+             * The pharmacy's own bill, and the customer's answer to it.
+             *
+             * A prescription order is priced by the pharmacist after reading
+             * the photo, so the customer agreed to no amount when they placed
+             * it. They are shown this bill and either pay it or decline; until
+             * they do, the order may not be prepared or dispatched -- see
+             * shared/prescriptionOrder.js.
+             *
+             * `imageUrl` is the paper bill itself, kept because the amount is
+             * typed by hand: without the document beside it, a disputed charge
+             * is one person's figure against another's.
+             */
+            bill: {
+                imageUrl: { type: String, trim: true, default: '' },
+                /** What the pharmacist read off that bill, for the medicines alone. */
+                amount: { type: Number, default: 0, min: 0 },
+                uploadedAt: { type: Date, default: null },
+                uploadedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
+                status: {
+                    type: String,
+                    enum: ['none', 'submitted', 'approved', 'rejected'],
+                    default: 'none',
+                    index: true,
+                },
+                approvedAt: { type: Date, default: null },
+                declinedAt: { type: Date, default: null },
+                declineReason: { type: String, trim: true, default: '' },
+            },
         },
         orderStatus: {
             type: String,

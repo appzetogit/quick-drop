@@ -48,7 +48,8 @@ import {
   buildOrderPrescription,
   reviewPrescription,
 } from '../../shared/prescriptionRules.js';
-import { assertPrescriptionOrderPriced } from '../../shared/prescriptionOrder.js';
+import { assertBillApproved,
+  assertPrescriptionOrderPriced } from '../../shared/prescriptionOrder.js';
 import * as dispatchService from './order-dispatch.service.js';
 import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
@@ -918,6 +919,18 @@ export async function verifyPayment(userId, dto) {
   order.payment.status = "paid";
   order.payment.razorpay.paymentId = dto.razorpayPaymentId;
   order.payment.razorpay.signature = dto.razorpaySignature;
+
+  /*
+   * Paying the pharmacy's bill IS approving it, and only here -- a customer who
+   * opened the payment sheet and walked away has agreed to nothing, so the
+   * approval is stamped on the verified payment rather than when the sheet was
+   * opened. Until it is stamped, assertBillApproved keeps the order out of the
+   * pharmacy's preparation queue.
+   */
+  if (order.prescriptionOnly && order.prescription?.bill?.status === 'submitted') {
+    order.prescription.bill.status = 'approved';
+    order.prescription.bill.approvedAt = new Date();
+  }
   
   const from = order.orderStatus;
   const acceptanceWindowSeconds = await getOrderAcceptanceWindowSeconds();
@@ -1852,6 +1865,9 @@ export async function updateOrderStatusRestaurant(
   // or the customer would be committed to a delivery whose cost nobody has told
   // them. Cancelling stays available either way.
   assertPrescriptionOrderPriced(order, targetStatus);
+  // Priced is not agreed: the customer has to accept the pharmacy's bill (and
+  // pay it, if they are paying online) before the medicines are prepared.
+  assertBillApproved(order, targetStatus);
 
   if (targetStatus === "preparing" || targetStatus === "confirmed") {
     const now = new Date();

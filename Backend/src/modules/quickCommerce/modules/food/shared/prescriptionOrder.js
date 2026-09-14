@@ -142,6 +142,67 @@ export function assertFillable(order) {
     }
 }
 
+
+export const BILL_STATUS = Object.freeze({
+    NONE: 'none',
+    SUBMITTED: 'submitted',
+    APPROVED: 'approved',
+    REJECTED: 'rejected',
+});
+
+/** The most a pharmacy bill may come to, as a guard against a typo of zeros. */
+export const MAX_BILL_AMOUNT = 200000;
+
+/**
+ * What the pharmacist typed off the paper bill, checked before it becomes the
+ * price of anything.
+ *
+ * Hand-typed, so the guards are the ones that catch a slip rather than an
+ * attack: a missing amount, a negative one, and a figure large enough to be a
+ * mistyped row of zeros. The bill image is required with it because the amount
+ * is otherwise one person's word -- a disputed charge needs the document.
+ */
+export function normalizeBillSubmission(dto = {}) {
+    const imageUrl = toTrimmed(dto.billImageUrl || dto.imageUrl);
+    if (!imageUrl) {
+        throw new ValidationError('Upload a photo of the pharmacy bill.');
+    }
+    const amount = Number(dto.billAmount ?? dto.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+        throw new ValidationError('Enter the bill amount.');
+    }
+    if (amount > MAX_BILL_AMOUNT) {
+        throw new ValidationError(`A bill over Rs ${MAX_BILL_AMOUNT} has to be raised with support.`);
+    }
+    return { imageUrl, amount: Math.round(amount * 100) / 100 };
+}
+
+/** True once the customer has agreed to the pharmacy's bill. */
+export function isBillApproved(order) {
+    return String(order?.prescription?.bill?.status || '') === BILL_STATUS.APPROVED;
+}
+
+/**
+ * The customer has to answer the bill before the order moves.
+ *
+ * Priced is not the same as agreed. The pharmacist reads the prescription and
+ * names a figure the customer has never seen; letting the order be prepared and
+ * dispatched on that alone would deliver medicines at a price nobody accepted,
+ * and leave the platform collecting it on delivery. Cancelling stays open
+ * throughout, so an unaffordable bill is never a trap.
+ */
+export function assertBillApproved(order, nextStatus) {
+    if (!order?.prescriptionOnly) return;
+    if (!ACCEPTANCE_STATUSES.includes(String(nextStatus || ''))) return;
+    const status = String(order?.prescription?.bill?.status || BILL_STATUS.NONE);
+    if (status === BILL_STATUS.APPROVED) return;
+    throw new ValidationError(
+        status === BILL_STATUS.SUBMITTED
+            ? 'The customer has not approved the bill for this order yet.'
+            : 'Upload the pharmacy bill and its amount before accepting this order.',
+    );
+}
+
 /**
  * A prescription order may not be accepted until it has been priced.
  *

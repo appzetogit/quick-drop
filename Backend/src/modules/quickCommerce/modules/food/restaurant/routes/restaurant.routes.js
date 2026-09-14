@@ -74,7 +74,7 @@ import {
     uploadBulkMenuController
 } from '../controllers/bulkUpload.controller.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
-import { fillPrescriptionOrderController } from '../../orders/controllers/prescriptionOrder.controller.js';
+import { fillPrescriptionOrderController, submitPrescriptionBillController } from '../../orders/controllers/prescriptionOrder.controller.js';
 import { authMiddleware, optionalAuth } from '../../../../core/auth/auth.middleware.js';
 import { sendError } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
@@ -306,6 +306,10 @@ router.patch('/orders/:orderId/prescription', authMiddleware, requireRestaurant,
 // prescription-only order its price. Separate from accepting it: the customer is
 // told the total before the order is taken on.
 router.patch('/orders/:orderId/fill', authMiddleware, requireRestaurant, fillPrescriptionOrderController);
+// The paper bill and its total. This is what the customer is shown and asked to
+// pay, so it is the pharmacist's last chance to change the amount: once the
+// customer approves it, re-billing is refused.
+router.patch('/orders/:orderId/prescription-bill', authMiddleware, requireRestaurant, submitPrescriptionBillController);
 router.post('/orders/:orderId/resend-notification', authMiddleware, requireRestaurant, orderController.resendDeliveryNotificationRestaurantController);
 
 // Complaints (restaurant dashboard)

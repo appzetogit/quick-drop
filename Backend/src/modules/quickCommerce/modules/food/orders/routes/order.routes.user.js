@@ -1,5 +1,9 @@
 import express from 'express';
-import { createPrescriptionOrderController } from '../controllers/prescriptionOrder.controller.js';
+import {
+    approvePrescriptionBillController,
+    createPrescriptionOrderController,
+    declinePrescriptionBillController,
+} from '../controllers/prescriptionOrder.controller.js';
 import {
     calculateOrderController,
     createOrderController,
@@ -31,6 +35,11 @@ const router = express.Router();
 // with an empty item list: that route prices and charges before it writes, and
 // neither is possible here. See shared/prescriptionOrder.js.
 router.post('/prescription', createPrescriptionOrderController);
+// Answering the pharmacy's bill. Approving it returns the Razorpay order to pay
+// with; declining cancels, since nothing has been paid and nothing has left the
+// pharmacy. Rate-limited with the other money-moving routes below.
+router.post('/:orderId/prescription-bill/approve', sensitiveActionRateLimiter, idempotency(), approvePrescriptionBillController);
+router.post('/:orderId/prescription-bill/decline', sensitiveActionRateLimiter, declinePrescriptionBillController);
 
 router.post('/calculate', sensitiveActionRateLimiter, calculateOrderController);
 router.post('/', sensitiveActionRateLimiter, idempotency(), createOrderController);
