@@ -196,10 +196,19 @@ export function assertBillApproved(order, nextStatus) {
     if (!ACCEPTANCE_STATUSES.includes(String(nextStatus || ''))) return;
     const status = String(order?.prescription?.bill?.status || BILL_STATUS.NONE);
     if (status === BILL_STATUS.APPROVED) return;
+    /*
+     * No bill was ever sent: either an order placed before bills existed, or a
+     * pharmacy still on an app build that prices through fill(). Both are
+     * already covered by assertPrescriptionOrderPriced, which refuses an
+     * unpriced order, so refusing here as well would strand live orders on the
+     * day this ships and every order from an un-updated pharmacy after it.
+     * Once a bill HAS been sent, the customer's answer is required.
+     */
+    if (status === BILL_STATUS.NONE) return;
     throw new ValidationError(
         status === BILL_STATUS.SUBMITTED
             ? 'The customer has not approved the bill for this order yet.'
-            : 'Upload the pharmacy bill and its amount before accepting this order.',
+            : 'The customer declined the bill for this order.',
     );
 }
 

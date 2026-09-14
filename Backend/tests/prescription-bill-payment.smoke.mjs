@@ -157,7 +157,23 @@ await check('the order is cancelled with the reason kept', async () => {
 });
 await check('and it still cannot be prepared', async () => {
     const doc = await load(declined);
-    assert.throws(() => rules.assertBillApproved(doc, 'confirmed'), /Upload the pharmacy bill|has not approved/);
+    assert.throws(() => rules.assertBillApproved(doc, 'confirmed'), /declined the bill/);
+});
+
+console.log('');
+console.log('an order from a pharmacy still on the old app build');
+await check('priced the old way with no bill, it is not stranded by the new gate', async () => {
+    // fill() prices without a bill. Refusing those here would freeze every
+    // order placed before this shipped, and every order from an un-updated
+    // pharmacy after it -- while assertPrescriptionOrderPriced still refuses
+    // an order nobody has priced at all.
+    const legacy = { prescriptionOnly: true, items: [{ name: 'Medicine', quantity: 1, price: 100 }],
+        pricing: { total: 140 }, prescription: { status: 'approved', bill: { status: 'none' } } };
+    assert.doesNotThrow(() => rules.assertBillApproved(legacy, 'confirmed'));
+    assert.throws(
+        () => rules.assertPrescriptionOrderPriced({ ...legacy, items: [], pricing: { total: 0 } }, 'confirmed'),
+        /Enter the medicines and price/,
+    );
 });
 
 console.log('\nwhat an unpaid online approval does NOT do');
