@@ -2761,6 +2761,13 @@ export default function Cart() {
                       <span className="text-gray-600 dark:text-gray-400">
                         GST{billGstRate > 0 ? ` @ ${billGstRate}%` : ""}
                         {gstIsIncludedInItems ? " (included above)" : ""}
+                        {/* Food and packaging are one supply and carry the same
+                            rate, so the tax is charged on both. Unsaid, a bill
+                            with a packaging charge reads as an overcharge to
+                            anyone checking the rate against the item total. */}
+                        {!gstIsIncludedInItems && billPackagingFeeShown > 0
+                          ? " on food + packaging"
+                          : ""}
                       </span>
                       {/*
                         Already inside Item Total for an inclusive menu, so it is
