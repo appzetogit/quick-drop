@@ -63,6 +63,39 @@ const rxBillLabel = (bill) => {
   }
 }
 
+/**
+ * A refund is four separate facts and an operator on a call needs all four:
+ * whether one was attempted, for how much, whether the gateway took it, and
+ * when. "Refunded" as a single word hides a failed attempt completely -- and a
+ * failed refund is the case where the customer is out of pocket and nobody on
+ * this screen can tell.
+ */
+const refundStateLabel = (refund, paymentStatus) => {
+  const status = String(refund?.status || "").toLowerCase()
+  if (status === "processed") return { label: "Refunded", className: "bg-sky-100 text-sky-700" }
+  if (status === "failed") return { label: "Refund FAILED", className: "bg-red-100 text-red-700" }
+  if (status === "pending") return { label: "Refund pending", className: "bg-amber-100 text-amber-700" }
+  if (String(paymentStatus || "").toLowerCase() === "refunded") {
+    return { label: "Refunded", className: "bg-sky-100 text-sky-700" }
+  }
+  return null
+}
+
+const cancelledByLabel = (cancelledBy) => {
+  switch (String(cancelledBy || "").toLowerCase()) {
+    case "user":
+      return "the customer"
+    case "restaurant":
+      return "the seller"
+    case "admin":
+      return "an admin"
+    case "auto_cancel":
+      return "the platform, automatically"
+    default:
+      return ""
+  }
+}
+
 const getPaymentStatusColor = (paymentStatus) => {
   if (paymentStatus === "Paid" || paymentStatus === "Collected") return "text-emerald-600"
   if (paymentStatus === "Not Collected") return "text-amber-600"
@@ -523,6 +556,61 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
                     )}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Cancellation and refund. Shown only when one of them happened,
+              so an ordinary order is not padded with two empty rows. */}
+          {(order.cancelledBy || order.cancellationReason || order.payment?.refund?.status ||
+            String(order.payment?.status || "").toLowerCase() === "refunded") && (
+            <div className="border-t border-slate-200 pt-4">
+              <h3 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                <X className="w-4 h-4" />
+                Cancellation &amp; refund
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(order.cancelledBy || order.cancellationReason) && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cancelled</p>
+                    <p className="text-sm font-medium text-slate-900">
+                      {cancelledByLabel(order.cancelledBy)
+                        ? `By ${cancelledByLabel(order.cancelledBy)}`
+                        : "Yes"}
+                    </p>
+                    {order.cancellationReason && (
+                      <p className="text-xs text-slate-500">{order.cancellationReason}</p>
+                    )}
+                  </div>
+                )}
+                {refundStateLabel(order.payment?.refund, order.payment?.status) && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Refund</p>
+                    <span
+                      className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        refundStateLabel(order.payment?.refund, order.payment?.status).className
+                      }`}
+                    >
+                      {refundStateLabel(order.payment?.refund, order.payment?.status).label}
+                    </span>
+                    <p className="text-xs text-slate-500">
+                      {Number(order.payment?.refund?.amount) > 0
+                        ? `₹${Number(order.payment.refund.amount).toFixed(2)}`
+                        : "Amount not recorded"}
+                      {order.payment?.refund?.processedAt
+                        ? ` · ${new Date(order.payment.refund.processedAt).toLocaleString("en-IN")}`
+                        : ""}
+                    </p>
+                    {order.payment?.refund?.refundId && (
+                      <p className="text-xs text-slate-400">{order.payment.refund.refundId}</p>
+                    )}
+                    {String(order.payment?.refund?.status || "").toLowerCase() === "failed" && (
+                      <p className="text-xs text-red-600">
+                        The gateway refused this refund. The customer has not been paid back.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
