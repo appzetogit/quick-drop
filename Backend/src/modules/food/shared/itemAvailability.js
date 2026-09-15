@@ -1,7 +1,16 @@
 import { ValidationError } from '../../../core/auth/errors.js';
 
 /**
- * Per-menu-item availability windows: "this dish is only orderable 08:00-11:30".
+ * Per-menu-item availability windows, in both directions:
+ *
+ *   "this dish is only orderable 08:00-11:30"   (mode 'available')
+ *   "this dish is off 12:00-15:00"              (mode 'unavailable')
+ *
+ * The second is the kitchen break, and for a long time it could not be said at
+ * all. A restaurant that wanted a dish off between noon and three had only one
+ * control -- a window meaning "available then" -- so typing 12:00-15:00 into it
+ * produced the exact opposite of what they wanted, and the dish sold for those
+ * three hours and no others. Hence `mode`, per day.
  *
  * Distinct from outlet timings, which say when the whole restaurant trades. An
  * item window narrows that further; it never widens it. Breakfast items are the
@@ -28,6 +37,25 @@ export const DEFAULT_ITEM_TIMEZONE = 'Asia/Kolkata';
 
 const DEFAULT_START = '09:00';
 const DEFAULT_END = '22:00';
+
+/**
+ * What a day's window means.
+ *
+ * 'available' is the default and what every schedule stored before this existed
+ * carries implicitly, so nothing already saved changes meaning.
+ */
+export const WINDOW_MODES = Object.freeze({ AVAILABLE: 'available', UNAVAILABLE: 'unavailable' });
+export const DEFAULT_WINDOW_MODE = WINDOW_MODES.AVAILABLE;
+
+export const normalizeWindowMode = (value) => {
+    const raw = String(value ?? '').trim().toLowerCase();
+    if (raw === WINDOW_MODES.UNAVAILABLE || raw === 'off' || raw === 'break') {
+        return WINDOW_MODES.UNAVAILABLE;
+    }
+    return WINDOW_MODES.AVAILABLE;
+};
+
+const isBreak = (entry) => normalizeWindowMode(entry?.mode) === WINDOW_MODES.UNAVAILABLE;
 
 export const normalizeDayName = (value) => {
     const raw = String(value || '').trim();
@@ -124,9 +152,30 @@ export function isItemAvailableAt(schedule, date = new Date()) {
     const { day, minutes } = getZonedDayAndMinutes(date, schedule.timezone);
     if (!day) return true;
 
-    if (windowCovers(findDay(schedule, day), minutes, true)) return true;
-    // An overnight window opened yesterday can still be running.
-    return windowCovers(findDay(schedule, previousDay(day)), minutes, false);
+    const today = findDay(schedule, day);
+    const yesterday = findDay(schedule, previousDay(day));
+
+    /*
+     * A break wins over everything, including an overnight "available" window
+     * opened yesterday that is still running. Someone who typed a closure meant
+     * it, and the safe direction of a disagreement between two rules is to
+     * refuse the order rather than sell something the kitchen is not making.
+     */
+    if (isBreak(today) && windowCovers(today, minutes, true)) return false;
+    if (isBreak(yesterday) && windowCovers(yesterday, minutes, false)) return false;
+
+    // Inside a positive window, on either day.
+    if (!isBreak(today) && windowCovers(today, minutes, true)) return true;
+    if (!isBreak(yesterday) && windowCovers(yesterday, minutes, false)) return true;
+
+    /*
+     * A break day has no positive window: outside the break the item is simply
+     * on, for as long as the outlet is open. `isAvailable === false` still means
+     * the whole day is off, and beats the mode.
+     */
+    if (today && today.isAvailable !== false && isBreak(today)) return true;
+
+    return false;
 }
 
 /** Convenience for a stored menu-item document. */
@@ -141,6 +190,7 @@ export function describeTodaysWindow(schedule, date = new Date()) {
     const { day } = getZonedDayAndMinutes(date, schedule.timezone);
     const entry = findDay(schedule, day);
     if (!entry || entry.isAvailable === false) return `not available on ${day}`;
+    if (isBreak(entry)) return `not available ${entry.startTime}-${entry.endTime} on ${day}`;
     return `available ${entry.startTime}-${entry.endTime} on ${day}`;
 }
 
@@ -188,7 +238,10 @@ export function normalizeAvailabilityScheduleInput(input) {
         const available = src.isAvailable !== false;
         const startTime = normalizeTimeOfDay(src.startTime, DEFAULT_START);
         const endTime = normalizeTimeOfDay(src.endTime, DEFAULT_END);
-        return { day, isAvailable: available, startTime, endTime };
+        // Anything unrecognised reads as 'available', which is the meaning every
+        // schedule saved before modes existed already has.
+        const mode = normalizeWindowMode(src.mode);
+        return { day, isAvailable: available, startTime, endTime, mode };
     });
 
     // Only meaningful once switched on: an enabled schedule with every day off

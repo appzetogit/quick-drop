@@ -9,7 +9,9 @@ import {
     getZonedDayAndMinutes,
     isItemAvailableAt,
     normalizeAvailabilityScheduleInput,
-    normalizeTimeOfDay
+    normalizeTimeOfDay,
+    normalizeWindowMode,
+    WINDOW_MODES
 } from '../itemAvailability.js';
 
 const throws = (fn) => assert.throws(fn, { name: 'ValidationError' });
@@ -150,5 +152,131 @@ assert.equal(
 assert.match(describeTodaysWindow(only('Monday', '08:00', '11:30'), ist('2026-08-24T13:00:00')), /08:00-11:30 on Monday/);
 assert.match(describeTodaysWindow(only('Monday', '08:00', '11:30'), ist('2026-08-25T13:00:00')), /not available on Tuesday/);
 assert.equal(describeTodaysWindow(null), '');
+
+// --- the kitchen break: a window that means OFF, not ON ---------------------
+/*
+ * The bug this exists for. A restaurant wanting a dish off between noon and
+ * three had one control, and it meant the opposite: the dish sold for exactly
+ * those three hours and no others. A day now carries which way its window
+ * reads.
+ */
+
+/** Every day on, with `day` carrying a closure from `start` to `end`. */
+const breakOn = (day, start, end) => ({
+    isEnabled: true,
+    timezone: 'Asia/Kolkata',
+    days: DAY_NAMES.map((d) => ({
+        day: d,
+        isAvailable: true,
+        startTime: d === day ? start : '00:00',
+        endTime: d === day ? end : '00:00',
+        mode: d === day ? WINDOW_MODES.UNAVAILABLE : WINDOW_MODES.AVAILABLE
+    }))
+});
+
+{
+    // Monday, off 12:00-15:00.
+    const s = breakOn('Monday', '12:00', '15:00');
+    assert.equal(isItemAvailableAt(s, ist('2026-08-24T09:00:00')), true, 'morning is on');
+    assert.equal(isItemAvailableAt(s, ist('2026-08-24T11:59:00')), true, 'right up to the break');
+    assert.equal(isItemAvailableAt(s, ist('2026-08-24T12:00:00')), false, 'the break starts');
+    assert.equal(isItemAvailableAt(s, ist('2026-08-24T14:59:00')), false, 'still in the break');
+    assert.equal(isItemAvailableAt(s, ist('2026-08-24T15:00:00')), true, 'the break ends');
+    assert.equal(isItemAvailableAt(s, ist('2026-08-24T22:00:00')), true, 'evening is on');
+}
+
+{
+    // The same hours the old way round, to show the two are opposites and that
+    // the original meaning is untouched.
+    const on = only('Monday', '12:00', '15:00');
+    const off = breakOn('Monday', '12:00', '15:00');
+    for (const at of ['2026-08-24T09:00:00', '2026-08-24T13:00:00', '2026-08-24T18:00:00']) {
+        assert.notEqual(
+            isItemAvailableAt(on, ist(at)),
+            isItemAvailableAt(off, ist(at)),
+            `both modes agree at ${at}, so the mode is being ignored`
+        );
+    }
+}
+
+{
+    // A break running past midnight closes the tail of the following day.
+    const s = breakOn('Monday', '23:00', '02:00');
+    assert.equal(isItemAvailableAt(s, ist('2026-08-24T22:59:00')), true);
+    assert.equal(isItemAvailableAt(s, ist('2026-08-24T23:30:00')), false, 'break started');
+    assert.equal(isItemAvailableAt(s, ist('2026-08-25T01:30:00')), false, 'still shut after midnight');
+    assert.equal(isItemAvailableAt(s, ist('2026-08-25T02:30:00')), true, 'open again on Tuesday');
+}
+
+{
+    // A closure beats an overnight "available" window still running from
+    // yesterday: whoever typed the closure meant it.
+    const s = {
+        isEnabled: true,
+        timezone: 'Asia/Kolkata',
+        days: DAY_NAMES.map((d) => {
+            if (d === 'Monday') return { day: d, isAvailable: true, startTime: '22:00', endTime: '04:00', mode: 'available' };
+            if (d === 'Tuesday') return { day: d, isAvailable: true, startTime: '00:00', endTime: '06:00', mode: 'unavailable' };
+            return { day: d, isAvailable: false, startTime: '09:00', endTime: '22:00', mode: 'available' };
+        })
+    };
+    assert.equal(isItemAvailableAt(s, ist('2026-08-24T23:00:00')), true, 'Monday night window is open');
+    assert.equal(isItemAvailableAt(s, ist('2026-08-25T01:00:00')), false, "Tuesday's closure wins");
+}
+
+{
+    // A day switched off entirely is still off, whatever its mode says.
+    const s = breakOn('Monday', '12:00', '15:00');
+    s.days = s.days.map((d) => (d.day === 'Monday' ? { ...d, isAvailable: false } : d));
+    assert.equal(isItemAvailableAt(s, ist('2026-08-24T09:00:00')), false);
+    assert.equal(isItemAvailableAt(s, ist('2026-08-24T13:00:00')), false);
+}
+
+// The refusal message says which way the window reads, or it reads as a lie.
+assert.match(
+    describeTodaysWindow(breakOn('Monday', '12:00', '15:00'), ist('2026-08-24T13:00:00')),
+    /not available 12:00-15:00 on Monday/
+);
+
+// --- mode normalization ----------------------------------------------------
+assert.equal(normalizeWindowMode('unavailable'), WINDOW_MODES.UNAVAILABLE);
+assert.equal(normalizeWindowMode('UNAVAILABLE'), WINDOW_MODES.UNAVAILABLE);
+assert.equal(normalizeWindowMode('off'), WINDOW_MODES.UNAVAILABLE, 'the word a panel might send');
+assert.equal(normalizeWindowMode('break'), WINDOW_MODES.UNAVAILABLE);
+assert.equal(normalizeWindowMode('available'), WINDOW_MODES.AVAILABLE);
+// Anything unrecognised must read as 'available': that is what every schedule
+// stored before modes existed means, and guessing 'unavailable' from a typo
+// would hide an item its owner never closed.
+assert.equal(normalizeWindowMode(undefined), WINDOW_MODES.AVAILABLE);
+assert.equal(normalizeWindowMode(''), WINDOW_MODES.AVAILABLE);
+assert.equal(normalizeWindowMode('nonsense'), WINDOW_MODES.AVAILABLE);
+assert.equal(normalizeWindowMode(null), WINDOW_MODES.AVAILABLE);
+
+{
+    // It survives the round trip, and defaults on a day that omits it.
+    const n = normalizeAvailabilityScheduleInput({
+        isEnabled: true,
+        days: [
+            { day: 'Monday', startTime: '12:00', endTime: '15:00', mode: 'unavailable' },
+            { day: 'Tuesday', startTime: '08:00', endTime: '11:00' }
+        ]
+    });
+    assert.equal(n.days.find((d) => d.day === 'Monday').mode, 'unavailable');
+    assert.equal(n.days.find((d) => d.day === 'Tuesday').mode, 'available');
+    assert.equal(n.days.find((d) => d.day === 'Sunday').mode, 'available');
+}
+
+{
+    // A schedule whose days are all closures is not "every day off" -- those
+    // days are open either side of the break, and refusing to save it would be
+    // refusing the ordinary case this feature was added for.
+    const saved = normalizeAvailabilityScheduleInput({
+        isEnabled: true,
+        days: DAY_NAMES.map((d) => ({ day: d, startTime: '12:00', endTime: '15:00', mode: 'unavailable' }))
+    });
+    assert.equal(saved.isEnabled, true);
+    assert.equal(isItemAvailableAt(saved, ist('2026-08-24T09:00:00')), true);
+    assert.equal(isItemAvailableAt(saved, ist('2026-08-24T13:00:00')), false);
+}
 
 console.log('All item-availability checks passed.');

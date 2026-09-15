@@ -339,7 +339,20 @@ const foodSchema = new mongoose.Schema(
                             },
                             isAvailable: { type: Boolean, default: true },
                             startTime: { type: String, trim: true, default: '09:00' },
-                            endTime: { type: String, trim: true, default: '22:00' }
+                            endTime: { type: String, trim: true, default: '22:00' },
+                            /*
+                             * Which way the window reads: the hours the item is
+                             * ON, or the hours it is OFF (a kitchen break).
+                             *
+                             * Defaults to 'available', which is what every
+                             * schedule stored before this field existed means,
+                             * so nothing already saved changes behaviour.
+                             */
+                            mode: {
+                                type: String,
+                                enum: ['available', 'unavailable'],
+                                default: 'available'
+                            }
                         },
                         { _id: false }
                     )

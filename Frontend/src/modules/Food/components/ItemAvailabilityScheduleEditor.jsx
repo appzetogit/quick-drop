@@ -1,7 +1,15 @@
 import { useMemo } from "react"
 
 /**
- * Per-item serving windows, e.g. "breakfast 08:00-11:30".
+ * Per-item serving windows, in both directions:
+ *
+ *   "breakfast, 08:00-11:30"        -- the hours it is ON
+ *   "off between 12:00 and 15:00"   -- a kitchen break
+ *
+ * Both were needed and only the first existed, so a restaurant wanting a dish
+ * off over lunch typed those hours into the only control there was and got the
+ * exact opposite: the dish sold for those three hours and no others. Each day
+ * now says which way its window reads.
  *
  * Shared by the restaurant menu editor and the admin food editor so both panels
  * produce exactly the shape the server normalizes
@@ -38,6 +46,9 @@ export const buildScheduleState = (schedule) => {
         isAvailable: found ? found.isAvailable !== false : true,
         startTime: found?.startTime || DEFAULT_START,
         endTime: found?.endTime || DEFAULT_END,
+        // Anything the server has not sent a mode for was saved before modes
+        // existed, and means "available during" -- same as the server's default.
+        mode: found?.mode === "unavailable" ? "unavailable" : "available",
       }
     }),
   }
@@ -71,6 +82,10 @@ export default function ItemAvailabilityScheduleEditor({ value, onChange, disabl
         isAvailable: monday.isAvailable,
         startTime: monday.startTime,
         endTime: monday.endTime,
+        // The mode copies with the hours. Copying 12:00-15:00 without it would
+        // turn a break into a serving window on the other six days, which is
+        // the exact confusion the mode exists to end.
+        mode: monday.mode,
       })),
     })
   }
@@ -81,9 +96,11 @@ export default function ItemAvailabilityScheduleEditor({ value, onChange, disabl
     <div className="rounded-lg border border-gray-200 p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-medium text-gray-900">Limit when this item is available</p>
+          <p className="font-medium text-gray-900">Set hours for this item</p>
           <p className="mt-0.5 text-sm text-gray-500">
-            Off means the item can be ordered whenever the outlet is open.
+            Off means the item can be ordered whenever the outlet is open. On, each
+            day can either be sold <em>only</em> during its hours, or sold all day{" "}
+            <em>except</em> during them.
           </p>
         </div>
         <label className="inline-flex shrink-0 cursor-pointer items-center gap-2">
@@ -129,7 +146,16 @@ export default function ItemAvailabilityScheduleEditor({ value, onChange, disabl
               </label>
 
               {d.isAvailable ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={d.mode}
+                    disabled={disabled}
+                    onChange={(e) => setDay(d.day, { mode: e.target.value })}
+                    className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+                  >
+                    <option value="available">Available only</option>
+                    <option value="unavailable">Off between</option>
+                  </select>
                   <input
                     type="time"
                     value={d.startTime}
@@ -148,6 +174,11 @@ export default function ItemAvailabilityScheduleEditor({ value, onChange, disabl
                   {d.startTime >= d.endTime && (
                     <span className="text-xs text-amber-600">runs past midnight</span>
                   )}
+                  <span className="w-full text-xs text-gray-500 sm:w-auto">
+                    {d.mode === "unavailable"
+                      ? `Sold all day except ${d.startTime}–${d.endTime}`
+                      : `Sold only ${d.startTime}–${d.endTime}`}
+                  </span>
                 </div>
               ) : (
                 <span className="text-sm text-gray-400">Not available</span>
