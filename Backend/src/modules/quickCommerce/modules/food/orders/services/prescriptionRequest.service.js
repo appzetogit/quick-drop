@@ -129,6 +129,23 @@ export async function listNearbyPharmacies(userId, { lat, lng } = {}) {
                 totalRatings: Number(seller.totalRatings) || 0,
                 isAcceptingOrders: seller.isAcceptingOrders !== false,
                 estimatedDeliveryTimeMinutes: seller.estimatedDeliveryTimeMinutes ?? null,
+                /*
+                 * Enough for the customer to decide, without a second call.
+                 *
+                 * `isOpenNow` is the platform's own verdict rather than
+                 * something the app works out from the two times below: it
+                 * accounts for the day, the outlet's override and the shop's
+                 * switch, and a screen that computed it from opening/closing
+                 * alone would eventually disagree with the server that refuses
+                 * the order. The times are for showing, not for deciding.
+                 */
+                openingTime: seller.openingTime || '',
+                closingTime: seller.closingTime || '',
+                openDays: Array.isArray(seller.openDays) ? seller.openDays : [],
+                isOpenNow: isOpenNow(now)(seller),
+                address: seller.location?.formattedAddress
+                    || seller.location?.address
+                    || [seller.location?.area, seller.location?.city].filter(Boolean).join(', '),
             };
         }),
     };

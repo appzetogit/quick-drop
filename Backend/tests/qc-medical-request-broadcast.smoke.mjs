@@ -418,6 +418,19 @@ await check('the pharmacy list a customer browses is the same set a broadcast re
     );
 });
 
+await check('each listed pharmacy carries what the customer needs to choose', async () => {
+    const listed = await requests.listNearbyPharmacies(String(userId), HERE);
+    const shop = listed.pharmacies[0];
+    // The detail screen is built from this row, so what it needs has to be here
+    // -- a second call per pharmacy to show opening hours would be a request per
+    // row on a list that already knows the answer.
+    assert.equal(typeof shop.openingTime, 'string');
+    assert.equal(typeof shop.closingTime, 'string');
+    assert.ok(Array.isArray(shop.openDays));
+    assert.equal(shop.isOpenNow, true, 'a shop in the list is one that can take the order');
+    assert.equal(typeof shop.address, 'string');
+});
+
 await check('without a location the customer is asked for one, not shown everything', async () => {
     await assert.rejects(
         () => requests.listNearbyPharmacies(String(userId), {}),
