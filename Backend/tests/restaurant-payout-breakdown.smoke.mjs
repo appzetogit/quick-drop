@@ -90,12 +90,12 @@ console.log('\nthe same Rs 100, prices INCLUDE GST');
     const order = orderFrom({ itemAmount: 100, packagingFee: 5, gstRate: 5, pricesIncludeGst: true });
     const b = buildRestaurantPayoutBreakdown(order);
     check('sub total is still the Rs 100 the customer was charged', () => assert.equal(b.subTotal, 100));
-    check('the GST is Rs 5 -- 5% of the Rs 100 listed, taken off it', () =>
-        assert.equal(b.gstOnFood, 5));
-    check('taxable food value is the Rs 95 left', () => assert.equal(b.taxableFoodValue, 95));
-    check('commission is 10% of that, Rs 9.50 -- never a cut of the tax', () =>
-        assert.equal(b.commissionAmount, 9.5));
-    check('PAY TO YOU is Rs 90.50', () => assert.equal(b.payout, 90.5));
+    check('the GST inside it is Rs 4.76, not Rs 5 (100 - 100/1.05, not 5% of 100)', () =>
+        assert.equal(b.gstOnFood, 4.76));
+    check('taxable food value is Rs 95.24', () => assert.equal(b.taxableFoodValue, 95.24));
+    check('commission is 10% of that, Rs 9.52 -- never a cut of the tax', () =>
+        assert.equal(b.commissionAmount, 9.52));
+    check('PAY TO YOU is Rs 90.72', () => assert.equal(b.payout, 90.72));
     check('  and that is exactly what the ledger credits', () => assert.equal(b.payout, ledgerPayout(order)));
     check('the customer paid the same Rs 100 either way', () =>
         assert.equal(order.pricing.subtotal, 100));

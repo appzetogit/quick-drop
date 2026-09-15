@@ -41,12 +41,10 @@
  * settled separately in the payout ledger; and never the tax, which is
  * collected for the government.
  *
- * INCLUSIVE PRICES ARE THE SAME RATE, TAKEN OUT INSTEAD OF ADDED ON. The tax
- * is the rate applied to the listed price -- 5% of 200 is 10 either way -- and
- * the flag decides only who it comes from: an inclusive restaurant earns 190 of
- * its own 200, an exclusive one earns 200 and the customer pays 210. The one
- * place this is done is deTax(), and its comment records why the platform
- * subtracts rather than dividing.
+ * INCLUSIVE PRICES ARE A DIFFERENT SUM. Adding a tax and extracting one do not
+ * give the same figure: 200 x 0.05 is 10, but 200 - 200/1.05 is 9.52. Using
+ * the first for an inclusive price overstates the tax and understates what the
+ * restaurant earns, on every single dish.
  */
 
 const round2 = (value) => {
@@ -101,9 +99,9 @@ export function computeBill({
      *
      * Off by default, which is what every restaurant did before this existed:
      * the stored price is net and tax is added on top, so a Rs 200 dish costs
-     * the customer Rs 210. On, the Rs 200 is the whole price and the tax comes
-     * out of it -- Rs 190 of food and Rs 10 of tax -- so the customer still
-     * pays Rs 200.
+     * the customer Rs 210. On, the Rs 200 is the whole price and the tax is
+     * extracted from inside it -- Rs 190.48 of food and Rs 9.52 of tax -- so
+     * the customer still pays Rs 200.
      */
     pricesIncludeGst = false,
     /*
@@ -144,23 +142,7 @@ export function computeBill({
     );
 
     const gstFraction = rate(gstRate) / 100;
-    /*
-     * Taking the tax out of a price that includes it.
-     *
-     * The platform's rule, set deliberately by its owner: the tax is the RATE
-     * APPLIED TO THE INCLUSIVE PRICE, and what is left is the taxable value.
-     * Rs 161 at 5% is Rs 8.05 of tax and Rs 152.95 of food.
-     *
-     * This is not the statutory extraction, which divides by (1 + rate) and
-     * would give Rs 7.67 and Rs 153.33 -- the figure that reconciles, since
-     * 5% of 153.33 is exactly 7.67 while 5% of 152.95 is 7.65, not the 8.05
-     * deducted. The difference is about 38 paise per Rs 161 of inclusive food:
-     * slightly more tax declared than is due on the value shown, and slightly
-     * less paid to the restaurant, whose commission is charged on that value.
-     *
-     * Kept in one place so the decision can be reversed by editing one line.
-     */
-    const deTax = (gross) => round2(gross - gross * gstFraction);
+    const deTax = (gross) => round2(gross / (1 + gstFraction));
     const packagingIsInclusive = pricesIncludeGst && packagingBelongsToRestaurant;
 
     /*

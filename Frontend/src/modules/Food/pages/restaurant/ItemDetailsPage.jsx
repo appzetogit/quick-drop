@@ -582,11 +582,11 @@ export default function ItemDetailsPage() {
      * customer pays for the dish.
      *
      * Inclusive: the typed price is the whole price and the tax comes out of
-     * it -- 5% of 200 is 10, so the restaurant earns 190 and the customer still
-     * pays 200. Exclusive: the typed price is net, the same 10 is added on top,
-     * and the customer pays 210. Commission is charged on the net either way,
-     * because tax collected for the government was never the restaurant's money
-     * to take a cut of.
+     * it -- 5% inside 200 is 9.52, not 10 -- so the restaurant earns 190.48 and
+     * the customer still pays 200. Exclusive: the typed price is net, the tax
+     * is added on top, and the customer pays 210. Commission is charged on the
+     * net either way, because tax collected for the government was never the
+     * restaurant's money to take a cut of.
      */
     const gstFraction = Math.max(0, Number(taxSettings.gstRate) || 0) / 100
     // The dish's own answer wins; "inherit" falls back to the restaurant's.
@@ -595,10 +595,8 @@ export default function ItemDetailsPage() {
       : gstMode === "exclusive"
         ? false
         : taxSettings.priceIncludesGst === true
-    // The rate applied to the listed price, deducted when the price includes
-    // it and added when it does not -- deTax() in the backend's billing.js.
-    const gstAmount = round2(price * gstFraction)
-    const netPrice = includesGst ? round2(price - gstAmount) : price
+    const netPrice = includesGst ? price / (1 + gstFraction) : price
+    const gstAmount = includesGst ? price - netPrice : price * gstFraction
     const customerPays = round2(netPrice + gstAmount)
 
     const commissionAmount =

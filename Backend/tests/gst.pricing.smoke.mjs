@@ -12,10 +12,9 @@
  *   - every line printed adds up to the total charged;
  *   - the food and its packaging are taxed; the delivery fee, the surge and the
  *     tip are the rider's money and are not;
- *   - a GST-inclusive restaurant has its tax TAKEN OUT OF the listed price
- *     rather than added to it: the platform's rule, set by its owner, is the
- *     rate applied to the listed price and deducted -- 5% of 200 is 10, so the
- *     restaurant is left with 190 and the customer still pays 200;
+ *   - a GST-inclusive restaurant has its tax EXTRACTED from the listed price
+ *     rather than added to it -- 5% of 200 is 10, but the 5% inside 200 is
+ *     9.52, and the wrong one of those overstates tax on every dish;
  *   - commission is charged on the listed food net of that tax, and never on
  *     the packaging or the rider's money;
  *   - the payout ledger credits the restaurant only what it actually earned,
@@ -147,18 +146,17 @@ try {
   check("exclusive: tax added on top", e.bill.netItemAmount === 200 && e.bill.gstOnItems === 10,
     `${e.bill.netItemAmount} + ${e.bill.gstOnItems}`);
   check("inclusive: tax taken out of the price",
-    i.bill.netItemAmount === 190 && i.bill.gstOnItems === 10,
+    i.bill.netItemAmount === 190.48 && i.bill.gstOnItems === 9.52,
     `${i.bill.netItemAmount} + ${i.bill.gstOnItems}`);
   check("inclusive: net + tax is the listed 200", near(i.bill.netItemAmount + i.bill.gstOnItems, 200));
-  check("the tax is the rate on the listed price, deducted, not divided out",
-    i.bill.gstOnItems === 10, `${i.bill.gstOnItems}`);
+  check("extraction is not 5% of the gross", i.bill.gstOnItems !== e.bill.gstOnItems, "9.52 vs 10");
   check("the inclusive customer pays the tax less",
     e.bill.grandTotal - i.bill.grandTotal === 10, `${e.bill.grandTotal} - ${i.bill.grandTotal}`);
   check("both bills reconcile", billAddsUp(e.bill) && billAddsUp(i.bill));
   check("subtotal keeps its old meaning for both", e.subtotal === 200 && i.subtotal === 200);
   check("commission base: the listed food when exclusive", e.commissionableAmount === 200,
     `${e.commissionableAmount}`);
-  check("commission base: the net when inclusive", i.commissionableAmount === 190,
+  check("commission base: the net when inclusive", i.commissionableAmount === 190.48,
     `${i.commissionableAmount}`);
 
   // =====================================================================
@@ -177,12 +175,12 @@ try {
   check("food and packaging are one supply: 5% of 220", ep.bill.gstOnItems === 11,
     `${ep.bill.gstOnItems}`);
   check("an inclusive restaurant's packaging is inclusive too",
-    ip.bill.netPackagingFee === 19.95, `${ip.bill.netPackagingFee} out of 21`);
+    ip.bill.netPackagingFee === 20, `${ip.bill.netPackagingFee} out of 21`);
   check("the inclusive customer pays exactly what was listed",
     near(ip.bill.netItemAmount + ip.bill.netPackagingFee + ip.bill.gstOnItems, 221),
     "200 + 21");
   check("commission is NOT charged on the packaging",
-    ep.commissionableAmount === 200 && ip.commissionableAmount === 190,
+    ep.commissionableAmount === 200 && ip.commissionableAmount === 190.48,
     `${ep.commissionableAmount} / ${ip.commissionableAmount}`);
   check("both packaging bills reconcile", billAddsUp(ep.bill) && billAddsUp(ip.bill));
 
@@ -193,8 +191,8 @@ try {
   console.log("");
   check("an admin-set charge is not the restaurant's to call inclusive",
     ap.bill.netPackagingFee === 21, `${ap.bill.netPackagingFee}`);
-  check("so the tax comes out of the food and is added to the packaging",
-    near(ap.bill.gstOnItems, 10 + 1.05), `${ap.bill.gstOnItems}`);
+  check("so the tax is extracted from the food and added to the packaging",
+    near(ap.bill.gstOnItems, 9.52 + 1.05), `${ap.bill.gstOnItems}`);
   check("a bill that mixes the two still reconciles", billAddsUp(ap.bill));
 
   // =====================================================================
@@ -213,16 +211,16 @@ try {
   check("the bill survives the save", sp.bill?.grandTotal === ip2.bill.grandTotal,
     `grandTotal ${sp.bill?.grandTotal}`);
   check("the stored bill still reconciles", billAddsUp(sp.bill || {}));
-  check("the commission base survives the save", sp.commissionableAmount === 190,
+  check("the commission base survives the save", sp.commissionableAmount === 190.48,
     `${sp.commissionableAmount}`);
   check("pricesIncludeGst survives the save", sp.pricesIncludeGst === true);
   check("packagingMode survives the save", sp.packagingMode === "RESTAURANT", `${sp.packagingMode}`);
   check("the printed net lines survive the save",
-    sp.netItemAmount === 190 && sp.netPackagingFee === 19.95,
+    sp.netItemAmount === 190.48 && sp.netPackagingFee === 20,
     `${sp.netItemAmount} / ${sp.netPackagingFee}`);
 
   const snap = await getRestaurantCommissionSnapshot({ restaurantId: incPack.r._id, pricing: sp });
-  check("commission is charged on the net, not the gross", near(snap.baseAmount, 190),
+  check("commission is charged on the net, not the gross", near(snap.baseAmount, 190.48),
     `base ${snap.baseAmount}`);
 
   // =====================================================================
@@ -230,17 +228,17 @@ try {
   const txn = await createInitialTransaction(back);
   console.log("    restaurant share   :", txn?.amounts?.restaurantShare);
   check("the restaurant is credited the net food plus its own packaging",
-    near(txn?.amounts?.restaurantShare, 190 + 19.95), `${txn?.amounts?.restaurantShare}`);
+    near(txn?.amounts?.restaurantShare, 190.48 + 20), `${txn?.amounts?.restaurantShare}`);
 
   const adminPacked = await saveAndReload(incPack.r, ip2, { packagingMode: "ADMIN" });
   const adminTxn = await createInitialTransaction(adminPacked);
   console.log("    with ADMIN packing :", adminTxn?.amounts?.restaurantShare);
   check("a platform-kept packaging charge is not credited to the restaurant",
-    near(adminTxn?.amounts?.restaurantShare, 190), `${adminTxn?.amounts?.restaurantShare}`);
+    near(adminTxn?.amounts?.restaurantShare, 190.48), `${adminTxn?.amounts?.restaurantShare}`);
   console.log("    platform profit    :", txn?.amounts?.platformNetProfit,
     " (admin packing:", adminTxn?.amounts?.platformNetProfit, ")");
   check("the platform keeps the packaging only in admin mode",
-    near(adminTxn?.amounts?.platformNetProfit - txn?.amounts?.platformNetProfit, 19.95),
+    near(adminTxn?.amounts?.platformNetProfit - txn?.amounts?.platformNetProfit, 20),
     `${adminTxn?.amounts?.platformNetProfit} vs ${txn?.amounts?.platformNetProfit}`);
   // Every rupee the customer paid is credited to somebody: the restaurant, the
   // rider, the platform, or the government. A split that does not add back up

@@ -113,7 +113,7 @@ export const getRestaurantCommissionRateController = async (req, res, next) => {
  *
  * Returned together with the platform's GST rate because the setting is
  * meaningless without it: a restaurant deciding whether its Rs 200 is inclusive
- * needs to see the Rs 190 and Rs 10 that decision produces. The rate is
+ * needs to see the Rs 190.48 and Rs 9.52 that decision produces. The rate is
  * the admin's to set; only the flag is the restaurant's.
  */
 export const getRestaurantTaxSettingsController = async (req, res, next) => {

@@ -18,18 +18,14 @@ const money = (n) =>
  * What a menu price of Rs 200 means under each setting.
  *
  * The same two sums the bill uses, so what the restaurant is shown here is what
- * the customer will actually be charged. The tax is the rate applied to the
- * menu price either way -- 5% of 200 is 10; what the setting decides is whether
- * that 10 comes out of the 200 or is added on top of it.
- *
- * Kept in step with deTax() in Backend/src/modules/food/shared/billing.js, which
- * is where the rule is written down. A preview that disagrees with the bill is
- * worse than no preview.
+ * the customer will actually be charged. Exclusive adds the tax on top;
+ * inclusive takes it out of the price, which is not the same figure -- 5% of
+ * 200 is 10, but the 5% inside 200 is 9.52.
  */
 const previewFor = (price, rate, inclusive) => {
   const fraction = Math.max(0, Number(rate) || 0) / 100
-  const tax = price * fraction
-  const net = inclusive ? price - tax : price
+  const net = inclusive ? price / (1 + fraction) : price
+  const tax = inclusive ? price - net : price * fraction
   return {
     net: Math.round(net * 100) / 100,
     tax: Math.round(tax * 100) / 100,
