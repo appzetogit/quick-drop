@@ -1,3 +1,16 @@
+/*
+ * FIRST, before anything else is evaluated.
+ *
+ * ES modules run in the order they are imported, so this one checks the source
+ * tree before a single other module -- or anything injected into one -- has a
+ * chance to execute. A check written as a statement further down would run
+ * after every import above it had already done its work.
+ *
+ * It exits the process on a finding. See scripts/sourceIntegrity.mjs for what
+ * it looks for and why this project needs it.
+ */
+import './scripts/sourceIntegrity.mjs';
+
 import './src/config/env.js';
 import http from 'http';
 import crypto from 'crypto';

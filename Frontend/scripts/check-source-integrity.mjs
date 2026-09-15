@@ -13,13 +13,18 @@
  *     code lives in node_modules and dist, which are not scanned.
  *  2. A long run of trailing whitespace, which is how the payload is pushed
  *     out of sight in an editor.
+ *  3. A file that is not source at all, but opens with a wall of whitespace
+ *     and then code. The same payload was later committed to the seller app as
+ *     `public/fonts/fa-solid-500.woff2` -- a name that reads as an asset and is
+ *     not one -- with an editor task added to run it. This guard would have
+ *     walked straight past that, because it only looked at source extensions.
  *
  * This is a tripwire, not a scanner: it catches this family cheaply and says
  * plainly what to do. It cannot prove a tree is clean.
  *
  *   node scripts/check-source-integrity.mjs
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -31,6 +36,18 @@ const MAX_LINE = 5000;
 const MAX_TRAILING_WHITESPACE = 40;
 const SCAN_EXTENSIONS = /\.(m?[jt]sx?|c?[jt]s|json|html)$/;
 const SKIP_DIRECTORIES = new Set(['node_modules', 'dist', '.git', 'build', 'coverage']);
+
+/** How much of a non-source file to look at. The disguise is at the front. */
+const ASSET_PROBE_BYTES = 4096;
+/** A real font, image or archive does not open with hundreds of spaces. */
+const ASSET_WHITESPACE_RUN = 200;
+
+const looksLikeCode = (text) => (
+    /\brequire\s*\(/.test(text)
+    || /\bglobal\s*[.[]/.test(text)
+    || /\bprocess\s*\.\s*env\b/.test(text)
+    || /\bconst\s+_0x[0-9a-f]+\s*=/i.test(text)
+);
 
 const findings = [];
 
@@ -61,6 +78,39 @@ const scanFile = (path) => {
     });
 };
 
+/**
+ * A file pretending to be an asset.
+ *
+ * Only the first few kilobytes, and only files that are NOT source: a genuine
+ * font or image begins with its own magic bytes, never with a paragraph of
+ * spaces followed by `require(`.
+ */
+const scanAsset = (path) => {
+    let fd;
+    try {
+        fd = openSync(path, 'r');
+    } catch {
+        return;
+    }
+    try {
+        const buffer = Buffer.alloc(ASSET_PROBE_BYTES);
+        const read = readSync(fd, buffer, 0, ASSET_PROBE_BYTES, 0);
+        if (read <= 0) return;
+        const head = buffer.toString('utf8', 0, read);
+        const leading = head.length - head.replace(/^\s+/, '').length;
+        if (leading < ASSET_WHITESPACE_RUN || !looksLikeCode(head)) return;
+        const shown = relative(root, path).split(sep).join('/');
+        findings.push(
+            `${shown} \u2014 not the file it claims to be: ${leading} characters of `
+            + 'whitespace, then code',
+        );
+    } catch {
+        // Unreadable is not evidence of anything.
+    } finally {
+        closeSync(fd);
+    }
+};
+
 const walk = (dir) => {
     for (const entry of readdirSync(dir)) {
         if (SKIP_DIRECTORIES.has(entry)) continue;
@@ -73,6 +123,7 @@ const walk = (dir) => {
         }
         if (info.isDirectory()) walk(full);
         else if (SCAN_EXTENSIONS.test(entry)) scanFile(full);
+        else scanAsset(full);
     }
 };
 
