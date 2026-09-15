@@ -126,6 +126,52 @@ try {
     Number(appFar.deliveryFeeBreakdown?.distanceKm) > 3,
     `${appFar.deliveryFeeBreakdown?.distanceKm} km`);
 
+  console.log("\n  ===== the distance the cart shows the customer =====");
+  /*
+   * Its own field on the pricing, because the cart prints it beside the
+   * delivery fee. Digging it out of deliveryFeeBreakdown would have worked
+   * only while the fee came from a distance slab -- a flat-fee platform or a
+   * free-delivery order carries no breakdown, and a figure that appears and
+   * disappears with the pricing rule is worse than none.
+   */
+  check("the pricing carries the distance in its own right",
+    Number(appFar.distanceKm) > 3 && Number(appNear.distanceKm) < 3,
+    `near ${appNear.distanceKm}, far ${appFar.distanceKm}`);
+  check("  and it agrees with the figure the fee was computed from",
+    Number(appFar.distanceKm) === Number(appFar.deliveryFeeBreakdown?.distanceKm),
+    `${appFar.distanceKm} vs ${appFar.deliveryFeeBreakdown?.distanceKm}`);
+  check("  rounded to something a person would read",
+    /^\d+(\.\d{1,2})?$/.test(String(appFar.distanceKm)),
+    `${appFar.distanceKm}`);
+
+  /*
+   * A restaurant with no saved coordinates cannot be measured from. The cart
+   * must show nothing there rather than "0 km", which is a real answer meaning
+   * the customer is standing in the restaurant.
+   *
+   * An address without coordinates does NOT reach this: the pricing falls back
+   * to the customer's saved address, which has them. That fallback is checked
+   * above; this is the case that genuinely cannot be measured.
+   */
+  const unplaced = await FoodRestaurant.create({
+    restaurantName: "No Coordinates", ownerName: "Owner", status: "approved",
+  });
+  const unplacedDish = await FoodItem.create({
+    restaurantId: unplaced._id, categoryId: new mongoose.Types.ObjectId(),
+    categoryName: "T", name: "dish", price: 200, basePrice: 200, discountPercent: 0,
+    variantsEnabled: false, variants: [], foodType: "Veg", isAvailable: true,
+    approvalStatus: "approved",
+  });
+  const unmeasured = await pricing.calculateOrderPricing(String(user._id), {
+    restaurantId: String(unplaced._id),
+    items: [{ itemId: String(unplacedDish._id), quantity: 1 }],
+    orderType: "delivery", paymentMethod: "cod",
+    deliveryAddressId: nearId,
+  });
+  check("an unmeasurable trip reports null, not zero",
+    unmeasured.pricing.distanceKm === null,
+    `${unmeasured.pricing.distanceKm}`);
+
   console.log("\n  ===== the quote must match the charge =====");
   // What POST /food/orders does: re-price with the full address the app sends
   // in toOrderPayload. If the two disagree, the customer is charged something

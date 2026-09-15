@@ -765,6 +765,21 @@ export async function calculateOrderPricing(userId, dto) {
       packagingFee,
       deliveryFee,
       deliveryFeeBreakdown,
+      /*
+       * How far the rider actually goes, road distance, restaurant to door.
+       *
+       * Its own field rather than dug out of deliveryFeeBreakdown: that object
+       * only carries a distance when the fee came from a distance slab, so a
+       * flat-fee platform or a free-delivery order had none, and the cart
+       * cannot show a figure that appears and disappears with the pricing rule.
+       *
+       * Null, never 0, when it could not be measured -- one of the two
+       * addresses has no coordinates. Zero is a real answer (the customer is at
+       * the restaurant) and must not be how "unknown" is spelled.
+       */
+      distanceKm: measuredDistanceKm == null
+        ? null
+        : Math.round(Number(measuredDistanceKm) * 100) / 100,
       adminDeliveryCommissionEnabled,
       adminDeliveryCommissionPercent,
       adminDeliveryCommissionAmount,
