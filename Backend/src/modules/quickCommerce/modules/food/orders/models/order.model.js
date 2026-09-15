@@ -407,6 +407,23 @@ const orderSchema = new mongoose.Schema(
                 declinedAt: { type: Date, default: null },
                 declineReason: { type: String, trim: true, default: '' },
             },
+            /**
+             * The sealed packet, photographed by the pharmacy as it hands the
+             * order to the delivery partner.
+             *
+             * Not the same as the photo the partner takes at pickup. That one
+             * says what the partner received; this says what the pharmacy
+             * packed, and the gap between them is the only evidence either
+             * side has when a customer says something was missing.
+             *
+             * Recorded at dispatch, which is refused until the customer has
+             * paid -- see dispatchPrescriptionOrder.
+             */
+            packet: {
+                imageUrl: { type: String, trim: true, default: '' },
+                dispatchedAt: { type: Date, default: null },
+                dispatchedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
+            },
         },
         orderStatus: {
             type: String,

@@ -21,6 +21,7 @@ import { normalizeDeliveryAddress } from '../../shared/geo.utils.js';
 import { findZoneForPoint, readAddressPoint } from '../../shared/zoneServiceability.js';
 import { buildOrderPrescription, PRESCRIPTION_STATUS } from '../../shared/prescriptionRules.js';
 import {
+    assertBillApproved,
     assertFillable,
     assertSellerDispensesMedicine,
     BILL_STATUS,
@@ -459,6 +460,80 @@ export async function submitPrescriptionBill(orderId, restaurantId, dto = {}) {
  * pharmacy is not left preparing an order nobody paid for. Cash on delivery has
  * no such moment, so there the approval is the agreement.
  */
+
+/**
+ * The pharmacy hands the packet to the delivery partner.
+ *
+ * Requires a photograph of the sealed packet. That photo is the only record
+ * of what actually left the shop: the partner takes their own at pickup, and
+ * when a customer says something was missing, the pair of them is the whole
+ * evidence either side has.
+ *
+ * Refused until the customer has paid. Sending stock out against an amount
+ * nobody authorised is the one thing this flow must not allow.
+ */
+export async function dispatchPrescriptionOrder(orderId, restaurantId, dto = {}) {
+    const identity = buildOrderIdentityFilter(orderId);
+    if (!identity) throw new ValidationError('Order id required');
+
+    const order = await FoodOrder.findOne({
+        ...identity,
+        restaurantId: new mongoose.Types.ObjectId(restaurantId),
+    });
+    if (!order) throw new NotFoundError('Order not found');
+
+    if (order.prescriptionOnly !== true) {
+        throw new ValidationError('This is not a prescription order.');
+    }
+
+    // Same rule every other forward transition uses, so the refusal reads
+    // identically wherever the pharmacist runs into it.
+    assertBillApproved(order, 'dispatched');
+
+    const imageUrl = String(dto.packetImageUrl || dto.imageUrl || '').trim();
+    if (!imageUrl) {
+        throw new ValidationError('Photograph the sealed packet before dispatching.');
+    }
+
+    // Idempotent: a pharmacist who taps twice, or retries on a dropped
+    // connection, must not overwrite the first photo with a second one taken
+    // minutes later.
+    if (order.prescription?.packet?.imageUrl) {
+        return order;
+    }
+
+    order.prescription.packet = {
+        imageUrl,
+        dispatchedAt: new Date(),
+        dispatchedBy: new mongoose.Types.ObjectId(restaurantId),
+    };
+
+    // Only advance a status that has not already moved past this point: a
+    // partner who has already collected must not be walked backwards.
+    if (order.orderStatus === 'confirmed' || order.orderStatus === 'preparing') {
+        order.orderStatus = 'ready_for_pickup';
+    }
+
+    await order.save();
+
+    try {
+        const io = getIO();
+        if (io) {
+            io.to(rooms.order(String(order._id))).emit('order:prescription-dispatched', {
+                orderId: String(order._id),
+                packetImageUrl: imageUrl,
+                orderStatus: order.orderStatus,
+            });
+        }
+    } catch (err) {
+        // The packet is photographed and saved; a socket that is down must
+        // not undo that.
+        logger.warn(`[Prescription] dispatch broadcast failed: ${err.message}`);
+    }
+
+    return order;
+}
+
 export async function approvePrescriptionBill(orderId, userId, dto = {}) {
     const identity = buildOrderIdentityFilter(orderId);
     if (!identity) throw new ValidationError('Order id required');

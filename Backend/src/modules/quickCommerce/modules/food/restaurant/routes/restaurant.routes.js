@@ -74,7 +74,7 @@ import {
     uploadBulkMenuController
 } from '../controllers/bulkUpload.controller.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
-import { fillPrescriptionOrderController, submitPrescriptionBillController } from '../../orders/controllers/prescriptionOrder.controller.js';
+import { fillPrescriptionOrderController, submitPrescriptionBillController, dispatchPrescriptionOrderController } from '../../orders/controllers/prescriptionOrder.controller.js';
 import {
     claimPrescriptionRequestController,
     declinePrescriptionRequestController,
@@ -315,6 +315,9 @@ router.patch('/orders/:orderId/fill', authMiddleware, requireRestaurant, fillPre
 // pay, so it is the pharmacist's last chance to change the amount: once the
 // customer approves it, re-billing is refused.
 router.patch('/orders/:orderId/prescription-bill', authMiddleware, requireRestaurant, submitPrescriptionBillController);
+// The sealed packet, photographed as it is handed over. Refused until the
+// customer has paid the bill above.
+router.patch('/orders/:orderId/prescription-dispatch', authMiddleware, requireRestaurant, dispatchPrescriptionOrderController);
 router.post('/orders/:orderId/resend-notification', authMiddleware, requireRestaurant, orderController.resendDeliveryNotificationRestaurantController);
 
 /*

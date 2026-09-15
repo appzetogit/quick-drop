@@ -5,6 +5,7 @@ import {
     declinePrescriptionBill,
     fillPrescriptionOrder,
     submitPrescriptionBill,
+    dispatchPrescriptionOrder,
 } from '../services/prescriptionOrder.service.js';
 
 /** Customer: place an order from a photographed prescription. */
@@ -74,6 +75,20 @@ export async function declinePrescriptionBillController(req, res, next) {
             req.body || {},
         );
         return sendResponse(res, 200, 'Bill declined and order cancelled', { order });
+    } catch (err) {
+        next(err);
+    }
+}
+
+/** Pharmacy: photograph the sealed packet and hand it to the partner. */
+export async function dispatchPrescriptionOrderController(req, res, next) {
+    try {
+        const order = await dispatchPrescriptionOrder(
+            req.params.orderId,
+            req.user?.restaurantId || req.user?.userId,
+            req.body || {},
+        );
+        return sendResponse(res, 200, 'Packet recorded and ready for pickup', { order });
     } catch (err) {
         next(err);
     }
