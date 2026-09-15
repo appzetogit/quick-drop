@@ -486,6 +486,10 @@ router.get(
     getUserCartPricingAdminController
 );
 router.get('/orders/:orderId', orderController.getOrderByIdAdminController);
+// What the admin panel actually calls for both Accept and Reject. The two
+// routes below take the same action by a different name and are kept for
+// anything already pointed at them.
+router.patch('/orders/:orderId/status', orderController.updateOrderStatusAdminController);
 router.patch('/orders/:orderId/accept', orderController.acceptOrderAdminController);
 router.patch('/orders/:orderId/reject', orderController.rejectOrderAdminController);
 router.patch(

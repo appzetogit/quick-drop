@@ -2672,6 +2672,21 @@ export async function updateOrderStatusAdmin(orderId, orderStatus, note = "", ad
     if (!Object.prototype.hasOwnProperty.call(STATUS_PRIORITY, String(orderStatus))) {
         throw new ValidationError(`Invalid order status: ${orderStatus}`);
     }
+
+    /*
+     * A medical order passes the same three gates for support as it does for
+     * the pharmacy, and for the same reason: the pharmacist has to have read
+     * the prescription, the order has to have been priced, and the customer
+     * has to have agreed to the bill. Support accepting around all three would
+     * commit a customer to medicine nobody checked and a total nobody quoted.
+     *
+     * Only acceptance is gated. Cancelling stays available from any state, so
+     * an order stuck on an unreadable prescription is never stuck for good.
+     */
+    const target = String(orderStatus || "").toLowerCase();
+    assertCanAcceptOrder(order, target);
+    assertPrescriptionOrderPriced(order, target);
+    assertBillApproved(order, target);
     if (!isStatusAdvance(order.orderStatus, orderStatus)) {
         throw new ValidationError(
             `Cannot change order status from '${order.orderStatus}' to '${orderStatus}'`,

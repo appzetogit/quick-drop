@@ -444,6 +444,30 @@ export async function resendDeliveryNotificationAdminController(req, res, next) 
     }
 }
 
+/**
+ * Support moving an order along, by status.
+ *
+ * The panel's Accept and Reject buttons both come here -- they PATCH
+ * `/orders/:id/status` with the status they want, the same call the food
+ * module has always had. This fork only had `/accept` and `/reject`, which no
+ * panel calls, so every Accept on a quick-commerce or medical order answered
+ * 404 and the screen said "Failed to accept order".
+ */
+export async function updateOrderStatusAdminController(req, res, next) {
+    try {
+        const dto = validateOrderStatusDto(req.body);
+        const order = await orderService.updateOrderStatusAdmin(
+            req.params.orderId,
+            dto.orderStatus,
+            dto.note,
+            req.user?.userId,
+        );
+        return sendResponse(res, 200, 'Order status updated', { order });
+    } catch (err) {
+        next(err);
+    }
+}
+
 export async function acceptOrderAdminController(req, res, next) {
     try {
         const adminId = req.user?.userId;
