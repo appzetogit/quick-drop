@@ -1,5 +1,4 @@
 import { Server } from 'socket.io';
-import { config } from './env.js';
 import { logger } from '../utils/logger.js';
 import { verifyAccessToken } from '../core/auth/token.util.js';
 import { getFirebaseDB } from './firebase.js';
@@ -108,21 +107,30 @@ export const initSocket = async (rootIo) => {
         }
     });
 
-    if (config.redisEnabled && config.redisUrl) {
-        try {
-            const { createAdapter } = await import('@socket.io/redis-adapter');
-            const { createClient } = await import('redis');
-            const pubClient = createClient({ url: config.redisUrl });
-            const subClient = pubClient.duplicate();
-            pubClient.on('error', (err) => logger.error(`Socket.IO Redis pub client: ${err.message}`));
-            subClient.on('error', (err) => logger.error(`Socket.IO Redis sub client: ${err.message}`));
-            await Promise.all([pubClient.connect(), subClient.connect()]);
-            io.adapter(createAdapter(pubClient, subClient));
-            logger.info('Socket.IO Redis adapter attached for horizontal scaling');
-        } catch (err) {
-            logger.warn(`Socket.IO Redis adapter skipped (using in-memory): ${err.message}`);
-        }
-    }
+    /*
+     * No adapter is attached here, and none should be.
+     *
+     * This is a namespace, not a server. `Namespace.adapter` is the adapter
+     * INSTANCE, not a setter, so the `io.adapter(createAdapter(...))` that
+     * used to sit here -- copied from the root server's init, where it is
+     * correct -- threw `io.adapter is not a function` on every single boot.
+     * The catch turned that into "Socket.IO Redis adapter skipped (using
+     * in-memory)", which read like a deliberate fallback and was simply untrue.
+     * Two Redis connections were opened just before the throw and then left
+     * open for the life of the process, used by nothing.
+     *
+     * A namespace takes its adapter from the server: Namespace's constructor
+     * calls `_initAdapter()`, which builds `new (this.server.adapter())(this)`,
+     * and `Server#adapter` re-initialises every namespace it already holds. So
+     * whenever master is Redis-backed this namespace is too, in either order,
+     * and QC room emits have always crossed processes -- the warning claiming
+     * otherwise was the only thing that was ever wrong. Attaching a second
+     * adapter here would give /qc its own pair of Redis clients for no benefit.
+     *
+     * Its rooms stay its own regardless: an adapter instance is per namespace,
+     * which is what keeps QC's `user:<id>` from colliding with food's.
+     * tests/qc-socket-namespace.smoke.mjs pins all of it.
+     */
 
     io.on('connection', (socket) => {
         const userId = socket.user?.userId;
