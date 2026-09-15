@@ -8,11 +8,28 @@ import { HomePromotionBanner } from '../models/homePromotionBanner.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { getPublicHomePromotionBanners } from '../services/homePromotionBanner.service.js';
 import { sendResponse } from '../../../../utils/response.js';
+import { normalizeHeroBannerModule } from '../services/heroBanner.service.js';
 
-/** Public hero banners for user home: active only, sorted, with linkedRestaurants populated for click-through */
+/**
+ * Public hero banners for a module's home screen: active only, sorted, with
+ * linkedRestaurants populated for click-through.
+ *
+ * `?module=` scopes the result. Omitting it returns food's banners, which is
+ * what every existing caller gets today -- the parameter was accepted and
+ * silently ignored before this, so a client asking for taxi was handed food's
+ * artwork.
+ */
 export const getPublicHeroBannersController = async (req, res, next) => {
     try {
-        const docs = await FoodHeroBanner.find({ isActive: true })
+        const requested = normalizeHeroBannerModule(req.query?.module) || 'food';
+
+        // Banners predating the module field belong to food, so food's query
+        // has to match an absent field as well as an explicit one.
+        const moduleFilter = requested === 'food'
+            ? { $or: [{ module: 'food' }, { module: { $exists: false } }, { module: null }] }
+            : { module: requested };
+
+        const docs = await FoodHeroBanner.find({ isActive: true, ...moduleFilter })
             .sort({ sortOrder: 1, createdAt: -1 })
             .populate({
                 path: 'linkedRestaurantIds',
@@ -25,7 +42,11 @@ export const getPublicHeroBannersController = async (req, res, next) => {
             return {
                 ...rest,
                 linkedRestaurants: Array.isArray(linkedRestaurantIds) ? linkedRestaurantIds : [],
-                imageUrl: b.imageUrl
+                imageUrl: b.imageUrl,
+                // Always stated, even for the legacy rows that have no stored
+                // value: the app keeps only banners naming the module it asked
+                // for, so an absent field would make them invisible.
+                module: b.module || 'food'
             };
         });
         return sendResponse(res, 200, 'Hero banners fetched', { banners });

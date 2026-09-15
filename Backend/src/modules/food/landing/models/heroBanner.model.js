@@ -38,6 +38,21 @@ const foodHeroBannerSchema = new mongoose.Schema(
             ref: 'FoodRestaurant',
             default: []
         },
+        /**
+         * Which app section this banner heads.
+         *
+         * Every banner created before this field existed is food's, which is
+         * why the default is 'food' rather than a required choice -- the
+         * existing rows keep working untouched and the customer app keeps
+         * treating an unstamped banner as food.
+         */
+        module: {
+            type: String,
+            enum: ['food', 'taxi', 'quick_commerce', 'medical', 'porter', 'rental', 'services'],
+            default: 'food',
+            index: true,
+            trim: true
+        },
         sortOrder: {
             type: Number,
             default: 0,
@@ -56,6 +71,8 @@ const foodHeroBannerSchema = new mongoose.Schema(
 );
 
 foodHeroBannerSchema.index({ isActive: 1, sortOrder: 1 });
+// The public read is always "active banners for one module, in order".
+foodHeroBannerSchema.index({ module: 1, isActive: 1, sortOrder: 1 });
 
 export const FoodHeroBanner = mongoose.model('FoodHeroBanner', foodHeroBannerSchema);
 

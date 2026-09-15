@@ -1488,13 +1488,31 @@ export default function Inventory() {
   }
 
   // Update menu API when category/item toggles change
-  const updateAvailabilityAPI = async (categoryId, itemId, isAvailable) => {
+  const updateAvailabilityAPI = async (categoryId, itemId, isAvailable, stockRule = null) => {
     try {
       if (!categoryId) return
 
+      /*
+       * isAvailable, not isActive.
+       *
+       * isActive delists the dish -- the customer menu drops it entirely, which
+       * is why an out-of-stock item used to disappear from the app instead of
+       * showing greyed out. isAvailable is the stock switch: the dish is still
+       * sent, the app dims it and blocks the Add button.
+       *
+       * stockResumeAt carries the time picked in the popup, so the app can say
+       * when it is back instead of just that it is gone. Null when the
+       * restaurant chose "manual" -- they promised no time, so none is shown.
+       */
+      const available = Boolean(isAvailable)
+      const payload = {
+        isAvailable: available,
+        stockResumeAt: available ? null : (stockRule?.resumeAt || null),
+      }
+
       // Backend source of truth is food_items. Update availability via /food/restaurant/foods/:id.
       if (itemId) {
-        await restaurantAPI.updateFood(itemId, { isActive: Boolean(isAvailable) })
+        await restaurantAPI.updateFood(itemId, payload)
         return
       }
 
@@ -1502,9 +1520,7 @@ export default function Inventory() {
       const items = category?.items || []
       // Bulk update all items in a category.
       await Promise.all(
-        items.map((it) =>
-          restaurantAPI.updateFood(it.id, { isActive: Boolean(isAvailable) }),
-        ),
+        items.map((it) => restaurantAPI.updateFood(it.id, payload)),
       )
     } catch (error) {
       debugError('Error updating availability:', error)
@@ -1663,9 +1679,9 @@ export default function Inventory() {
 
     // Update menu API
     if (type === "category") {
-      await updateAvailabilityAPI(categoryId, null, false)
+      await updateAvailabilityAPI(categoryId, null, false, nextRule)
     } else {
-      await updateAvailabilityAPI(categoryId, itemId, false)
+      await updateAvailabilityAPI(categoryId, itemId, false, nextRule)
     }
 
     setTogglePopupOpen(false)

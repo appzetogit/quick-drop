@@ -24,6 +24,21 @@ import { buildSuggestionMap } from '../../shared/suggestedItems.js';
  *   One mapper serves both audiences, which is how they came to share a setting
  *   they must not share.
  */
+/**
+ * The return time still worth showing, or null.
+ *
+ * A time already in the past tells the customer nothing useful -- the dish
+ * is either back (and isAvailable says so) or the restaurant let the promise
+ * lapse. Either way, saying "back at 4pm" at 6pm is worse than saying
+ * nothing.
+ */
+const resolveStockResumeAt = (food) => {
+    if (food?.isAvailable !== false) return null;
+    const when = food?.stockResumeAt ? new Date(food.stockResumeAt) : null;
+    if (!when || Number.isNaN(when.getTime())) return null;
+    return when.getTime() > Date.now() ? when.toISOString() : null;
+};
+
 const buildMenuFromFoods = async (foods = [], { forCustomer = false } = {}) => {
     // Admin-configurable platform cap, so the limits the seller UI shows match
     // what checkout will actually enforce. Read once per menu, not per item.
@@ -191,6 +206,10 @@ const buildMenuFromFoods = async (foods = [], { forCustomer = false } = {}) => {
             foodType: food.foodType || 'Non-Veg',
             isActive: food.isActive !== false,
             isAvailable: isFoodAvailable,
+            // When the restaurant said it comes back. Null when they gave no
+            // time, and cleared automatically once that moment has passed so
+            // a stale promise is never shown.
+            stockResumeAt: resolveStockResumeAt(food),
             isRecommended: food.isRecommended === true,
             approvalStatus: food.approvalStatus || 'approved',
             rejectionReason: food.rejectionReason || '',
@@ -294,11 +313,21 @@ export async function getPublicApprovedRestaurantMenu(restaurantIdOrSlug) {
     if (!restaurant?._id) {
         return null;
     }
+    /*
+     * Out-of-stock dishes are STILL SENT.
+     *
+     * They used to be filtered out here, which is why an item the restaurant
+     * marked out of stock disappeared from the app: the client cannot grey
+     * out a dish it was never given. The app dims it, blocks the Add button
+     * and explains when it is back (see stockResumeAt below).
+     *
+     * isActive is still filtered -- that one means the dish is not on the
+     * menu at all, which is a different thing from being sold out.
+     */
     const foods = await FoodItem.find({
         restaurantId: restaurant._id,
         approvalStatus: 'approved',
-        isActive: { $ne: false },
-        isAvailable: { $ne: false }
+        isActive: { $ne: false }
     })
         .sort({ createdAt: -1 })
         .limit(2000)

@@ -247,6 +247,15 @@ const foodSchema = new mongoose.Schema(
         foodType: { type: String, enum: ['Veg', 'Non-Veg'], default: 'Non-Veg' },
         isActive: { type: Boolean, default: true, index: true },
         isAvailable: { type: Boolean, default: true, index: true },
+        /**
+         * When an out-of-stock dish is expected back, as the restaurant set it
+         * in the inventory screen. Null means they gave no time -- the dish is
+         * simply off until they switch it on, and the app must not invent a
+         * return time it was never told.
+         *
+         * Only meaningful while isAvailable is false.
+         */
+        stockResumeAt: { type: Date, default: null },
         isRecommended: { type: Boolean, default: false, index: true },
         /**
          * Admin-curated shelf for the Rs 99 store in the app. The admin decides

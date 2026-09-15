@@ -33,6 +33,36 @@ export default function LandingPageManagement() {
   const [bannersUploading, setBannersUploading] = useState(false)
   const [bannersUploadProgress, setBannersUploadProgress] = useState({ current: 0, total: 0 })
   const [bannersDeleting, setBannersDeleting] = useState(null)
+
+  // Which app section's header artwork is being managed. Each section keeps its
+  // own set, so uploads and the list below both belong to whichever is picked.
+  const [bannerModule, setBannerModule] = useState('food')
+
+  const HERO_BANNER_MODULES = [
+    { value: 'food', label: 'Food' },
+    { value: 'taxi', label: 'Rides' },
+    { value: 'quick_commerce', label: 'Quick Commerce' },
+    // Medical rides on the quick-commerce backend but is its own screen in the
+    // app, so it gets its own artwork rather than inheriting Quick's.
+    { value: 'medical', label: 'Medical' },
+    { value: 'porter', label: 'Porter' },
+  ]
+
+  // Linking a banner to restaurants only means something inside Food.
+  const isFoodBannerSection = bannerModule === 'food'
+
+  const bannerModuleLabel =
+    (HERO_BANNER_MODULES.find((m) => m.value === bannerModule) || { label: 'Food' }).label
+
+  // Banners saved before the module field existed are Food's — that is where
+  // they actually appear in the app.
+  const bannersForModule = banners.filter((b) => (b.module || 'food') === bannerModule)
+
+  const bannerCountsByModule = banners.reduce((counts, b) => {
+    const key = b.module || 'food'
+    counts[key] = (counts[key] || 0) + 1
+    return counts
+  }, {})
   const bannersFileInputRef = useRef(null)
 
   // Categories
@@ -228,6 +258,9 @@ export default function LandingPageManagement() {
         // Backend expects field name "files" (upload.array('files'))
         formData.append('files', file)
       })
+      // Which section's header this artwork becomes. Omitting it would land the
+      // upload in Food, which is what every banner predating this field is.
+      formData.append('module', bannerModule || 'food')
 
       // Use getAuthConfig to ensure proper Authorization header
       // Don't set Content-Type - axios will set it automatically with boundary for FormData
@@ -1281,9 +1314,42 @@ export default function LandingPageManagement() {
         {/* Hero Banners Tab */}
         {activeTab === 'banners' && (
           <>
+            {/* App Section picker. The header artwork is per-screen, so this
+                decides both what an upload becomes and what the list shows. */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+              <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">App Section</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                {HERO_BANNER_MODULES.map((m) => {
+                  const isActive = bannerModule === m.value
+                  const count = bannerCountsByModule[m.value] || 0
+                  return (
+                    <button
+                      key={m.value}
+                      type="button"
+                      onClick={() => setBannerModule(m.value)}
+                      className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all flex items-center gap-2 ${isActive
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
+                        : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      {m.label}
+                      <span className={`px-1.5 py-0.5 rounded-full text-[11px] font-bold ${isActive ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                        {count}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="mt-3 text-xs text-slate-500">
+                Upload a GIF here and it becomes the animated header at the top of
+                the {bannerModuleLabel} screen in the app — and nowhere else.
+              </p>
+            </div>
+
             {/* Upload Section */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-              <h2 className="text-lg font-bold text-slate-900 mb-4">Upload New Banner(s)</h2>
+              <h2 className="text-lg font-bold text-slate-900 mb-4">
+                Upload New Banner(s) — {bannerModuleLabel}
+              </h2>
               <div
                 className="border-2 border-dashed border-blue-300 rounded-lg p-8 text-center bg-blue-50/30 cursor-pointer transition-colors hover:border-blue-400 hover:bg-blue-50/50"
                 onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -1335,7 +1401,11 @@ export default function LandingPageManagement() {
                       </button>
                       <span className="text-slate-600"> or drag and drop</span>
                     </div>
-                    <p className="text-xs text-slate-500">PNG, JPG, WEBP up to 5MB each (Max 5 images at once)</p>
+                    <p className="text-xs text-slate-500">GIF, PNG, JPG or WEBP (Max 5 files at once)</p>
+                    <p className="text-xs text-amber-600">
+                      A GIF animates. Customers re-download it every time the screen
+                      opens, so keep it as small as it can look good.
+                    </p>
                   </div>
                 )}
               </div>
@@ -1343,19 +1413,24 @@ export default function LandingPageManagement() {
 
             {/* Banners List */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <h2 className="text-lg font-bold text-slate-900 mb-4">Banner List ({banners.length})</h2>
+              <h2 className="text-lg font-bold text-slate-900 mb-4">
+                {bannerModuleLabel} Banners ({bannersForModule.length})
+              </h2>
               {bannersLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
                 </div>
-              ) : banners.length === 0 ? (
+              ) : bannersForModule.length === 0 ? (
                 <div className="text-center py-12 text-slate-500">
                   <ImageIcon className="w-12 h-12 mx-auto mb-3 text-slate-400" />
-                  <p>No banners uploaded yet.</p>
+                  <p>No banners for {bannerModuleLabel} yet.</p>
+                  <p className="text-sm mt-1">
+                    Until one is uploaded, the {bannerModuleLabel} screen shows no header — nothing else changes.
+                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {banners.map((banner, index) => (
+                  {bannersForModule.map((banner, index) => (
                     <div key={banner._id} className="border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow">
                       <div className="relative aspect-video bg-slate-100">
                         <img src={banner.imageUrl} alt={`Hero Banner ${index + 1}`} className="w-full h-full object-cover" />
@@ -1374,22 +1449,26 @@ export default function LandingPageManagement() {
                             <button onClick={() => handleBannerOrderChange(banner._id, 'up')} disabled={index === 0} className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-50">
                               <ArrowUp className="w-4 h-4 text-slate-600" />
                             </button>
-                            <button onClick={() => handleBannerOrderChange(banner._id, 'down')} disabled={index === banners.length - 1} className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-50">
+                            <button onClick={() => handleBannerOrderChange(banner._id, 'down')} disabled={index === bannersForModule.length - 1} className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-50">
                               <ArrowDown className="w-4 h-4 text-slate-600" />
                             </button>
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <button
-                              onClick={() => {
-                                setSelectedBannerId(banner._id)
-                                setSelectedRestaurantIds(banner.linkedRestaurants?.map(r => r._id || r) || [])
-                                setShowRestaurantModal(true)
-                              }}
-                              className="px-3 py-1.5 rounded text-sm font-medium bg-blue-100 text-blue-800 hover:bg-blue-200 flex items-center gap-1"
-                            >
-                              <Megaphone className="w-4 h-4" />
-                              Advertise
-                            </button>
+                            {/* Linking to restaurants is a Food concept — there
+                                is no restaurant behind a Rides header. */}
+                            {isFoodBannerSection && (
+                              <button
+                                onClick={() => {
+                                  setSelectedBannerId(banner._id)
+                                  setSelectedRestaurantIds(banner.linkedRestaurants?.map(r => r._id || r) || [])
+                                  setShowRestaurantModal(true)
+                                }}
+                                className="px-3 py-1.5 rounded text-sm font-medium bg-blue-100 text-blue-800 hover:bg-blue-200 flex items-center gap-1"
+                              >
+                                <Megaphone className="w-4 h-4" />
+                                Advertise
+                              </button>
+                            )}
                             <button onClick={() => handleToggleBannerStatus(banner._id, banner.isActive)} className={`px-3 py-1.5 rounded text-sm font-medium ${banner.isActive ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
                               {banner.isActive ? 'Deactivate' : 'Activate'}
                             </button>

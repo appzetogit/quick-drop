@@ -16,6 +16,34 @@ export default function Banners() {
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
 
+  // The app sections that can carry header artwork. One tab each: you pick a
+  // section, and both the upload form and the list below belong to it.
+  const HERO_BANNER_MODULES = [
+    { value: 'food', label: 'Food' },
+    { value: 'taxi', label: 'Rides' },
+    { value: 'quick_commerce', label: 'Quick Commerce' },
+    // Medical shares the quick-commerce backend but is its own screen, so it
+    // gets its own artwork rather than inheriting Quick's.
+    { value: 'medical', label: 'Medical' },
+    { value: 'porter', label: 'Porter' },
+  ]
+
+  // Which section is being managed. Food is first so the page opens on what it
+  // has always shown.
+  const [activeModule, setActiveModule] = useState('food')
+
+  // Restaurants and zones are Food's own concepts — there is no restaurant to
+  // link a Rides banner to. Outside Food the banner is just the artwork.
+  const isFoodSection = activeModule === 'food'
+
+  const activeModuleLabel =
+    (HERO_BANNER_MODULES.find((m) => m.value === activeModule) || { label: 'Food' }).label
+
+  // Header GIFs are heavy — the one live on Food today is 18 MB — so the cap
+  // matches what the server accepts on its other header-media route rather
+  // than the 2 MB that would reject the app's own current artwork.
+  const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
   const [formData, setFormData] = useState({
     title: "",
     zone: "",
@@ -95,8 +123,20 @@ export default function Banners() {
     fetchRestaurants()
   }, [])
 
+  /** How many banners each section holds, so the tabs show what is set up. */
+  const countsByModule = useMemo(() => {
+    const counts = {}
+    for (const banner of banners) {
+      // Rows saved before the field existed are Food's, which is where they
+      // actually appear in the app.
+      const key = banner.module || 'food'
+      counts[key] = (counts[key] || 0) + 1
+    }
+    return counts
+  }, [banners])
+
   const filteredBanners = useMemo(() => {
-    let result = [...banners]
+    let result = banners.filter((b) => (b.module || 'food') === activeModule)
 
     if (bannerType !== "all") {
       if (bannerType === "Restaurant wise") {
@@ -114,7 +154,7 @@ export default function Banners() {
     }
 
     return result
-  }, [banners, searchQuery, bannerType])
+  }, [banners, searchQuery, bannerType, activeModule])
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -123,8 +163,8 @@ export default function Banners() {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0]
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert("Image size must be 2MB or less")
+      if (file.size > MAX_UPLOAD_BYTES) {
+        alert(`File must be ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))}MB or less.`)
         return
       }
       setFormData(prev => ({
@@ -145,13 +185,18 @@ export default function Banners() {
       alert("Please select a banner image.")
       return
     }
-    if (formData.bannerType === "Restaurant wise" && !formData.restaurant) {
-      alert("Please select a restaurant.")
-      return
-    }
-    if (formData.bannerType === "Zone wise" && !formData.zone) {
-      alert("Please select a zone.")
-      return
+    // Only Food links a banner to a restaurant or zone. Requiring it for every
+    // section is what made Rides, Quick and Medical impossible to upload at
+    // all — there is no restaurant to pick.
+    if (isFoodSection) {
+      if (formData.bannerType === "Restaurant wise" && !formData.restaurant) {
+        alert("Please select a restaurant.")
+        return
+      }
+      if (formData.bannerType === "Zone wise" && !formData.zone) {
+        alert("Please select a zone.")
+        return
+      }
     }
 
     try {
@@ -162,11 +207,14 @@ export default function Banners() {
       const data = new FormData()
       data.append('files', formData.file)
       data.append('title', formData.title)
+      data.append('module', activeModule || 'food')
 
-      if (formData.bannerType === 'Restaurant wise') {
-        data.append('ctaLink', `/restaurants/${formData.restaurant}`)
-      } else if (formData.bannerType === 'Zone wise') {
-        data.append('ctaLink', `/zone/${formData.zone}`)
+      if (isFoodSection) {
+        if (formData.bannerType === 'Restaurant wise') {
+          data.append('ctaLink', `/restaurants/${formData.restaurant}`)
+        } else if (formData.bannerType === 'Zone wise') {
+          data.append('ctaLink', `/zone/${formData.zone}`)
+        }
       }
 
       const uploadRes = await api.post('/food/showcase-items/multiple', data, getAuthConfig())
@@ -175,7 +223,7 @@ export default function Banners() {
         const results = uploadRes.data.data?.results || []
         const createdBanner = results[0]?.banner
 
-        if (createdBanner && formData.bannerType === 'Restaurant wise' && formData.restaurant) {
+        if (createdBanner && isFoodSection && formData.bannerType === 'Restaurant wise' && formData.restaurant) {
           try {
             await api.patch(
               `/food/showcase-items/${createdBanner._id}/link-restaurants`,
@@ -187,7 +235,7 @@ export default function Banners() {
           }
         }
 
-        setSuccess("Banner added successfully!")
+        setSuccess(`Banner added to ${activeModuleLabel}!`)
         handleReset()
         await fetchBanners()
         setTimeout(() => setSuccess(null), 3000)
@@ -279,11 +327,55 @@ export default function Banners() {
           </div>
         )}
 
+        {/* App Section tabs. Each section keeps its own artwork, so picking one
+            here switches both the upload form below and the list under it. */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <ImageIcon className="w-4 h-4 text-slate-500" />
+            <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wider">App Section</h2>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {HERO_BANNER_MODULES.map((m) => {
+              const isActive = activeModule === m.value
+              const count = countsByModule[m.value] || 0
+              return (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => {
+                    setActiveModule(m.value)
+                    // "Restaurant wise" would hide every banner in a section
+                    // that has no restaurants to be linked to.
+                    setBannerType("all")
+                    handleReset()
+                  }}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all flex items-center gap-2 ${isActive
+                    ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                    : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50"
+                    }`}
+                >
+                  {m.label}
+                  <span className={`px-1.5 py-0.5 rounded-full text-[11px] font-bold ${isActive ? "bg-blue-500 text-white" : "bg-slate-100 text-slate-600"
+                    }`}>
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            Each section has its own header artwork — upload a GIF here and it
+            appears at the top of that screen in the app, and nowhere else.
+          </p>
+        </div>
+
         {/* Add New Banner Section */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
           <div className="flex items-center gap-3 mb-4">
             <Plus className="w-5 h-5 text-blue-600" />
-            <h1 className="text-2xl font-bold text-slate-900">Add New Banner</h1>
+            <h1 className="text-2xl font-bold text-slate-900">
+              Add New Banner — {activeModuleLabel}
+            </h1>
           </div>
 
           {/* Language Tabs */}
@@ -317,6 +409,10 @@ export default function Banners() {
                 />
               </div>
 
+              {/* Restaurants and zones only mean something inside Food. The
+                  other sections have no catalogue to point a banner at, so the
+                  form drops to a title and the artwork. */}
+              {isFoodSection && (
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                   Zone <span className="text-red-500">*</span>
@@ -332,7 +428,9 @@ export default function Banners() {
                   ))}
                 </select>
               </div>
+              )}
 
+              {isFoodSection && (
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                   Banner Type <span className="text-red-500">*</span>
@@ -346,7 +444,9 @@ export default function Banners() {
                   <option value="Zone wise">Zone wise</option>
                 </select>
               </div>
+              )}
 
+              {isFoodSection && (
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                   Restaurant <span className="text-red-500">*</span>
@@ -363,14 +463,17 @@ export default function Banners() {
                   ))}
                 </select>
               </div>
+              )}
             </div>
 
             {/* Banner Image Upload */}
             <div className="mb-6">
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                Banner Image <span className="text-red-500">*</span>
+                Header Artwork <span className="text-red-500">*</span>
               </label>
-              <p className="text-sm text-slate-600 mb-3">Upload your image here</p>
+              <p className="text-sm text-slate-600 mb-3">
+                A GIF plays as the animated header at the top of the {activeModuleLabel} screen.
+              </p>
               <div 
                 onClick={() => fileInputRef.current?.click()}
                 className="border-2 border-dashed border-slate-300 rounded-lg p-12 text-center hover:border-blue-500 transition-colors cursor-pointer relative"
@@ -391,7 +494,12 @@ export default function Banners() {
                     <Upload className="w-12 h-12 text-slate-400 mx-auto mb-3" />
                     <p className="text-sm font-medium text-blue-600 mb-1">Click to upload</p>
                     <p className="text-xs text-slate-500 mb-2">Or drag and drop</p>
-                    <p className="text-xs text-slate-500">Supported format : JPG, JPEG, PNG, Gif image size : Max 2 MB (2:1)</p>
+                    <p className="text-xs text-slate-500">
+                      GIF, JPG, JPEG or PNG · up to {Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))} MB · 2:1 works best
+                    </p>
+                    <p className="text-xs text-amber-600 mt-1">
+                      Every customer downloads this each time the screen opens — keep it as small as it can look good.
+                    </p>
                   </>
                 )}
               </div>
@@ -422,22 +530,24 @@ export default function Banners() {
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-slate-900">Banner List</h2>
+              <h2 className="text-xl font-bold text-slate-900">{activeModuleLabel} Banners</h2>
               <span className="px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">
                 {filteredBanners.length}
               </span>
             </div>
 
             <div className="flex items-center gap-3">
-              <select
-                value={bannerType}
-                onChange={(e) => setBannerType(e.target.value)}
-                className="px-4 py-2.5 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
-              >
-                <option value="all">All Banner</option>
-                <option value="Restaurant wise">Restaurant wise</option>
-                <option value="Zone wise">Zone wise</option>
-              </select>
+              {isFoodSection && (
+                <select
+                  value={bannerType}
+                  onChange={(e) => setBannerType(e.target.value)}
+                  className="px-4 py-2.5 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
+                >
+                  <option value="all">All Banner</option>
+                  <option value="Restaurant wise">Restaurant wise</option>
+                  <option value="Zone wise">Zone wise</option>
+                </select>
+              )}
 
               <div className="relative flex-1 sm:flex-initial min-w-[200px]">
                 <input
@@ -461,7 +571,10 @@ export default function Banners() {
             ) : filteredBanners.length === 0 ? (
               <div className="text-center py-12 text-slate-500">
                 <ImageIcon className="w-12 h-12 mx-auto mb-3 text-slate-400" />
-                <p>No banners found.</p>
+                <p>No banners for {activeModuleLabel} yet.</p>
+                <p className="text-sm mt-1">
+                  Until one is uploaded, the {activeModuleLabel} screen shows no header — nothing else changes.
+                </p>
               </div>
             ) : (
               <table className="w-full">
@@ -469,8 +582,12 @@ export default function Banners() {
                   <tr>
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">SI</th>
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Banner Info</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Zone</th>
-                    <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Banner Type</th>
+                    {isFoodSection && (
+                      <>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Zone</th>
+                        <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Banner Type</th>
+                      </>
+                    )}
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">Action</th>
                   </tr>
@@ -495,12 +612,16 @@ export default function Banners() {
                             <span className="text-sm font-medium text-slate-900">{banner.title || "Untitled Banner"}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-slate-700">{getBannerZoneName(banner)}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-slate-700">{isRestaurantWise ? "Restaurant wise" : "Zone wise"}</span>
-                        </td>
+                        {isFoodSection && (
+                          <>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm text-slate-700">{getBannerZoneName(banner)}</span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm text-slate-700">{isRestaurantWise ? "Restaurant wise" : "Zone wise"}</span>
+                            </td>
+                          </>
+                        )}
                         <td className="px-6 py-4 whitespace-nowrap">
                           <button
                             type="button"

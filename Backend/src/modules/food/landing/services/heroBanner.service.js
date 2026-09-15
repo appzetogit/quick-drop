@@ -4,8 +4,59 @@ import {
     deleteStoredAsset,
 } from '../../../../services/cloudinary.service.js';
 
-export const listHeroBanners = async () => {
-    return FoodHeroBanner.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
+/**
+ * The set of sections a banner can head. Kept beside the schema enum so a new
+ * section is added in one place.
+ */
+export const HERO_BANNER_MODULES = ['food', 'taxi', 'quick_commerce', 'medical', 'porter', 'rental', 'services'];
+
+/**
+ * Normalises whatever a caller sent into a module key, or null when they sent
+ * nothing usable.
+ *
+ * Tolerates the spellings already floating around the platform ('quick', 'qc',
+ * 'parcel', 'ride') so the admin panel and the app do not have to agree on one
+ * before this is useful.
+ */
+export const normalizeHeroBannerModule = (value) => {
+    const raw = String(value ?? '').trim().toLowerCase().replace(/-/g, '_');
+    if (!raw) return null;
+
+    const aliases = {
+        food: 'food',
+        restaurant: 'food',
+        taxi: 'taxi',
+        ride: 'taxi',
+        cab: 'taxi',
+        quick_commerce: 'quick_commerce',
+        quick: 'quick_commerce',
+        qc: 'quick_commerce',
+        grocery: 'quick_commerce',
+        medical: 'medical',
+        pharmacy: 'medical',
+        medicine: 'medical',
+        porter: 'porter',
+        parcel: 'porter',
+        rental: 'rental',
+        services: 'services',
+        sp: 'services'
+    };
+
+    return aliases[raw] || null;
+};
+
+export const listHeroBanners = async (module) => {
+    const filter = {};
+    const normalized = normalizeHeroBannerModule(module);
+    if (normalized) {
+        // Banners saved before the field existed are food's, so a request for
+        // food has to include them or the admin list would look empty after
+        // this ships.
+        filter.$or = normalized === 'food'
+            ? [{ module: 'food' }, { module: { $exists: false } }, { module: null }]
+            : [{ module: normalized }];
+    }
+    return FoodHeroBanner.find(filter).sort({ sortOrder: 1, createdAt: -1 }).lean();
 };
 
 export const createHeroBannersFromFiles = async (files, meta = {}) => {
@@ -14,6 +65,7 @@ export const createHeroBannersFromFiles = async (files, meta = {}) => {
     }
 
     const results = [];
+    const module = normalizeHeroBannerModule(meta.module) || 'food';
 
     for (const file of files) {
         try {
@@ -23,7 +75,9 @@ export const createHeroBannersFromFiles = async (files, meta = {}) => {
             // through untouched.
             const uploadResult = await uploadMediaBufferDetailed(
                 file.buffer,
-                'food/hero-banners',
+                // Food keeps its original folder so existing assets and any
+                // cached URLs are untouched; new sections get their own.
+                module === 'food' ? 'food/hero-banners' : `${module}/hero-banners`,
             );
 
             const banner = await FoodHeroBanner.create({
@@ -36,6 +90,7 @@ export const createHeroBannersFromFiles = async (files, meta = {}) => {
                 ctaText: meta.ctaText,
                 ctaLink: meta.ctaLink,
                 linkedRestaurantIds: meta.linkedRestaurantIds || [],
+                module,
                 sortOrder: meta.sortOrder ?? 0,
                 isActive: true
             });

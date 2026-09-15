@@ -12,7 +12,8 @@ import { FoodHeroBanner } from '../models/heroBanner.model.js';
 
 export const listHeroBannersController = async (req, res, next) => {
     try {
-        const data = await listHeroBanners();
+        // Optional: the panel filters the list to the section being edited.
+        const data = await listHeroBanners(req.query?.module);
         // Wrap in { banners } to match LandingPageManagement.jsx expectations
         return sendResponse(res, 200, 'Hero banners fetched successfully', { banners: data });
     } catch (error) {
@@ -49,7 +50,10 @@ export const uploadHeroBannersController = async (req, res, next) => {
             title: req.body.title,
             ctaText: req.body.ctaText,
             ctaLink: req.body.ctaLink,
-            linkedRestaurantIds: linkedIds
+            linkedRestaurantIds: linkedIds,
+            // Which section this artwork heads. Absent means food, so the
+            // existing upload form keeps working without being changed.
+            module: req.body.module
         };
 
         const results = await createHeroBannersFromFiles(req.files, meta);

@@ -9,6 +9,17 @@ import { resolveItemDisplayPricing } from '../../shared/itemDiscountPricing.js';
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/**
+ * The return time still worth showing, or null. A moment already past tells
+ * the customer nothing, so it is dropped rather than counted backwards.
+ */
+const resolveStockResumeAt = (food) => {
+    if (food?.isAvailable !== false) return null;
+    const when = food?.stockResumeAt ? new Date(food.stockResumeAt) : null;
+    if (!when || Number.isNaN(when.getTime())) return null;
+    return when.getTime() > Date.now() ? when.toISOString() : null;
+};
+
 const buildCategoryKeywords = (categorySlug) => {
     const raw = String(categorySlug || '').trim().toLowerCase();
     if (!raw || raw === 'all') return [];
@@ -94,10 +105,19 @@ export async function listPublicFoods(query = {}) {
     );
     const restaurantIds = restaurants.map((restaurant) => restaurant._id);
 
+    /*
+     * isActive, not isAvailable.
+     *
+     * Out-of-stock dishes are still sent: the app greys them out and blocks
+     * the Add button, which is more use to a customer than the dish silently
+     * vanishing from the feed. isActive is the one that means the dish is not
+     * on the menu at all -- that was never filtered here, so a delisted dish
+     * used to ride along in the feed as long as it was in stock.
+     */
     const foodFilter = {
         restaurantId: { $in: restaurantIds },
         approvalStatus: 'approved',
-        isAvailable: { $ne: false }
+        isActive: { $ne: false }
     };
 
     const keywords = buildCategoryKeywords(categorySlug);
@@ -230,6 +250,9 @@ export async function listPublicFoods(query = {}) {
                 : (food.image ? [food.image] : []),
             foodType: food.foodType || 'Non-Veg',
             isAvailable: food.isAvailable !== false,
+            // When the restaurant said it comes back, or null if they set no
+            // time or it has already passed.
+            stockResumeAt: resolveStockResumeAt(food),
             // Carried through so the shelf filter below can read it, and so the
             // app can badge a dish as part of the Rs 99 store.
             showIn99Store: food.showIn99Store === true,
@@ -260,7 +283,9 @@ export async function listPublicFoods(query = {}) {
         };
     })
         .filter((food) => {
-            if (food.isAvailable === false) return false;
+            // Deliberately NOT dropping out-of-stock dishes here -- the app
+            // shows them greyed out. Removing this line was the other half of
+            // the query change above; leaving it would have undone it.
             if (is99StorePromo) return qualifiesFor99Store(food, food.price, ninetyNineCap);
             if (isUnder250Promo) {
                 const value = Number(food.price);

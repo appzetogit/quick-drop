@@ -91,7 +91,7 @@ console.log('\n1. a restaurant is not live until its menu is');
 }
 
 /* ---------------------------------------- 2. switching a dish off reaches the app */
-console.log('\n2. a dish switched off leaves the customer menu');
+console.log('\n2. a dish switched off still reaches the customer menu, marked sold out');
 {
     const r = await makeRestaurant('Toggle Kitchen');
     const keep = await makeDish(r, { name: 'Stays On' });
@@ -107,10 +107,24 @@ console.log('\n2. a dish switched off leaves the customer menu');
     await FoodItem.updateOne({ _id: drop._id }, { $set: { isAvailable: false } });
 
     const after = await getPublicApprovedRestaurantMenu(String(r._id));
-    const namesAfter = (after?.sections || []).flatMap((s) => s.items.map((i) => i.name));
-    check('the dish switched off is gone', () =>
-        assert.ok(!namesAfter.includes('Gets Switched Off')));
-    check('the other dish is untouched', () => assert.ok(namesAfter.includes('Stays On')));
+    const itemsAfter = (after?.sections || []).flatMap((s) => s.items);
+    const namesAfter = itemsAfter.map((i) => i.name);
+    /*
+     * Still sent, and marked. It used to be filtered out here, and a client
+     * cannot grey out a dish it was never given -- so an item the restaurant
+     * marked out of stock simply vanished from the app, with no way to say
+     * when it was back. The app dims it and blocks the Add button instead.
+     */
+    check('the dish switched off is still on the menu', () =>
+        assert.ok(namesAfter.includes('Gets Switched Off')));
+    check('  and is marked unavailable, so the app can dim it', () => {
+        const dish = itemsAfter.find((i) => i.name === 'Gets Switched Off');
+        assert.equal(dish.isAvailable, false);
+    });
+    check('the other dish is untouched', () => {
+        const dish = itemsAfter.find((i) => i.name === 'Stays On');
+        assert.equal(dish.isAvailable, true);
+    });
 
     // isActive is the other half of the same toggle and was checked separately.
     await FoodItem.updateOne({ _id: keep._id }, { $set: { isActive: false } });
