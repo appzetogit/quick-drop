@@ -11,22 +11,23 @@
  * (orders/services/foodTransaction.service.js). Anything shown to a restaurant
  * that its payout does not match is worse than showing nothing.
  *
- * Two shapes, because a GST-inclusive menu is a different sum:
+ * Two shapes, because an inclusive menu pays the tax out of its own price:
  *
  *   prices exclude GST        prices include GST
  *   ------------------        ------------------
  *   Sub total       100.00    Sub total (GST incl)   100.00
- *   GST @5%           5.00    GST @5% included        -4.76
- *     collected from the        Taxable food value     95.24
+ *   GST @5%           5.00    GST @5% included        -5.00
+ *     collected from the        Taxable food value     95.00
  *     customer, paid to
  *     the government
  *   Packing         + 5.00    Packing               + 5.00
- *   Commission 10%  -10.00    Commission 10%         -9.52
- *   PAY TO YOU       95.00    PAY TO YOU             90.72
+ *   Commission 10%  -10.00    Commission 10%         -9.50
+ *   PAY TO YOU       95.00    PAY TO YOU             90.50
  *
- * Extracting a tax is not the same sum as adding one: 100 x 5% is 5.00, but
- * 100 - 100/1.05 is 4.76. The inclusive column uses the extraction, which is
- * what the bill charged and what the ledger pays.
+ * The tax is the rate on the listed price in both columns -- 5% of 100 is 5.00
+ * -- and the right-hand one deducts it instead of adding it, which is the rule
+ * deTax() in billing.js sets out. What is printed here is what the bill charged
+ * and what the ledger pays.
  */
 
 const round2 = (value) => {
