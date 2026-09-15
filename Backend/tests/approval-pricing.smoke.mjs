@@ -47,6 +47,14 @@ const makeRestaurant = async () => {
     });
 };
 
+const approvedDish = (restaurant, price = 200) => FoodItem.create({
+    restaurantId: restaurant._id,
+    name: 'Existing dish',
+    price,
+    basePrice: price,
+    approvalStatus: 'approved',
+});
+
 const pendingDish = (restaurant, price = 200) => FoodItem.create({
     restaurantId: restaurant._id,
     name: 'New dish',
@@ -64,6 +72,7 @@ const shown = async (id) => {
 console.log('\nwhat is standing over a menu');
 {
     const r = await makeRestaurant();
+    await approvedDish(r);
     const before = await resolveStandingAdjustment(r._id);
     check('a menu with no runs has nothing standing', () => {
         assert.equal(before.markupPercent, 0);
@@ -79,6 +88,7 @@ console.log('\nwhat is standing over a menu');
     });
 
     const other = await makeRestaurant();
+    await approvedDish(other);
     const elsewhere = await resolveStandingAdjustment(other._id);
     check('another restaurant is unaffected', () => {
         assert.equal(elsewhere.markupPercent, 0);
@@ -86,9 +96,51 @@ console.log('\nwhat is standing over a menu');
     });
 }
 
+/* ------------------------------------------- a menu with nothing on it yet */
+console.log('\na restaurant whose menu has no approved dish');
+{
+    /*
+     * THE BUG: this answered from the run history -- every non-reverted
+     * platform-wide run ever, summed -- and the approval dialog printed the
+     * total as "50% markup and 30% discount applies to the other dishes here",
+     * to an admin approving the first dish of a restaurant that had no other
+     * dishes at all.
+     */
+    const platformRun = await applyPriceAdjustment({ percent: 50 }, {});
+    await applyPriceAdjustment({ percent: -30 }, {});
+
+    const fresh = await makeRestaurant();
+    const standing = await resolveStandingAdjustment(String(fresh._id));
+
+    check('nothing is claimed to be standing over an empty menu', () => {
+        assert.equal(standing.markupPercent, 0);
+        assert.equal(standing.discountPercent, 0);
+    });
+    check('  and it says so plainly rather than guessing from history', () => {
+        assert.equal(standing.source, 'none');
+        assert.equal(standing.sampleSize, 0);
+    });
+    check('  so the approval dialog has no second option to offer', () => {
+        // The panel shows the choice only when one of these is above zero.
+        assert.ok(!(standing.markupPercent > 0 || standing.discountPercent > 0));
+    });
+
+    check('a restaurant that HAS dishes still reports what they carry', async () => {
+        const stocked = await makeRestaurant();
+        await approvedDish(stocked);
+        await applyPriceAdjustment({ percent: 25, restaurantId: String(stocked._id) }, {});
+        const theirs = await resolveStandingAdjustment(String(stocked._id));
+        assert.equal(theirs.markupPercent, 25);
+        assert.equal(theirs.source, 'menu');
+    });
+
+    await revertPriceAdjustment(String(platformRun.adjustment._id), {});
+}
+
 console.log('\nreverted runs stop counting');
 {
     const r = await makeRestaurant();
+    await approvedDish(r);
     const run = await applyPriceAdjustment({ percent: -30, restaurantId: String(r._id) }, {});
     check('the run counts while it stands', async () => {
         assert.equal((await resolveStandingAdjustment(r._id)).discountPercent, 30);
@@ -104,6 +156,9 @@ console.log('\nreverted runs stop counting');
 console.log('\napproving a dish, left untouched');
 {
     const r = await makeRestaurant();
+    // An approved dish to carry the adjustment: it is the menu, not the run
+    // history, that says what a new dish should join.
+    await approvedDish(r);
     await applyPriceAdjustment({ percent: 20, restaurantId: String(r._id) }, {});
     await applyPriceAdjustment({ percent: -10, restaurantId: String(r._id) }, {});
 
@@ -123,6 +178,9 @@ console.log('\napproving a dish, left untouched');
 console.log('\napproving a dish into the standing adjustment');
 {
     const r = await makeRestaurant();
+    // An approved dish to carry the adjustment: it is the menu, not the run
+    // history, that says what a new dish should join.
+    await approvedDish(r);
     await applyPriceAdjustment({ percent: 20, restaurantId: String(r._id) }, {});
     await applyPriceAdjustment({ percent: -10, restaurantId: String(r._id) }, {});
 

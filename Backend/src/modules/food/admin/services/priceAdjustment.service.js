@@ -862,40 +862,37 @@ export async function resolveStandingAdjustment(restaurantId, { excludeItemId = 
     }
 
     /*
-     * No approved dish to copy -- a restaurant onboarding its first menu. The
-     * run history is all there is, and platform-wide runs are the part of it
-     * that would have reached this restaurant had it existed.
+     * No approved dish to copy, so nothing is standing. Not "nothing we can
+     * find" -- nothing.
+     *
+     * This used to fall back to the run history, summing every non-reverted
+     * platform-wide run into one total on the grounds that those runs would
+     * have reached this restaurant had it existed. Three things were wrong
+     * with that, and the header above this function had already said the first:
+     *
+     *   - the history is not authoritative. It records what an admin asked
+     *     for, not what was done to prices outside the adjuster, and the two
+     *     have diverged on this platform before;
+     *   - it SUMMED runs. Seven unrelated runs over two years became "50%
+     *     markup and 30% discount", a figure no dish anywhere ever carried;
+     *   - it answered for a restaurant with an empty menu, where the question
+     *     -- "what do the other dishes here carry?" -- has no other dishes to
+     *     ask about.
+     *
+     * The approval dialog printed that sum as fact: "This menu is on a price
+     * adjustment. 50% markup and 30% discount applies to the other dishes
+     * here", to an admin approving the first dish of a restaurant with no other
+     * dishes at all, whose owner had never been offered any such thing.
+     *
+     * Same rule as the comparison-price seed, and for the same reason: a
+     * restaurant with nothing of its own inherits nothing. Zero here means the
+     * dialog offers no choice, which is correct -- there is nothing to join.
      */
-    const runs = await FoodPriceAdjustment.find({
-        strategy: 'formulation',
-        isReverted: { $ne: true },
-        revertsAdjustmentId: null,
-        $or: [
-            { restaurantId: null },
-            ...(restaurantId && mongoose.Types.ObjectId.isValid(String(restaurantId))
-                ? [{ restaurantId: new mongoose.Types.ObjectId(String(restaurantId)) }]
-                : []),
-        ],
-    })
-        .select('percent createdAt')
-        .sort({ createdAt: -1 })
-        .lean();
-
-    let markupPercent = 0;
-    let discountPercent = 0;
-    for (const run of runs) {
-        const percent = Number(run?.percent);
-        if (!Number.isFinite(percent) || percent === 0) continue;
-        if (percent > 0) markupPercent += percent;
-        else discountPercent += -percent;
-    }
-    const lastPercent = Number(runs.find((r) => Number(r?.percent))?.percent) || 0;
-
     return {
-        markupPercent: Math.min(Math.max(round2(markupPercent), 0), MAX_PERCENT),
-        discountPercent: Math.min(Math.max(round2(discountPercent), 0), -MIN_PERCENT),
-        lastDirection: lastPercent < 0 ? 'decrease' : 'increase',
-        source: 'history',
+        markupPercent: 0,
+        discountPercent: 0,
+        lastDirection: 'increase',
+        source: 'none',
         sampleSize: 0,
     };
 }
