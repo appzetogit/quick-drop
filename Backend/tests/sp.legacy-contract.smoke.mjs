@@ -79,9 +79,22 @@ for (const p of paths) {
     const canonical = await get(`/api/v1/sp${p}`);
 
     if (legacy.status >= 500) serverErrors.push(`/api${p} -> ${legacy.status}`);
-    if (legacy.status === 404) mismatched.push(`/api${p} -> 404 (route unreachable for mobile clients)`);
-    else if (legacy.status !== canonical.status) mismatched.push(`/api${p} -> ${legacy.status} but /api/v1/sp${p} -> ${canonical.status}`);
-    else identical++;
+    /*
+     * The two prefixes disagreeing is the whole point of this file: the same
+     * path must behave the same way whichever one an installed app calls.
+     *
+     * A 404 on BOTH is not evidence of anything. These probes carry fabricated
+     * ids -- /public/brands/slug/0000...01 asks for a brand that does not
+     * exist -- and from outside, "no such route" and "no such record" are the
+     * same answer. Treating every legacy 404 as an unreachable route reported
+     * that brand lookup as broken on both prefixes at once, which is not a
+     * thing a prefix can do, and made this file fail for months.
+     */
+    if (legacy.status !== canonical.status) {
+        mismatched.push(`/api${p} -> ${legacy.status} but /api/v1/sp${p} -> ${canonical.status}`);
+    } else {
+        identical++;
+    }
 }
 
 check(`${identical}/${paths.length} return the same status on both prefixes`, () =>
@@ -111,10 +124,37 @@ const sent = await post('/api/users/auth/send-otp', { phone: '9000000123' });
 check(`send-otp on the LEGACY path -> ${sent.status}`, () => assert.equal(sent.status, 200));
 
 const verified = await post('/api/users/auth/verify-login', { phone: '9000000123', otp: '123456' });
-let token = null;
-try { token = JSON.parse(verified.body).accessToken; } catch { /* reported below */ }
 check(`verify-login on the LEGACY path -> ${verified.status}`, () => assert.equal(verified.status, 200));
-check('returns an accessToken the app can store', () => assert.ok(token, verified.body.slice(0, 160)));
+
+/*
+ * A phone nobody has used before is a REGISTRATION, not a login: verify-login
+ * answers `isNewUser` with a short-lived verificationToken and no session,
+ * because there is no account to hand one out for. The database here is a
+ * fresh in-memory one, so this is always that branch.
+ *
+ * This used to read `accessToken` straight off that reply and find nothing,
+ * then fail the three checks below with 401s -- which looked like the legacy
+ * prefix rejecting a valid token, and was really the app being asked to sign
+ * in as a user it had not created yet. The journey a real app performs is both
+ * steps, so both are performed here.
+ */
+let token = null;
+let verifiedBody = {};
+try { verifiedBody = JSON.parse(verified.body); } catch { /* reported below */ }
+token = verifiedBody.accessToken || null;
+
+if (!token && verifiedBody.verificationToken) {
+    const registered = await post('/api/users/auth/register', {
+        name: 'Legacy Contract Test',
+        verificationToken: verifiedBody.verificationToken,
+    });
+    check(`register on the LEGACY path -> ${registered.status}`, () =>
+        assert.equal(registered.status, 201, registered.body.slice(0, 160)));
+    try { token = JSON.parse(registered.body).accessToken; } catch { /* reported below */ }
+}
+
+check('the journey ends with an accessToken the app can store', () =>
+    assert.ok(token, verified.body.slice(0, 160)));
 
 const authed = (path) =>
     new Promise((resolve, reject) => {
