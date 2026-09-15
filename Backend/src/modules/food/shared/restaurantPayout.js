@@ -11,6 +11,10 @@
  * (orders/services/foodTransaction.service.js). Anything shown to a restaurant
  * that its payout does not match is worse than showing nothing.
  *
+ * Every percentage here is worked out from the rupees beside it rather than
+ * read from a rate stored somewhere else, so a figure and its label cannot
+ * contradict each other on a screen a restaurant is paid from.
+ *
  * Two shapes, because a GST-inclusive menu is a different sum:
  *
  *   prices exclude GST        prices include GST
@@ -60,7 +64,7 @@ export function buildRestaurantPayoutBreakdown(order, { restaurantFundedDiscount
      */
     const taxableFoodValue = round2(finite(pricing.commissionableAmount, subTotal));
     const pricesIncludeGst = pricing.pricesIncludeGst === true;
-    const gstRate = round2(finite(pricing.gstRate));
+    const storedGstRate = round2(finite(pricing.gstRate));
 
     /*
      * The tax on the food, from whichever side of the price it sat.
@@ -72,7 +76,27 @@ export function buildRestaurantPayoutBreakdown(order, { restaurantFundedDiscount
      */
     const gstOnFood = pricesIncludeGst
         ? round2(Math.max(0, subTotal - taxableFoodValue))
-        : round2(taxableFoodValue * (gstRate / 100));
+        : round2(taxableFoodValue * (storedGstRate / 100));
+
+    /*
+     * The percentage printed beside the tax is DERIVED FROM THE TAX, not read
+     * from the rate stored on the order -- the same way commissionPercent is
+     * derived below.
+     *
+     * A restaurant saw "GST 13%" against Rs 8.63 on a Rs 172.50 sub total. The
+     * rupees were right (8.63 is 5% of 172.50) and 13% was the commission rate
+     * standing where the tax rate belonged. Passing the stored rate straight
+     * through let the label and the money disagree, and of the two the money is
+     * the one that was actually charged -- so the label is now computed from it
+     * and cannot say anything else.
+     *
+     * For an exclusive order this is the stored rate exactly, since the tax was
+     * computed from it. It differs only when the two already disagreed, which
+     * is the case worth protecting against.
+     */
+    const gstRate = taxableFoodValue > 0
+        ? round2((gstOnFood / taxableFoodValue) * 100)
+        : 0;
 
     /*
      * Packaging is only the restaurant's when the restaurant set it. The

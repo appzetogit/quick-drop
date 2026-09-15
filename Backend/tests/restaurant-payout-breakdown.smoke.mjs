@@ -85,6 +85,64 @@ console.log('\nRs 100 of food, prices EXCLUDE GST, 5% GST, Rs 5 packing, 10% com
     check('  and that is exactly what the ledger credits', () => assert.equal(b.payout, ledgerPayout(order)));
 }
 
+console.log('\nthe percentage beside the tax is read off the tax, not a stored rate');
+{
+    /*
+     * On an INCLUSIVE menu the tax is the gap between the listed price and the
+     * taxable value, and the rate stored on the order takes no part in working
+     * it out. So the two can drift: a rate edited in fee settings after the
+     * order, a legacy order carrying somebody else's figure, and the line
+     * prints a percentage that its own rupees contradict.
+     *
+     * A restaurant reading "GST 13%" against Rs 8.63 on Rs 172.50 has been told
+     * two different things, and only one of them is what was charged. The
+     * percentage is therefore computed from the money, like commissionPercent
+     * already was.
+     */
+    const order = orderFrom({ itemAmount: 210, gstRate: 5, pricesIncludeGst: true });
+    const honest = buildRestaurantPayoutBreakdown(order);
+    check('an inclusive order prints the rate its own figures imply', () =>
+        assert.equal(honest.gstRate, 5));
+
+    // The same order, with a stale rate left on it.
+    order.pricing.gstRate = 13;
+    const stale = buildRestaurantPayoutBreakdown(order);
+    check('THE BUG: a stale stored rate cannot change the printed one', () =>
+        assert.equal(stale.gstRate, 5));
+    check('  because the tax it is charged on has not moved', () =>
+        assert.equal(stale.gstOnFood, honest.gstOnFood));
+    check('  and the percentage still reconciles by hand', () =>
+        assert.equal(
+            Math.round(stale.taxableFoodValue * (stale.gstRate / 100) * 100) / 100,
+            stale.gstOnFood,
+        ));
+}
+
+{
+    // Exclusive is the other direction and was never at risk: the tax is
+    // computed FROM the stored rate, so the two move together. Pinned so the
+    // ordinary case is not broken while protecting the other one.
+    const order = orderFrom({ itemAmount: 172.5, packagingFee: 5, gstRate: 5, commissionPercent: 13 });
+    const b = buildRestaurantPayoutBreakdown(order);
+    check('an exclusive order prints its own rate', () => assert.equal(b.gstRate, 5));
+    check('  which is not the commission rate beside it', () => {
+        assert.equal(b.commissionPercent, 13);
+        assert.notEqual(b.gstRate, b.commissionPercent);
+    });
+    check('  Rs 8.63 of tax on Rs 172.50', () => assert.equal(b.gstOnFood, 8.63));
+    check('  PAY TO YOU is Rs 155.07', () => assert.equal(b.payout, 155.07));
+}
+
+{
+    // No tax, no percentage: a "GST 0%" line is noise on a bill with no tax.
+    const order = orderFrom({ itemAmount: 100, gstRate: 0 });
+    const b = buildRestaurantPayoutBreakdown(order);
+    check('no tax means no rate to show', () => {
+        assert.equal(b.gstOnFood, 0);
+        assert.equal(b.gstRate, 0);
+    });
+}
+
 console.log('\nthe same Rs 100, prices INCLUDE GST');
 {
     const order = orderFrom({ itemAmount: 100, packagingFee: 5, gstRate: 5, pricesIncludeGst: true });
