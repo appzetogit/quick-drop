@@ -591,6 +591,17 @@ export const adminAPI = {
     apiClient.get("/food/admin/drug-licences", { params, contextModule: "admin" }),
   getDrugLicenceSummary: (params = {}) =>
     apiClient.get("/food/admin/drug-licences/summary", { params, contextModule: "admin" }),
+  /*
+   * How far a prescription may travel, and the log of where each one went.
+   * The range decides both which pharmacies a customer is shown and which ones
+   * a broadcast reaches, so it is one number with two visible effects.
+   */
+  getMedicalSettings: () =>
+    apiClient.get("/food/admin/medical/settings", { contextModule: "admin" }),
+  updateMedicalSettings: (payload) =>
+    apiClient.put("/food/admin/medical/settings", payload, { contextModule: "admin" }),
+  getMedicalRequests: (params = {}) =>
+    apiClient.get("/food/admin/medical/requests", { params, contextModule: "admin" }),
   /** What each menu currently carries, as opposed to what was asked for. */
   getStandingAdjustments: () =>
     apiClient.get("/food/admin/price-adjustments/standing", {

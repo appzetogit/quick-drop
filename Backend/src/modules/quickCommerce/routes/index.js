@@ -17,6 +17,7 @@ import uploadRoutes from '../modules/uploads/routes/upload.routes.js';
 import restaurantAdminRoutes from '../modules/food/admin/routes/admin.routes.js';
 import userRoutes from '../modules/food/user/routes/user.routes.js';
 import orderUserRoutes from '../modules/food/orders/routes/order.routes.user.js';
+import medicalUserRoutes from '../modules/food/orders/routes/medical.routes.user.js';
 import paymentRoutes from '../core/payments/payment.routes.js';
 import fcmRoutes from '../core/notifications/fcm.routes.js';
 import notificationRoutes from '../core/notifications/notification.routes.js';
@@ -74,6 +75,10 @@ router.use('/user', authMiddleware, requireRoles('USER'), userRoutes);
 router.use('/notifications', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER'), notificationRoutes);
 router.use('/chat', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER', 'ADMIN'), chatRoutes);
 router.use('/orders', authMiddleware, requireRoles('USER'), orderUserRoutes);
+// The customer's medical section: nearby pharmacies, and prescriptions
+// broadcast to all of them. Not under /orders -- a broadcast is not an order
+// until a pharmacy accepts it.
+router.use('/medical', authMiddleware, requireRoles('USER'), medicalUserRoutes);
 // Returns carries its own per-route role gates (customer / admin / rider on one
 // router), so it is mounted bare rather than behind a single requireRoles.
 router.use('/returns', returnRoutes);

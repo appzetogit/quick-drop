@@ -143,6 +143,7 @@ const AdminForgotPassword = lazy(() => import("@food/pages/admin/auth/AdminForgo
 const FoodSubadmins = lazy(() => import("@food/pages/admin/management/FoodSubadmins"));
 const MedicalPrescriptionOrders = lazy(() => import("@food/pages/admin/medical/PrescriptionOrders"));
 const MedicalDrugLicences = lazy(() => import("@food/pages/admin/medical/DrugLicences"));
+const MedicalRequests = lazy(() => import("@food/pages/admin/medical/MedicalRequests"));
 const FoodSubadminCreate = lazy(() => import("@food/pages/admin/management/FoodSubadminCreate"));
 
 /**
@@ -409,6 +410,7 @@ export default function AdminRouter() {
                 in the shared route table. */}
             <Route path="prescriptions" element={<MedicalPrescriptionOrders />} />
             <Route path="drug-licences" element={<MedicalDrugLicences />} />
+            <Route path="requests" element={<MedicalRequests />} />
           </Route>
         </Route>
 

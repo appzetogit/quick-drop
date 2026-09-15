@@ -75,6 +75,11 @@ import {
 } from '../controllers/bulkUpload.controller.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
 import { fillPrescriptionOrderController, submitPrescriptionBillController } from '../../orders/controllers/prescriptionOrder.controller.js';
+import {
+    claimPrescriptionRequestController,
+    declinePrescriptionRequestController,
+    listPharmacyRequestsController,
+} from '../../orders/controllers/prescriptionRequest.controller.js';
 import { authMiddleware, optionalAuth } from '../../../../core/auth/auth.middleware.js';
 import { sendError } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
@@ -311,6 +316,17 @@ router.patch('/orders/:orderId/fill', authMiddleware, requireRestaurant, fillPre
 // customer approves it, re-billing is refused.
 router.patch('/orders/:orderId/prescription-bill', authMiddleware, requireRestaurant, submitPrescriptionBillController);
 router.post('/orders/:orderId/resend-notification', authMiddleware, requireRestaurant, orderController.resendDeliveryNotificationRestaurantController);
+
+/*
+ * Prescriptions broadcast to every pharmacy nearby, which this shop may take.
+ *
+ * Not under /orders: there is no order yet. Accepting is what creates one --
+ * for this pharmacy alone -- and it closes the request for everybody else, so
+ * two shops cannot dispense the same prescription.
+ */
+router.get('/medical/requests', authMiddleware, requireRestaurant, listPharmacyRequestsController);
+router.post('/medical/requests/:requestId/accept', authMiddleware, requireRestaurant, claimPrescriptionRequestController);
+router.post('/medical/requests/:requestId/decline', authMiddleware, requireRestaurant, declinePrescriptionRequestController);
 
 // Complaints (restaurant dashboard)
 router.get('/complaints', authMiddleware, requireRestaurant, getRestaurantComplaintsController);
