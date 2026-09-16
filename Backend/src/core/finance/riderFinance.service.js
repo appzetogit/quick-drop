@@ -73,20 +73,21 @@ export const resolveRiderIdentity = async (anyId) => {
             import('../../modules/quickCommerce/modules/food/delivery/models/deliveryPartner.model.js'),
         ]);
 
-        const partner = (await FoodDeliveryPartner.findById(id).select('_id driverId').lean())
-            || (await QCDeliveryPartner.findById(id).select('_id driverId').lean());
+        const foodPartner = await FoodDeliveryPartner.findById(id).select('_id driverId').lean();
+        const partner = foodPartner || (await QCDeliveryPartner.findById(id).select('_id driverId').lean());
 
         if (!partner) {
             return { driverId: null, foodPartnerId: null, qcPartnerId: null, linked: false };
         }
+        // Labelled by the collection it was found in. This used to call every
+        // unlinked partner a food partner, quick-commerce riders included.
+        const unlinked = foodPartner
+            ? { driverId: null, foodPartnerId: partner._id, qcPartnerId: null, linked: false }
+            : { driverId: null, foodPartnerId: null, qcPartnerId: partner._id, linked: false };
+
         if (!partner.driverId) {
             // Unlinked: this partner id is the only identity there is.
-            return {
-                driverId: null,
-                foodPartnerId: partner._id,
-                qcPartnerId: null,
-                linked: false,
-            };
+            return unlinked;
         }
 
         driver = await Driver.findById(partner.driverId)
@@ -95,7 +96,7 @@ export const resolveRiderIdentity = async (anyId) => {
 
         if (!driver) {
             // Dangling driverId. Treat as unlinked rather than losing the partner.
-            return { driverId: null, foodPartnerId: partner._id, qcPartnerId: null, linked: false };
+            return unlinked;
         }
     }
 
@@ -178,40 +179,82 @@ export const splitSignedTaxiBalance = (signedBalance) => {
     };
 };
 
-/**
- * Food + quick-commerce money, for every partner identity the rider holds.
+/*
+ * Where a rider's delivery money lives, per vertical. NOT shared collections.
  *
- * Both verticals write to the SAME collections -- the quick-commerce models
- * declare food_orders, food_delivery_cash_deposits and food_delivery_withdrawals
- * -- and differ only in which partner id keys the row. So one pass with `$in`
- * over both ids covers both streams, and cannot double-count: an order carries
- * exactly one deliveryPartnerId.
+ * This used to say quick commerce wrote to the food_* collections, because its
+ * models declare `collection: 'food_orders'` and so on. But each one also passes
+ * an explicit third argument to mongoose.model(), and that wins:
+ *
+ *     mongoose.model('QCOrder', orderSchema, 'qc_orders')
+ *
+ * So every quick-commerce order, deposit, withdrawal and bonus is in a qc_*
+ * collection, and reading only the food models meant this "single source of truth"
+ * never saw any of them: QC earnings were not withdrawable, QC cash on delivery
+ * never counted toward the shared cash limit, and -- the dangerous one -- an
+ * APPROVED QC withdrawal was never subtracted, so money paid out through the
+ * grocery app still showed as available to withdraw again. Confirmed by resolving
+ * the models' collection names at runtime, not by reading schema options.
  */
-const resolveDeliveryMoney = async (partnerIds) => {
-    const ids = partnerIds.map(toObjectId).filter(Boolean);
-
-    const empty = {
-        totalEarned: 0,
-        grossCashCollected: 0,
-        totalDeposited: 0,
-        cashInHandRaw: 0,
-        cashInHand: 0,
-        totalBonus: 0,
-        totalWithdrawn: 0,
-        pendingWithdrawals: 0,
-        pocketBalanceRaw: 0,
-        pocketBalance: 0,
-        totalDeliveries: 0,
-    };
-    if (!ids.length) return empty;
-
-    const [{ FoodOrder }, { FoodDeliveryCashDeposit }, { FoodDeliveryWithdrawal }, { DeliveryBonusTransaction }] =
-        await Promise.all([
+const DELIVERY_MONEY_SOURCES = [
+    {
+        vertical: 'food',
+        load: () => Promise.all([
             import('../../modules/food/orders/models/order.model.js'),
             import('../../modules/food/delivery/models/foodDeliveryCashDeposit.model.js'),
             import('../../modules/food/delivery/models/foodDeliveryWithdrawal.model.js'),
             import('../../modules/food/admin/models/deliveryBonusTransaction.model.js'),
-        ]);
+        ]),
+    },
+    {
+        vertical: 'quickCommerce',
+        load: () => Promise.all([
+            import('../../modules/quickCommerce/modules/food/orders/models/order.model.js'),
+            import('../../modules/quickCommerce/modules/food/delivery/models/foodDeliveryCashDeposit.model.js'),
+            import('../../modules/quickCommerce/modules/food/delivery/models/foodDeliveryWithdrawal.model.js'),
+            import('../../modules/quickCommerce/modules/food/admin/models/deliveryBonusTransaction.model.js'),
+        ]),
+    },
+];
+
+const EMPTY_DELIVERY_MONEY = Object.freeze({
+    totalEarned: 0,
+    grossCashCollected: 0,
+    totalDeposited: 0,
+    cashInHandRaw: 0,
+    cashInHand: 0,
+    totalBonus: 0,
+    totalWithdrawn: 0,
+    pendingWithdrawals: 0,
+    pocketBalanceRaw: 0,
+    pocketBalance: 0,
+    totalDeliveries: 0,
+});
+
+/**
+ * Food + quick-commerce money, for every partner identity the rider holds.
+ *
+ * Every id is matched against BOTH verticals' collections, rather than the food id
+ * against food and the QC id against QC. Pairing them depends on the identity
+ * labels being right, and they were not (an unlinked QC partner was labelled a
+ * food partner). Matching everywhere cannot double-count: the verticals are
+ * separate collections, and a row carries exactly one deliveryPartnerId.
+ */
+const resolveDeliveryMoney = async (partnerIds) => {
+    const ids = partnerIds.map(toObjectId).filter(Boolean);
+    if (!ids.length) return { ...EMPTY_DELIVERY_MONEY, byVertical: {} };
+
+    const perVertical = await Promise.all(DELIVERY_MONEY_SOURCES.map((source) => sumDeliveryMoney(source, ids)));
+    const byVertical = Object.fromEntries(
+        DELIVERY_MONEY_SOURCES.map((source, i) => [source.vertical, perVertical[i]]),
+    );
+    return { ...combineDeliveryMoney(perVertical), byVertical };
+};
+
+/** One vertical's money, derived exactly as before, from its own collections. */
+const sumDeliveryMoney = async (source, ids) => {
+    const [{ FoodOrder }, { FoodDeliveryCashDeposit }, { FoodDeliveryWithdrawal }, { DeliveryBonusTransaction }] =
+        await source.load();
 
     const [orderAgg, depositAgg, bonusAgg, withdrawalAgg] = await Promise.all([
         // Earnings and gross COD cash in one pass over the same matched set.
@@ -254,12 +297,33 @@ const resolveDeliveryMoney = async (partnerIds) => {
         ]),
     ]);
 
-    const totalEarned = round2(orderAgg?.[0]?.totalEarned);
-    const grossCashCollected = round2(orderAgg?.[0]?.grossCashCollected);
-    const totalDeposited = round2(depositAgg?.[0]?.total);
-    const totalBonus = round2(bonusAgg?.[0]?.total);
-    const totalWithdrawn = round2(withdrawalAgg?.[0]?.totalWithdrawn);
-    const pendingWithdrawals = round2(withdrawalAgg?.[0]?.pendingWithdrawals);
+    return {
+        totalEarned: round2(orderAgg?.[0]?.totalEarned),
+        grossCashCollected: round2(orderAgg?.[0]?.grossCashCollected),
+        totalDeposited: round2(depositAgg?.[0]?.total),
+        totalBonus: round2(bonusAgg?.[0]?.total),
+        totalWithdrawn: round2(withdrawalAgg?.[0]?.totalWithdrawn),
+        pendingWithdrawals: round2(withdrawalAgg?.[0]?.pendingWithdrawals),
+        totalDeliveries: Number(orderAgg?.[0]?.totalDeliveries) || 0,
+    };
+};
+
+/**
+ * Sum the verticals' raw figures, then derive. Pure, for the checks.
+ *
+ * Summed BEFORE deriving: cashInHandRaw and pocketBalanceRaw are computed once over
+ * the totals, so a deposit or withdrawal made through one app settles money earned
+ * through the other.
+ */
+export const combineDeliveryMoney = (perVertical = []) => {
+    const total = (key) => round2(perVertical.reduce((acc, v) => acc + (Number(v?.[key]) || 0), 0));
+
+    const totalEarned = total('totalEarned');
+    const grossCashCollected = total('grossCashCollected');
+    const totalDeposited = total('totalDeposited');
+    const totalBonus = total('totalBonus');
+    const totalWithdrawn = total('totalWithdrawn');
+    const pendingWithdrawals = total('pendingWithdrawals');
 
     return {
         totalEarned,
@@ -284,7 +348,7 @@ const resolveDeliveryMoney = async (partnerIds) => {
         //
         // Two figures on purpose. `pocketBalanceRaw` may go NEGATIVE and is the one
         // the unified balance is built from; `pocketBalance` is the clamped
-        // food-only view kept for the breakdown.
+        // delivery-only view kept for the breakdown.
         //
         // Clamping before the verticals are summed would let a rider withdraw the
         // same money forever: a rider with no food earnings and Rs 500 of taxi
@@ -294,7 +358,7 @@ const resolveDeliveryMoney = async (partnerIds) => {
         // makes a withdrawal actually reduce the balance it was paid from.
         pocketBalanceRaw: round2(totalEarned + totalBonus - totalWithdrawn - pendingWithdrawals),
         pocketBalance: Math.max(0, round2(totalEarned + totalBonus - totalWithdrawn - pendingWithdrawals)),
-        totalDeliveries: Number(orderAgg?.[0]?.totalDeliveries) || 0,
+        totalDeliveries: perVertical.reduce((acc, v) => acc + (Number(v?.totalDeliveries) || 0), 0),
     };
 };
 
