@@ -44,7 +44,9 @@ import { FoodDeliveryCommissionRule } from '../models/deliveryCommissionRule.mod
 import { FoodFeeSettings } from '../models/feeSettings.model.js';
 import { FeedbackExperience } from '../models/feedbackExperience.model.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
-import { FoodRefreshToken } from '../../../../core/refreshTokens/refreshToken.model.js';
+// Master's model, bound to this vertical's own collection. The fork's copy of the
+// schema is gone; qc_refresh_tokens is not, because moving it would log everyone out.
+import { QCRefreshToken as FoodRefreshToken } from '../../../../../../core/refreshTokens/refreshToken.model.js';
 import { FoodDeliveryCashLimit } from '../models/deliveryCashLimit.model.js';
 import { FoodDeliveryEmergencyHelp } from '../models/deliveryEmergencyHelp.model.js';
 import { FoodReferralSettings } from '../models/referralSettings.model.js';

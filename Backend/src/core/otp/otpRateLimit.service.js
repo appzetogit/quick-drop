@@ -19,6 +19,7 @@ import { logger } from '../../utils/logger.js';
 
 const SERVICES = Object.freeze({
     FOOD: 'food',
+    QUICK_COMMERCE: 'quickCommerce',
     TAXI_USER: 'taxi:user',
     TAXI_DRIVER: 'taxi:driver',
     TAXI_ONBOARDING: 'taxi:onboarding',

@@ -8,9 +8,33 @@ import { FoodDeliveryPartner } from "../../modules/food/delivery/models/delivery
 import { FoodOrder } from "../../modules/food/orders/models/order.model.js";
 import { FoodReferralSettings } from "../../modules/food/admin/models/referralSettings.model.js";
 import { FoodReferralLog } from "../../modules/food/admin/models/referralLog.model.js";
-import { createOrUpdateOtp, verifyOtp } from "../otp/otp.service.js";
+/*
+ * Master's OTP service, not this fork's copy.
+ *
+ * The copy was a 160-line snapshot of a file that is now 311 lines, and every one
+ * of the differences was a fix quick-commerce never received:
+ *
+ *   - the rate limiter. The copy carried the per-scope counter master explicitly
+ *     replaced, which let one phone pull a full quota from EACH of user,
+ *     restaurant and delivery, and did nothing about the same number also hitting
+ *     taxi. Quick-commerce auth has been the weakest OTP surface on the platform.
+ *   - phone normalisation, so '+919876543210' and '9876543210' are one person
+ *     rather than two OTP rows that cannot verify each other.
+ *   - the DLT-registered SMS template. SMS India Hub rejects anything that is not
+ *     character-for-character the registered text, so the copy's hard-coded
+ *     wording could fail to send at all.
+ *
+ * The `qc:` scopes matter. Master scopes by role -- 'user', 'restaurant',
+ * 'delivery' -- and OTPs now share one collection, so reusing those names would
+ * let a customer who exists in both apps overwrite their own food OTP by
+ * requesting a grocery one.
+ */
+import { createOrUpdateOtp, verifyOtp } from "../../../../core/otp/otp.service.js";
+import { OTP_SERVICES } from "../../../../core/otp/otpRateLimit.service.js";
 import { signAccessToken, signRefreshToken } from "./token.util.js";
-import { FoodRefreshToken } from "../refreshTokens/refreshToken.model.js";
+// Master's model bound to this vertical's own collection. Same schema, same
+// qc_refresh_tokens rows -- so no session is invalidated by this change.
+import { QCRefreshToken as FoodRefreshToken } from "../../../../core/refreshTokens/refreshToken.model.js";
 import { ValidationError, AuthError } from "./errors.js";
 import { config } from "../../config/env.js";
 import { logger } from "../../utils/logger.js";
@@ -117,7 +141,7 @@ export const requestUserOtp = async (phone) => {
     throw new ValidationError("Phone is required");
   }
 
-  const otp = await createOrUpdateOtp(phone);
+  const otp = await createOrUpdateOtp(phone, "qc:user", { service: OTP_SERVICES.QUICK_COMMERCE });
   // TODO: integrate SMS provider here
   const shouldExposeOtp =
     config.nodeEnv !== "production" || config.useDefaultOtp;
@@ -135,7 +159,7 @@ export const verifyUserOtpAndLogin = async (
   console.log(
     `[FCM-LOGIN] User login platform received: rawPlatform=${String(platform ?? "") || "<empty>"}, hasToken=${Boolean(fcmToken)}`,
   );
-  const result = await verifyOtp(phone, otp);
+  const result = await verifyOtp(phone, otp, "qc:user");
 
   if (!result.valid) {
     throw new AuthError(result.reason || "OTP verification failed");
@@ -346,7 +370,7 @@ export const requestRestaurantOtp = async (phone) => {
   if (!phone) {
     throw new ValidationError("Phone is required");
   }
-  const otp = await createOrUpdateOtp(phone);
+  const otp = await createOrUpdateOtp(phone, "qc:restaurant", { service: OTP_SERVICES.QUICK_COMMERCE });
   // Only expose OTP in response when in default/dev mode — never in production with real SMS
   const shouldExposeOtp =
     config.nodeEnv !== "production" || config.useDefaultOtp;
@@ -357,7 +381,7 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
   console.log(
     `[FCM-LOGIN] Restaurant login platform received: rawPlatform=${String(platform ?? "") || "<empty>"}, hasToken=${Boolean(fcmToken)}`,
   );
-  const result = await verifyOtp(phone, otp);
+  const result = await verifyOtp(phone, otp, "qc:restaurant");
   if (!result.valid) {
     throw new AuthError(result.reason || "OTP verification failed");
   }
@@ -454,7 +478,7 @@ export const requestDeliveryOtp = async (phone) => {
   if (!phone) {
     throw new ValidationError("Phone is required");
   }
-  const otp = await createOrUpdateOtp(phone);
+  const otp = await createOrUpdateOtp(phone, "qc:delivery", { service: OTP_SERVICES.QUICK_COMMERCE });
   // Only expose OTP in response when in default/dev mode — never in production with real SMS
   const shouldExposeOtp =
     config.nodeEnv !== "production" || config.useDefaultOtp;
@@ -470,7 +494,7 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
   console.log(
     `[FCM-LOGIN] Delivery login platform received: rawPlatform=${String(platform ?? "") || "<empty>"}, hasToken=${Boolean(fcmToken)}`,
   );
-  const result = await verifyOtp(phone, otp);
+  const result = await verifyOtp(phone, otp, "qc:delivery");
   if (!result.valid) {
     throw new AuthError(result.reason || "OTP verification failed");
   }
