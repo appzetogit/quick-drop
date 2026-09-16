@@ -64,6 +64,17 @@ const PAYMENT_STATUS = {
   PLAN_COVERED: 'plan_covered' // For plan_benefit bookings until bill is finalized
 };
 
+/*
+ * Payment methods where the customer's money was taken BEFORE the service, so
+ * cancelling or timing out owes it back.
+ *
+ * One list for every refund path. Two copies of it had drifted: both omitted
+ * 'online', which is exactly what verifyPaymentWebhook stores for a Razorpay
+ * payment -- so a customer who paid online and then cancelled, or whose search
+ * timed out, was never refunded.
+ */
+const PREPAID_PAYMENT_METHODS = Object.freeze(['wallet', 'online', 'razorpay', 'upi', 'card']);
+
 // Service Status
 const SERVICE_STATUS = {
   ACTIVE: 'active',
@@ -86,6 +97,7 @@ module.exports = {
   WORKER_STATUS,
   BOOKING_STATUS,
   PAYMENT_STATUS,
+  PREPAID_PAYMENT_METHODS,
   SERVICE_STATUS,
   BILL_STATUS
 };

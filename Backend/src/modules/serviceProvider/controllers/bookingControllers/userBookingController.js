@@ -9,7 +9,7 @@ const Worker = require('../../models/Worker');
 const Review = require('../../models/Review');
 const { validationResult } = require('express-validator');
 const { withTransaction, abort } = require('../../utils/withTransaction');
-const { BOOKING_STATUS, PAYMENT_STATUS } = require('../../utils/constants');
+const { BOOKING_STATUS, PAYMENT_STATUS, PREPAID_PAYMENT_METHODS } = require('../../utils/constants');
 const { createNotification } = require('../notificationControllers/notificationController');
 const { sendNotificationToUser, sendNotificationToVendor, sendNotificationToWorker } = require('../../services/firebaseAdmin');
 
@@ -831,7 +831,9 @@ const cancelBooking = async (req, res) => {
 
     const hasStartedJourney = !!booking.journeyStartedAt;
     const isPaid = booking.paymentStatus === PAYMENT_STATUS.SUCCESS;
-    const isWalletOrOnline = ['wallet', 'razorpay', 'upi', 'card'].includes(booking.paymentMethod);
+    // Shared list: this copy omitted 'online', which is what a Razorpay-paid booking
+    // stores, so those customers were never refunded on cancel.
+    const isWalletOrOnline = PREPAID_PAYMENT_METHODS.includes(booking.paymentMethod);
     const isCash = booking.paymentMethod === 'cash';
 
     if (hasStartedJourney) {

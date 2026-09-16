@@ -147,40 +147,16 @@ class BookingScheduler {
             if (totalElapsed > MAX_SEARCH_TIME_MS) {
               console.log(`[BookingScheduler] ${booking.bookingNumber}: Search timed out. Cancelling.`);
 
-              const bookingDoc = await Booking.findById(booking._id);
-              if (bookingDoc) {
-                let refundAmount = 0;
-                if (bookingDoc.paymentStatus === 'SUCCESS' && ['wallet', 'razorpay', 'upi', 'card'].includes(bookingDoc.paymentMethod)) {
-                  refundAmount = bookingDoc.finalAmount;
-                }
-
-                if (refundAmount > 0) {
-                  const User = require('../models/User');
-                  const Transaction = require('../models/Transaction');
-                  const user = await User.findById(bookingDoc.userId);
-                  if (user) {
-                    user.wallet.balance = (user.wallet.balance || 0) + refundAmount;
-                    await user.save();
-
-                    await Transaction.create({
-                      userId: user._id,
-                      type: 'refund',
-                      amount: refundAmount,
-                      status: 'completed',
-                      paymentMethod: 'wallet',
-                      description: `Auto-refund for timed-out booking #${bookingDoc.bookingNumber}`,
-                      bookingId: bookingDoc._id,
-                      balanceAfter: user.wallet.balance
-                    });
-                  }
-                  bookingDoc.paymentStatus = 'REFUNDED';
-                }
-
-                bookingDoc.status = BOOKING_STATUS.NO_VENDORS;
-                bookingDoc.cancellationReason = `No ${bookingModel} accepted within time limit`;
-                bookingDoc.cancelledAt = new Date();
-                bookingDoc.cancelledBy = 'system';
-                await bookingDoc.save();
+              // Cancel + refund in one transaction; see services/bookingExpiry.js for
+              // why the refund that used to live here had never run.
+              const { expireTimedOutBooking } = require('./bookingExpiry');
+              const expired = await expireTimedOutBooking(booking._id, { bookingModel });
+              if (!expired.cancelled) {
+                // A partner accepted, or another tick/instance got there first.
+                return;
+              }
+              if (expired.refundAmount > 0) {
+                console.log(`[BookingScheduler] ${booking.bookingNumber}: refunded ₹${expired.refundAmount} to wallet.`);
               }
 
               // Notify User
