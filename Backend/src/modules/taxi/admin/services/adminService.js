@@ -5,6 +5,7 @@ import { Admin } from '../models/Admin.js';
 import { User } from '../../user/models/User.js';
 import { UserWallet } from '../../user/models/UserWallet.js';
 import { WalletTransaction } from '../../driver/models/WalletTransaction.js';
+import { forAdminAdjustment } from '../../../../core/finance/idempotencyKeys.js';
 import { AdminBusinessSetting } from '../models/AdminBusinessSetting.js';
 import { AdminAppSetting } from '../models/AdminAppSetting.js';
 // AppModule import removed
@@ -4373,57 +4374,59 @@ export const adjustDriverWallet = async (id, payload = {}) => {
   const normalizedAmount = Math.round(amount * 100) / 100;
   const signedAmount = operation === 'credit' ? normalizedAmount : -normalizedAmount;
   const description = payload.description || `Admin adjustment (${operation})`;
-  const session = await mongoose.startSession();
 
-  try {
-    session.startTransaction();
+  /*
+   * Delegates to applyDriverWalletAdjustment instead of moving the balance itself.
+   *
+   * What stood here was a SECOND writer of driver.wallet.balance, and the two
+   * disagreed in both of the ways that matter:
+   *
+   *   - it read `driver.wallet.balance`, computed a new figure in JavaScript, and
+   *     wrote it back absolutely with `driver.save()`. An admin adjustment landing
+   *     at the same moment as a ride settlement (or as another admin) lost one of
+   *     the two updates outright -- the money simply disappeared from the balance
+   *     while both ledger rows claimed to have applied. applyDriverWalletAdjustment
+   *     does the arithmetic server-side in an aggregation-pipeline `$add`, which
+   *     cannot lose a concurrent write.
+   *
+   *   - it blocked on `nextBalance < -cashLimit` while the other writer blocks on
+   *     `balance <= minimumBalanceForOrders` from app settings. Two rules for one
+   *     question, so whether a driver could take work depended on which code path
+   *     had last touched their wallet.
+   *
+   * BEHAVIOUR CHANGES, deliberately: the block threshold for admin adjustments is
+   * now the configured minimum-balance rule rather than the ad-hoc `-cashLimit`
+   * default of 500, and `wallet.cashLimit` is written as the shared ceiling. That
+   * convergence is the point of the change, not a side effect of it.
+   *
+   * The ledger row, its own Mongo transaction and the {balance} response shape are
+   * unchanged, so callers and the admin UI see what they saw before.
+   */
+  const { applyDriverWalletAdjustment } = await import('../../driver/services/walletService.js');
 
-    const driver = await Driver.findById(id).session(session);
-    if (!driver) {
-      throw new ApiError(404, 'Driver not found');
-    }
+  const result = await applyDriverWalletAdjustment({
+    driverId: id,
+    amount: signedAmount,
+    type: 'adjustment',
+    description,
+    metadata: {
+      source: 'admin',
+      operation,
+      rawAmount: normalizedAmount,
+      /*
+       * Recorded now so the unique index added with the rest of the idempotency
+       * work has something to build on. It does NOT yet make this call idempotent:
+       * nothing enforces uniqueness until that index exists, and an admin panel
+       * that does not send a clientRequestId still produces a fresh key per call.
+       * Stated rather than implied, so nobody reads this field as a guarantee.
+       */
+      ...(payload.clientRequestId
+        ? { referenceKey: forAdminAdjustment(payload.adminId || 'admin', payload.clientRequestId) }
+        : {}),
+    },
+  });
 
-    const currentBalance = Number(driver.wallet?.balance || 0);
-    const cashLimit = Number(driver.wallet?.cashLimit ?? 500);
-    const nextBalance = Math.round((currentBalance + signedAmount) * 100) / 100;
-    const isBlockedAfter = nextBalance < -cashLimit;
-
-    driver.wallet = driver.wallet || {};
-    driver.wallet.balance = nextBalance;
-    driver.wallet.cashLimit = cashLimit;
-    driver.wallet.isBlocked = isBlockedAfter;
-    driver.markModified('wallet');
-    await driver.save({ session });
-
-    await WalletTransaction.create(
-      [
-        {
-          driverId: id,
-          type: 'adjustment',
-          amount: signedAmount,
-          balanceBefore: currentBalance,
-          balanceAfter: nextBalance,
-          cashLimit,
-          isBlockedAfter,
-          description,
-          metadata: {
-            source: 'admin',
-            operation,
-            rawAmount: normalizedAmount,
-          },
-        },
-      ],
-      { session },
-    );
-
-    await session.commitTransaction();
-    return { balance: Number(nextBalance.toFixed(2)) };
-  } catch (error) {
-    await session.abortTransaction();
-    throw error;
-  } finally {
-    session.endSession();
-  }
+  return { balance: Number(Number(result.driver.wallet.balance).toFixed(2)) };
 };
 
 export const listDriverWalletHistory = async (id) => {

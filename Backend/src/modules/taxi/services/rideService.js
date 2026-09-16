@@ -2792,20 +2792,38 @@ export const submitRideFeedback = async ({ rideId, userId, rating, comment = '',
   if (numericTip > 0) {
     ride.driverEarnings = Math.round(((ride.driverEarnings || 0) + numericTip) * 100) / 100;
     
-    // Log the cash tip in the wallet transaction history
+    /*
+     * A cash tip goes hand to hand. It never passes through the wallet, which is
+     * why balanceBefore and balanceAfter are equal here -- correctly.
+     *
+     * But `amount` carried the tip, and a row whose amount does not equal its own
+     * balance delta breaks the one property a ledger has to have: that folding
+     * every amount reproduces the balance. Summing this collection would overstate
+     * every driver's balance by their lifetime tips, and the reconciler built in
+     * Phase 3 would report a discrepancy on every tipped driver with no way to
+     * tell a real one from this.
+     *
+     * So the row keeps the tip in metadata, where it is still reportable as
+     * earnings, and states an amount of 0 because that is what moved in the wallet.
+     * The driver is not paid less: `ride.driverEarnings` above already has it, and
+     * they are holding the cash.
+     */
     await WalletTransaction.create([{
         driverId: ride.driverId,
         rideId: ride._id,
         type: 'adjustment',
-        amount: numericTip,
+        amount: 0,
         balanceBefore: driver.wallet?.balance || 0,
         balanceAfter: driver.wallet?.balance || 0,
         cashLimit: driver.wallet?.cashLimit || 0,
         isBlockedAfter: driver.wallet?.isBlocked || false,
-        description: 'Cash tip received directly from rider',
+        description: `Cash tip of ${numericTip} received directly from rider`,
         metadata: {
            source: 'ride_tip',
            provider: 'cash',
+           // The figure itself, for earnings reporting. Deliberately NOT `amount`.
+           tipAmount: numericTip,
+           movesWallet: false,
            rideId: String(ride._id),
            userId: String(userId),
         }

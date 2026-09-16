@@ -3114,16 +3114,23 @@ export const getMyWallet = async (req, res) => {
             $cond: [{ $eq: ["$type", "commission_deduction"] }, { $abs: "$amount" }, 0]
           }
         },
+        /*
+         * Tips are read from `metadata.tipAmount` first, falling back to `amount`.
+         *
+         * A cash tip never passes through the wallet, so its row now records
+         * `amount: 0` -- a ledger row whose amount does not equal its own balance
+         * delta would make folding the collection overstate every driver's balance
+         * by their lifetime tips. The figure moved to `metadata.tipAmount`.
+         *
+         * The fallback is not defensive coding: rows written before that change
+         * carry the tip in `amount` and nothing backfills them, so both shapes are
+         * real and will coexist indefinitely. `$ifNull` picks whichever this row has.
+         */
         totalTips: {
           $sum: {
             $cond: [
               { $or: [{ $eq: ["$metadata.source", "ride_tip"] }, { $gt: ["$metadata.tipAmount", 0] }] },
-              {
-                $max: [
-                  { $cond: [{ $eq: ["$metadata.source", "ride_tip"] }, "$amount", "$metadata.tipAmount"] },
-                  0
-                ]
-              },
+              { $max: [{ $ifNull: ["$metadata.tipAmount", "$amount"] }, 0] },
               0
             ]
           }
@@ -3141,7 +3148,9 @@ export const getMyWallet = async (req, res) => {
                       { $in: ["$metadata.source", ["driver_incentive", "ride_tip"]] }
                     ]
                   },
-                  { $max: ["$amount", 0] },
+                  // Same reason as totalTips above: a cash tip's figure now lives
+                  // in metadata, older rows still carry it in `amount`.
+                  { $max: [{ $ifNull: ["$metadata.tipAmount", "$amount"] }, 0] },
                   0
                 ]
               }
