@@ -154,11 +154,17 @@ work untestable without looking for the harness the repo already had.
 - the reconciler catching both a tampered balance and a MISSING entry, the second
   of which a sum alone would hide
 
+`tests/assignment.claim.smoke.mjs` does the same for the busy-lock, also in
+`npm test`: three verticals racing for one driver produce exactly one winner; the
+new claim racing the OLD acquire produces exactly one winner across ten rounds;
+the mirror keeps food and taxi from double-booking a QC rider; both release
+regressions are pinned; and reconcile keeps a live `qc_orders` lock rather than
+clearing it. A mutation run -- removing the capacity and legacy guards -- fails
+three of those checks, so they are not passing vacuously. The existing
+`assignment.smoke.mjs` still passes 12/12 through the rewritten reconcile.
+
 **Still not proven:**
 
-- The QC busy-lock claim under genuine concurrent accepts. `tests/assignment.smoke.mjs`
-  covers the old single-slot primitive; the array-based claim and the per-vertical
-  reconcile are not yet exercised there.
 - Whether the eligibility engine's verdicts match reality — that is what shadow
   mode exists to answer, and it needs production traffic rather than a test.
 - Every migration script. None has run against real data.
