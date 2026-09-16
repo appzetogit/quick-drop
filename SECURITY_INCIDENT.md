@@ -69,10 +69,16 @@ second deploy path:
 app.post('/api/deploy', ...)   // → exec('cd ~ && ./deploy.sh')
 ```
 
-`deploy.sh` lives on the server and is not in this repository, so nothing here can
-say whether it runs `npm run build` — and therefore the guard — or invokes vite
-directly. **If it does not run `npm run build`, the guard has never protected that
-path and every window above could have shipped.** Read that script.
+**Checked on the server, 2026-09-16: `~/deploy.sh` does not exist.** pm2 runs as
+root, so the webhook's `cd ~ && ./deploy.sh` points at `/root/deploy.sh`, which is
+missing. As the box stands today, that path cannot build anything, poisoned or not.
+
+What this does NOT prove: that the file never existed. If it was present during one
+of the windows above and has since been removed, it could still have shipped a
+poisoned bundle. Deploy logs or shell history for those dates are the only way to
+close that. It is also worth deciding whether `/api/deploy` should exist at all --
+an unauthenticated-by-default route that execs a shell script is a standing risk,
+and today it does nothing useful.
 
 The local `Frontend/dist/` is clean, but it was built 2026-08-27 17:57, inside one
 clean window. It says nothing about what the server built.
