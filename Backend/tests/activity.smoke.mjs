@@ -126,6 +126,43 @@ console.log('\n[5] hooks fire on BOTH write paths');
     const rows = await Activity.countDocuments({ vertical: 'taxi', refId: doc._id });
     check('still exactly one row', () => assert.equal(rows, 1));
 
+    /*
+     * The case the checks above never exercised, and the one production uses.
+     *
+     * The hook used to wrap findOneAndUpdate in an async function, which returns a
+     * Promise instead of a mongoose Query. Awaiting it directly -- all this test did --
+     * works either way. CHAINING on it does not: .populate() threw "is not a function",
+     * and rider accept (PATCH /food/delivery/orders/:id/accept) returned 500 on every
+     * attempt from 2026-08-26 until this was fixed.
+     */
+    const FakeUser = mongoose.model('FakeUserForActivity', new mongoose.Schema({ name: String }));
+    const owner = await FakeUser.create({ name: 'Rider' });
+    const chained = await Fake.create({ userId: owner._id, status: 'searching', fare: 90 });
+
+    let populated;
+    let populateError = null;
+    try {
+        populated = await Fake.findOneAndUpdate({ _id: chained._id }, { $set: { status: 'accepted' } }, { new: true })
+            .populate({ path: 'userId', model: 'FakeUserForActivity' });
+    } catch (err) { populateError = err; }
+    check('THE PRODUCTION BUG: findOneAndUpdate(...).populate() works', () => assert.equal(populateError, null, populateError?.message));
+    check('the populate actually applied', () => assert.equal(populated?.userId?.name, 'Rider'));
+
+    const leaned = await Fake.findOneAndUpdate({ _id: chained._id }, { $set: { status: 'ongoing' } }, { new: true }).lean();
+    check('findOneAndUpdate(...).lean() returns a plain object', () => assert.equal(typeof leaned.save, 'undefined'));
+
+    const selected = await Fake.findByIdAndUpdate(chained._id, { $set: { fare: 95 } }, { new: true }).select('fare');
+    check('findByIdAndUpdate(...).select() applies the projection', () => {
+        assert.equal(selected.fare, 95);
+        assert.equal(selected.status, undefined);
+    });
+
+    await Fake.findOneAndUpdate({ _id: chained._id }, { $set: { status: 'completed' } }).lean();
+    await settle();
+    const chainedRow = await Activity.findOne({ vertical: 'taxi', refId: chained._id });
+    check('the feed still syncs through a chained, lean, pre-update query', () =>
+        assert.equal(chainedRow?.status, ACTIVITY_STATUS.COMPLETED));
+
     check('attaching twice does not double-write', () => {
         attachActivityHooks(Fake, { vertical: 'taxi', refModel: 'TaxiRide', map: () => ({}) });
         assert.equal(Fake.schema.__activityHooksAttached, true);

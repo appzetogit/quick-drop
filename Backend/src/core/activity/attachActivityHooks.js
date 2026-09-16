@@ -53,23 +53,17 @@ export const attachActivityHooks = (model, { vertical, refModel, map }) => {
     // fire -- a feed that is quietly always empty. Verified, not assumed.
     //
     // Wrapping the model's write methods works regardless of compile order.
-    const wrap = (target, name, { reread = false } = {}) => {
+    //
+    // create() and save() return promises, so an async wrapper is right for them.
+    const wrap = (target, name) => {
         const original = target[name];
         if (typeof original !== 'function' || original.__activityWrapped) return;
 
         async function wrapped(...args) {
             const result = await original.apply(this, args);
             try {
-                if (!reread) {
-                    // create()/save() hand back the current document.
-                    (Array.isArray(result) ? result : [result]).forEach(sync);
-                } else if (result?._id) {
-                    // findOneAndUpdate without { new: true } returns the PRE-update doc,
-                    // so the terminal state would be recorded one transition stale --
-                    // permanently, since nothing follows it. Re-read to be correct.
-                    const fresh = await model.findById(result._id);
-                    sync(fresh || result);
-                }
+                // create()/save() hand back the current document.
+                (Array.isArray(result) ? result : [result]).forEach(sync);
             } catch (err) {
                 logger.error(`[Activity] sync failed for ${vertical}.${name} — ${err.message}`);
             }
@@ -79,9 +73,59 @@ export const attachActivityHooks = (model, { vertical, refModel, map }) => {
         target[name] = wrapped;
     };
 
+    /*
+     * The update methods are different, and treating them like create() broke food
+     * dispatch in production for three weeks.
+     *
+     * findOneAndUpdate and findByIdAndUpdate return a mongoose QUERY, not a promise,
+     * and callers chain on it -- .populate(), .lean(), .select(), .session() -- before
+     * it runs. The previous wrapper was an async function: it returned a Promise and
+     * executed the query at once, so every chained modifier threw "populate is not a
+     * function". Rider accept (PATCH /food/delivery/orders/:id/accept) returned 500 on
+     * every attempt from 2026-08-26, and auto-assign after a restaurant status change
+     * failed silently behind a [DEBUG] log -- 39 failures in the production log.
+     *
+     * So the query is returned untouched and the side effect hooks its exec().
+     * .populate()/.lean()/.select() return the SAME query object, so an instance-level
+     * exec survives the chaining; awaiting a query calls Query.prototype.then, which
+     * calls this.exec(). Callers get their query, modifiers apply, the feed still syncs.
+     */
+    const wrapQuery = (target, name) => {
+        const original = target[name];
+        if (typeof original !== 'function' || original.__activityWrapped) return;
+
+        function wrapped(...args) {
+            const query = original.apply(this, args);
+            if (!query || typeof query.exec !== 'function') return query;
+
+            const originalExec = query.exec.bind(query);
+            query.exec = async (...execArgs) => {
+                const result = await originalExec(...execArgs);
+                try {
+                    // lean() gives a plain object; includeResultMetadata wraps the doc in
+                    // { value }. Both shapes are looked through.
+                    const doc = result?.value && !result?._id ? result.value : result;
+                    if (doc?._id) {
+                        // Without { new: true } the result is the PRE-update document, which
+                        // would record the terminal state one transition stale -- permanently,
+                        // since nothing follows it. Re-read to be correct.
+                        const fresh = await model.findById(doc._id);
+                        sync(fresh || doc);
+                    }
+                } catch (err) {
+                    logger.error(`[Activity] sync failed for ${vertical}.${name} — ${err.message}`);
+                }
+                return result;
+            };
+            return query;
+        }
+        wrapped.__activityWrapped = true;
+        target[name] = wrapped;
+    };
+
     wrap(model, 'create');
-    wrap(model, 'findOneAndUpdate', { reread: true });
-    wrap(model, 'findByIdAndUpdate', { reread: true });
+    wrapQuery(model, 'findOneAndUpdate');
+    wrapQuery(model, 'findByIdAndUpdate');
     wrap(model.prototype, 'save');
 
     // KNOWN GAP: updateMany() and bulkWrite() return write results, not documents, so a
