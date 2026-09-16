@@ -36,6 +36,7 @@ import qcRouter from '../modules/quickCommerce/routes/index.js';
 // Platform module kill-switch: lets one vertical be taken out of service without
 // restarting the process the other three share.
 import platformModuleRoutes from '../core/modules/module.routes.js';
+import platformSettingRoutes from '../core/config/config.routes.js';
 import { requireModuleEnabled } from '../middleware/moduleEnabled.js';
 import { MODULES } from '../core/modules/moduleRegistry.js';
 
@@ -86,6 +87,17 @@ router.use((req, _res, next) => {
 // The kill-switch lives at the platform root, NOT under a vertical's /admin: it
 // exists to act on a misbehaving vertical, so it must not depend on one.
 router.use('/v1/platform/modules', platformModuleRoutes);
+
+/*
+ * Master / Global settings, at the platform root for the same reason as the
+ * kill-switch above: these are the rules that apply to every vertical, and
+ * mounting them beneath /food/admin would reproduce the problem they exist to
+ * solve -- a platform-wide rule that lives inside one vertical's panel.
+ *
+ * Authenticated admins only. Writes additionally require `settings.write`,
+ * enforced inside the router.
+ */
+router.use('/v1/platform/settings', authMiddleware, requireRoles('ADMIN'), platformSettingRoutes);
 
 router.get('/v1/health', (req, res) => {
     res.status(200).json({ status: 'UP', message: 'Server is healthy' });
