@@ -245,8 +245,23 @@ check('the razorpay mock bypass is not reachable via useDefaultOtp', () => {
 });
 
 check('the razorpay webhook compares signatures in constant time', () => {
+    /*
+     * The webhook no longer inlines timingSafeEqual: it calls the shared
+     * safeSignatureEqual util, as the quick-commerce copy already did. So the
+     * property is asserted in two parts rather than by grepping one file for a
+     * word that is no longer in it -- the webhook must go through the util, AND the
+     * util must actually be constant-time. Checking only the first would let
+     * somebody "simplify" the util to === and keep this guard green.
+     */
     const src = srcOf('core/payments/controllers/razorpayWebhook.controller.js');
-    assert.ok(/timingSafeEqual/.test(src), 'the webhook signature comparison is no longer constant-time');
+    const util = srcOf('utils/safeCompare.js');
+    const usesUtil = /import\s*\{[^}]*\bsafeSignatureEqual\b[^}]*\}\s*from\s*['"][^'"]*safeCompare\.js['"]/.test(src)
+        && /\bsafeSignatureEqual\s*\(/.test(src);
+    assert.ok(usesUtil || /timingSafeEqual/.test(src), 'the webhook signature comparison is no longer constant-time');
+    if (usesUtil) {
+        assert.ok(/crypto\.timingSafeEqual\s*\(/.test(util), 'safeSignatureEqual is no longer constant-time');
+        assert.ok(!/expected\s*===\s*actual|actual\s*===\s*expected/.test(util), 'safeSignatureEqual compares with ===');
+    }
     assert.ok(!/\bexpected !== signature\b/.test(src), 'the timing-unsafe compare is back');
 });
 
