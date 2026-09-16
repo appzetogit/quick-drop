@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { logger } from '../../utils/logger.js';
 import {
     JOB_TYPES,
@@ -61,6 +62,22 @@ const loadDriver = async () => (await import('../../modules/taxi/driver/models/D
  * Exported for the checks: the filter is the security boundary, so it is worth
  * asserting on its shape directly rather than only through its effects.
  */
+/*
+ * Ids are normalised to ObjectId at the boundary.
+ *
+ * The claim is an aggregation-pipeline update, and mongoose does not cast literals
+ * inside pipeline stages. A caller passing the order id as a string would store a
+ * string in activeAssignments, and the idempotent re-claim -- `$in: [jobId, ...]` --
+ * would then fail to match it against an ObjectId from another caller: a rider's
+ * own retry reported as "already on another job". Food and taxi pass ObjectIds
+ * today; this makes that an invariant rather than a habit.
+ */
+const asObjectId = (value) => (
+    value instanceof mongoose.Types.ObjectId || !mongoose.Types.ObjectId.isValid(String(value))
+        ? value
+        : new mongoose.Types.ObjectId(String(value))
+);
+
 export function buildClaimFilter(driverId, { jobType, jobId }, policy = DEFAULT_POLICY) {
     const max = Number(policy?.maxConcurrentJobs) || 1;
     const forbidden = forbiddenAlongside(jobType, policy);
@@ -110,7 +127,8 @@ export function buildClaimFilter(driverId, { jobType, jobId }, policy = DEFAULT_
  * @param {{policy?: object, session?: any}} [opts]
  * @returns {Promise<{claimed: boolean, reason: string|null}>}
  */
-export async function claimAssignment(driverId, { vertical, jobId }, { policy = DEFAULT_POLICY, session = null } = {}) {
+export async function claimAssignment(driverId, { vertical, jobId: rawJobId }, { policy = DEFAULT_POLICY, session = null } = {}) {
+    const jobId = rawJobId ? asObjectId(rawJobId) : rawJobId;
     const jobType = jobTypeOf(vertical);
     if (!driverId || !jobType || !jobId) {
         return { claimed: false, reason: 'INVALID_JOB' };
@@ -201,7 +219,8 @@ export function buildReleaseFilter(driverId, jobId) {
  * Release one job. Only clears an entry that IS this job, so a late release from
  * a finished order cannot free a lock a newer job already took.
  */
-export async function releaseAssignment(driverId, jobId, { session = null } = {}) {
+export async function releaseAssignment(driverId, rawJobId, { session = null } = {}) {
+    const jobId = rawJobId ? asObjectId(rawJobId) : rawJobId;
     if (!driverId || !jobId) return false;
     const Driver = await loadDriver();
 

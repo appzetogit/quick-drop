@@ -15,43 +15,67 @@ import { Driver } from '../models/Driver.js';
  * Atomically claim the lock. Succeeds only if the driver is currently free (activeAssignment null)
  * OR already holds this exact assignment (idempotent re-acquire). Returns true if the caller holds it.
  */
+/*
+ * Food and taxi's entry points to the busy-lock, now delegating to the master one.
+ *
+ * These used to write `activeAssignment` directly, while quick-commerce claimed
+ * through core/assignment/assignment.service.js and its `activeAssignments` array.
+ * The mirror kept the two interoperable, but it meant two primitives deciding the
+ * same question -- the exact shape this branch exists to remove. Now there is one:
+ * every vertical claims through the master service, and `activeAssignments` is the
+ * record for all of them.
+ *
+ * Signatures and return values are unchanged, so no call site in food or taxi moves.
+ * `type` maps onto a vertical: 'ride' is taxi, 'delivery' is food. Quick-commerce
+ * calls the master service directly and never came through here.
+ */
+const verticalForLegacyType = (type) => (type === 'ride' ? 'taxi' : 'food');
+
+const loadMaster = () => import('../../../../core/assignment/assignment.service.js');
+
 export const acquireDriverAssignment = async (driverId, type, id, session = null) => {
   if (!driverId || !type || !id) return false;
-  const res = await Driver.findOneAndUpdate(
-    {
-      _id: driverId,
-      $or: [
-        { activeAssignment: null },
-        { activeAssignment: { $exists: false } },
-        { 'activeAssignment.type': type, 'activeAssignment.id': id },
-      ],
-    },
-    { $set: { activeAssignment: { type, id, at: new Date() } } },
-    { new: true, session },
+  const { claimAssignment } = await loadMaster();
+  const { claimed } = await claimAssignment(
+    driverId,
+    { vertical: verticalForLegacyType(type), jobId: id },
+    { session },
   );
-  return Boolean(res);
+  return claimed;
 };
 
 /**
  * Release the lock, but only if it still points at THIS assignment — so a stale release
  * (late completion of an old ride) can't clear a lock that a newer assignment already took.
+ *
+ * Note for anyone reading the taxi dispatcher: its release calls are NOT behind
+ * UNIFIED_DISPATCH_ENABLED and run in production today. With the flag off nothing
+ * is ever claimed, so these match no driver and change nothing -- the same no-op
+ * the previous implementation was.
  */
 export const releaseDriverAssignment = async (driverId, id, session = null) => {
   if (!driverId || !id) return false;
-  const res = await Driver.updateOne(
-    { _id: driverId, 'activeAssignment.id': id },
-    { $set: { activeAssignment: null } },
-    { session },
-  );
-  return Boolean(res?.modifiedCount);
+  const { releaseAssignment } = await loadMaster();
+  return releaseAssignment(driverId, id, { session });
 };
 
-/** Force-clear the lock regardless of what it holds (admin/recovery use only). */
+/**
+ * Force-clear the lock regardless of what it holds (admin/recovery use only).
+ *
+ * Clears BOTH fields. Clearing only the mirror, as this used to, would leave the
+ * array still holding the job -- and the array is what every claim now reads.
+ */
 export const forceClearDriverAssignment = async (driverId, session = null) => {
   if (!driverId) return false;
   const res = await Driver.updateOne(
-    { _id: driverId },
-    { $set: { activeAssignment: null } },
+    {
+      _id: driverId,
+      $or: [
+        { activeAssignment: { $ne: null } },
+        { 'activeAssignments.0': { $exists: true } },
+      ],
+    },
+    { $set: { activeAssignment: null, activeAssignments: [] } },
     { session },
   );
   return Boolean(res?.modifiedCount);

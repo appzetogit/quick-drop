@@ -128,6 +128,54 @@ async function main() {
     assert.equal(r.claimed, false, 'a legacy-locked driver must not be claimable');
   });
 
+  // --- food and taxi now go through the master primitive -------------------
+  console.log('\nfood and taxi delegate to the master claim');
+
+  await test('the old acquire now writes activeAssignments, not just the mirror', async () => {
+    /*
+     * The point of the wiring. Before it, food and taxi wrote only activeAssignment
+     * while QC wrote the array: two primitives deciding one question. Now the array
+     * is the record for every vertical.
+     */
+    const d = await newDriver();
+    const ride = oid();
+    assert.equal(await acquireDriverAssignment(d._id, 'ride', ride), true);
+    const fresh = await read(d._id);
+    assert.equal(fresh.activeAssignments.length, 1);
+    assert.equal(fresh.activeAssignments[0].vertical, 'taxi');
+    assert.equal(fresh.activeAssignments[0].jobType, 'taxiRide');
+  });
+
+  await test("a 'delivery' acquire is recorded as food", async () => {
+    const d = await newDriver();
+    await acquireDriverAssignment(d._id, 'delivery', oid());
+    assert.equal((await read(d._id)).activeAssignments[0].vertical, 'food');
+  });
+
+  await test('a job id passed as a STRING re-claims idempotently', async () => {
+    // Pipeline literals are not cast by mongoose, so without normalisation a string
+    // id would be stored as a string and never match its own ObjectId on retry.
+    const d = await newDriver();
+    const job = oid();
+    assert.equal((await claimAssignment(d._id, { vertical: 'food', jobId: String(job) })).claimed, true);
+    assert.equal((await claimAssignment(d._id, { vertical: 'food', jobId: job })).claimed, true, 'retry with the ObjectId');
+    assert.equal((await claimAssignment(d._id, { vertical: 'food', jobId: String(job) })).claimed, true, 'retry with the string');
+    const fresh = await read(d._id);
+    assert.equal(fresh.activeAssignments.length, 1);
+    assert.ok(fresh.activeAssignments[0].jobId instanceof mongoose.Types.ObjectId, 'stored as an ObjectId');
+  });
+
+  await test('forceClear empties the array as well as the mirror', async () => {
+    const { forceClearDriverAssignment } = await import('../src/modules/taxi/driver/services/driverAssignmentService.js');
+    const d = await newDriver();
+    await claimAssignment(d._id, { vertical: 'quickCommerce', jobId: oid() });
+    assert.equal(await forceClearDriverAssignment(d._id), true);
+    const fresh = await read(d._id);
+    assert.equal(fresh.activeAssignment, null);
+    assert.equal(fresh.activeAssignments.length, 0, 'clearing only the mirror would leave the driver locked');
+    assert.equal((await claimAssignment(d._id, { vertical: 'taxi', jobId: oid() })).claimed, true);
+  });
+
   // --- concurrency ---------------------------------------------------------
   console.log('\nconcurrency');
 
