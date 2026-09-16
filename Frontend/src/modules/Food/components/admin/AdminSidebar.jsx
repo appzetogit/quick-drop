@@ -217,6 +217,28 @@ const VERTICAL_BRANDING = {
     hiddenPaths: [],
     hiddenSections: [],
     /*
+     * Medical shows two of the shared screens and no more.
+     *
+     * It inherits the whole quick-commerce admin -- sixty-odd links for
+     * catalogue, offers, combos, delivery fees, subscriptions, reports -- and a
+     * pharmacy operator needs none of it. What they need is the zones the
+     * platform serves and the list of pharmacies in them; everything specific
+     * to dispensing is in the MEDICAL section below, which this does not touch.
+     *
+     * An ALLOWLIST rather than a list of things to hide. Hiding would mean
+     * naming sixty-six paths and remembering to add the sixty-seventh the day
+     * somebody extends the shared menu -- and a link nobody remembered to hide
+     * is how food's screens turned up in quick-commerce before. Naming what
+     * belongs here means anything new is absent until somebody decides it
+     * belongs.
+     *
+     * Paths are the food ones, because this filter runs before rebasing.
+     */
+    onlyPaths: [
+      '/admin/food/zone-setup',
+      '/admin/food/restaurants',
+    ],
+    /*
      * Screens that exist only here. A prescription queue and a drug-licence
      * register have no meaning in food or general quick-commerce, so they are
      * added for this base rather than put in the shared menu and hidden from
@@ -263,15 +285,31 @@ export const rebaseAdminMenu = (nodes, base) => {
     typeof path === "string" && path.startsWith(FOOD_ADMIN_BASE)
       ? `${base}${path.slice(FOOD_ADMIN_BASE.length)}`
       : path
-  const { labels, words = [], hiddenPaths = [], hiddenSections = [] } = brandingFor(base)
+  const { labels, words = [], hiddenPaths = [], hiddenSections = [], onlyPaths } = brandingFor(base)
   const relabel = (label) => {
     if (!label) return label
     if (labels[label]) return labels[label]
     return words.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), label)
   }
+  /*
+   * A vertical that names `onlyPaths` gets those links and nothing else.
+   *
+   * Applied before rebasing, so the list is written in the food paths the
+   * shared menu actually holds. A section or an expandable survives only if
+   * something inside it did -- otherwise the menu keeps empty headings, which
+   * read as broken rather than as deliberately spare.
+   */
+  const keeps = (node) => {
+    if (!onlyPaths) return true
+    if (node.path) return onlyPaths.includes(node.path)
+    const children = node.items || node.subItems
+    return Array.isArray(children) && children.some(keeps)
+  }
+
   const rebased = nodes
     .filter((node) => !(node.path && hiddenPaths.includes(node.path)))
     .filter((node) => !(node.label && hiddenSections.includes(node.label)))
+    .filter(keeps)
     .map((node) => ({
       ...node,
       ...(node.path ? { path: rebase(node.path) } : {}),
