@@ -7,6 +7,9 @@ import { FoodDeliveryCashLimit } from '../../admin/models/deliveryCashLimit.mode
 import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js';
 import { logger } from '../../../../utils/logger.js';
 import { config } from '../../../../config/env.js';
+// Master's, not a fork's: the whole point is that the three verticals measure
+// themselves against ONE engine.
+import { compareInBackground } from '../../../../../../core/finance/eligibilityShadow.js';
 import { getIO, rooms } from '../../../../config/socket.js';
 /*
  * Zone matching, shared with food so the two verticals cannot drift apart on what
@@ -547,6 +550,22 @@ export async function tryAutoAssign(orderId, options = {}) {
           `cash-in-hand at or above the configured limit.`,
       );
     }
+
+    /*
+     * Measure the master eligibility engine against this gate. Decides nothing.
+     *
+     * This vertical reads a STORED `qc_delivery_wallets.cashInHand` field while
+     * food recomputes the same concept from its own orders and taxi checks neither
+     * -- three answers to one question. The engine asks riderFinance, which is the
+     * combined figure across all three. No-op unless ELIGIBILITY_SHADOW_ENABLED.
+     */
+    compareInBackground({
+      vertical: 'quickCommerce',
+      candidates: partners,
+      legacyEligible: eligible,
+      jobId: order._id,
+      jobCashExposure: orderCollectsCash(order) ? Math.max(0, Number(order?.pricing?.total) || 0) : 0,
+    });
 
     if (eligible.length === 0) {
       logger.info(`tryAutoAssign: No NEW eligible partners in ${maxKm}km for order ${order._id}. Restarting hunt...`);

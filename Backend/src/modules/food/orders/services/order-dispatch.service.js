@@ -16,6 +16,7 @@ import { getIO, rooms } from '../../../../config/socket.js';
  * being offered Palampur orders 700km away.
  */
 import { loadActiveZones, filterCandidatesToZone } from '../../shared/zoneMatching.js';
+import { compareInBackground } from '../../../../core/finance/eligibilityShadow.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
 import {
   buildDeliverySocketPayload,
@@ -271,6 +272,26 @@ async function filterPartnersByCodCashLimit(partners = [], order = null) {
       `COD cash-limit filter skipped ${skippedCount} delivery partner(s) for order ${order?._id || ''}.`,
     );
   }
+
+  /*
+   * Measure the master eligibility engine against this gate. Decides nothing.
+   *
+   * The figure above is food's own: cash collected on FOOD orders minus deposits,
+   * so a rider holding Rs 1,500 from grocery runs and taxi fares reads as having
+   * collected nothing and is dispatched. The engine asks riderFinance, which knows
+   * about all three. This logs where the two answers part company so the cutover
+   * is made from evidence -- and so the boundary difference is visible too: this
+   * filter allows `projected == limit`, the engine refuses it.
+   *
+   * No-op, and no extra query, unless ELIGIBILITY_SHADOW_ENABLED is set.
+   */
+  compareInBackground({
+    vertical: 'food',
+    candidates: partners,
+    legacyEligible: eligiblePartners,
+    jobId: order?._id,
+    jobCashExposure: orderCashImpact,
+  });
 
   return eligiblePartners;
 }

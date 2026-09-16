@@ -6,6 +6,7 @@ import { Vehicle } from '../admin/models/Vehicle.js';
 import { Driver } from '../driver/models/Driver.js';
 import { Zone } from '../driver/models/Zone.js';
 import { getDriverIdsBlockedByUpcomingScheduledRides } from './rideService.js';
+import { compareInBackground } from '../../../core/finance/eligibilityShadow.js';
 
 const EARTH_RADIUS_METERS = 6371000;
 
@@ -452,6 +453,31 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
       drivers = drivers.filter((driver) => !fallbackBlockedDriverIds.has(String(driver?._id || '')));
     }
   }
+
+  /*
+   * Measure the master eligibility engine against this selection. Decides nothing.
+   *
+   * Taxi is the vertical with the most to learn from this. The filter above checks
+   * `wallet.isBlocked` -- a cached flag, refreshed only when something happens to
+   * touch the wallet -- and no cash figure at all, so a driver holding Rs 1,900
+   * collected on food and grocery runs is offered rides all day. The real gate
+   * runs later, in ensureDriverWalletCanAcceptRide at ACCEPT, which is too late to
+   * keep them out of the candidate set.
+   *
+   * Expect WOULD_BLOCK lines here that are genuine holes being closed rather than
+   * regressions. Read them before enforcing: switching a cash ceiling on for a
+   * fleet that has never had one can stop drivers earning on the day it ships.
+   *
+   * A ride collects no platform cash at dispatch time, so exposure is 0 -- this
+   * measures the ceiling they are ALREADY at, not one this ride would push them to.
+   */
+  compareInBackground({
+    vertical: 'taxi',
+    candidates: drivers.map((d) => ({ partnerId: d?._id, distanceKm: d?.distanceMeters ? d.distanceMeters / 1000 : undefined })),
+    legacyEligible: drivers.map((d) => ({ partnerId: d?._id })),
+    jobId: zone?._id || null,
+    jobCashExposure: 0,
+  });
 
   return {
     zone,
