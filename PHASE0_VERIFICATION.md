@@ -257,6 +257,39 @@ transaction fails 3 of them.
 `master-api`, and note the time. Run `reconcileTaxiWalletMirror({ since })` daily;
 `missing` should be empty apart from rows whose dead letter is still unreplayed.
 
+## 8b. Ledger projection — food and quick-commerce riders (shipped, not yet run)
+
+**Authoritative:** `riderFinance`, derived on read from orders, deposits, bonuses
+and withdrawals. **Non-authoritative:** the projected `ledger_entries`.
+
+Food and QC have no stored rider balance, so no single writer exists to
+dual-write from. `core/finance/deliveryLedgerProjector.js` computes each source
+item's target (an order's earning while delivered, a withdrawal's hold while
+pending or approved, ...), compares it with what the ledger already holds, and
+appends only the difference. Running it twice appends nothing. When the source
+changes (delivery reversed, withdrawal rejected, earning edited, order
+reassigned), it appends a `#revN` correction and never rewrites a row. The owner
+is part of the key, so a reassigned order's reversal and its new rider's earning
+don't collide.
+
+`reconcilePartner` checks the projected ledger against
+`sumDeliveryMoneyForVertical`, which is the same calculation every rider balance
+uses, not a copy of it.
+
+**Found on the way, fixed separately (`f862bd7`):** riderFinance never read the
+`qc_*` collections at all, so approved QC withdrawals could be requested again.
+Someone should check `qc_delivery_withdrawals` for riders whose approved total
+exceeds their earnings.
+
+Tested: 14 planning checks plus `tests/ledger.projector.smoke.mjs` (9 checks,
+replica set, both verticals, concurrent runs). If the projector stops holding
+pending withdrawals, 5 of those 9 fail.
+
+**To run:** `npm run ledger:project-delivery` does a read-only dry run. Add
+`-- --commit` to append; it refuses to run without a replica set and the unique
+index, then reconciles every partner and exits 1 on any disagreement. Nothing in
+the app reads these entries.
+
 ---
 
 ## 9. The final test, re-answered
