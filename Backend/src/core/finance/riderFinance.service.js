@@ -482,3 +482,30 @@ export const __testables = {
     splitSignedTaxiBalance,
     resolveBlockState,
 };
+
+/**
+ * One vertical's delivery models and raw money figures, for the ledger projector
+ * and its reconciler -- so the ledger is checked against the SAME derivation every
+ * rider balance uses, not a second copy of it.
+ */
+export const DELIVERY_VERTICALS = Object.freeze(DELIVERY_MONEY_SOURCES.map((s) => s.vertical));
+
+export const loadDeliveryModels = async (vertical) => {
+    const source = DELIVERY_MONEY_SOURCES.find((s) => s.vertical === vertical);
+    if (!source) throw new Error(`Unknown delivery vertical: ${vertical}`);
+    const [{ FoodOrder }, { FoodDeliveryCashDeposit }, { FoodDeliveryWithdrawal }, { DeliveryBonusTransaction }] =
+        await source.load();
+    return {
+        Order: FoodOrder,
+        CashDeposit: FoodDeliveryCashDeposit,
+        Withdrawal: FoodDeliveryWithdrawal,
+        Bonus: DeliveryBonusTransaction,
+    };
+};
+
+export const sumDeliveryMoneyForVertical = async (vertical, partnerIds) => {
+    const source = DELIVERY_MONEY_SOURCES.find((s) => s.vertical === vertical);
+    if (!source) throw new Error(`Unknown delivery vertical: ${vertical}`);
+    const ids = partnerIds.map(toObjectId).filter(Boolean);
+    return combineDeliveryMoney([await sumDeliveryMoney(source, ids)]);
+};
