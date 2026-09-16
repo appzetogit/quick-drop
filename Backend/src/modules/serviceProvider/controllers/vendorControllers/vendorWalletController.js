@@ -141,183 +141,29 @@ const getTransactions = async (req, res) => {
 };
 
 /**
- * Record cash collection from customer
- * Uses VendorBill as the single source of truth for earnings.
+ * RETIRED: POST /vendor/wallet/cash-collection.
+ *
+ * Cash collection is recorded by collectSelfCash (POST /vendor/bookings/:id/self/
+ * payment/collect), which verifies the customer's OTP, requires the work to be done,
+ * takes the amount from the VendorBill and commits booking, bill, wallet and rows in
+ * one transaction. Nothing in the frontend calls this endpoint and the production
+ * API log shows no calls, but it was reachable, and it was unsafe:
+ *
+ *  - earnings were credited the bill's full vendorTotalEarning while dues rose by
+ *    the CLIENT-supplied amount, with no status guard and no idempotency. Called
+ *    repeatedly with amount 1, it grew what the platform owed the vendor without
+ *    limit -- money the vendor could then withdraw.
+ *  - it $inc'd the wallet and then saved paymentStatus 'collected by vendor', not
+ *    in the enum, so every call threw AFTER the money moved, with no transaction
+ *    row written, and a retry added it all again.
+ *
+ * Kept as a route answering 410 so an old client gets a clear answer, not a 404.
  */
 const recordCashCollection = async (req, res) => {
-  try {
-    const vendorId = req.user.id;
-    const bookingId = req.body.bookingId;
-    const amount = Number(req.body.amount);
-    const notes = req.body.notes;
-
-    if (!bookingId || !amount || amount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Booking ID and valid amount are required'
-      });
-    }
-
-    const vendor = await Vendor.findById(vendorId);
-    if (!vendor) {
-      return res.status(404).json({
-        success: false,
-        message: 'Vendor not found'
-      });
-    }
-
-    // Verify booking belongs to this vendor
-    const booking = await Booking.findOne({
-      _id: bookingId,
-      vendorId
-    });
-
-    if (!booking) {
-      return res.status(404).json({
-        success: false,
-        message: 'Booking not found or does not belong to this vendor'
-      });
-    }
-
-    // Fetch VendorBill (single source of truth for earnings)
-    const VendorBill = require('../../models/VendorBill');
-    const bill = await VendorBill.findOne({ bookingId: booking._id });
-
-    let vendorEarning = 0;
-    const grandTotal = amount;
-
-    if (bill) {
-      vendorEarning = bill.vendorTotalEarning;
-      bill.status = 'paid';
-      bill.paidAt = new Date();
-      await bill.save();
-    }
-
-    // Atomic wallet update
-    const currentDues = (vendor.wallet.dues || 0) + grandTotal;
-    const currentEarnings = (vendor.wallet.earnings || 0) + vendorEarning;
-    const cashLimit = vendor.wallet.cashLimit || 10000;
-    const netOwed = currentDues - currentEarnings;
-
-    const updateQuery = {
-      $inc: {
-        'wallet.dues': grandTotal,
-        'wallet.earnings': vendorEarning,
-        'wallet.totalCashCollected': grandTotal
-      }
-    };
-
-    if (netOwed > cashLimit) {
-      updateQuery.$set = {
-        'wallet.isBlocked': true,
-        'wallet.blockedAt': new Date(),
-        'wallet.blockReason': `Cash limit exceeded. Net owed: ₹${netOwed.toFixed(2)}, Limit: ₹${cashLimit}`
-      };
-
-      // Notify admins
-      try {
-        const { createNotification } = require('../notificationControllers/notificationController');
-        const Admin = require('../../models/Admin');
-
-        const admins = await Admin.find({ isActive: true }).select('_id');
-
-        for (const admin of admins) {
-          await createNotification({
-            adminId: admin._id,
-            type: 'vendor_cash_limit_exceeded',
-            title: '⚠️ Cash Limit Exceeded',
-            message: `${vendor.businessName || vendor.name} exceeded cash limit! Net owed: ₹${netOwed.toFixed(2)}, Limit: ₹${cashLimit}`,
-            relatedId: vendor._id,
-            relatedType: 'vendor',
-            data: {
-              vendorId: vendor._id,
-              vendorName: vendor.businessName || vendor.name,
-              netOwed,
-              cashLimit
-            },
-            pushData: {
-              type: 'admin_alert',
-              link: '/admin/settlements'
-            }
-          });
-        }
-        console.log(`[CashLimit] Notified ${admins.length} admins: ${vendor.name} exceeded limit`);
-      } catch (notifyErr) {
-        console.error('[CashLimit] Failed to notify admins:', notifyErr);
-      }
-    }
-
-    await Vendor.findByIdAndUpdate(vendorId, updateQuery);
-    
-    // Update booking status
-    booking.status = 'completed';
-    booking.paymentStatus = 'collected by vendor';
-    booking.paymentMethod = 'cash collected';
-    booking.completedAt = new Date();
-    await booking.save();
-
-    // Create transaction record for Cash Collection
-    const transaction = await Transaction.create({
-      vendorId,
-      bookingId,
-      type: 'cash_collected',
-      amount: grandTotal,
-      status: 'completed',
-      paymentMethod: 'cash collected',
-      description: `Cash ₹${grandTotal} collected. Dues increased.`,
-      metadata: {
-        notes,
-        type: 'dues_increase',
-        billId: bill?._id?.toString(),
-        vendorEarning,
-        companyRevenue: bill?.companyRevenue
-      }
-    });
-
-    // Create earnings credit transaction
-    if (vendorEarning > 0) {
-      await Transaction.create({
-        vendorId,
-        bookingId,
-        type: 'earnings_credit',
-        amount: vendorEarning,
-        status: 'completed',
-        paymentMethod: 'system',
-        description: `Earnings ₹${vendorEarning} credited for booking #${booking.bookingNumber}`,
-        metadata: {
-          type: 'earnings_increase',
-          billId: bill?._id?.toString(),
-          serviceEarning: bill?.vendorServiceEarning,
-          partsEarning: bill?.vendorPartsEarning
-        }
-      });
-    }
-
-    // Update booking payment status
-    booking.paymentStatus = 'paid';
-    booking.paymentMethod = 'cash';
-    await booking.save();
-
-    const newDues = currentDues;
-    const newEarnings = currentEarnings;
-    const newBalance = newEarnings - newDues;
-
-    res.status(200).json({
-      success: true,
-      message: 'Cash collection recorded successfully',
-      data: {
-        transaction,
-        newBalance,
-        amountDue: newDues
-      }
-    });
-  } catch (error) {
-    console.error('Record cash collection error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to record cash collection'
-    });
-  }
+  return res.status(410).json({
+    success: false,
+    message: 'This endpoint has been retired. Record cash collection with POST /vendor/bookings/:id/self/payment/collect.',
+  });
 };
 
 /**
@@ -713,41 +559,69 @@ const payWorker = async (req, res) => {
       }
     }
 
-    // Record Transaction
-    const transaction = new Transaction({
-      vendorId,
-      workerId: worker._id,
-      bookingId: booking._id,
-      type: 'worker_payment',
-      amount: parseFloat(amount),
-      status: 'completed',
-      paymentMethod: paymentMethod || 'cash',
-      description: `Payment for booking #${booking.bookingNumber}. ${notes || ''}`,
-      referenceId: transactionId || null,
-      metadata: {
-        notes,
-        transactionId,
-        screenshot: screenshotUrl, // Store Cloudinary URL instead of base64
-        paymentMethod
-      }
+    /*
+     * The vendor paid the worker DIRECTLY -- cash or UPI, with a screenshot as proof.
+     * This records that; it does not move platform money.
+     *
+     * It used to also do `worker.wallet.balance += amount`. wallet.balance is what a
+     * worker WITHDRAWS from the platform (approveWithdrawal pays out of it), so every
+     * recorded payment let the worker be paid the same money a second time, by the
+     * platform, while the vendor's own wallet was never debited.
+     *
+     * And the three writes ran as Promise.all with no transaction: a paymentMethod
+     * outside the Transaction enum (e.g. 'upi', unvalidated) failed the row while the
+     * worker and booking saves went through; and the "already paid" check was a
+     * read, so a double-submit recorded it twice.
+     */
+    const amountPaid = parseFloat(amount);
+    const ROW_METHODS = ['cash', 'bank_transfer', 'online', 'other'];
+    const outcome = await withTransaction(async (session) => {
+      const claimed = await Booking.findOneAndUpdate(
+        { _id: booking._id, vendorId, workerId: { $ne: null }, workerPaymentStatus: { $ne: 'PAID' } },
+        [
+          {
+            $set: {
+              workerPaymentStatus: 'PAID',
+              isWorkerPaid: true,
+              workerPaidAt: '$$NOW',
+              status: 'completed', // Job is fully done and paid
+              completedAt: { $ifNull: ['$completedAt', '$$NOW'] }
+            }
+          }
+        ],
+        { new: true, session }
+      );
+      if (!claimed) abort({ alreadyPaid: true });
+
+      const [row] = await Transaction.create([{
+        vendorId,
+        workerId: worker._id,
+        bookingId: booking._id,
+        type: 'worker_payment',
+        amount: amountPaid,
+        status: 'completed',
+        paymentMethod: ROW_METHODS.includes(paymentMethod) ? paymentMethod : 'other',
+        description: `Payment for booking #${booking.bookingNumber}. ${notes || ''}`,
+        referenceId: transactionId || null,
+        metadata: {
+          notes,
+          transactionId,
+          screenshot: screenshotUrl, // Store Cloudinary URL instead of base64
+          paymentMethod,
+          // Paid vendor -> worker outside the platform; no platform wallet moved.
+          movesWallet: false
+        }
+      }], { session });
+
+      return { transaction: row };
     });
 
-    // Update Worker balance (optional - depends on if we track worker earnings in wallet)
-    if (!worker.wallet) worker.wallet = { balance: 0 };
-    worker.wallet.balance += parseFloat(amount);
-
-    // Update Booking
-    booking.workerPaymentStatus = 'PAID';
-    booking.isWorkerPaid = true;
-    booking.workerPaidAt = new Date();
-    booking.status = 'completed'; // Job is fully done and paid
-    booking.completedAt = booking.completedAt || new Date();
-
-    await Promise.all([
-      transaction.save(),
-      worker.save(),
-      booking.save()
-    ]);
+    if (outcome.alreadyPaid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Worker already paid for this booking'
+      });
+    }
 
     // Notify worker about payment
     const { createNotification } = require('../notificationControllers/notificationController');

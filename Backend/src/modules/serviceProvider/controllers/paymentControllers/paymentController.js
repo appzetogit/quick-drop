@@ -659,8 +659,10 @@ const processRefund = async (req, res) => {
       });
     }
 
-    if (booking.paymentMethod !== 'wallet' &&
-        !(booking.paymentMethod === 'razorpay' && booking.razorpayPaymentId)) {
+    // 'online' is what verifyPaymentWebhook stores for a Razorpay payment; checking
+    // only 'razorpay' told an admin that every such booking could not be refunded.
+    const isGatewayPaid = ['razorpay', 'online'].includes(booking.paymentMethod) && !!booking.razorpayPaymentId;
+    if (booking.paymentMethod !== 'wallet' && !isGatewayPaid) {
       return res.status(400).json({
         success: false,
         message: 'Refund not supported for this payment method'
@@ -682,9 +684,28 @@ const processRefund = async (req, res) => {
         const claimed = await claimRefund(session);
         if (!claimed) abort({ alreadyRefunded: true });
 
-        await User.findByIdAndUpdate(claimed.userId, {
+        const user = await User.findByIdAndUpdate(claimed.userId, {
           $inc: { 'wallet.balance': refundAmount }
-        }, { session });
+        }, { new: true, session });
+        // Without this the booking was marked refunded and the credit went nowhere.
+        if (!user) abort({ userMissing: true });
+
+        // The refund had no row, so it was invisible in the customer's history and
+        // to any reconciliation.
+        const Transaction = require('../../models/Transaction');
+        const balanceAfter = Number(user.wallet?.balance) || 0;
+        await Transaction.create([{
+          userId: user._id,
+          bookingId: claimed._id,
+          type: 'refund',
+          amount: refundAmount,
+          status: 'completed',
+          paymentMethod: 'wallet',
+          description: `Refund for booking #${claimed.bookingNumber}`,
+          balanceBefore: Math.round((balanceAfter - refundAmount) * 100) / 100,
+          balanceAfter,
+          metadata: { source: 'admin_refund', adminId: req.user?.id || null }
+        }], { session });
 
         return { claimed };
       });
@@ -693,6 +714,12 @@ const processRefund = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: 'This booking has already been refunded'
+        });
+      }
+      if (outcome.userMissing) {
+        return res.status(404).json({
+          success: false,
+          message: 'Customer not found; nothing was refunded'
         });
       }
       booking.paymentStatus = PAYMENT_STATUS.REFUNDED;
@@ -728,6 +755,26 @@ const processRefund = async (req, res) => {
           success: false,
           message: 'Failed to process refund'
         });
+      }
+      // Record the gateway refund. No platform wallet moved -- the money went back
+      // to the customer's card or account -- so it is marked as such.
+      try {
+        const Transaction = require('../../models/Transaction');
+        await Transaction.create({
+          userId: claimed.userId,
+          bookingId: claimed._id,
+          type: 'refund',
+          amount: refundAmount,
+          status: 'completed',
+          paymentMethod: 'razorpay',
+          description: `Refund for booking #${claimed.bookingNumber} to original payment method`,
+          referenceId: refundResult.refund?.id || refundResult.refundId || null,
+          metadata: { source: 'admin_refund', adminId: req.user?.id || null, razorpayPaymentId: booking.razorpayPaymentId, movesWallet: false }
+        });
+      } catch (rowErr) {
+        // The refund has happened at the gateway; a missing row must not turn that
+        // into a 500 that invites a retry. Logged loudly instead.
+        console.error(`[Refund] gateway refund succeeded for booking ${bookingId} but the row failed: ${rowErr.message}`);
       }
       booking.paymentStatus = PAYMENT_STATUS.REFUNDED;
     }

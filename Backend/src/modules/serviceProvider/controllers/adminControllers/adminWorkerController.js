@@ -315,32 +315,68 @@ const payWorker = async (req, res) => {
       });
     }
 
-    const worker = await Worker.findById(id);
-    if (!worker) {
+    /*
+     * OPEN QUESTION, deliberately not decided here: does "Record Payment" mean the
+     * admin paid the worker OUTSIDE the platform (then crediting the withdrawable
+     * balance lets the worker be paid twice), or a manual top-up INTO their wallet
+     * (then the credit is right)? The original author was unsure too. The existing
+     * effect -- a credit -- is kept until that is decided.
+     *
+     * What changes is how it is written. It was a read-modify-save of wallet.balance
+     * outside any transaction, with no transaction row: a concurrent earning credit
+     * could be overwritten, the payment left no audit trail, and
+     * `if (!worker.wallet) worker.wallet = { balance: 0 }` would have wiped the other
+     * wallet fields. Now: $inc, plus a 'worker_payment' row with before/after and
+     * the admin, in one transaction.
+     */
+    const credit = Math.round(parseFloat(amount) * 100) / 100;
+    const { withTransaction, abort } = require('../../utils/withTransaction');
+    const Transaction = require('../../models/Transaction');
+
+    const outcome = await withTransaction(async (session) => {
+      const updated = await Worker.findByIdAndUpdate(
+        id,
+        { $inc: { 'wallet.balance': credit } },
+        { new: true, session }
+      );
+      if (!updated) abort({ notFound: true });
+
+      const balanceAfter = Number(updated.wallet?.balance) || 0;
+      await Transaction.create([{
+        workerId: updated._id,
+        type: 'worker_payment',
+        amount: credit,
+        status: 'completed',
+        paymentMethod: 'other',
+        description: `Manual payment recorded by admin. ${notes || ''}`.trim(),
+        referenceId: reference || null,
+        balanceBefore: Math.round((balanceAfter - credit) * 100) / 100,
+        balanceAfter,
+        metadata: {
+          source: 'admin_manual_payment',
+          notes,
+          reference,
+          adminId: req.user?.id || null,
+          balanceField: 'wallet.balance',
+          movesWallet: true
+        }
+      }], { session });
+
+      return { worker: updated, balanceAfter };
+    });
+
+    if (outcome.notFound) {
       return res.status(404).json({
         success: false,
         message: 'Worker not found'
       });
     }
 
-    // Update wallet balance
-    // Assuming balance is amount owed to Admin? 
-    // Usually admin pays worker, so worker balance increases or decreases?
-    // In this system, vendor owes admin (negative balance).
-    // For workers, positive balance probably means earnings they can withdraw.
-    // If admin pays them, it should reduce their pending balance or just reflect as a transaction.
-    // If the user says "pay worker", it usually means adding money to their wallet or clearing dues.
-
-    if (!worker.wallet) worker.wallet = { balance: 0 };
-    worker.wallet.balance += parseFloat(amount);
-
-    await worker.save();
-
     res.status(200).json({
       success: true,
-      message: `Successfully recorded payment of ₹${amount} to ${worker.name}`,
+      message: `Successfully recorded payment of ₹${amount} to ${outcome.worker.name}`,
       data: {
-        balance: worker.wallet.balance
+        balance: outcome.balanceAfter
       }
     });
   } catch (error) {

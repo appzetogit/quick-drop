@@ -192,6 +192,55 @@ const main = async () => {
         assert.equal(await balance(u), 750);
     });
 
+    console.log('\nadmin refund (processRefund)');
+    // Stub the gateway BEFORE the controller loads: it destructures refundPayment.
+    const razorpay = require('../src/modules/serviceProvider/services/razorpayService.js');
+    const gatewayCalls = [];
+    razorpay.refundPayment = async (paymentId, amount) => {
+        gatewayCalls.push({ paymentId, amount });
+        return { success: true, refund: { id: `rfnd_${gatewayCalls.length}` } };
+    };
+    const payment = require('../src/modules/serviceProvider/controllers/paymentControllers/paymentController.js');
+    const refund = async (body) => {
+        const res = {
+            statusCode: 200, body: null,
+            status(c) { this.statusCode = c; return this; },
+            json(p) { this.body = p; return this; },
+        };
+        await payment.processRefund({ body, params: {}, query: {}, user: { id: String(oid()) } }, res);
+        return res;
+    };
+    await check('a wallet refund credits the wallet AND writes a refund row', async () => {
+        const u = await user(40);
+        const b = await booking(u, { status: 'cancelled', paymentMethod: 'wallet', finalAmount: 500 });
+        const r = await refund({ bookingId: String(b) });
+        assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+        assert.equal(await balance(u), 540);
+        const row = await Transaction.findOne({ bookingId: b, type: 'refund' }).lean();
+        assert.equal(row.amount, 500);
+        assert.equal(row.balanceBefore, 40);
+        assert.equal(row.balanceAfter, 540);
+    });
+    await check('a missing customer refunds nothing and leaves the booking refundable', async () => {
+        const b = await booking(oid(), { status: 'cancelled', paymentMethod: 'wallet', finalAmount: 500 });
+        const r = await refund({ bookingId: String(b) });
+        assert.equal(r.statusCode, 404);
+        assert.equal((await statusOf(b)).paymentStatus, 'success');
+        assert.equal(await Transaction.countDocuments({ bookingId: b }), 0);
+    });
+    await check("a booking paid 'online' can be refunded to the original method, and it is recorded", async () => {
+        const u = await user(0);
+        const b = await booking(u, { status: 'cancelled', paymentMethod: 'online', razorpayPaymentId: 'pay_abc', finalAmount: 700 });
+        const r = await refund({ bookingId: String(b), amount: 300 });
+        assert.equal(r.statusCode, 200, JSON.stringify(r.body));
+        assert.deepEqual(gatewayCalls.at(-1), { paymentId: 'pay_abc', amount: 300 });
+        assert.equal(await balance(u), 0, 'went to the card, not the wallet');
+        const row = await Transaction.findOne({ bookingId: b, type: 'refund' }).lean();
+        assert.equal(row.paymentMethod, 'razorpay');
+        assert.equal(row.referenceId, `rfnd_${gatewayCalls.length}`);
+        assert.equal(row.metadata.movesWallet, false);
+    });
+
     await mongoose.disconnect();
     await replSet.stop();
 

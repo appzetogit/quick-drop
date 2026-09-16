@@ -264,11 +264,10 @@ const createBooking = async (req, res) => {
     // This prevents inconsistency between Booking and VendorBill.
     console.log(`[CreateBooking] Payment=${paymentMethod}, FinalAmount=${finalAmount}, Penalty=${pendingPenalty}`);
 
-    // Clear penalty from user wallet if we charged it
-    if (pendingPenalty > 0) {
-      user.wallet.penalty = 0;
-      await user.save();
-    }
+    // The pending penalty is cleared together with the booking insert, further down.
+    // It used to be zeroed HERE, before the booking existed: if the insert then failed
+    // the penalty was gone without being charged, and a penalty a concurrent
+    // cancellation added in between was overwritten by the save.
 
     // Ensure minimum amount for Razorpay (₹1) for paid bookings
     if (finalAmount < 1 && paymentMethod !== 'plan_benefit') {
@@ -312,7 +311,7 @@ const createBooking = async (req, res) => {
       brandIcon = formattedBookedItems[0].brandIcon || null;
     }
 
-    const booking = await Booking.create({
+    const bookingFields = {
       bookingNumber,
       userId,
       vendorId: null, // Will be assigned when vendor accepts
@@ -365,7 +364,35 @@ const createBooking = async (req, res) => {
       status: bookingStatus,
       paymentStatus: bookingPaymentStatus
       // notifiedVendors will be set after wave sorting
-    });
+    };
+
+    let booking;
+    if (pendingPenalty > 0) {
+      // The penalty is folded into finalAmount above, so clearing it and creating the
+      // booking are one unit. Decrement rather than zero, guarded on the amount being
+      // charged: a penalty added since the read survives, and two bookings racing on
+      // the same penalty cannot both charge it -- the second is asked to retry and
+      // then sees the penalty already paid.
+      const created = await withTransaction(async (session) => {
+        const cleared = await User.updateOne(
+          { _id: userId, 'wallet.penalty': { $gte: pendingPenalty } },
+          { $inc: { 'wallet.penalty': -pendingPenalty } },
+          { session }
+        );
+        if (cleared.modifiedCount === 0) abort({ penaltyChanged: true });
+        const [doc] = await Booking.create([bookingFields], { session });
+        return { booking: doc };
+      });
+      if (created.penaltyChanged) {
+        return res.status(409).json({
+          success: false,
+          message: 'Your pending cancellation fee changed while booking. Please try again.'
+        });
+      }
+      booking = created.booking;
+    } else {
+      booking = await Booking.create(bookingFields);
+    }
 
     // --- IMMEDIATE RESPONSE ---
     // Send immediate response to the client. All subsequent operations will run in the background.
