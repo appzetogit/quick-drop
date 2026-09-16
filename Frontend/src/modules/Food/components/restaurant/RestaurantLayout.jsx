@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Outlet } from "react-router-dom"
-import RestaurantSidebar from "./RestaurantSidebar"
+import RestaurantSidebar, { RESTAURANT_PROFILE_UPDATED } from "./RestaurantSidebar"
 import { restaurantAPI } from "@food/api"
 import { getModuleToken } from "@food/utils/auth"
 
@@ -16,6 +16,7 @@ const SIDEBAR_STATE_KEY = "restaurant_sidebar_state"
 export default function RestaurantLayout() {
   const [collapsed, setCollapsed] = useState(false)
   const [isApproved, setIsApproved] = useState(false)
+  const [restaurant, setRestaurant] = useState(null)
 
   useEffect(() => {
     try {
@@ -45,6 +46,9 @@ export default function RestaurantLayout() {
           response?.data?.user
         if (cancelled) return
         setIsApproved(String(restaurant?.status || "").toLowerCase() === "approved")
+        // The sidebar shows this outlet's own name and photo, from the same
+        // response rather than a second request.
+        setRestaurant(restaurant || null)
       } catch {
         // Status unknown — stay on the plain layout rather than showing nav
         // an unapproved outlet shouldn't have.
@@ -52,8 +56,12 @@ export default function RestaurantLayout() {
     }
 
     checkApproval()
+    // Outlet info fires this after the name or photo changes, so the sidebar
+    // does not keep showing the old ones until a reload.
+    window.addEventListener(RESTAURANT_PROFILE_UPDATED, checkApproval)
     return () => {
       cancelled = true
+      window.removeEventListener(RESTAURANT_PROFILE_UPDATED, checkApproval)
     }
   }, [])
 
@@ -75,7 +83,7 @@ export default function RestaurantLayout() {
 
   return (
     <div className="min-h-screen bg-neutral-100">
-      <RestaurantSidebar collapsed={collapsed} onToggleCollapse={handleToggleCollapse} />
+      <RestaurantSidebar collapsed={collapsed} onToggleCollapse={handleToggleCollapse} restaurant={restaurant} />
 
       <div
         className={`min-h-screen transition-[margin] duration-300 ${

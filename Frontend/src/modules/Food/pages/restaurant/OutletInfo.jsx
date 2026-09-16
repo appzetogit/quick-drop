@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react"
+import { RESTAURANT_PROFILE_UPDATED } from "@food/components/restaurant/RestaurantSidebar"
 import { useNavigate } from "react-router-dom"
 import useRestaurantBackNavigation from "@food/hooks/useRestaurantBackNavigation"
 import { motion, AnimatePresence } from "framer-motion"
@@ -208,6 +209,7 @@ export default function OutletInfo() {
           }
         }
       }
+      window.dispatchEvent(new CustomEvent(RESTAURANT_PROFILE_UPDATED))
     } catch (error) {
       debugError("Error uploading profile image:", error)
       toast.error("Failed to upload image. Please try again.")
@@ -332,6 +334,7 @@ export default function OutletInfo() {
     try {
       await restaurantAPI.updateProfile({ name: newName })
       setRestaurantName(newName)
+      window.dispatchEvent(new CustomEvent(RESTAURANT_PROFILE_UPDATED))
       setShowEditNameDialog(false)
       toast.success("Name updated successfully")
     } catch (error) {

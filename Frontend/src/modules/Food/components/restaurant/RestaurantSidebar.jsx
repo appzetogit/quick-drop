@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { BarChart3, Boxes, Building2, ChevronLeft, ChevronRight, Clock, Compass, Copy, Download, FileText, Gift, Landmark, LifeBuoy, Map, Package, Star, Store, Tag, Utensils, Wallet } from "lucide-react"
 
@@ -52,12 +52,28 @@ const getNavSections = (base) => [
   },
 ]
 
-export default function RestaurantSidebar({ collapsed, onToggleCollapse }) {
+/** Fired after the outlet's name or photo is saved, so the sidebar re-reads them. */
+export const RESTAURANT_PROFILE_UPDATED = "restaurantProfileUpdated"
+
+/** The photo arrives as a bare URL on some responses and as `{ url }` on others. */
+const photoOf = (restaurant) => {
+  const candidate = restaurant?.profileImage
+  if (!candidate) return ""
+  return String(typeof candidate === "string" ? candidate : candidate.url || "").trim()
+}
+
+export default function RestaurantSidebar({ collapsed, onToggleCollapse, restaurant = null }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
 
   const base = pathname.startsWith("/food/restaurant") ? "/food/restaurant" : "/restaurant"
   const sections = useMemo(() => getNavSections(base), [base])
+
+  const name = String(restaurant?.restaurantName || restaurant?.name || "").trim()
+  const photo = photoOf(restaurant)
+  // A photo that fails to load falls back to the icon rather than a broken image.
+  const [photoFailed, setPhotoFailed] = useState(false)
+  useEffect(() => setPhotoFailed(false), [photo])
 
   const isActive = (item) =>
     item.exact
@@ -71,12 +87,23 @@ export default function RestaurantSidebar({ collapsed, onToggleCollapse }) {
       }`}
     >
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-neutral-800/60 px-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white">
-          <Store className="h-5 w-5 text-black" />
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white">
+          {photo && !photoFailed ? (
+            <img
+              src={photo}
+              alt={name ? `${name} logo` : "Restaurant logo"}
+              className="h-full w-full object-cover"
+              onError={() => setPhotoFailed(true)}
+            />
+          ) : (
+            <Store className="h-5 w-5 text-black" />
+          )}
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-white">Restaurant</p>
+            <p className="h-5 truncate text-sm font-semibold text-white" title={name || undefined}>
+              {name}
+            </p>
             <p className="truncate text-[11px] text-neutral-500">Partner dashboard</p>
           </div>
         )}
