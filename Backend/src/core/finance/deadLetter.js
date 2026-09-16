@@ -44,6 +44,9 @@ export async function recordFailedFinancialOperation({
     paymentId = '',
     payload = {},
     error,
+    // What the failure means for the money. Most callers lost a movement ('UNPAID');
+    // a ledger mirror failing means the money moved and only its record is missing.
+    consequence = 'UNPAID',
 } = {}) {
     const summary = `${operation} ${entityType}:${entityId} amount=${amount} order=${orderId}`;
 
@@ -62,14 +65,14 @@ export async function recordFailedFinancialOperation({
             errorStack: error?.stack || '',
         }), WRITE_TIMEOUT_MS);
 
-        // Error level, not warn: money did not move. Somebody has to look at this.
+        // Error level, not warn: somebody has to look at this.
         logger.error(
-            `UNPAID [${operation}] ${summary} — recorded as ${row._id} for replay. Cause: ${error?.message || error}`,
+            `${consequence} [${operation}] ${summary} — recorded as ${row._id} for replay. Cause: ${error?.message || error}`,
         );
         return row._id;
     } catch (recordErr) {
         logger.error(
-            `UNPAID AND UNRECORDED [${operation}] ${summary} — dead-letter write ALSO failed `
+            `${consequence} AND UNRECORDED [${operation}] ${summary} — dead-letter write ALSO failed `
             + `(${recordErr.message}). Original cause: ${error?.message || error}. `
             + `Payload: ${JSON.stringify(payload)}`,
         );

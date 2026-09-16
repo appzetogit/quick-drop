@@ -46,6 +46,7 @@ export const KEY_KINDS = Object.freeze([
     'bonus',
     'admin_adjustment',
     'subscription_charge',
+    'source_row',
 ]);
 
 const build = (kind, ...parts) => {
@@ -132,6 +133,21 @@ export const forAdminAdjustment = (adminId, clientRequestId) =>
 
 export const forSubscriptionCharge = (subscriptionId, periodKey) =>
     build('subscription_charge', subscriptionId, periodKey);
+
+/**
+ * A row an EXISTING writer already committed, mirrored into the ledger during
+ * dual-write.
+ *
+ * Keyed on the source row, not on the business event, and that is deliberate. The
+ * mirror's job is to record what the old wallet actually did -- including a
+ * settlement the old check-then-act dedupe credited twice. Keying on the ride
+ * would fold that double credit into one entry and make the ledger agree with what
+ * SHOULD have happened, hiding exactly the drift the reconciler exists to find.
+ *
+ * It is also what lets the Phase 3 backfill and the live mirror overlap safely:
+ * both name a historical row the same way, so a row covered by both is written once.
+ */
+export const forSourceRow = (collection, rowId) => build('source_row', collection, rowId);
 
 /** Which kind produced a key, for reading a ledger row back. */
 export const kindOf = (key) => {

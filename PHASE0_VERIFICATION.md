@@ -220,8 +220,42 @@ with Mongo down, five times per job.
 5. **Grant permissions** from `admin_audits`, then enforce.
 6. **Enable `UNIFIED_DISPATCH_ENABLED`** per city once 4 and 5 are settled.
 
-Only then: the ledger dual-write, the reconciler's fourteen clean nights, and the
-cutover.
+The ledger dual-write has started (§8a). Still to come: the reconciler's fourteen
+clean nights, then the cutover.
+
+## 8a. Ledger dual-write — taxi wallet (shipped, flag off)
+
+**Authoritative:** `taxidrivers.wallet` + `wallettransactions`, unchanged.
+**Non-authoritative:** `ledger_entries`. Written, never read.
+
+`applyDriverWalletAdjustment` is the single writer every balance-moving taxi row
+goes through (ride settlement, commission, top-up, admin adjustment). After it
+creates the wallet row it calls `core/finance/ledgerMirror.js`:
+
+- **Off unless `LEDGER_DUAL_WRITE_ENABLED=true`.** Off is exactly the old behaviour,
+  and a test checks that.
+- **Cannot fail the ride.** Not awaited; a failure is dead-lettered as `UNMIRRORED`
+  (not `UNPAID` -- the money moved, only its record is missing) with a payload
+  that replays cleanly.
+- **Never records rolled-back money.** Inside a transaction, the entry is queued
+  and written only when *that* transaction's commit succeeds. Two tempting designs
+  were tested and were wrong, so the reasons are recorded here: the driver's
+  `isCommitted` getter counts ABORTED as committed, and flushing at session end
+  lost an earlier commit on a reused session.
+- **Keyed on the source row** (`source_row:wallettransactions:<id>`), not the ride,
+  so the ledger records what the wallet actually did, double credits included, and
+  the Phase 3 backfill can overlap it safely.
+- **Ledger balance = net movement since enabling**, not the wallet balance. There are
+  no opening balances until Phase 3. Reconcile rows with
+  `reconcileTaxiWalletMirror({ since })`, not balances.
+
+Tested: `tests/ledger.mirror.smoke.mjs`, 10 checks against a real replica set,
+driving the real writer. Mutation-verified: mirroring straight away inside a
+transaction fails 3 of them.
+
+**To enable:** confirm prod is a replica set (Atlas is), set the flag, reload
+`master-api`, and note the time. Run `reconcileTaxiWalletMirror({ since })` daily;
+`missing` should be empty apart from rows whose dead letter is still unreplayed.
 
 ---
 

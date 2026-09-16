@@ -137,8 +137,18 @@ check('every declared kind is reachable through a named helper', () => {
         keys.forBonus('a'),
         keys.forAdminAdjustment('a', 'b'),
         keys.forSubscriptionCharge('a', 'b'),
+        keys.forSourceRow('a', 'b'),
     ].map(keys.kindOf);
     assert.deepEqual([...new Set(minted)].sort(), [...keys.KEY_KINDS].sort());
+});
+
+check('a mirrored source row is named by its collection and row, not its business event', () => {
+    // Two rows for one ride -- the old dedupe's double credit -- must stay two entries,
+    // or the ledger would agree with what should have happened and hide the drift.
+    assert.equal(keys.forSourceRow('wallettransactions', 'r1'), 'source_row:wallettransactions:r1');
+    assert.notEqual(keys.forSourceRow('wallettransactions', 'r1'), keys.forSourceRow('wallettransactions', 'r2'));
+    assert.notEqual(keys.forSourceRow('wallettransactions', 'r1'), keys.forSourceRow('qc_wallet', 'r1'));
+    assert.throws(() => keys.forSourceRow('wallettransactions', ''), /missing a required part/);
 });
 
 console.log(failed ? `\n${failed} check(s) failed\n` : '\nall checks passed\n');

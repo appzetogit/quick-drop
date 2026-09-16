@@ -7,6 +7,7 @@ import { WalletTransaction } from '../models/WalletTransaction.js';
 import { Ride } from '../../user/models/Ride.js';
 import { getWalletSettings } from '../../services/appSettingsService.js';
 import { getRiderFinance, resolveSharedCashLimit } from '../../../../core/finance/riderFinance.service.js';
+import { mirrorToLedger, taxiWalletRowToEntry } from '../../../../core/finance/ledgerMirror.js';
 
 const normalizeAmount = (value, fieldName = 'amount') => {
   const amount = Number(value);
@@ -323,6 +324,11 @@ export const applyDriverWalletAdjustment = async ({
     ],
     { session },
   );
+
+  // Dual-write to the master ledger (off unless LEDGER_DUAL_WRITE_ENABLED). Not
+  // awaited, cannot throw, and inside a transaction it waits for the commit --
+  // see core/finance/ledgerMirror.js.
+  mirrorToLedger(taxiWalletRowToEntry(transaction), { session });
 
   return {
     driver: updatedDriver,
