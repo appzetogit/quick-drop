@@ -35,6 +35,7 @@ let server = null;
 let expireOffersInterval = null;
 let fssaiExpiryInterval = null;
 let spScheduler = null;
+let ledgerNightlyInterval = null;
 
 const gracefulShutdown = async (signal) => {
     logger.info(`${signal} received, starting graceful shutdown`);
@@ -50,6 +51,7 @@ const gracefulShutdown = async (signal) => {
             if (expireOffersInterval) clearInterval(expireOffersInterval);
             if (fssaiExpiryInterval) clearInterval(fssaiExpiryInterval);
             if (spScheduler) spScheduler.stop();
+            if (ledgerNightlyInterval) clearInterval(ledgerNightlyInterval);
             logger.info('Graceful shutdown complete');
             process.exit(0);
         } catch (err) {
@@ -319,6 +321,13 @@ const startServer = async () => {
             } else {
                 logger.warn('SP_SCHEDULER_ENABLED=false — SP wave alerting is OFF; partners will only see work by polling');
             }
+
+            // Master ledger nightly reconciliation. Its own flag, off by default, and
+            // not tied to BACKGROUND_JOBS_ENABLED: it claims each night in the database,
+            // so a second instance cannot double-run it. See core/finance/ledgerNightly.js.
+            import('./src/core/finance/ledgerNightly.js')
+                .then(({ startLedgerNightly }) => { ledgerNightlyInterval = startLedgerNightly(); })
+                .catch((err) => logger.error(`Ledger nightly failed to start: ${err.message}`));
 
             if (!config.backgroundJobsEnabled) {
                 logger.warn('BACKGROUND_JOBS_ENABLED=false — skipping offer expiry and FSSAI sync (read-mostly instance)');

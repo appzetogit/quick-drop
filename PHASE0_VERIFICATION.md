@@ -290,6 +290,40 @@ pending withdrawals, 5 of those 9 fail.
 index, then reconciles every partner and exits 1 on any disagreement. Nothing in
 the app reads these entries.
 
+## 8c. Nightly reconciliation — the fourteen-night clock (shipped, flag off)
+
+`core/finance/ledgerNightly.js`, started from `server.js`, checks every 15 minutes
+and runs once per IST night after 03:00. The steps:
+
+1. **delivery projection** (`LEDGER_PROJECTION_ENABLED`): project, then reconcile
+   every partner against riderFinance
+2. **taxi mirror** (`LEDGER_DUAL_WRITE_ENABLED` + `LEDGER_MIRROR_SINCE`): every
+   wallet transaction from the last two days has its entry (rows under 10 minutes
+   old are left for the next night)
+3. **internal consistency**, always: each owner's running balance equals the fold
+   of their entries
+
+Each night is one row in `ledger_reconcile_runs`, and inserting that row is the
+claim, so several instances on the cluster still run it once (checked with five
+at once). A run that dies is taken over after 2 hours. `cleanStreak` is the
+number the cutover waits on:
+
+```js
+db.ledger_reconcile_runs.find({}, { night: 1, clean: 1, cleanStreak: 1 }).sort({ night: -1 }).limit(14)
+```
+
+**What a streak does and doesn't mean.** It resets on a dirty night and on a
+missed night. A night where every part was switched off is not clean. The
+delivery part re-projects before it reconciles, so it proves the projector's
+formulas match riderFinance; it can't catch edits to the source documents,
+because riderFinance is the authority for those. A non-zero `appended` on a
+quiet night is the thing to look at. The taxi part and the internal-consistency
+part are genuine cross-checks.
+
+**To enable:** `LEDGER_NIGHTLY_ENABLED=true`, plus whichever parts you want:
+`LEDGER_PROJECTION_ENABLED=true`, and for taxi `LEDGER_DUAL_WRITE_ENABLED=true`
+with `LEDGER_MIRROR_SINCE=<ISO time mirroring was switched on>`.
+
 ---
 
 ## 9. The final test, re-answered
