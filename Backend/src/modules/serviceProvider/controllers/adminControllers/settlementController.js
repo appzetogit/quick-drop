@@ -217,69 +217,130 @@ const approveSettlement = async (req, res) => {
     const { adminNotes } = req.body;
     const adminId = req.user.id;
 
-    const settlement = await Settlement.findById(settlementId);
-    if (!settlement) {
-      return res.status(404).json({
-        success: false,
-        message: 'Settlement not found'
-      });
+    /*
+     * Rewritten on the pattern approveWithdrawal below already uses. The previous
+     * version had three faults, all live:
+     *
+     *  - It ended on `newDues: vendor.wallet.dues`, and `vendor` was never defined.
+     *    Every approval reduced the dues, saved the settlement, and THEN threw --
+     *    so the admin was shown "Failed to approve settlement" for every one that
+     *    had in fact gone through.
+     *  - It checked status by reading, then saved. Two approvals at once (a
+     *    double-click, two admins) both read 'pending' and both reduced the dues.
+     *  - It wrote dues as an absolute value computed from that read, so a cash
+     *    collection $inc landing in between was silently overwritten.
+     *
+     * Now: the settlement is claimed atomically on 'pending', the dues move by a
+     * server-side pipeline (clamped at zero, as before), and the movement is
+     * recorded as a 'settlement' transaction row -- the type the worker dues-payment
+     * flow already writes -- all in one transaction.
+     */
+    const outcome = await withTransaction(async (session) => {
+      const settlement = await Settlement.findOneAndUpdate(
+        { _id: settlementId, status: 'pending' },
+        {
+          $set: {
+            status: 'approved',
+            processedBy: adminId,
+            processedAt: new Date(),
+            adminNotes
+          }
+        },
+        { new: true, session }
+      );
+      if (!settlement) {
+        const exists = await Settlement.exists({ _id: settlementId }).session(session);
+        abort(exists ? { notPending: true } : { notFound: true });
+      }
+
+      const isWorker = !!settlement.workerId;
+      const targetId = isWorker ? settlement.workerId : settlement.vendorId;
+      const TargetModel = isWorker ? Worker : Vendor;
+      const amount = Number(settlement.amount) || 0;
+
+      const before = await TargetModel.findById(targetId).select('wallet.dues').session(session).lean();
+      if (!before) abort({ providerMissing: true });
+
+      const userRecord = await TargetModel.findOneAndUpdate(
+        { _id: targetId },
+        [
+          { $set: { 'wallet.dues': { $max: [0, { $subtract: [{ $ifNull: ['$wallet.dues', 0] }, amount] }] } } },
+          {
+            // Auto-unblock once dues are back within the limit -- the same rule as
+            // before, now judged on the real post-update figure.
+            $set: {
+              'wallet.isBlocked': {
+                $cond: [
+                  { $and: ['$wallet.isBlocked', { $lte: ['$wallet.dues', { $ifNull: ['$wallet.cashLimit', 10000] }] }] },
+                  false,
+                  '$wallet.isBlocked'
+                ]
+              }
+            }
+          },
+          ...(isWorker ? [] : [{ $set: { 'wallet.totalSettled': { $add: [{ $ifNull: ['$wallet.totalSettled', 0] }, amount] } } }])
+        ],
+        { new: true, session }
+      );
+
+      const duesBefore = Number(before.wallet?.dues) || 0;
+      const duesAfter = Number(userRecord.wallet?.dues) || 0;
+      if (!userRecord.wallet.isBlocked) {
+        await TargetModel.updateOne(
+          { _id: targetId, 'wallet.blockedAt': { $ne: null } },
+          { $set: { 'wallet.blockedAt': null, 'wallet.blockReason': null } },
+          { session }
+        );
+      }
+
+      settlement.balanceAfter = duesAfter;
+      await Settlement.updateOne({ _id: settlement._id }, { $set: { balanceAfter: duesAfter } }, { session });
+
+      await Transaction.create([{
+        [isWorker ? 'workerId' : 'vendorId']: targetId,
+        type: 'settlement',
+        amount,
+        status: 'completed',
+        paymentMethod: ['bank_transfer', 'cash'].includes(settlement.paymentMethod) ? settlement.paymentMethod : 'other',
+        description: `Dues settlement approved. ₹${amount} applied against dues.`,
+        referenceId: settlement.paymentReference || null,
+        balanceBefore: duesBefore,
+        balanceAfter: duesAfter,
+        metadata: {
+          settlementId: settlement._id,
+          balanceField: 'wallet.dues',
+          // What actually came off: less than amount when dues were already lower.
+          appliedToDues: Math.round((duesBefore - duesAfter) * 100) / 100,
+          processedBy: adminId
+        }
+      }], { session });
+
+      return { settlement, userRecord, amount, duesAfter };
+    });
+
+    if (outcome?.notFound) {
+      return res.status(404).json({ success: false, message: 'Settlement not found' });
+    }
+    if (outcome?.notPending) {
+      return res.status(400).json({ success: false, message: 'Settlement is not in pending status' });
+    }
+    if (outcome?.providerMissing) {
+      return res.status(404).json({ success: false, message: 'Provider not found' });
     }
 
-    if (settlement.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: 'Settlement is not in pending status'
-      });
-    }
+    const { settlement, userRecord, amount, duesAfter } = outcome;
 
-    const isWorker = !!settlement.workerId;
-    const targetId = isWorker ? settlement.workerId : settlement.vendorId;
-    const TargetModel = isWorker ? Worker : Vendor;
-
-    const userRecord = await TargetModel.findById(targetId);
-    if (!userRecord) {
-      return res.status(404).json({
-        success: false,
-        message: 'Provider not found'
-      });
-    }
-
-    const currentDues = userRecord.wallet?.dues || 0;
-
-    // Settlement reduces DUES
-    // Ensure we don't go below zero (though validation handles request)
-    userRecord.wallet.dues = Math.max(0, currentDues - settlement.amount);
-
-    // Auto-unblock if dues drop below limit
-    if (userRecord.wallet.isBlocked && userRecord.wallet.dues <= (userRecord.wallet.cashLimit || 10000)) {
-      userRecord.wallet.isBlocked = false;
-      userRecord.wallet.blockedAt = null;
-      userRecord.wallet.blockReason = null;
-    }
-
-    await userRecord.save();
-
-    // Update settlement
-    settlement.status = 'approved';
-    settlement.processedBy = adminId;
-    settlement.processedAt = new Date();
-    settlement.adminNotes = adminNotes;
-    settlement.balanceAfter = userRecord.wallet.dues;
-    // Send Dues Payment (Settlement) Email
+    // Side effects only after the commit, so a rolled-back approval sends nothing.
     const { sendDuesPaymentApprovedEmail } = require('../../services/emailService');
-    sendDuesPaymentApprovedEmail(userRecord, settlement.amount, userRecord.wallet.dues).catch(e => console.error(e));
-
-    await settlement.save();
-
-    // Record this settlement in the earning tracker
-    recordSettlement(new Date(), settlement.amount);
+    sendDuesPaymentApprovedEmail(userRecord, amount, duesAfter).catch(e => console.error(e));
+    recordSettlement(new Date(), amount);
 
     res.status(200).json({
       success: true,
       message: 'Settlement approved successfully',
       data: {
         settlement,
-        newDues: vendor.wallet.dues
+        newDues: duesAfter
       }
     });
   } catch (error) {
@@ -307,26 +368,28 @@ const rejectSettlement = async (req, res) => {
       });
     }
 
-    const settlement = await Settlement.findById(settlementId);
+    // Claimed on 'pending' in the write itself. Read-then-save let a reject that
+    // raced an approve overwrite 'approved' with 'rejected' after the dues had
+    // already been reduced -- a settled vendor told their payment was refused.
+    const settlement = await Settlement.findOneAndUpdate(
+      { _id: settlementId, status: 'pending' },
+      {
+        $set: {
+          status: 'rejected',
+          processedBy: adminId,
+          processedAt: new Date(),
+          rejectionReason
+        }
+      },
+      { new: true }
+    );
     if (!settlement) {
-      return res.status(404).json({
+      const exists = await Settlement.exists({ _id: settlementId });
+      return res.status(exists ? 400 : 404).json({
         success: false,
-        message: 'Settlement not found'
+        message: exists ? 'Settlement is not in pending status' : 'Settlement not found'
       });
     }
-
-    if (settlement.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: 'Settlement is not in pending status'
-      });
-    }
-
-    settlement.status = 'rejected';
-    settlement.processedBy = adminId;
-    settlement.processedAt = new Date();
-    settlement.rejectionReason = rejectionReason;
-    await settlement.save();
 
     res.status(200).json({
       success: true,
@@ -873,14 +936,27 @@ module.exports = {
       const { reason } = req.body;
       const adminId = req.user.id;
 
-      const withdrawal = await Withdrawal.findById(withdrawalId);
-      if (!withdrawal) return res.status(404).json({ success: false, message: 'Withdrawal not found' });
-
-      withdrawal.status = 'rejected';
-      withdrawal.processedBy = adminId;
-      withdrawal.processedAt = new Date();
-      withdrawal.rejectionReason = reason;
-      await withdrawal.save();
+      // Only a PENDING withdrawal can be rejected, claimed in the write. With no
+      // status check an approved -- already paid, already debited -- withdrawal
+      // could be flipped to 'rejected': the partner is told the payout was refused
+      // while the money has left, and the row no longer matches the wallet.
+      const withdrawal = await Withdrawal.findOneAndUpdate(
+        { _id: withdrawalId, status: 'pending' },
+        {
+          $set: {
+            status: 'rejected',
+            processedBy: adminId,
+            processedAt: new Date(),
+            rejectionReason: reason
+          }
+        },
+        { new: true }
+      );
+      if (!withdrawal) {
+        const current = await Withdrawal.findById(withdrawalId).select('status').lean();
+        if (!current) return res.status(404).json({ success: false, message: 'Withdrawal not found' });
+        return res.status(400).json({ success: false, message: `Withdrawal is already ${current.status}` });
+      }
 
       // Send Withdrawal Rejection Notification
       const { createNotification } = require('../notificationControllers/notificationController');
