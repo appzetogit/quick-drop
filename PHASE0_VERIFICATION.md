@@ -137,19 +137,36 @@ key taxonomy (17), assignment matrix (29), finance authorization (21), eligibili
 (38 across two files), ledger invariant (21), wallet history merge (15), shared
 `users` schema behaviour (8). **40 check files, all passing.**
 
-**Not proven, and it is the concurrency that matters:**
+**CORRECTION.** An earlier version of this section said `ledger.append` could not
+be tested because no database was reachable. That was wrong: `Backend/tests/`
+already runs against an in-memory MongoDB **replica set** via
+`mongodb-memory-server`, which is exactly what `append` needs. I had judged the
+work untestable without looking for the harness the repo already had.
 
-- `ledger.append` — guards verified, but the transaction, the E11000 rollback and
-  the `$inc` under contention have never touched a database. Those are exactly the
-  paths unit tests do not catch.
-- The QC busy-lock claim under genuine concurrent accepts.
+`tests/ledger.append.smoke.mjs` now covers it, and it is in `npm test`:
+
+- the transaction — a losing insert rolls the balance increment back with it,
+  asserted on both balance and version
+- E11000 as a success path — a replay returns the ORIGINAL row, and eight
+  concurrent replays of one key credit once
+- `$inc` under contention — twenty concurrent appends all land, none lost
+- negative balances recorded rather than refused (the P0-8 case)
+- the reconciler catching both a tampered balance and a MISSING entry, the second
+  of which a sum alone would hide
+
+**Still not proven:**
+
+- The QC busy-lock claim under genuine concurrent accepts. `tests/assignment.smoke.mjs`
+  covers the old single-slot primitive; the array-based claim and the per-vertical
+  reconcile are not yet exercised there.
 - Whether the eligibility engine's verdicts match reality — that is what shadow
-  mode exists to answer.
-- Every migration script. None has run.
+  mode exists to answer, and it needs production traffic rather than a test.
+- Every migration script. None has run against real data.
 
-**No database was reachable from the development machine** (`ECONNREFUSED
-127.0.0.1:27017`), so no dry-run produced real numbers, and P0-9's safe /
-ambiguous / conflicting counts remain unknown. I did not estimate them.
+**No production database was reachable** (`ECONNREFUSED 127.0.0.1:27017`), so
+P0-9's safe / ambiguous / conflicting counts remain unknown. I did not estimate
+them. `scripts/analyse-identity-merge.mjs` is written and read-only, waiting on a
+connection.
 
 ---
 
