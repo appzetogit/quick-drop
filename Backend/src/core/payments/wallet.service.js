@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { recordTransaction, ensureWallet, getBalance, getTransactionsByEntity } from './transaction.service.js';
 import { FoodUserWallet } from '../../modules/food/user/models/userWallet.model.js';
+import { mergeWalletHistory } from './mergeWalletHistory.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -138,7 +139,12 @@ export async function getUserWalletForFrontend(userId) {
         createdAt: t.createdAt,
         metadata: t.metadata || {},
         category: t.category,
-        balanceAfter: t.balanceAfter
+        balanceAfter: t.balanceAfter,
+        // Surfaced so the merge below has something to match on. The ledger row
+        // carries `orderId` as a real column while the embedded row only ever has
+        // it inside `metadata`; dropping it here left the two rows for one payment
+        // with no common key, and no key means no deduplication.
+        orderId: t.orderId ? String(t.orderId) : (t.metadata?.orderId ? String(t.metadata.orderId) : undefined)
     }));
 
     // Convert embedded txns
@@ -154,10 +160,20 @@ export async function getUserWalletForFrontend(userId) {
         metadata: t.metadata || {}
     }));
 
-    // Deduplicate by checking if an embedded txn has a matching new txn (same amount + order within 5s)
-    const allTxns = [...convertedNewTxns, ...convertedEmbedded];
-    // Sort newest first
-    allTxns.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    /*
+     * The deduplication this comment used to promise now actually happens.
+     *
+     * What stood here was `[...convertedNewTxns, ...convertedEmbedded]` -- a plain
+     * concatenation under a comment describing a merge that was never written. The
+     * two stores both hold a row for the same top-up or refund, so any route wired
+     * to this function would have shown customers every such payment twice.
+     *
+     * Matching is on the money event (order + direction + amount), not on ids: the
+     * two stores mint their own, so id matching would deduplicate nothing. Rows
+     * with no order to key on are KEPT -- see mergeWalletHistory for why losing a
+     * real transaction is the worse failure.
+     */
+    const allTxns = mergeWalletHistory(convertedNewTxns, convertedEmbedded);
 
     return {
         balance: Number(wallet?.balance) || 0,
