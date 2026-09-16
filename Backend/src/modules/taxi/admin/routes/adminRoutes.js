@@ -327,10 +327,24 @@ adminRouter.get('/admin/bus-bookings', getAdminBusBookings);
 adminRouter.get('/admin/bus-bookings/calendar', getAdminBusBookingCalendar);
 adminRouter.post('/admin/bus-bookings/manual', createAdminBusBooking);
 adminRouter.post('/admin/bus-bookings/:id/cancel', cancelAdminBusBookingSeats);
-// adminRouter.get('/admin/types/rental-vehicles', getRentalVehicleTypes);
-// adminRouter.post('/admin/types/rental-vehicles', createRentalVehicleType);
-// adminRouter.patch('/admin/types/rental-vehicles/:id', updateRentalVehicleType);
-// adminRouter.delete('/admin/types/rental-vehicles/:id', deleteRentalVehicleType);
+/*
+ * The rental admin API, enabled.
+ *
+ * These thirteen routes arrived commented out in the first commit of this
+ * file -- the taxi integration carried them over disabled and nobody turned
+ * them on. Their handlers were imported all along and still are, so the
+ * panel's Rental Vehicle Types, Rental Packages, Booking Requests, Quote
+ * Requests and Tracking screens were calling paths no router declared, and
+ * every one answered 404. That is what "the rental screens are dead" was.
+ *
+ * scripts/audit-taxi-admin-routes.mjs is what found them, and will find the
+ * next set: it diffs every path the panel calls against every route this
+ * module declares.
+ */
+adminRouter.get('/admin/types/rental-vehicles', getRentalVehicleTypes);
+adminRouter.post('/admin/types/rental-vehicles', createRentalVehicleType);
+adminRouter.patch('/admin/types/rental-vehicles/:id', updateRentalVehicleType);
+adminRouter.delete('/admin/types/rental-vehicles/:id', deleteRentalVehicleType);
 adminRouter.get('/admin/pooling-routes', getPoolingRoutes);
 adminRouter.post('/admin/pooling-routes', createPoolingRoute);
 adminRouter.patch('/admin/pooling-routes/:id', updatePoolingRoute);
@@ -345,19 +359,19 @@ adminRouter.get('/admin/pooling-bookings', getPoolingBookings);
 adminRouter.patch('/admin/pooling-bookings/:id/status', updatePoolingBookingStatus);
 
 adminRouter.post('/admin/upload-image', uploadImage);
-// adminRouter.get('/admin/rental-booking-requests', getRentalBookingRequests);
-// adminRouter.get('/admin/rental-tracking', getRentalTrackingDashboard);
-// adminRouter.patch('/admin/rental-booking-requests/:id', updateRentalBookingRequest);
-// adminRouter.get('/admin/rental-quote-requests', getRentalQuoteRequests);
-// adminRouter.patch('/admin/rental-quote-requests/:id', updateRentalQuoteRequest);
+adminRouter.get('/admin/rental-booking-requests', getRentalBookingRequests);
+adminRouter.get('/admin/rental-tracking', getRentalTrackingDashboard);
+adminRouter.patch('/admin/rental-booking-requests/:id', updateRentalBookingRequest);
+adminRouter.get('/admin/rental-quote-requests', getRentalQuoteRequests);
+adminRouter.patch('/admin/rental-quote-requests/:id', updateRentalQuoteRequest);
 adminRouter.get('/admin/goods-types', getGoodsTypes);
 adminRouter.post('/admin/goods-types', createGoodsType);
 adminRouter.patch('/admin/goods-types/:id', updateGoodsType);
 adminRouter.delete('/admin/goods-types/:id', deleteGoodsType);
-// adminRouter.get('/admin/types/rental-packages', getRentalPackageTypes);
-// adminRouter.post('/admin/types/rental-packages', createRentalPackageType);
-// adminRouter.patch('/admin/types/rental-packages/:id', updateRentalPackageType);
-// adminRouter.delete('/admin/types/rental-packages/:id', deleteRentalPackageType);
+adminRouter.get('/admin/types/rental-packages', getRentalPackageTypes);
+adminRouter.post('/admin/types/rental-packages', createRentalPackageType);
+adminRouter.patch('/admin/types/rental-packages/:id', updateRentalPackageType);
+adminRouter.delete('/admin/types/rental-packages/:id', deleteRentalPackageType);
 adminRouter.get('/admin/types/transport-types', getTransportTypes);
 adminRouter.get('/admin/vehicle_preference', getVehiclePreferenceOptions);
 
