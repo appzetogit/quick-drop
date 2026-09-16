@@ -20,7 +20,7 @@ import orderUserRoutes from '../modules/food/orders/routes/order.routes.user.js'
 import medicalUserRoutes from '../modules/food/orders/routes/medical.routes.user.js';
 import paymentRoutes from '../core/payments/payment.routes.js';
 import fcmRoutes from '../core/notifications/fcm.routes.js';
-import notificationRoutes from '../core/notifications/notification.routes.js';
+import notificationRoutes from '../../../core/notifications/notification.routes.js';
 import { authMiddleware } from '../core/auth/auth.middleware.js';
 import * as businessSettingsController from '../modules/food/admin/controllers/businessSettings.controller.js';
 import * as adminController from '../modules/food/admin/controllers/admin.controller.js';

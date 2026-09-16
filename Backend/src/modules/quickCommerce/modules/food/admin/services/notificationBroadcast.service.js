@@ -5,7 +5,10 @@ import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
 import { BroadcastNotification } from '../../../../core/notifications/models/notificationBroadcast.model.js';
 import { FoodNotification } from '../../../../core/notifications/models/notification.model.js';
-import { createInboxNotifications } from '../../../../core/notifications/notification.service.js';
+// Master's service. This fork's copy existed only so the model default would
+// label notifications 'quickCommerce'; the vertical is now named explicitly
+// below, which is what removed the reason to fork it.
+import { createInboxNotifications } from '../../../../../../core/notifications/notification.service.js';
 import { notifyOwnersSafely } from '../../../../core/notifications/firebase.service.js';
 import { getIO, rooms } from '../../../../config/socket.js';
 
@@ -241,12 +244,16 @@ export const createBroadcastNotification = async ({ body = {}, adminId } = {}) =
 
     await createInboxNotifications({
         notifications: resolvedTargets.map((target) =>
-            buildNotificationPayload({
-                title,
-                message,
-                link,
-                broadcastId: broadcast._id,
-                target
+            ({
+                ...buildNotificationPayload({
+                    title,
+                    message,
+                    link,
+                    broadcastId: broadcast._id,
+                    target
+                }),
+                // Said out loud rather than inherited from a forked model's default.
+                vertical: 'quickCommerce',
             })
         )
     });

@@ -57,6 +57,17 @@ export const createInboxNotifications = async ({ notifications = [] } = {}) => {
             link: String(item.link || '').trim(),
             category: String(item.category || 'broadcast').trim(),
             source: 'ADMIN_BROADCAST',
+            /*
+             * Named by the caller, not inferred from the model default.
+             *
+             * Quick commerce forked this entire service for one reason: its own
+             * model sets `vertical` to 'quickCommerce' by default, and calling
+             * master's would have labelled every grocery notification 'food'.
+             * Letting the caller say which vertical it is removes the reason for
+             * the fork. Omitted still falls back to the model default, so every
+             * existing caller is unaffected.
+             */
+            ...(item.vertical ? { vertical: String(item.vertical).trim() } : {}),
             metadata: item.metadata && typeof item.metadata === 'object' ? item.metadata : {},
         };
 
@@ -203,6 +214,34 @@ export const dismissAllNotifications = async ({ ownerType, ownerId } = {}) => {
         {
             $set: {
                 dismissedAt: new Date(),
+                isRead: true,
+                readAt: new Date()
+            }
+        }
+    );
+
+    return {
+        modifiedCount: Number(result?.modifiedCount || 0)
+    };
+};
+
+/**
+ * Marks every unread notification read, leaving them in the inbox.
+ *
+ * Distinct from dismissing all, which also stamps `dismissedAt` and takes them
+ * out of the list entirely. Clearing an unread badge and clearing the inbox are
+ * two different intentions, and only the second one had an implementation.
+ */
+export const markAllNotificationsAsRead = async ({ ownerType, ownerId } = {}) => {
+    const result = await FoodNotification.updateMany(
+        {
+            ownerType: normalizeOwnerType(ownerType),
+            ownerId: ensureObjectId(ownerId, 'ownerId'),
+            isRead: false,
+            dismissedAt: null
+        },
+        {
+            $set: {
                 isRead: true,
                 readAt: new Date()
             }
