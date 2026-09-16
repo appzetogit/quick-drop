@@ -57,13 +57,8 @@ export const forceClearDriverAssignment = async (driverId, session = null) => {
   return Boolean(res?.modifiedCount);
 };
 
-const TERMINAL_RIDE_STATUSES = ['completed', 'cancelled'];
-const TERMINAL_ORDER_STATUSES = [
-  'delivered',
-  'cancelled_by_user',
-  'cancelled_by_restaurant',
-  'cancelled_by_admin',
-];
+// The terminal-status tables moved to core/assignment/assignment.service.js, where
+// they are per-vertical. Keeping a second copy here is how the two would drift.
 
 /**
  * Self-heal a stale busy-lock.
@@ -80,34 +75,22 @@ const TERMINAL_ORDER_STATUSES = [
 export const reconcileDriverAssignment = async (driverId) => {
   if (!driverId) return false;
 
-  const driver = await Driver.findById(driverId).select('activeAssignment').lean();
-  const assignment = driver?.activeAssignment;
-  if (!assignment?.type || !assignment?.id) return false;
-
-  let isStale = false;
-
-  try {
-    if (assignment.type === 'ride') {
-      const { Ride } = await import('../../user/models/Ride.js');
-      const ride = await Ride.findById(assignment.id).select('status').lean();
-      isStale = !ride || TERMINAL_RIDE_STATUSES.includes(String(ride.status || '').toLowerCase());
-    } else if (assignment.type === 'delivery') {
-      const { FoodOrder } = await import('../../../food/orders/models/order.model.js');
-      const order = await FoodOrder.findById(assignment.id).select('orderStatus').lean();
-      isStale = !order || TERMINAL_ORDER_STATUSES.includes(String(order.orderStatus || '').toLowerCase());
-    } else {
-      isStale = true; // unknown type — don't strand the driver
-    }
-  } catch {
-    return false; // lookup failed: leave the lock alone rather than freeing a live job
-  }
-
-  if (!isStale) return false;
-
-  // Clear only if the lock still points at the same job we just judged stale.
-  const res = await Driver.updateOne(
-    { _id: driverId, 'activeAssignment.id': assignment.id },
-    { $set: { activeAssignment: null } },
-  );
-  return Boolean(res?.modifiedCount);
+  /*
+   * Delegates to the master reconciler.
+   *
+   * The implementation that used to live here resolved EVERY `type: 'delivery'`
+   * lock against FoodOrder. Quick-commerce orders live in their own collection,
+   * so once QC started taking the lock every QC hold would have been read as
+   * "job not found, therefore stale" and cleared on sight -- handing the rider a
+   * second job while they were still carrying the first. Simply making QC call
+   * the old primitive would have been worse than leaving it alone; the reconciler
+   * had to learn about verticals first.
+   *
+   * Signature and semantics are unchanged for the two existing callers
+   * (driverController going online, and the sweep): still boolean, still writes
+   * only when something is genuinely stale.
+   */
+  const { reconcileAssignments } = await import('../../../../core/assignment/assignment.service.js');
+  const cleared = await reconcileAssignments(driverId);
+  return cleared > 0;
 };

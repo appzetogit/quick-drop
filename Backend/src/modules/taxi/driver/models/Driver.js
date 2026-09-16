@@ -17,11 +17,47 @@ const geoPointSchema = new mongoose.Schema(
   { _id: false },
 );
 
-// Single busy-lock shared across ride + delivery dispatch. null when the driver is free.
+/*
+ * Single busy-lock shared across ride + delivery dispatch. null when the driver is free.
+ *
+ * Now a MIRROR of activeAssignments[0], maintained in the same atomic update by
+ * core/assignment/assignment.service.js. Kept because a lot of code reads it --
+ * three dispatchers filter on `activeAssignment: null` and there is a compound
+ * index on `activeAssignment.type` -- and under the default one-job policy the
+ * array holds 0 or 1 entries, so the mirror is exact and those readers stay
+ * correct untouched. Write it only through the assignment service.
+ */
 const activeAssignmentSchema = new mongoose.Schema(
   {
     type: { type: String, enum: ['ride', 'delivery'] },
     id: { type: mongoose.Schema.Types.ObjectId },
+    at: { type: Date },
+  },
+  { _id: false },
+);
+
+/*
+ * The real busy-lock: every job this person is currently holding, any vertical.
+ *
+ * A single slot made "one job at a time" a property of the schema rather than a
+ * policy, so stacking a second grocery order onto a food delivery was not
+ * switched off -- it was unrepresentable. And quick-commerce, which forked before
+ * the lock existed, never wrote the single slot at all, so a rider on a QC order
+ * read as free and food or taxi would claim them.
+ *
+ * `vertical` is carried alongside `jobType` because reconciliation needs to know
+ * WHICH collection to look the job up in: the old reconcile resolved every
+ * delivery against FoodOrder, so a quick-commerce lock would have been judged
+ * "job not found, therefore stale" and cleared on sight.
+ */
+const activeAssignmentEntrySchema = new mongoose.Schema(
+  {
+    vertical: { type: String, enum: ['food', 'quickCommerce', 'taxi', 'serviceProvider'] },
+    jobType: {
+      type: String,
+      enum: ['foodDelivery', 'quickCommerceDelivery', 'taxiRide', 'serviceBooking'],
+    },
+    jobId: { type: mongoose.Schema.Types.ObjectId },
     at: { type: Date },
   },
   { _id: false },
@@ -134,10 +170,16 @@ const driverSchema = new mongoose.Schema(
       enum: ['all', 'taxi', 'delivery', 'quickCommerce'],
       default: 'all',
     },
-    // Single busy-lock shared across BOTH dispatchers (Phase 2 wires this). null = free.
+    // Mirror of activeAssignments[0], for the readers that predate the array.
+    // null = free. Written only by core/assignment/assignment.service.js.
     activeAssignment: {
       type: activeAssignmentSchema,
       default: null,
+    },
+    // Every job currently held, any vertical. The authoritative busy-lock.
+    activeAssignments: {
+      type: [activeAssignmentEntrySchema],
+      default: [],
     },
     // Lightweight delivery dispatch hints kept on the core doc so matching needs no join.
     delivery: {
@@ -491,6 +533,12 @@ driverSchema.index({ phone: 1, deletedAt: 1 });
 driverSchema.index({ isOnline: 1, isOnRide: 1, isPoolEnabled: 1 });
 // Unified dispatch: find online, free, capable drivers for a given service + work mode.
 driverSchema.index({ isOnline: 1, serviceCapabilities: 1, workMode: 1, 'activeAssignment.type': 1 });
+// The claim filter's own path. Kept alongside the mirror index rather than
+// replacing it: the three dispatchers still query the mirror, and dropping an
+// index they depend on in the same change that introduces the array would turn a
+// correctness fix into a latency incident.
+driverSchema.index({ 'activeAssignments.jobId': 1 });
+driverSchema.index({ 'activeAssignments.jobType': 1 });
 driverSchema.index({ location: '2dsphere' });
 driverSchema.index({ 'routeBooking.anchorLocation': '2dsphere' });
 

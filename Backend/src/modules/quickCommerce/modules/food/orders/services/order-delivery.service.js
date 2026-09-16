@@ -20,6 +20,13 @@ import * as foodTransactionService from './foodTransaction.service.js';
 import * as dispatchService from './order-dispatch.service.js';
 import * as paymentService from './order-payment.service.js';
 
+// The master busy-lock. Quick-commerce forked from food before the lock existed
+// and never picked it up: `partnerHasActiveDelivery` below only ever looked at QC
+// orders, so a rider on a grocery order still read as free to food and to taxi,
+// and both would claim them. See core/assignment/assignment.service.js.
+import { claimAssignment, releaseAssignment } from '../../../../../../core/assignment/assignment.service.js';
+import { config } from '../../../../../../config/env.js';
+
 import {
   buildOrderIdentityFilter,
   emitDeliveryDropOtpToUser,
@@ -409,6 +416,44 @@ async function assertCashLimitAllows(deliveryPartnerId, order) {
   }
 }
 
+/**
+ * The QC partner's unified driver id, or null when they were never linked.
+ *
+ * Capabilities and the busy-lock live on the unified Driver, so an unlinked
+ * partner has nowhere for a claim to land. Those are waved through rather than
+ * blocked -- the same choice food makes -- because refusing work to every
+ * un-backfilled rider would be a worse outage than the race it prevents. The
+ * waiver goes away with the backfill.
+ */
+async function resolveUnifiedDriverId(deliveryPartnerId) {
+  const partner = await FoodDeliveryPartner.findById(deliveryPartnerId).select('driverId').lean();
+  return partner?.driverId || null;
+}
+
+/**
+ * Claim the cross-vertical busy-lock for this grocery order.
+ *
+ * Flag-gated on the same switch food and taxi use, so the three verticals turn on
+ * together: a half-enabled lock (QC claiming while food does not) would be worse
+ * than none, because QC riders would be blocked from food work that food would
+ * still happily assign.
+ */
+async function acquireQcLock(deliveryPartnerId, orderId) {
+  if (!config.unifiedDispatchEnabled) return true;
+  const driverId = await resolveUnifiedDriverId(deliveryPartnerId);
+  if (!driverId) return true;
+  const { claimed } = await claimAssignment(driverId, { vertical: 'quickCommerce', jobId: orderId });
+  return claimed;
+}
+
+/** Give the lock back. Only clears an entry that is still THIS order. */
+async function releaseQcLock(deliveryPartnerId, orderId) {
+  if (!config.unifiedDispatchEnabled) return;
+  const driverId = await resolveUnifiedDriverId(deliveryPartnerId);
+  if (!driverId) return;
+  await releaseAssignment(driverId, orderId);
+}
+
 export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   const identity = buildOrderIdentityFilter(orderId);
   if (!identity) throw new ValidationError('Order id required');
@@ -464,6 +509,21 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
     if (pending) await assertCashLimitAllows(partnerId, pending);
   }
 
+  /*
+   * Claim the cross-vertical lock BEFORE assigning the order.
+   *
+   * `partnerHasActiveDelivery` above is a quick-commerce-only check: it queries QC
+   * orders, so it cannot see that this rider is already carrying a food order or
+   * has a passenger in the car. This is the gate that can.
+   *
+   * Released again below if the order update does not land, so a rider who loses
+   * the race for an order is not left holding a lock on it.
+   */
+  const lockOrder = await FoodOrder.findOne(identity).select('_id').lean();
+  if (lockOrder && !(await acquireQcLock(partnerId, lockOrder._id))) {
+    throw new ValidationError('You are already on another job');
+  }
+
   const order = await FoodOrder.findOneAndUpdate(
     {
       ...identity,
@@ -501,6 +561,10 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   ).populate('restaurantId userId');
 
   if (!order) {
+    // Accept did not land -- give the busy-lock back, or this rider is stuck
+    // holding a claim on an order somebody else took.
+    if (lockOrder) await releaseQcLock(partnerId, lockOrder._id);
+
     const existing = await FoodOrder.findOne(identity)
       .select('orderStatus dispatch')
       .lean();
@@ -757,6 +821,11 @@ export async function rejectOrderDelivery(orderId, deliveryPartnerId) {
     note: 'Rejected',
   });
   await order.save();
+
+  // Free the rider before the order is re-offered. Releasing after tryAutoAssign
+  // would leave a window where this order is dispatchable but the only rider who
+  // could take it still reads as busy on it.
+  await releaseQcLock(deliveryPartnerId, order._id);
 
   enqueueOrderEvent('delivery_rejected', {
     orderMongoId: order._id?.toString?.(),
@@ -1127,6 +1196,11 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
   }
 
   await order.save();
+
+  // The delivery is done, so the rider is free for work in ANY vertical. Awaited
+  // rather than fired-and-forgotten: a rider left locked after finishing is
+  // invisible to every dispatcher until the reconcile sweep runs.
+  await releaseQcLock(deliveryPartnerId, order._id);
 
   // Increment the rider's lifetime completed-delivery counter (best-effort).
   FoodDeliveryPartner.updateOne(
