@@ -2,6 +2,9 @@ import { logger } from '../../utils/logger.js';
 import { creditWallet } from '../../core/payments/wallet.service.js';
 import { createPayment, markPaymentSuccess } from '../../core/payments/payment.service.js';
 import { initiateRefund } from '../../core/payments/refund.service.js';
+// Master's dead letter, not a fork's copy: a swallowed credit is the same failure
+// in both verticals and must land in one place an operator can query.
+import { recordFailedFinancialOperation } from '../../../../core/finance/deadLetter.js';
 
 /**
  * Post-delivery financial settlement processor.
@@ -72,7 +75,19 @@ async function handleDeliveryCompleted(data) {
             });
             logger.info(`[PaymentProcessor] Restaurant ${restaurantId} credited ${commissionAmount} for order ${orderId}`);
         } catch (err) {
-            logger.error(`[PaymentProcessor] Failed to credit restaurant: ${err.message}`);
+            // Recorded, not retried: this handler makes three non-idempotent
+            // credits in sequence, so a retry after a partial success pays the
+            // earlier parties twice. See core/finance/deadLetter.js.
+            await recordFailedFinancialOperation({
+                operation: 'credit_restaurant_commission',
+                vertical: 'quickCommerce',
+                entityType: 'restaurant',
+                entityId: restaurantId,
+                amount: commissionAmount,
+                orderId,
+                payload: { orderMongoId, paymentMethod, category: 'commission' },
+                error: err,
+            });
         }
     }
 
@@ -99,7 +114,16 @@ async function handleDeliveryCompleted(data) {
 
             logger.info(`[PaymentProcessor] Delivery partner ${deliveryPartnerId} credited ${riderEarning} for order ${orderId}`);
         } catch (err) {
-            logger.error(`[PaymentProcessor] Failed to credit delivery partner: ${err.message}`);
+            await recordFailedFinancialOperation({
+                operation: 'credit_delivery_partner_earning',
+                vertical: 'quickCommerce',
+                entityType: 'deliveryBoy',
+                entityId: deliveryPartnerId,
+                amount: riderEarning,
+                orderId,
+                payload: { orderMongoId, paymentMethod, category: 'delivery_earning' },
+                error: err,
+            });
         }
     }
 
@@ -117,7 +141,16 @@ async function handleDeliveryCompleted(data) {
             });
             logger.info(`[PaymentProcessor] Platform credited ${platformProfit} for order ${orderId}`);
         } catch (err) {
-            logger.error(`[PaymentProcessor] Failed to credit platform: ${err.message}`);
+            await recordFailedFinancialOperation({
+                operation: 'credit_platform_profit',
+                vertical: 'quickCommerce',
+                entityType: 'admin',
+                entityId: 'platform',
+                amount: platformProfit,
+                orderId,
+                payload: { orderMongoId, paymentMethod, riderEarning, category: 'platform_fee' },
+                error: err,
+            });
         }
     }
 }
@@ -144,7 +177,18 @@ async function handleOrderCancelled(data) {
         });
         logger.info(`[PaymentProcessor] Refund initiated for order ${orderMongoId}`);
     } catch (err) {
-        logger.error(`[PaymentProcessor] Refund failed for order ${orderMongoId}: ${err.message}`);
+        // A customer whose cancelled order was never refunded, previously one log line.
+        await recordFailedFinancialOperation({
+            operation: 'refund',
+            vertical: 'quickCommerce',
+            entityType: 'user',
+            entityId: userId,
+            amount,
+            orderId: orderMongoId,
+            paymentId,
+            payload: { paymentMethod, paymentStatus, reason: reason || 'Order cancelled', refundTo: 'wallet' },
+            error: err,
+        });
     }
 }
 
@@ -171,6 +215,16 @@ async function handlePaymentVerified(data) {
 
         logger.info(`[PaymentProcessor] Payment record created for order ${orderId}: ${payment._id}`);
     } catch (err) {
-        logger.error(`[PaymentProcessor] Failed to create payment record: ${err.message}`);
+        await recordFailedFinancialOperation({
+            operation: 'create_payment_record',
+            vertical: 'quickCommerce',
+            entityType: 'user',
+            entityId: userId,
+            amount,
+            orderId: orderMongoId,
+            paymentId: gatewayPaymentId,
+            payload: { orderId, paymentMethod, paymentStatus, razorpayOrderId: data.razorpayOrderId || '' },
+            error: err,
+        });
     }
 }

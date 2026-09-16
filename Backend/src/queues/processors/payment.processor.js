@@ -2,6 +2,7 @@ import { logger } from '../../utils/logger.js';
 import { creditWallet } from '../../core/payments/wallet.service.js';
 import { createPayment, markPaymentSuccess } from '../../core/payments/payment.service.js';
 import { initiateRefund } from '../../core/payments/refund.service.js';
+import { recordFailedFinancialOperation } from '../../core/finance/deadLetter.js';
 
 /**
  * Post-delivery financial settlement processor.
@@ -72,7 +73,28 @@ async function handleDeliveryCompleted(data) {
             });
             logger.info(`[PaymentProcessor] Restaurant ${restaurantId} credited ${commissionAmount} for order ${orderId}`);
         } catch (err) {
-            logger.error(`[PaymentProcessor] Failed to credit restaurant: ${err.message}`);
+            /*
+             * Recorded rather than rethrown, and rather than merely logged.
+             *
+             * Rethrowing would let BullMQ retry, but this handler makes three
+             * credits in sequence and none is idempotent -- a retry after a partial
+             * success pays the earlier parties twice. Silent under-payment would
+             * become silent double-payment.
+             *
+             * So the failure is captured with enough payload to replay, and becomes
+             * work for the dead-letter queue once the ledger's unique idempotency
+             * index makes retrying safe.
+             */
+            await recordFailedFinancialOperation({
+                operation: 'credit_restaurant_commission',
+                vertical: 'food',
+                entityType: 'restaurant',
+                entityId: restaurantId,
+                amount: commissionAmount,
+                orderId,
+                payload: { orderMongoId, paymentMethod, category: 'commission' },
+                error: err,
+            });
         }
     }
 
@@ -99,7 +121,18 @@ async function handleDeliveryCompleted(data) {
 
             logger.info(`[PaymentProcessor] Delivery partner ${deliveryPartnerId} credited ${riderEarning} for order ${orderId}`);
         } catch (err) {
-            logger.error(`[PaymentProcessor] Failed to credit delivery partner: ${err.message}`);
+            // The rider not being paid was previously one log line. See above for
+            // why this is recorded rather than retried.
+            await recordFailedFinancialOperation({
+                operation: 'credit_delivery_partner_earning',
+                vertical: 'food',
+                entityType: 'deliveryBoy',
+                entityId: deliveryPartnerId,
+                amount: riderEarning,
+                orderId,
+                payload: { orderMongoId, paymentMethod, category: 'delivery_earning' },
+                error: err,
+            });
         }
     }
 
@@ -117,7 +150,16 @@ async function handleDeliveryCompleted(data) {
             });
             logger.info(`[PaymentProcessor] Platform credited ${platformProfit} for order ${orderId}`);
         } catch (err) {
-            logger.error(`[PaymentProcessor] Failed to credit platform: ${err.message}`);
+            await recordFailedFinancialOperation({
+                operation: 'credit_platform_profit',
+                vertical: 'food',
+                entityType: 'admin',
+                entityId: 'platform',
+                amount: platformProfit,
+                orderId,
+                payload: { orderMongoId, paymentMethod, riderEarning, category: 'platform_fee' },
+                error: err,
+            });
         }
     }
 }
@@ -144,7 +186,23 @@ async function handleOrderCancelled(data) {
         });
         logger.info(`[PaymentProcessor] Refund initiated for order ${orderMongoId}`);
     } catch (err) {
-        logger.error(`[PaymentProcessor] Refund failed for order ${orderMongoId}: ${err.message}`);
+        /*
+         * The worst of the five swallowed failures: a customer whose order was
+         * cancelled never gets their money back, and the only trace was a log line.
+         * Recorded so it is findable by order id, which is how the support query
+         * actually arrives.
+         */
+        await recordFailedFinancialOperation({
+            operation: 'refund',
+            vertical: 'food',
+            entityType: 'user',
+            entityId: userId,
+            amount,
+            orderId: orderMongoId,
+            paymentId,
+            payload: { paymentMethod, paymentStatus, reason: reason || 'Order cancelled', refundTo: 'wallet' },
+            error: err,
+        });
     }
 }
 
@@ -171,6 +229,18 @@ async function handlePaymentVerified(data) {
 
         logger.info(`[PaymentProcessor] Payment record created for order ${orderId}: ${payment._id}`);
     } catch (err) {
-        logger.error(`[PaymentProcessor] Failed to create payment record: ${err.message}`);
+        // No money moves here, but a missing Payment record is what makes a later
+        // refund impossible to reconcile against anything.
+        await recordFailedFinancialOperation({
+            operation: 'create_payment_record',
+            vertical: 'food',
+            entityType: 'user',
+            entityId: userId,
+            amount,
+            orderId: orderMongoId,
+            paymentId: gatewayPaymentId,
+            payload: { orderId, paymentMethod, paymentStatus, razorpayOrderId: data.razorpayOrderId || '' },
+            error: err,
+        });
     }
 }
