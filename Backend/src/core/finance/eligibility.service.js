@@ -125,17 +125,82 @@ export async function buildContext({
 }
 
 /**
- * Build the policy for this job from the platform's settings.
+ * Build the policy for this job, resolved through PARTNER > ZONE > VERTICAL > GLOBAL.
  *
- * A stand-in for the configuration resolver: today the only administered cash
- * ceiling is the food one, which `riderFinance.resolveSharedCashLimit` already
- * treats as the shared figure. When the PARTNER > CITY > VERTICAL > GLOBAL
- * resolver lands, this is the single function it replaces.
+ * The precedence and the provenance live in core/config. What matters here is the
+ * FALLBACK, and why it is the shape it is.
+ *
+ * `platform_settings` is empty until somebody administers it, and the config
+ * resolver correctly returns each key's registered default for a key nobody has
+ * set. But the registered default for `finance.cashLimit` is 0 -- meaning "no
+ * ceiling" -- while the platform today has a real, administered ceiling living in
+ * `FoodFeeSettings`, which `riderFinance` already surfaces as the shared figure.
+ *
+ * So resolving naively would REMOVE the cash limit on the day this shipped. The
+ * legacy figure is therefore used whenever no level has explicitly set the key:
+ * an administered override wins, and until one exists nothing changes. That is
+ * what makes this safe to land before the settings are migrated rather than after.
  */
 export async function resolvePolicy(vertical, context, overrides = {}) {
+    const legacyCashLimit = Number(context?._finance?.cashLimit) || 0;
+
+    let resolved = {};
+    try {
+        const { getMany } = await import('../config/resolver.service.js');
+        resolved = await getMany(
+            [
+                'finance.cashLimit',
+                'finance.enforceCashLimit',
+                'finance.minimumWalletBalance',
+                'finance.blockOnNonPositiveWallet',
+                'assignment.maxDistanceKm',
+                'assignment.refuseUnknownLocation',
+                'assignment.staleLocationMs',
+                'partner.requireKyc',
+            ],
+            {
+                vertical,
+                partnerId: context?._finance?.driverId || undefined,
+                zoneId: context?.zoneId || undefined,
+            },
+        );
+    } catch (err) {
+        // Settings must never be the reason dispatch stops. Fall back to the
+        // legacy figures, which is exactly today's behaviour.
+        logger.warn(`eligibility: config resolve failed, using legacy limits: ${err.message}`);
+    }
+
+    /**
+     * Administered value > today's behaviour > the registry default.
+     *
+     * The middle term is the one that matters and the one that is easy to get
+     * wrong. A first cut preferred `legacy` over the registry default
+     * unconditionally, which meant a key with no legacy source -- most of them --
+     * could never take its registered default, so `assignment.maxDistanceKm: 15`
+     * sat in the registry looking meaningful and doing nothing.
+     *
+     * Legacy wins only where a legacy value ACTUALLY EXISTS. For the cash limit it
+     * always does, and that is the case this ordering exists to protect: the
+     * registry default is 0 (no ceiling), so preferring it would silently remove a
+     * real administered limit on the day this shipped.
+     */
+    const pick = (key, legacy) => {
+        const row = resolved[key];
+        if (row && !row.isDefault) return row.value;          // somebody administered it
+        if (legacy !== null && legacy !== undefined) return legacy; // keep today's behaviour
+        return row ? row.value : legacy;                       // registry default
+    };
+
     return {
         ...DEFAULT_ELIGIBILITY_POLICY,
-        cashLimit: Number(context?._finance?.cashLimit) || 0,
+        cashLimit: pick('finance.cashLimit', legacyCashLimit),
+        enforceCashLimit: pick('finance.enforceCashLimit', DEFAULT_ELIGIBILITY_POLICY.enforceCashLimit),
+        minimumWalletBalance: pick('finance.minimumWalletBalance', DEFAULT_ELIGIBILITY_POLICY.minimumWalletBalance),
+        blockOnNonPositiveWallet: pick('finance.blockOnNonPositiveWallet', DEFAULT_ELIGIBILITY_POLICY.blockOnNonPositiveWallet),
+        maxDistanceKm: pick('assignment.maxDistanceKm', DEFAULT_ELIGIBILITY_POLICY.maxDistanceKm),
+        refuseUnknownLocation: pick('assignment.refuseUnknownLocation', DEFAULT_ELIGIBILITY_POLICY.refuseUnknownLocation),
+        staleLocationMs: pick('assignment.staleLocationMs', DEFAULT_ELIGIBILITY_POLICY.staleLocationMs),
+        requireKyc: pick('partner.requireKyc', DEFAULT_ELIGIBILITY_POLICY.requireKyc),
         ...overrides,
     };
 }
