@@ -36,6 +36,7 @@ import {
   Package,
   CreditCard,
   Settings,
+  SlidersHorizontal,
   UserCog,
   User,
   Globe,
@@ -96,6 +97,9 @@ const debugError = (...args) => {}
 
 // Icon mapping
 const iconMap = {
+  // Registered explicitly: an unmapped name falls back to Utensils, so a missing
+  // entry shows a fork beside Platform Settings rather than failing visibly.
+  SlidersHorizontal,
   LayoutDashboard,
   ShieldCheck,
   Pill,

@@ -1,5 +1,32 @@
 export const adminSidebarMenu = [
   {
+    /*
+     * MASTER -- the rules that are not any one vertical's.
+     *
+     * First in the list because it is the layer everything below sits on, and
+     * because an operator looking for "where do I change the cash limit" should not
+     * have to guess which vertical owns it.
+     *
+     * Its paths deliberately do NOT start with /admin/food, which is what keeps them
+     * out of rebaseAdminMenu's rewrite: every other entry here gets re-pointed to
+     * /admin/quick-commerce or /admin/medical depending on the panel, and these must
+     * not. One value, one screen, the same from wherever you came.
+     *
+     * The label carries no vertical vocabulary either, so the word-substitution pass
+     * that turns "Food Approval" into "Product Approval" leaves it alone.
+     */
+    type: "section",
+    label: "MASTER",
+    items: [
+      {
+        type: "link",
+        label: "Platform Settings",
+        path: "/admin/master/settings",
+        icon: "SlidersHorizontal",
+      },
+    ],
+  },
+  {
     type: "section",
     label: "HOME",
     items: [

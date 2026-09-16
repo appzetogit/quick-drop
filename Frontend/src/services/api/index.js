@@ -163,6 +163,39 @@ export const notificationAPI = {
 };
 
 /** Admin API - new backend only (GET /auth/me, PATCH /auth/admin/profile, POST /auth/admin/change-password) */
+/**
+ * Master / Global settings.
+ *
+ * Under /platform, NOT /food -- which matters for more than tidiness. The axios
+ * layer rewrites the whole /food namespace to /qc when the operator is looking at
+ * the quick-commerce panel, because those screens are the same components against a
+ * forked route table. Master settings are the opposite case: one value, the same
+ * from every panel. Living outside /food is what keeps them that way, with no
+ * exception needed in the rewrite.
+ */
+export const platformSettingsAPI = {
+  getCatalogue: () =>
+    apiClient.get("/platform/settings/catalogue", { contextModule: "admin" }),
+  /** Every setting resolved for one context. `{ vertical, zoneId, partnerId }` */
+  resolveAll: (context = {}) =>
+    apiClient.get("/platform/settings/resolve", { params: context, contextModule: "admin" }),
+  /** One setting: effective value plus the whole override chain beneath it. */
+  explain: (key, context = {}) =>
+    apiClient.get(`/platform/settings/${encodeURIComponent(key)}/explain`, {
+      params: context,
+      contextModule: "admin",
+    }),
+  /** `value: null` clears the override at that level rather than storing a null. */
+  set: (key, { level, scopeId, value, reason } = {}) =>
+    apiClient.put(
+      `/platform/settings/${encodeURIComponent(key)}`,
+      { level, scopeId, value, reason },
+      { contextModule: "admin" },
+    ),
+  invalidateCache: () =>
+    apiClient.post("/platform/settings/cache/invalidate", {}, { contextModule: "admin" }),
+};
+
 export const adminAPI = {
   getFoodAssignableZones: () =>
     apiClient.get("/food/admin/admin-management/assignable-zones", { contextModule: "admin" }),

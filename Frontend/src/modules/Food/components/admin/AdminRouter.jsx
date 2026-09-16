@@ -11,6 +11,7 @@ const PointOfSale = lazy(() => import("@food/pages/admin/PointOfSale"));
 const StatusMonitor = lazy(() => import("@food/pages/admin/dashboard/StatusMonitor"));
 const AdminProfile = lazy(() => import("@food/pages/admin/AdminProfile"));
 const AdminSettings = lazy(() => import("@food/pages/admin/AdminSettings"));
+const PlatformSettings = lazy(() => import("@food/pages/admin/master/PlatformSettings"))
 const NewRefundRequests = lazy(() => import("@food/pages/admin/refunds/NewRefundRequests"));
 const FoodApproval = lazy(() => import("@food/pages/admin/restaurant/FoodApproval"));
 const OrdersPage = lazy(() => import("@food/pages/admin/orders/OrdersPage"));
@@ -362,6 +363,17 @@ export default function AdminRouter() {
         >
           {/* Default Admin Redirect */}
           <Route path="/" element={<Navigate to="food" replace />} />
+
+          {/*
+            MASTER / GLOBAL
+            Outside every vertical, on purpose. These are the rules that apply to all
+            of them, so the screen exists ONCE and is reached at the same URL whatever
+            panel the operator came from. It is deliberately not part of
+            verticalAdminRoutes: those get re-pointed per vertical by rewriting URLs
+            and substituting words in the menu, which is right for screens that exist
+            once per vertical and wrong for a screen that does not.
+          */}
+          <Route path="master/settings" element={<PlatformSettings />} />
 
           {/* FOOD ADMIN - All food related routes nested here */}
           {/* FOOD ADMIN */}
