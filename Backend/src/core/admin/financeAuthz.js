@@ -38,6 +38,14 @@ export const FINANCE_ACTIONS = Object.freeze({
     EARNING_CREDIT: { resource: 'wallet', action: 'write', targetType: 'partner' },
     CASH_LIMIT_SET: { resource: 'fee_settings', action: 'write', targetType: 'platform' },
     COMMISSION_RULE_SET: { resource: 'fee_settings', action: 'write', targetType: 'platform' },
+    /*
+     * Platform settings. Write only -- reading the catalogue is how an operator
+     * finds out what exists, and gating that behind a permission means the panel
+     * cannot render its own settings screen for anyone who is not allowed to
+     * change them. A value that can be seen but not edited is fine; a screen that
+     * renders empty is a support ticket.
+     */
+    PLATFORM_SETTING_SET: { resource: 'settings', action: 'write', targetType: 'platform' },
 });
 
 /**
