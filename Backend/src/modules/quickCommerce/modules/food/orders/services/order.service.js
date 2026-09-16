@@ -9,7 +9,8 @@ import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { ValidationError, ForbiddenError, NotFoundError } from '../../../../core/auth/errors.js';
 import { reserveStockForItems, releaseReservations, restoreOrderStock } from './inventory.service.js';
-import { findZoneForPoint, readAddressPoint } from '../../shared/zoneServiceability.js';
+import { findZoneForPoint, readAddressPoint, ZONE_VERTICALS } from '../../shared/zoneServiceability.js';
+import { isMedicalStore } from '../../shared/storeType.js';
 import { sellerIdsOfStoreType, applySellerScope } from '../../shared/storeScope.js';
 import { buildPaginationOptions, buildPaginatedResult } from '../../../../utils/helpers.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
@@ -246,7 +247,17 @@ async function resolveServiceableZone(restaurant, deliveryAddress) {
   // them would block real customers over missing data they never entered.
   if (!point) return null;
 
-  const zone = await findZoneForPoint(point.lat, point.lng);
+  /*
+   * A pharmacy is asked against the medical map, everyone else against quick
+   * commerce's. The seller decides it, not the caller: this same function
+   * prices a grocery basket and a catalogue order of medicines, and the two
+   * verticals draw their zones separately.
+   */
+  const vertical = isMedicalStore(restaurant?.storeType)
+    ? ZONE_VERTICALS.MEDICAL
+    : ZONE_VERTICALS.QUICK;
+
+  const zone = await findZoneForPoint(point.lat, point.lng, vertical);
   if (!zone) {
     throw new ValidationError("We don't deliver to this address yet");
   }

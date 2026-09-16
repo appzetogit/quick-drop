@@ -6,7 +6,7 @@ import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js'
 import { logger } from '../../../../utils/logger.js';
 import { getIO, rooms } from '../../../../config/socket.js';
 import { normalizeDeliveryAddress } from '../../shared/geo.utils.js';
-import { findZoneForPoint, readAddressPoint } from '../../shared/zoneServiceability.js';
+import { findZoneForPoint, readAddressPoint, ZONE_VERTICALS } from '../../shared/zoneServiceability.js';
 import { attachOutletTimingsToRestaurants } from '../../restaurant/services/outletTimings.service.js';
 import { getRestaurantAvailabilityStatus } from '../../restaurant/helpers/restaurantAvailability.helper.js';
 import { MEDICAL_STORE_TYPE } from '../../shared/storeType.js';
@@ -104,7 +104,7 @@ export async function listNearbyPharmacies(userId, { lat, lng } = {}) {
     }
 
     const settings = await loadMedicalSettings();
-    const zone = await findZoneForPoint(point.lat, point.lng);
+    const zone = await findZoneForPoint(point.lat, point.lng, ZONE_VERTICALS.MEDICAL);
     const sellers = await loadPharmaciesWithTimings(zone?._id);
     const now = new Date();
     const inRange = pharmaciesInRange(sellers, point, settings.requestRadiusKm, {
@@ -223,7 +223,7 @@ export async function createPrescriptionRequest(userId, dto = {}) {
         throw new ValidationError('This address has no location saved. Please re-select it on the map.');
     }
 
-    const zone = await findZoneForPoint(point.lat, point.lng);
+    const zone = await findZoneForPoint(point.lat, point.lng, ZONE_VERTICALS.MEDICAL);
     if (!zone) throw new ValidationError("We don't deliver to this address yet");
 
     const now = new Date();

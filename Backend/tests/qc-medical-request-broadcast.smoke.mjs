@@ -42,14 +42,16 @@ const { QCPrescriptionRequest } = await import(`${BASE}/orders/models/prescripti
 const { QCMedicalSettings } = await import(`${BASE}/admin/models/medicalSettings.model.js`);
 const { FoodOrder } = await import(`${BASE}/orders/models/order.model.js`);
 const { FoodRestaurant } = await import(`${BASE}/restaurant/models/restaurant.model.js`);
-const { FoodZone } = await import(`${BASE}/admin/models/zone.model.js`);
+// Medical draws its own zones now: a prescription order resolves against
+// medical_zones, so a fixture in qc_zones would be invisible to it.
+const { MedicalZone } = await import(`${BASE}/admin/models/medicalZone.model.js`);
 const { FoodFeeSettings } = await import(`${BASE}/admin/models/feeSettings.model.js`);
 
 const id = () => new mongoose.Types.ObjectId();
 const zoneId = id();
 const userId = id();
 
-await FoodZone.collection.insertOne({
+await MedicalZone.collection.insertOne({
     _id: zoneId,
     name: 'Central',
     isActive: true,

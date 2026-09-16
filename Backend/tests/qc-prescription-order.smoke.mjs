@@ -38,7 +38,9 @@ const BASE = '../src/modules/quickCommerce/modules/food';
 const rx = await import(`${BASE}/orders/services/prescriptionOrder.service.js`);
 const { FoodOrder } = await import(`${BASE}/orders/models/order.model.js`);
 const { FoodRestaurant } = await import(`${BASE}/restaurant/models/restaurant.model.js`);
-const { FoodZone } = await import(`${BASE}/admin/models/zone.model.js`);
+// Medical draws its own zones now: a prescription order resolves against
+// medical_zones, so a fixture in qc_zones would be invisible to it.
+const { MedicalZone } = await import(`${BASE}/admin/models/medicalZone.model.js`);
 const { FoodFeeSettings } = await import(`${BASE}/admin/models/feeSettings.model.js`);
 const { FoodRestaurantCommission } = await import(`${BASE}/admin/models/restaurantCommission.model.js`);
 
@@ -47,7 +49,7 @@ const zoneId = id();
 const restaurantId = id();
 const userId = id();
 
-await FoodZone.collection.insertOne({
+await MedicalZone.collection.insertOne({
     _id: zoneId,
     name: 'Central',
     isActive: true,

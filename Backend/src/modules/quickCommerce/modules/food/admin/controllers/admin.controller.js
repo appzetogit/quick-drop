@@ -1486,6 +1486,16 @@ export async function rejectDeliveryPartner(req, res, next) {
 }
 
 // ----- Zones -----
+/**
+ * Which vertical's zones a request is about.
+ *
+ * The panel sends it as a query parameter on reads and in the body on writes,
+ * because /admin/medical and /admin/quick-commerce are the same screens hitting
+ * the same routes and the server cannot tell them apart otherwise. Anything
+ * unrecognised, or absent, means quick commerce -- see zonesOf in the service.
+ */
+const verticalOf = (req) => req.query?.vertical || req.body?.vertical || null;
+
 export async function getZones(req, res, next) {
     try {
         const data = await adminService.getZones(req.query);
@@ -1501,7 +1511,7 @@ export async function getZones(req, res, next) {
 
 export async function getZoneById(req, res, next) {
     try {
-        const zone = await adminService.getZoneById(req.params.id);
+        const zone = await adminService.getZoneById(req.params.id, verticalOf(req));
         if (!zone) {
             return res.status(404).json({
                 success: false,
@@ -1520,7 +1530,7 @@ export async function getZoneById(req, res, next) {
 
 export async function createZone(req, res, next) {
     try {
-        const result = await adminService.createZone(req.body || {});
+        const result = await adminService.createZone(req.body || {}, verticalOf(req));
         if (result.error) {
             return res.status(400).json({
                 success: false,
@@ -1539,7 +1549,7 @@ export async function createZone(req, res, next) {
 
 export async function updateZone(req, res, next) {
     try {
-        const result = await adminService.updateZone(req.params.id, req.body || {});
+        const result = await adminService.updateZone(req.params.id, req.body || {}, verticalOf(req));
         if (!result) {
             return res.status(404).json({
                 success: false,
@@ -1558,7 +1568,7 @@ export async function updateZone(req, res, next) {
 
 export async function deleteZone(req, res, next) {
     try {
-        const result = await adminService.deleteZone(req.params.id);
+        const result = await adminService.deleteZone(req.params.id, verticalOf(req));
         if (!result) {
             return res.status(404).json({
                 success: false,

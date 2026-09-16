@@ -330,6 +330,40 @@ const rewriteAdminVertical = (url) => {
  * Writes are left alone. They address one record by id, which is already
  * scoped by what the operator could see and click.
  */
+/*
+ * Zones are the one thing quick commerce and medical do NOT share.
+ *
+ * Everywhere else /admin/medical is quick commerce narrowed to pharmacies, so
+ * a storeType parameter on reads is enough. Zones are their own collections --
+ * a zone drawn for groceries must not decide where medicine can go -- and the
+ * server cannot tell which panel is asking, because both render the same screen
+ * against the same route.
+ *
+ * So the vertical is sent on EVERY zone call, writes included: creating,
+ * renaming and deleting all have to land in the right map, and a write is
+ * exactly where getting it wrong is permanent. In the query for reads and
+ * deletes, in the body for the rest, because that is where each already carries
+ * its payload.
+ */
+const ZONE_PATH = /(^|\/)(qc|food)\/admin\/zones(\/|$|\?)/;
+
+const applyZoneVertical = (config) => {
+  const entry = currentQcBase();
+  if (!entry) return config;
+  if (!ZONE_PATH.test(String(config.url || ""))) return config;
+
+  const vertical = entry.base === "/admin/medical" ? "medical" : "quick";
+  const method = String(config.method || "get").toLowerCase();
+
+  config.params = { ...(config.params || {}), vertical };
+  if (method === "post" || method === "patch" || method === "put") {
+    if (config.data && typeof config.data === "object" && !(config.data instanceof FormData)) {
+      config.data = { ...config.data, vertical };
+    }
+  }
+  return config;
+};
+
 const applyVerticalScope = (config) => {
   const entry = currentQcBase();
   if (!entry?.scope) return config;
@@ -348,6 +382,8 @@ apiClient.interceptors.request.use(
   (config) => {
     config.url = rewriteAdminVertical(config.url);
     applyVerticalScope(config);
+    // After the rewrite, so the path it matches is the one actually being sent.
+    applyZoneVertical(config);
     config.contextModule = getModuleFromConfig(config);
 
     // If sending FormData, let the browser set proper multipart boundary.

@@ -18,7 +18,7 @@ import { getRestaurantCommissionSnapshot } from './foodTransaction.service.js';
 
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 import { normalizeDeliveryAddress } from '../../shared/geo.utils.js';
-import { findZoneForPoint, readAddressPoint } from '../../shared/zoneServiceability.js';
+import { findZoneForPoint, readAddressPoint, ZONE_VERTICALS } from '../../shared/zoneServiceability.js';
 import { buildOrderPrescription, PRESCRIPTION_STATUS } from '../../shared/prescriptionRules.js';
 import {
     assertBillApproved,
@@ -135,7 +135,7 @@ export async function createPrescriptionOrder(userId, dto = {}) {
         throw new ValidationError('This address has no location saved. Please re-select it on the map.');
     }
 
-    const zone = await findZoneForPoint(point.lat, point.lng);
+    const zone = await findZoneForPoint(point.lat, point.lng, ZONE_VERTICALS.MEDICAL);
     if (!zone) throw new ValidationError("We don't deliver to this address yet");
     const sellerZoneId = restaurant?.zoneId ? String(restaurant.zoneId) : '';
     if (sellerZoneId && sellerZoneId !== String(zone._id)) {

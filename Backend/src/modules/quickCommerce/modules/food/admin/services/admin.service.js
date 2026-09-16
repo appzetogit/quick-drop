@@ -11,7 +11,19 @@ import { DeliverySupportTicket } from '../../delivery/models/supportTicket.model
 import { FoodNotification } from '../../../../core/notifications/models/notification.model.js';
 import { sendNotificationToOwner } from '../../../../core/notifications/firebase.service.js';
 import { FoodRestaurantSubscriptionSettings } from '../models/restaurantSubscriptionSettings.model.js';
-import { FoodZone } from '../models/zone.model.js';
+import { QCZone } from '../models/zone.model.js';
+import { zoneModelFor, ZONE_VERTICALS } from '../../shared/zoneServiceability.js';
+
+/*
+ * Zone reads and writes go to the vertical the panel is showing.
+ *
+ * /admin/medical and /admin/quick-commerce are the same screens against the
+ * same routes, so the panel says which it is (`vertical`) on every zone call,
+ * writes included. Absent means quick commerce -- every caller that predates
+ * the split is asking about groceries, and defaulting the other way would let
+ * a request with a missing parameter edit medical's map.
+ */
+const zonesOf = (vertical) => zoneModelFor(vertical);
 import { invalidateActiveZonesCache } from '../../shared/zoneServiceability.js';
 import { FoodCategory } from '../models/category.model.js';
 import { FoodItem } from '../models/food.model.js';
@@ -863,7 +875,7 @@ export async function getTransactionReport(query = {}) {
                 if (mongoose.Types.ObjectId.isValid(zoneRaw)) {
                     restFilter.zoneId = new mongoose.Types.ObjectId(zoneRaw);
                 } else {
-                    const matchedZone = await FoodZone.findOne({
+                    const matchedZone = await QCZone.findOne({
                         $or: [{ name: zoneRaw }, { zoneName: zoneRaw }]
                     })
                         .select('_id')
@@ -1053,7 +1065,7 @@ export async function getRestaurantReport(query = {}) {
         if (mongoose.Types.ObjectId.isValid(zoneRaw)) {
             restaurantFilter.zoneId = new mongoose.Types.ObjectId(zoneRaw);
         } else {
-            const matchedZone = await FoodZone.findOne({
+            const matchedZone = await QCZone.findOne({
                 $or: [{ name: zoneRaw }, { zoneName: zoneRaw }]
             })
                 .select('_id')
@@ -5826,6 +5838,8 @@ export async function rejectDeliveryPartner(id, reason) {
 
 // ----- Zones CRUD -----
 export async function getZones(query) {
+    // Which vertical's map. See zonesOf.
+    const vertical = query.vertical;
     const limit = Math.min(Math.max(parseInt(query.limit, 10) || 100, 1), 1000);
     const page = Math.max(parseInt(query.page, 10) || 1, 1);
     const skip = (page - 1) * limit;
@@ -5845,18 +5859,19 @@ export async function getZones(query) {
         ];
     }
 
+    const Zone = zonesOf(vertical);
     const [zones, total] = await Promise.all([
-        FoodZone.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
-        FoodZone.countDocuments(filter)
+        Zone.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+        Zone.countDocuments(filter)
     ]);
     return { zones, total, page, limit };
 }
 
-export async function getZoneById(id) {
-    return FoodZone.findById(id).lean();
+export async function getZoneById(id, vertical) {
+    return zonesOf(vertical).findById(id).lean();
 }
 
-export async function createZone(body) {
+export async function createZone(body, vertical) {
     const name = typeof body.name === 'string' ? body.name.trim() : (body.zoneName && body.zoneName.trim()) || '';
     if (!name) return { error: 'Zone name is required' };
     const coordinates = Array.isArray(body.coordinates) ? body.coordinates : [];
@@ -5867,7 +5882,7 @@ export async function createZone(body) {
         longitude: Number(c.longitude) || 0
     }));
 
-    const zone = new FoodZone({
+    const zone = new (zonesOf(vertical))({
         name,
         zoneName: body.zoneName && body.zoneName.trim() ? body.zoneName.trim() : name,
         country: (body.country && body.country.trim()) || 'India',
@@ -5877,12 +5892,12 @@ export async function createZone(body) {
         isActive: body.isActive !== false
     });
     await zone.save();
-    void invalidateActiveZonesCache();
+    void invalidateActiveZonesCache(vertical);
     return { zone: zone.toObject() };
 }
 
-export async function updateZone(id, body) {
-    const zone = await FoodZone.findById(id);
+export async function updateZone(id, body, vertical) {
+    const zone = await zonesOf(vertical).findById(id);
     if (!zone) return null;
 
     if (body.name !== undefined) zone.name = String(body.name).trim();
@@ -5900,13 +5915,13 @@ export async function updateZone(id, body) {
     if (zone.name) zone.serviceLocation = zone.serviceLocation || zone.name;
 
     await zone.save();
-    void invalidateActiveZonesCache();
+    void invalidateActiveZonesCache(vertical);
     return { zone: zone.toObject() };
 }
 
-export async function deleteZone(id) {
-    const zone = await FoodZone.findByIdAndDelete(id);
-    if (zone) void invalidateActiveZonesCache();
+export async function deleteZone(id, vertical) {
+    const zone = await zonesOf(vertical).findByIdAndDelete(id);
+    if (zone) void invalidateActiveZonesCache(vertical);
     return zone ? { id } : null;
 }
 

@@ -8,7 +8,7 @@ const coordinateSchema = new mongoose.Schema(
     { _id: false }
 );
 
-const zoneSchema = new mongoose.Schema(
+export const zoneSchema = new mongoose.Schema(
     {
         name: {
             type: String,
