@@ -4,6 +4,7 @@ import { FoodOrder } from '../../../modules/food/orders/models/order.model.js';
 import * as foodTransactionService from '../../../modules/food/orders/services/foodTransaction.service.js';
 import { notifyRestaurantNewOrder } from '../../../modules/food/orders/services/order.helpers.js';
 import { countCouponUseOnPayment } from '../../../modules/food/orders/services/couponUsage.service.js';
+import { capturedAmountMatches } from '../capturedAmount.js';
 import { config } from '../../../config/env.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -47,6 +48,42 @@ export const handleRazorpayWebhook = async (req, res) => {
             const paymentObj = payload.payment.entity;
             const rzOrderId = paymentObj.order_id;
             const rzPaymentId = paymentObj.id;
+
+            /*
+             * Cross-check the captured amount against the order total before marking paid.
+             *
+             * The signature proves the event came from Razorpay; it says nothing about
+             * WHICH amount was captured. Without this, a capture of any size marked the
+             * order paid -- a Rs 1 payment against a Rs 900 order cleared it, and the
+             * restaurant was dispatched an order nobody had paid for.
+             *
+             * The quick-commerce fork has carried this check since it was written; the
+             * food handler never got it, which is the fork's cost in one bug. Ported
+             * verbatim so the two behave identically until they become one handler.
+             *
+             * Mismatch is NOT an error to Razorpay -- returning non-200 makes the provider
+             * retry an event that will never succeed. The order is marked failed and the
+             * event acknowledged, leaving a loud log line for reconciliation.
+             */
+            const existingOrder = await FoodOrder.findOne({ "payment.razorpay.orderId": rzOrderId })
+                .select('pricing payment orderStatus orderId')
+                .lean();
+            if (existingOrder) {
+                const verdict = capturedAmountMatches(paymentObj.amount, existingOrder.pricing?.total);
+                if (!verdict.matches) {
+                    logger.error(
+                        `Webhook [payment.captured]: AMOUNT MISMATCH (${verdict.reason}) for RZ-Order ${rzOrderId} — paid ${verdict.capturedPaise} paise, expected ${verdict.expectedPaise} paise. Order NOT marked paid.`,
+                    );
+                    // Guarded: never downgrade an order that some other path already paid.
+                    if (String(existingOrder.payment?.status || '').toLowerCase() !== 'paid') {
+                        await FoodOrder.updateOne(
+                            { _id: existingOrder._id, "payment.status": { $ne: 'paid' } },
+                            { $set: { "payment.status": 'failed', "payment.razorpay.paymentId": rzPaymentId } },
+                        );
+                    }
+                    return res.status(200).json({ status: 'ok' });
+                }
+            }
 
             // Atomic update to mark as paid if not already. Winning this update means the
             // client-driven /verify hasn't run yet, so we must ALSO advance the order out of

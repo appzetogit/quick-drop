@@ -1,5 +1,8 @@
 import crypto from 'crypto';
 import { safeSignatureEqual } from '../../../../../utils/safeCompare.js'; // master's util: one copy, the QC fork already drifts enough
+// Same reasoning: the captured-amount rule is master's, so the two handlers cannot
+// drift apart again the way they already had (food had no comparison at all).
+import { capturedAmountMatches } from '../../../../../core/payments/capturedAmount.js';
 import mongoose from 'mongoose';
 import { FoodOrder } from '../../../modules/food/orders/models/order.model.js';
 import * as foodTransactionService from '../../../modules/food/orders/services/foodTransaction.service.js';
@@ -45,11 +48,10 @@ export const handleRazorpayWebhook = async (req, res) => {
                 .select('pricing payment orderStatus')
                 .lean();
             if (existingOrder) {
-                const expectedPaise = Math.round((Number(existingOrder.pricing?.total) || 0) * 100);
-                const paidPaise = Number(paymentObj.amount);
-                if (!Number.isFinite(paidPaise) || paidPaise !== expectedPaise) {
+                const verdict = capturedAmountMatches(paymentObj.amount, existingOrder.pricing?.total);
+                if (!verdict.matches) {
                     logger.error(
-                        `Webhook [payment.captured]: AMOUNT MISMATCH for RZ-Order ${rzOrderId} — paid ${paidPaise} paise, expected ${expectedPaise} paise. Order NOT marked paid.`,
+                        `Webhook [payment.captured]: AMOUNT MISMATCH (${verdict.reason}) for RZ-Order ${rzOrderId} — paid ${verdict.capturedPaise} paise, expected ${verdict.expectedPaise} paise. Order NOT marked paid.`,
                     );
                     if (String(existingOrder.payment?.status || '').toLowerCase() !== 'paid') {
                         await FoodOrder.updateOne(
