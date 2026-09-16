@@ -1,6 +1,10 @@
 import mongoose from 'mongoose';
 import { recordTransaction, ensureWallet, getBalance, getTransactionsByEntity } from './transaction.service.js';
 import { FoodUserWallet } from '../../modules/food/user/models/userWallet.model.js';
+// Master's merge. The rule is identical in both verticals, so it is imported rather
+// than copied -- copying it is how this file came to carry a deduplication that
+// existed only in its comment.
+import { mergeWalletHistory } from '../../../../core/payments/mergeWalletHistory.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -138,7 +142,12 @@ export async function getUserWalletForFrontend(userId) {
         createdAt: t.createdAt,
         metadata: t.metadata || {},
         category: t.category,
-        balanceAfter: t.balanceAfter
+        balanceAfter: t.balanceAfter,
+        // Surfaced so the merge below has something to match on. The ledger row
+        // carries `orderId` as a real column while the embedded row only ever has
+        // it inside `metadata`; dropping it here left the two rows for one payment
+        // with no common key, and no key means no deduplication.
+        orderId: t.orderId ? String(t.orderId) : (t.metadata?.orderId ? String(t.metadata.orderId) : undefined)
     }));
 
     // Convert embedded txns
@@ -154,10 +163,15 @@ export async function getUserWalletForFrontend(userId) {
         metadata: t.metadata || {}
     }));
 
-    // Deduplicate by checking if an embedded txn has a matching new txn (same amount + order within 5s)
-    const allTxns = [...convertedNewTxns, ...convertedEmbedded];
-    // Sort newest first
-    allTxns.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    /*
+     * The deduplication this comment used to promise now actually happens.
+     *
+     * What stood here was a plain concatenation of the two stores under a comment
+     * describing a merge that was never written -- the same bug master carried until
+     * it was fixed there. The fix did not reach this file, because this file is a
+     * copy rather than a caller. Importing the rule is what stops that recurring.
+     */
+    const allTxns = mergeWalletHistory(convertedNewTxns, convertedEmbedded);
 
     return {
         balance: Number(wallet?.balance) || 0,
