@@ -310,6 +310,24 @@ const restaurantSchema = new mongoose.Schema(
       maxDistanceKm: { type: Number, min: 0, default: 3 },
       minOrderAmount: { type: Number, min: 0, default: 300 },
     },
+    /*
+     * How far this restaurant delivers, in km from its own location. Null means
+     * it has set no radius and only the zone decides -- what every restaurant
+     * did before this existed.
+     *
+     * The one stored copy. The restaurant app and the admin panel both write it
+     * through restaurant/services/serviceRadius.service.js, and the listing, the
+     * cart and order placement all read it through shared/serviceRadius.js.
+     * Never write it directly: the platform ceiling is checked there.
+     */
+    serviceRadiusKm: { type: Number, min: 0, default: null },
+    /** Who last changed it, so either side can see the other did. */
+    serviceRadiusUpdatedBy: {
+      type: String,
+      enum: ["restaurant", "admin", null],
+      default: null,
+    },
+    serviceRadiusUpdatedAt: { type: Date, default: null },
   },
   {
     collection: "food_restaurants",

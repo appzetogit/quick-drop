@@ -196,7 +196,10 @@ const VERTICAL_BRANDING = {
     // the in-page shim cannot drift apart -- this copy had only the title-case half
     // of the table and would have missed a lower-case label.
     words: rulesFor(VERTICAL.QUICK_COMMERCE),
-    hiddenPaths: [],
+    // A restaurant's delivery radius exists only on the food API; the
+    // quick-commerce fork has no such route, so the link would open a page
+    // that can only fail.
+    hiddenPaths: ['/admin/food/delivery-radius'],
     hiddenSections: [],
   },
   /*

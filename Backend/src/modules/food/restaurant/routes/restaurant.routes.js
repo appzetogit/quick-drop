@@ -50,6 +50,7 @@ import {
     deleteCategoryController
 } from '../controllers/restaurantCategory.controller.js';
 import { getMenuController, updateMenuController, getPublicRestaurantMenuController } from '../controllers/restaurantMenu.controller.js';
+import { getOwnServiceRadiusController, updateOwnServiceRadiusController } from '../controllers/serviceRadius.controller.js';
 import { getPublicRestaurantAddonsController } from '../controllers/publicAddons.controller.js';
 import * as feedbackExperienceController from '../../admin/controllers/feedbackExperience.controller.js';
 import {
@@ -158,6 +159,10 @@ router.put('/tax-settings', authMiddleware, requireRestaurant, async (req, res, 
     await invalidateCache('public_foods:*');
     next();
 }, updateRestaurantTaxSettingsController);
+// How far the outlet delivers. The admin panel edits the same field through
+// the same service; see restaurant/services/serviceRadius.service.js.
+router.get('/service-radius', authMiddleware, requireRestaurant, getOwnServiceRadiusController);
+router.put('/service-radius', authMiddleware, requireRestaurant, updateOwnServiceRadiusController);
 router.get('/freebie-offer', authMiddleware, requireRestaurant, getFreebieOfferController);
 router.put('/freebie-offer', authMiddleware, requireRestaurant, updateFreebieOfferController);
 router.get('/bogo-offer', authMiddleware, requireRestaurant, getBogoOfferController);

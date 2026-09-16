@@ -285,7 +285,7 @@ async function resolveDistanceRule(distanceKm) {
 
 export async function calculateOrderPricing(userId, dto) {
   const restaurant = await FoodRestaurant.findById(dto.restaurantId)
-    .select("status zoneId location freeDeliveryRule priceIncludesGst")
+    .select("status zoneId location freeDeliveryRule priceIncludesGst serviceRadiusKm")
     .lean();
   if (!restaurant) throw new ValidationError("Restaurant not found");
   if (restaurant.status !== "approved")
@@ -507,6 +507,51 @@ export async function calculateOrderPricing(userId, dto) {
           feeSource: isBaseSlab ? 'distance_base_slab' : 'distance_non_base_slab'
         };
       }
+  }
+
+  /*
+   * The restaurant's own delivery radius (shared/serviceRadius.js).
+   *
+   * Judged on the road distance the fee was priced from. When the fee did not
+   * need a distance, it is measured here the same way, so the rule does not
+   * depend on how delivery happens to be charged. Not thrown from here: the cart
+   * quote has to come back so the app can show why, and createOrder refuses
+   * the order on `serviceability.deliverable === false`.
+   */
+  let serviceability = {
+    applies: false,
+    deliverable: true,
+    radiusKm: null,
+    distanceKm: measuredDistanceKm,
+    reason: '',
+  };
+  if (Number(restaurant?.serviceRadiusKm) > 0) {
+    const { resolveEffectiveServiceRadius, judgeServiceRadius } =
+      await import('../../shared/serviceRadius.js');
+    const { loadServiceRadiusSettings } =
+      await import('../../restaurant/services/serviceRadius.service.js');
+    const effective = resolveEffectiveServiceRadius({
+      restaurantRadiusKm: restaurant.serviceRadiusKm,
+      settings: await loadServiceRadiusSettings(),
+    });
+
+    if (measuredDistanceKm === null) {
+      const restCoords = extractCoords(restaurant);
+      const customerCoords = extractCoords(dto?.address || dto?.deliveryAddress);
+      if (restCoords && customerCoords) {
+        const measured = await resolveDeliveryDistanceKm(
+          { lat: restCoords[1], lng: restCoords[0] },
+          { lat: customerCoords[1], lng: customerCoords[0] },
+        );
+        if (measured.source !== 'unknown') measuredDistanceKm = measured.km;
+      }
+    }
+
+    serviceability = judgeServiceRadius({
+      radiusKm: effective.radiusKm,
+      distanceKm: measuredDistanceKm,
+      measured: measuredDistanceKm !== null,
+    });
   }
 
   /**
@@ -780,6 +825,13 @@ export async function calculateOrderPricing(userId, dto) {
       distanceKm: measuredDistanceKm == null
         ? null
         : Math.round(Number(measuredDistanceKm) * 100) / 100,
+      /*
+       * Whether this restaurant delivers to this address at all, by its own
+       * radius. `deliverable: false` carries the reason to show; order
+       * placement refuses on it. `applies: false` when the restaurant has set
+       * no radius.
+       */
+      serviceability,
       adminDeliveryCommissionEnabled,
       adminDeliveryCommissionPercent,
       adminDeliveryCommissionAmount,

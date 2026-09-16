@@ -109,6 +109,7 @@ export const adminSidebarMenu = [
           { label: "Buy One Get One", path: "/admin/food/restaurants/bogo-offers" },
           { label: "Combos", path: "/admin/food/restaurants/combos" },
           { label: "Free Delivery", path: "/admin/food/free-delivery" },
+          { label: "Delivery Radius", path: "/admin/food/delivery-radius" },
           { label: "Restaurant Reviews", path: "/admin/food/restaurants/reviews" },
           { label: "Restaurant Complaints", path: "/admin/food/restaurants/complaints" },
         ],

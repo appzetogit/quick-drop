@@ -190,6 +190,13 @@ export async function createOrder(userId, dto) {
       throw new ValidationError("Unable to calculate order pricing from fee settings");
     }
 
+    // The restaurant's own delivery radius. The cart already showed this, but an
+    // older app, a deep link or an address changed after the quote reaches here
+    // regardless -- so this is the check that actually holds.
+    if (pricingResult.pricing.serviceability?.deliverable === false) {
+      throw new ValidationError(pricingResult.pricing.serviceability.reason);
+    }
+
     // Adopt the lines pricing actually used. A spend-threshold reward is appended
     // there, and without this the order would be charged as if it had one while
     // saving items that do not include it -- so the kitchen would never see the

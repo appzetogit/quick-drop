@@ -1,6 +1,7 @@
 import express from 'express';
 import { AuthError } from '../../../../core/auth/errors.js';
 import * as adminController from '../controllers/admin.controller.js';
+import * as serviceRadiusController from '../../restaurant/controllers/serviceRadius.controller.js';
 import * as foodApprovalController from '../controllers/foodApproval.controller.js';
 import * as addonsApprovalController from '../controllers/addonsApproval.controller.js';
 import { getMapSettingsController, updateMapSettingsController } from '../controllers/mapSettings.controller.js';
@@ -67,6 +68,12 @@ router.get('/restaurants/:id/freebie-offer', adminController.getRestaurantFreebi
 router.put('/restaurants/:id/freebie-offer', adminController.updateRestaurantFreebieOffer);
 router.get('/restaurants/:id/bogo-offer', adminController.getRestaurantBogoOffer);
 router.put('/restaurants/:id/bogo-offer', adminController.updateRestaurantBogoOffer);
+// Delivery radius: the same field the restaurant edits from its app, through the
+// same service. The ceiling is admin-only.
+router.get('/service-radius/settings', serviceRadiusController.getServiceRadiusSettingsAdminController);
+router.put('/service-radius/settings', serviceRadiusController.updateServiceRadiusSettingsAdminController);
+router.get('/restaurants/:id/service-radius', serviceRadiusController.getRestaurantServiceRadiusAdminController);
+router.put('/restaurants/:id/service-radius', serviceRadiusController.updateRestaurantServiceRadiusAdminController);
 router.get('/restaurants/:id/free-delivery', adminController.getRestaurantFreeDelivery);
 router.put('/restaurants/:id/free-delivery', adminController.updateRestaurantFreeDelivery);
 router.get('/restaurants/:id/combos', adminController.listRestaurantCombos);

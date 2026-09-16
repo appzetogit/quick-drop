@@ -1716,6 +1716,15 @@ export const listApprovedRestaurants = async (query = {}) => {
     const radiusKm = toFiniteNumber(query.radiusKm) ?? toFiniteNumber(query.maxDistance);
     const sortBy = parseSortBy(query.sortBy);
 
+    // The restaurant's own delivery radius, when the customer's point is known.
+    // Distinct from `radiusKm` above, which is the customer's search filter.
+    // Applied to `filter` so both the geo and the plain path below honour it.
+    if (lat !== null && lng !== null) {
+        const { serviceRadiusListingClause } = await import('./serviceRadius.service.js');
+        const clause = await serviceRadiusListingClause(lat, lng);
+        if (clause) filter.$and = [...(filter.$and || []), clause];
+    }
+
     const projection = {
         restaurantName: 1,
         // Needed to resolve the free delivery badge; stripped again before the

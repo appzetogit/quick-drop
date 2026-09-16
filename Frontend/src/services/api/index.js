@@ -566,6 +566,20 @@ export const adminAPI = {
     apiClient.get(`/food/admin/restaurants/${id}/free-delivery`, { contextModule: "admin" }),
   updateRestaurantFreeDelivery: (id, body) =>
     apiClient.put(`/food/admin/restaurants/${id}/free-delivery`, body ?? {}, { contextModule: "admin" }),
+  /**
+   * How far a restaurant delivers. The restaurant edits the same field from its
+   * app and panel; both go through one service on the server, so the two sides
+   * always show the radius that is actually enforced.
+   */
+  getServiceRadiusSettings: () =>
+    apiClient.get("/food/admin/service-radius/settings", { contextModule: "admin" }),
+  updateServiceRadiusSettings: (maxRadiusKm) =>
+    apiClient.put("/food/admin/service-radius/settings", { maxRadiusKm }, { contextModule: "admin" }),
+  getRestaurantServiceRadius: (id) =>
+    apiClient.get(`/food/admin/restaurants/${id}/service-radius`, { contextModule: "admin" }),
+  // `null` removes the radius, so the zone alone decides.
+  updateRestaurantServiceRadius: (id, serviceRadiusKm) =>
+    apiClient.put(`/food/admin/restaurants/${id}/service-radius`, { serviceRadiusKm }, { contextModule: "admin" }),
   getRestaurantBogoOffer: (id) =>
     apiClient.get(`/food/admin/restaurants/${id}/bogo-offer`, { contextModule: "admin" }),
   updateRestaurantBogoOffer: (id, body) =>
@@ -1577,6 +1591,14 @@ export const restaurantAPI = {
    * edits the same document, so both sides always show the offer that is
    * actually being applied.
    */
+  /**
+   * How far this outlet delivers. The admin panel edits the same field, within
+   * a ceiling only the admin sets. `null` removes the radius.
+   */
+  getServiceRadius: () =>
+    apiClient.get("/food/restaurant/service-radius", { contextModule: "restaurant" }),
+  updateServiceRadius: (serviceRadiusKm) =>
+    apiClient.put("/food/restaurant/service-radius", { serviceRadiusKm }, { contextModule: "restaurant" }),
   getFreebieOffer: () =>
     apiClient.get("/food/restaurant/freebie-offer", { contextModule: "restaurant" }),
   updateFreebieOffer: (body) =>

@@ -38,7 +38,9 @@ const rx = await import(`${BASE}/orders/services/prescriptionOrder.service.js`);
 const orderService = await import(`${BASE}/orders/services/order.service.js`);
 const { FoodOrder } = await import(`${BASE}/orders/models/order.model.js`);
 const { FoodRestaurant } = await import(`${BASE}/restaurant/models/restaurant.model.js`);
-const { FoodZone } = await import(`${BASE}/admin/models/zone.model.js`);
+// A pharmacy's zone lives on the medical map since medical and quick commerce
+// were given separate zones (see medical-zone-split.smoke.mjs).
+const { MedicalZone } = await import(`${BASE}/admin/models/medicalZone.model.js`);
 const { FoodFeeSettings } = await import(`${BASE}/admin/models/feeSettings.model.js`);
 const { FoodRestaurantCommission } = await import(`${BASE}/admin/models/restaurantCommission.model.js`);
 const adminRouter = (await import(`${BASE}/admin/routes/admin.routes.js`)).default;
@@ -83,7 +85,7 @@ await check('the older /accept and /reject are still answered', () => {
 // =============================================================================
 console.log('\n[2] a medical order, accepted by support');
 
-await FoodZone.collection.insertOne({
+await MedicalZone.collection.insertOne({
     _id: zoneId,
     name: 'Central',
     isActive: true,

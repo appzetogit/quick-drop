@@ -47,7 +47,15 @@ export const searchUnified = async (query = {}, options = {}) => {
     if (maxDeliveryTime) {
         restaurantFilter.estimatedDeliveryTimeMinutes = { $lte: parseInt(maxDeliveryTime) };
     }
-    
+
+    // A restaurant that does not deliver this far is not a search result. Under
+    // $and because the name search below spreads its own $or over this filter.
+    {
+        const { serviceRadiusListingClause } = await import('../../restaurant/services/serviceRadius.service.js');
+        const clause = await serviceRadiusListingClause(lat, lng);
+        if (clause) restaurantFilter.$and = [clause];
+    }
+
     console.log(`[Search-Service] Final Restaurant Filter:`, JSON.stringify(restaurantFilter));
 
     let restaurantIds = new Set();
