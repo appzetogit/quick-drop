@@ -12,6 +12,7 @@ import * as diningAdminController from '../../dining/controllers/diningAdmin.con
 import * as orderController from '../../orders/controllers/order.controller.js';
 import { getAdminPageController, upsertAdminPageController } from '../controllers/pageContent.controller.js';
 import { upload } from '../../../../middleware/upload.js';
+import { requireFinancePermission } from '../../../../core/admin/requireFinancePermission.middleware.js';
 
 const router = express.Router();
 
@@ -198,11 +199,22 @@ router.patch('/restaurant-withdrawal-setting', adminController.updateRestaurantW
 router.get('/delivery-emergency-help', adminController.getEmergencyHelp);
 router.put('/delivery-emergency-help', adminController.createOrUpdateEmergencyHelp);
 
-// ----- Withdrawals (admin) -----
+/*
+ * ----- Withdrawals (admin) -----
+ *
+ * The PATCH routes below release money; the GET routes only list it. Until now
+ * both were gated on `role === 'ADMIN'` alone, which every admin account has --
+ * so any admin could approve any payout, and nothing recorded that they had.
+ *
+ * requireFinancePermission is in TOLERANT mode by default: it logs and audits a
+ * missing `wallet.write` rather than refusing, because `permissions` defaults to
+ * [] and enforcing immediately would lock the operations team out of this queue.
+ * See config.financePermissionsEnforced.
+ */
 router.get('/withdrawals', adminController.getWithdrawals);
-router.patch('/withdrawals/:id', adminController.updateWithdrawalStatus);
+router.patch('/withdrawals/:id', requireFinancePermission('WITHDRAWAL_DECIDE'), adminController.updateWithdrawalStatus);
 router.get('/delivery/withdrawals', adminController.getDeliveryWithdrawals);
-router.patch('/delivery/withdrawals/:id', adminController.updateDeliveryWithdrawalStatus);
+router.patch('/delivery/withdrawals/:id', requireFinancePermission('WITHDRAWAL_DECIDE'), adminController.updateDeliveryWithdrawalStatus);
 router.get('/delivery/cash-limit-settlements', adminController.getCashLimitSettlements);
 
 // ----- Delivery partners & general -----
@@ -210,7 +222,7 @@ router.get('/delivery/join-requests', adminController.getDeliveryJoinRequests);
 router.get('/delivery/wallets', adminController.getDeliveryWallets);
 router.get('/delivery/bonus-transactions', adminController.getDeliveryPartnerBonusTransactions);
 router.get('/delivery/earnings', adminController.getDeliveryEarnings);
-router.post('/delivery/bonus', adminController.addDeliveryPartnerBonus);
+router.post('/delivery/bonus', requireFinancePermission('PARTNER_BONUS_GRANT'), adminController.addDeliveryPartnerBonus);
 router.get('/delivery/commission-rules', adminController.getDeliveryCommissionRules);
 router.post('/delivery/commission-rules', adminController.createDeliveryCommissionRule);
 router.patch('/delivery/commission-rules/:id', adminController.updateDeliveryCommissionRule);
@@ -227,7 +239,7 @@ router.patch('/delivery/earning-addons/:id', adminController.updateEarningAddon)
 router.delete('/delivery/earning-addons/:id', adminController.deleteEarningAddon);
 router.patch('/delivery/earning-addons/:id/status', adminController.toggleEarningAddonStatus);
 router.get('/delivery/earning-addon-history', adminController.getEarningAddonHistory);
-router.post('/delivery/earning-addon-history/:id/credit', adminController.creditEarningToWallet);
+router.post('/delivery/earning-addon-history/:id/credit', requireFinancePermission('EARNING_CREDIT'), adminController.creditEarningToWallet);
 router.post('/delivery/earning-addon-history/:id/cancel', adminController.cancelEarningAddonHistory);
 router.post('/delivery/earning-addon-completions/check', adminController.checkEarningAddonCompletions);
 router.get('/delivery/support-tickets/stats', adminController.getSupportTicketStats);

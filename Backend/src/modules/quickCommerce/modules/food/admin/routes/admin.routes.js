@@ -26,6 +26,9 @@ import * as driverRegField from '../../delivery/controllers/driverRegistrationFi
 import * as cashbackSettings from '../controllers/cashbackSettings.controller.js';
 import * as restaurantAppBanner from '../controllers/restaurantAppBanner.controller.js';
 
+// Master's, not a fork's: one permission model, or the fork is a way around it.
+import { requireFinancePermission } from '../../../../../../core/admin/requireFinancePermission.middleware.js';
+
 const router = express.Router();
 
 // ----- Public Business Settings (No Admin Required) -----
@@ -199,7 +202,7 @@ router.get('/restaurant-subscriptions/invoices/export', subscriptionBillingContr
 router.get('/restaurant-subscriptions/invoices/:invoiceId', subscriptionBillingController.getSubscriptionInvoice);
 router.get('/restaurant-subscriptions/summary', subscriptionBillingController.getSubscriptionBillingSummary);
 router.get('/restaurant-subscriptions/restaurants/:restaurantId/overview', subscriptionBillingController.getRestaurantSubscriptionOverview);
-router.post('/restaurant-subscriptions/invoices/:invoiceId/deduct-wallet', subscriptionBillingController.deductInvoiceFromWallet);
+router.post('/restaurant-subscriptions/invoices/:invoiceId/deduct-wallet', requireFinancePermission('PARTNER_WALLET_ADJUST'), subscriptionBillingController.deductInvoiceFromWallet);
 router.post('/restaurant-subscriptions/invoices/:invoiceId/mark-paid', subscriptionBillingController.markInvoicePaid);
 router.post('/restaurant-subscriptions/invoices/:invoiceId/waive', subscriptionBillingController.waiveInvoice);
 router.post('/restaurant-subscriptions/invoices/:invoiceId/adjust', subscriptionBillingController.adjustInvoice);
@@ -362,18 +365,20 @@ router.put('/delivery-emergency-help', adminController.createOrUpdateEmergencyHe
 
 // ----- Withdrawals (admin) -----
 router.get('/withdrawals', adminController.getWithdrawals);
-router.patch('/withdrawals/:id', adminController.updateWithdrawalStatus);
+router.patch('/withdrawals/:id', requireFinancePermission('WITHDRAWAL_DECIDE'), adminController.updateWithdrawalStatus);
 router.get('/delivery/withdrawals', adminController.getDeliveryWithdrawals);
-router.patch('/delivery/withdrawals/:id', adminController.updateDeliveryWithdrawalStatus);
+router.patch('/delivery/withdrawals/:id', requireFinancePermission('WITHDRAWAL_DECIDE'), adminController.updateDeliveryWithdrawalStatus);
 router.get('/delivery/cash-limit-settlements', adminController.getCashLimitSettlements);
 
 // ----- Delivery partners & general -----
 router.get('/delivery/join-requests', adminController.getDeliveryJoinRequests);
 router.get('/delivery/wallets', adminController.getDeliveryWallets);
-router.patch('/delivery/wallets', adminController.updateDeliveryBoyWallet);
+// Quick-commerce has this one and food does not: a direct edit of a rider's
+// stored wallet figures, which is the single most sensitive money route here.
+router.patch('/delivery/wallets', requireFinancePermission('PARTNER_WALLET_ADJUST'), adminController.updateDeliveryBoyWallet);
 router.get('/delivery/bonus-transactions', adminController.getDeliveryPartnerBonusTransactions);
 router.get('/delivery/earnings', adminController.getDeliveryEarnings);
-router.post('/delivery/bonus', adminController.addDeliveryPartnerBonus);
+router.post('/delivery/bonus', requireFinancePermission('PARTNER_BONUS_GRANT'), adminController.addDeliveryPartnerBonus);
 router.get('/delivery/commission-rules', adminController.getDeliveryCommissionRules);
 router.post('/delivery/commission-rules', adminController.createDeliveryCommissionRule);
 router.patch('/delivery/commission-rules/:id', adminController.updateDeliveryCommissionRule);
@@ -387,7 +392,7 @@ router.patch('/delivery/earning-addons/:id', adminController.updateEarningAddon)
 router.delete('/delivery/earning-addons/:id', adminController.deleteEarningAddon);
 router.patch('/delivery/earning-addons/:id/status', adminController.toggleEarningAddonStatus);
 router.get('/delivery/earning-addon-history', adminController.getEarningAddonHistory);
-router.post('/delivery/earning-addon-history/:id/credit', adminController.creditEarningToWallet);
+router.post('/delivery/earning-addon-history/:id/credit', requireFinancePermission('EARNING_CREDIT'), adminController.creditEarningToWallet);
 router.post('/delivery/earning-addon-history/:id/cancel', adminController.cancelEarningAddonHistory);
 router.post('/delivery/earning-addon-completions/check', adminController.checkEarningAddonCompletions);
 router.get('/delivery/support-tickets/stats', adminController.getSupportTicketStats);

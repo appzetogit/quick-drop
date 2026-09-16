@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middlewares/authMiddleware.js';
 import { requireServiceAccess } from '../../../../core/roles/serviceAccess.middleware.js';
+import { requireFinancePermission } from '../../../../core/admin/requireFinancePermission.middleware.js';
 import {
   approveOwner,
   approveOwnerSignupFromDriver,
@@ -272,13 +273,23 @@ adminRouter.get('/admin/drivers/:id', getDriver);
 adminRouter.patch('/admin/drivers/:id', updateDriver);
 adminRouter.patch('/admin/drivers/update-password/:id', updateDriverPassword);
 adminRouter.delete('/admin/drivers/:id', deleteDriver);
-adminRouter.post('/admin/wallet/users/:id/adjust', adjustUserWallet);
+/*
+ * The three `/adjust` routes move money by hand and were gated only by
+ * `authenticate` -- so any admin token could change any balance, with nothing
+ * recording that they had. requireFinancePermission is in tolerant mode by
+ * default: it audits a missing `wallet.write` rather than refusing, because
+ * `permissions` defaults to [] and enforcing on deploy would lock the operations
+ * team out. See config.financePermissionsEnforced.
+ *
+ * The `/history` routes are reads and stay open to any admin.
+ */
+adminRouter.post('/admin/wallet/users/:id/adjust', requireFinancePermission('PARTNER_WALLET_ADJUST'), adjustUserWallet);
 adminRouter.get('/admin/wallet/users/:id/history', getUserWalletHistory);
 
-adminRouter.post('/admin/wallet/drivers/:id/adjust', adjustDriverWallet);
+adminRouter.post('/admin/wallet/drivers/:id/adjust', requireFinancePermission('PARTNER_WALLET_ADJUST'), adjustDriverWallet);
 adminRouter.get('/admin/wallet/drivers/:id/history', listDriverWalletHistory);
 
-adminRouter.post('/admin/wallet/owners/:id/adjust', adjustOwnerWallet);
+adminRouter.post('/admin/wallet/owners/:id/adjust', requireFinancePermission('PARTNER_WALLET_ADJUST'), adjustOwnerWallet);
 adminRouter.get('/admin/wallet/owners/:id/history', listOwnerWalletHistory);
 
 adminRouter.get('/admin/wallet/drivers/negative-balance', authenticate(['admin']), getNegativeBalanceDrivers);
