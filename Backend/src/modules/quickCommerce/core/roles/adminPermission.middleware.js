@@ -1,3 +1,25 @@
+/**
+ * Quick-commerce's OWN admin permission model. Deliberately not collapsed.
+ *
+ * `role.middleware.js` beside this was byte-identical to master's and is gone.
+ * This one is not a fork of anything -- it is a different model, and the two
+ * cannot be merged by moving files:
+ *
+ *              collection      `permissions` shape
+ *   master     admins          flat array of 'resource.action' strings
+ *   this       qc_admins       nested object of { section: [actions] }
+ *
+ * So a QC-native admin does not exist in master's collection and their
+ * permissions would not parse if they did. Unifying them is an identity merge
+ * with a migration, not a refactor, and it belongs with the core/admin work.
+ *
+ * ONE CONSEQUENCE WORTH KNOWING NOW: requireFinancePermission, mounted on this
+ * vertical's money routes, reads master's `admins`. A QC-native admin is absent
+ * there, so today it tolerates and audits them (see financeAuthz.decide) -- but
+ * when FINANCE_PERMISSIONS_ENFORCED is switched on they would be refused. The
+ * admin identities have to merge before that flag flips, or QC's own admins lose
+ * the withdrawal queue.
+ */
 import { sendError } from '../../utils/response.js';
 import { FoodAdmin } from '../admin/admin.model.js';
 

@@ -1,6 +1,6 @@
 import express from 'express';
 import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
-import { requireRoles } from '../../../../core/roles/role.middleware.js';
+import { requireRoles } from '../../../../../../core/roles/role.middleware.js';
 // Master's platform-wide ledger, shared by every vertical.
 import { idempotency } from '../../../../../../middleware/idempotency.js';
 import * as ctrl from '../controllers/return.controller.js';

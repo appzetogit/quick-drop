@@ -1,7 +1,7 @@
 import express from 'express';
 import { upload } from '../../../../middleware/upload.js';
 import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
-import { requireRoles } from '../../../../core/roles/role.middleware.js';
+import { requireRoles } from '../../../../../../core/roles/role.middleware.js';
 import {
     listHeroBannersController,
     uploadHeroBannersController,
