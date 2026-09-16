@@ -195,7 +195,24 @@ export const config = {
     // Driver unification: when true, dispatch treats taxi drivers + delivery partners as one
     // pool and honors workMode + the activeAssignment busy-lock. Default OFF for safe dual-run —
     // flip only after the backfill migration has run and been validated on staging.
-    unifiedDispatchEnabled: process.env.UNIFIED_DISPATCH_ENABLED === 'true'
+    unifiedDispatchEnabled: process.env.UNIFIED_DISPATCH_ENABLED === 'true',
+
+    // Financial admin routes: when true, an admin without `wallet.write` is refused
+    // instead of merely logged. Default OFF, and deliberately so — `permissions`
+    // defaults to [] on the admin schema and only the seeded superadmin has ['*'],
+    // so enforcing on day one would lock the operations team out of the withdrawal
+    // queue. While it is off, every violation is written to admin_audits with
+    // toleratedViolation: true. That collection IS the to-do list: grant the
+    // permissions it names, confirm it stops growing, then flip this on.
+    financePermissionsEnforced: process.env.FINANCE_PERMISSIONS_ENFORCED === 'true',
+
+    // Run the master eligibility engine alongside each vertical's own gate and log
+    // where they disagree. Decides nothing and changes no dispatch outcome — it
+    // exists so the cutover is made from evidence rather than from confidence.
+    // Off by default because it costs a riderFinance call per candidate on a hot
+    // path; turn it on in staging, then in production for a week, then read the
+    // WOULD_BLOCK / WOULD_ALLOW lines before wiring the engine in for real.
+    eligibilityShadowEnabled: process.env.ELIGIBILITY_SHADOW_ENABLED === 'true'
 };
 
 // Taxi Module Compatibility Export
