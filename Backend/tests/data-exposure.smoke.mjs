@@ -137,6 +137,61 @@ const main = async () => {
         }
     });
 
+    // --- 3b. rider's available-orders list ------------------------------------
+    console.log('\nfood available orders (rider)');
+    const { listOrdersAvailableDelivery } = await import('../src/modules/food/orders/services/order-delivery.service.js');
+    const { FoodUser } = await import('../src/core/users/user.model.js');
+    const browsingRider = oid();
+    const offerCustomer = oid();
+    await FoodUser.collection.insertOne({ _id: offerCustomer, name: 'Meera', phone: '9812345678', email: 'meera@t.test' });
+    const offer = oid();
+    const mine = oid();
+    await FoodOrder.collection.insertMany([
+        { _id: offer, orderId: 'FOD-0000002', userId: offerCustomer, restaurantId, orderStatus: 'preparing', customerPhone: '9812345678',
+          dispatch: { status: 'unassigned' }, deliveryAddress: { street: '1 Lane', city: 'Pune', state: 'MH', phone: '9812345678' }, createdAt: new Date() },
+        { _id: mine, orderId: 'FOD-0000003', userId: offerCustomer, restaurantId, orderStatus: 'picked_up', customerPhone: '9812345678',
+          dispatch: { status: 'accepted', deliveryPartnerId: browsingRider }, deliveryAddress: { street: '1 Lane', city: 'Pune', state: 'MH', phone: '9812345678' }, createdAt: new Date() },
+    ]);
+    await check('an open offer shows the customer name and address, but no phone or email', async () => {
+        const listed = await listOrdersAvailableDelivery(String(browsingRider), {}); const docs = listed.data || listed.docs || [];
+        const o = docs.find((d) => String(d._id) === String(offer));
+        assert.ok(o, 'offer listed');
+        assert.equal(o.userId.name, 'Meera');
+        assert.equal(o.userId.phone, undefined);
+        assert.equal(o.userId.email, undefined);
+        assert.equal(o.customerPhone, undefined);
+        assert.equal(o.deliveryAddress.phone, undefined);
+        assert.equal(o.deliveryAddress.street, '1 Lane');
+    });
+    await check("the rider's own accepted order keeps the customer's phone", async () => {
+        const listed = await listOrdersAvailableDelivery(String(browsingRider), {}); const docs = listed.data || listed.docs || [];
+        const o = docs.find((d) => String(d._id) === String(mine));
+        assert.ok(o, 'own order listed');
+        assert.equal(o.userId.phone, '9812345678');
+        assert.equal(o.customerPhone, '9812345678');
+    });
+
+    // --- 3c. public nearby drivers ----------------------------------------------
+    console.log('\ntaxi public nearby drivers');
+    const { listAvailableDrivers } = await import('../src/modules/taxi/user/controllers/rideController.js');
+    const { Driver } = await import('../src/modules/taxi/driver/models/Driver.js');
+    await Driver.collection.createIndex({ location: '2dsphere' });
+    const vehicleTypeId = oid();
+    await Driver.collection.insertOne({ _id: oid(), name: 'Named Driver', phone: '+919800000001', vehicleNumber: 'MH12AB1234', vehicleColor: 'White',
+        vehicleMake: 'Maruti', vehicleModel: 'Dzire', vehicleTypeId, vehicleType: 'car', isOnline: true, rating: 4.8,
+        isOnRide: false, workMode: 'all', serviceCapabilities: ['taxi'], activeAssignment: null,
+        location: { type: 'Point', coordinates: [73.85, 18.52] } });
+    await check('the unauthenticated map gets positions and vehicle type, but no name or number plate', async () => {
+        let body = null;
+        await listAvailableDrivers({ query: { vehicleTypeId: String(vehicleTypeId), lat: '18.52', lng: '73.85' } }, { json: (b) => { body = b; } });
+        const d = body.data.drivers[0];
+        assert.ok(d, 'driver listed');
+        assert.ok(Array.isArray(d.location.coordinates));
+        for (const f of ['name', 'phone', 'vehicleNumber', 'vehicleColor', 'vehicleMake', 'vehicleModel']) {
+            assert.equal(d[f], undefined, `${f} leaked`);
+        }
+    });
+
     // --- 4. quick-commerce auth with a taxi token ------------------------------
     console.log('\nquick-commerce auth middleware');
     const { authMiddleware } = await import('../src/modules/quickCommerce/core/auth/auth.middleware.js');

@@ -1232,7 +1232,11 @@ export const listAvailableDrivers = async (req, res) => {
     },
   })
     .limit(Math.min(Number(limit) || 30, 50))
-    .select('name phone vehicleTypeId vehicleType vehicleIconType vehicleNumber vehicleColor vehicleMake vehicleModel rating location')
+    // Public, unauthenticated, polled by the booking map. Identity is NOT selected:
+    // it returned each nearby driver's name and number plate with their live
+    // position, so anyone could sweep a city and follow named drivers. The map needs
+    // positions and vehicle type only.
+    .select('vehicleTypeId vehicleType vehicleIconType rating location')
     .lean();
 
   const enrichedDrivers = drivers.map((driver) => {
@@ -1241,14 +1245,9 @@ export const listAvailableDrivers = async (req, res) => {
 
     return {
       id: driver._id,
-      name: driver.name,
       vehicleTypeId: driver.vehicleTypeId,
       vehicleType: driver.vehicleType,
       vehicleIconType: driver.vehicleIconType,
-      vehicleNumber: driver.vehicleNumber,
-      vehicleColor: driver.vehicleColor,
-      vehicleMake: driver.vehicleMake,
-      vehicleModel: driver.vehicleModel,
       rating: driver.rating,
       location: driver.location,
       distanceMeters,

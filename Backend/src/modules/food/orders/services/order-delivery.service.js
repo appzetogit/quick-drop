@@ -224,7 +224,27 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
     : [];
   const txByOrderId = new Map(txRows.map((t) => [String(t.orderId), t]));
 
-  const enriched = (docs || []).map((doc) => {
+  /*
+   * An OFFER -- an order not yet assigned to this rider -- carries no customer
+   * contact details. Every rider could page through every open order on the
+   * platform and collect customers' phones and emails, with nothing to stop it.
+   * Name, address and the drop point stay (they decide whether to take the job);
+   * once the rider accepts, the order is theirs and this list returns it in full.
+   */
+  const withoutContact = (doc) => {
+    if (String(doc?.dispatch?.deliveryPartnerId || '') === String(deliveryPartnerId)) return doc;
+    const out = { ...doc, customerPhone: undefined };
+    if (doc?.userId && typeof doc.userId === 'object') {
+      out.userId = { _id: doc.userId._id, name: doc.userId.name };
+    }
+    if (doc?.deliveryAddress) {
+      out.deliveryAddress = { ...doc.deliveryAddress, phone: undefined };
+    }
+    return out;
+  };
+
+  const enriched = (docs || []).map((raw) => {
+    const doc = withoutContact(raw);
     const tx = txByOrderId.get(String(doc?._id)) || null;
     if (!tx) return doc;
     return {
