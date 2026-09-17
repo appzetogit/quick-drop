@@ -196,6 +196,28 @@ export const platformSettingsAPI = {
     apiClient.post("/platform/settings/cache/invalidate", {}, { contextModule: "admin" }),
 };
 
+/**
+ * Which services the customer app shows, everywhere or per zone. Platform-level
+ * like the master settings above, so it lives outside /food and is not rewritten
+ * per panel.
+ */
+export const appServicesAPI = {
+  getAdminView: () =>
+    apiClient.get("/platform/app-services/admin", { contextModule: "admin" }),
+  setService: (service, enabled) =>
+    apiClient.put(
+      `/platform/app-services/admin/${encodeURIComponent(service)}`,
+      { enabled: Boolean(enabled) },
+      { contextModule: "admin" },
+    ),
+  setZone: (service, zoneId, enabled) =>
+    apiClient.put(
+      `/platform/app-services/admin/${encodeURIComponent(service)}/zones/${encodeURIComponent(zoneId)}`,
+      { enabled: Boolean(enabled) },
+      { contextModule: "admin" },
+    ),
+};
+
 export const adminAPI = {
   getFoodAssignableZones: () =>
     apiClient.get("/food/admin/admin-management/assignable-zones", { contextModule: "admin" }),

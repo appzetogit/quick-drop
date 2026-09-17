@@ -24,6 +24,12 @@ export const adminSidebarMenu = [
         path: "/admin/master/settings",
         icon: "SlidersHorizontal",
       },
+      {
+        type: "link",
+        label: "App Services",
+        path: "/admin/master/app-services",
+        icon: "LayoutGrid",
+      },
     ],
   },
   {

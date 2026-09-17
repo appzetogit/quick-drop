@@ -12,6 +12,7 @@ const StatusMonitor = lazy(() => import("@food/pages/admin/dashboard/StatusMonit
 const AdminProfile = lazy(() => import("@food/pages/admin/AdminProfile"));
 const AdminSettings = lazy(() => import("@food/pages/admin/AdminSettings"));
 const PlatformSettings = lazy(() => import("@food/pages/admin/master/PlatformSettings"))
+const AppServices = lazy(() => import("@food/pages/admin/master/AppServices"))
 const NewRefundRequests = lazy(() => import("@food/pages/admin/refunds/NewRefundRequests"));
 const FoodApproval = lazy(() => import("@food/pages/admin/restaurant/FoodApproval"));
 const OrdersPage = lazy(() => import("@food/pages/admin/orders/OrdersPage"));
@@ -376,6 +377,7 @@ export default function AdminRouter() {
             once per vertical and wrong for a screen that does not.
           */}
           <Route path="master/settings" element={<PlatformSettings />} />
+          <Route path="master/app-services" element={<AppServices />} />
 
           {/* FOOD ADMIN - All food related routes nested here */}
           {/* FOOD ADMIN */}

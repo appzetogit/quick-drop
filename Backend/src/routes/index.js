@@ -37,6 +37,7 @@ import qcRouter from '../modules/quickCommerce/routes/index.js';
 // restarting the process the other three share.
 import platformModuleRoutes from '../core/modules/module.routes.js';
 import platformSettingRoutes from '../core/config/config.routes.js';
+import appServicesRoutes from '../core/appServices/appServices.routes.js';
 import { requireModuleEnabled } from '../middleware/moduleEnabled.js';
 import { MODULES } from '../core/modules/moduleRegistry.js';
 
@@ -98,6 +99,13 @@ router.use('/v1/platform/modules', platformModuleRoutes);
  * enforced inside the router.
  */
 router.use('/v1/platform/settings', authMiddleware, requireRoles('ADMIN'), platformSettingRoutes);
+
+/*
+ * Which services the customer app shows, platform-wide and per zone. The read
+ * is public (the app asks before sign-in); the admin half authenticates inside
+ * the router. See core/appServices.
+ */
+router.use('/v1/platform/app-services', appServicesRoutes);
 
 router.get('/v1/health', (req, res) => {
     res.status(200).json({ status: 'UP', message: 'Server is healthy' });

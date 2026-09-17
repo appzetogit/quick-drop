@@ -37,6 +37,7 @@ import {
   CreditCard,
   Settings,
   SlidersHorizontal,
+  LayoutGrid,
   UserCog,
   User,
   Globe,
@@ -100,6 +101,7 @@ const iconMap = {
   // Registered explicitly: an unmapped name falls back to Utensils, so a missing
   // entry shows a fork beside Platform Settings rather than failing visibly.
   SlidersHorizontal,
+  LayoutGrid,
   LayoutDashboard,
   ShieldCheck,
   Pill,
