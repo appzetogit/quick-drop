@@ -281,7 +281,9 @@ exports.confirmCashCollection = async (req, res) => {
       // OTP Verification
       const isPlanBenefitNoExtras = booking.paymentMethod === 'plan_benefit' && otp === '0000';
 
-      if (!isPlanBenefitNoExtras && booking.customerConfirmationOTP && otp && booking.customerConfirmationOTP !== otp) {
+      // An issued OTP must be SENT and match. `&& otp &&` skipped the check whenever the
+      // request simply left otp out -- confirming a collection the customer never saw.
+      if (!isPlanBenefitNoExtras && booking.customerConfirmationOTP && booking.customerConfirmationOTP !== otp) {
         if (process.env.NODE_ENV !== 'development' || otp !== '0000') {
           console.warn(`[ConfirmCash] Invalid OTP attempt for booking ${id}`);
           abort({ badOtp: true });
@@ -841,7 +843,10 @@ exports.confirmManualOnlinePayment = async (req, res) => {
       if (!booking) abort({ notFound: true });
 
       // OTP Verification (Mandatory for manual confirmation to prevent accidents)
-      if (booking.customerConfirmationOTP && otp && booking.customerConfirmationOTP !== otp) {
+      // Mandatory, and required even if none was issued: nothing else in this path proves
+      // any money was collected, yet it completes the booking and credits the partner.
+      // `&& otp &&` used to skip the check entirely when otp was left out.
+      if (!booking.customerConfirmationOTP || booking.customerConfirmationOTP !== otp) {
         if (process.env.NODE_ENV !== 'development' || otp !== '0000') {
           abort({ badOtp: true });
         }
