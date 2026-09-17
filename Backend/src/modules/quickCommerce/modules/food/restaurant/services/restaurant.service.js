@@ -731,6 +731,9 @@ export const registerRestaurant = async (payload, files) => {
         drugLicenseNumber,
         drugLicenseExpiry,
         drugLicenseImage: preUploadedDrugLicenseImage,
+        pharmacistName,
+        pharmacistRegistrationNumber,
+        upiId,
     } = payload;
 
     if (!ownerPhone) {
@@ -815,6 +818,28 @@ export const registerRestaurant = async (payload, files) => {
             .then(url => { imageMap.drugLicenseImage = url; }));
     }
 
+    // Pharmacy documents and store photos: each arrives either as a file or as
+    // a URL already uploaded through /upload-attachment.
+    const partnerImages = {
+        pharmacistCertificateImage: String(payload.pharmacistCertificateImage || '').trim(),
+        businessRegistrationImage: String(payload.businessRegistrationImage || '').trim(),
+        storeFrontImage: String(payload.storeFrontImage || '').trim(),
+        storeInsideImage: String(payload.storeInsideImage || '').trim(),
+        storeSignboardImage: String(payload.storeSignboardImage || '').trim(),
+    };
+    for (const [field, folder] of [
+        ['pharmacistCertificateImage', 'qc/partners/pharmacist'],
+        ['businessRegistrationImage', 'qc/partners/registration'],
+        ['storeFrontImage', 'qc/partners/store-front'],
+        ['storeInsideImage', 'qc/partners/store-inside'],
+        ['storeSignboardImage', 'qc/partners/store-signboard'],
+    ]) {
+        if (files?.[field]?.[0]) {
+            uploadTasks.push(uploadImageBuffer(files[field][0].buffer, folder)
+                .then((url) => { if (url) partnerImages[field] = url; }));
+        }
+    }
+
     let menuImages = [];
     // If we have pre-uploaded menu images, use them
     if (preUploadedMenuImages) {
@@ -888,6 +913,44 @@ export const registerRestaurant = async (payload, files) => {
         ...(drugLicence || {}),
     });
     assertMedicalOnboarding(storeFields);
+
+    const partnerFields = {
+        pharmacist: {
+            name: String(pharmacistName || '').trim(),
+            registrationNumber: String(pharmacistRegistrationNumber || '').trim(),
+            certificateImage: partnerImages.pharmacistCertificateImage,
+        },
+        businessRegistrationImage: partnerImages.businessRegistrationImage,
+        storePhotos: {
+            front: partnerImages.storeFrontImage,
+            inside: partnerImages.storeInsideImage,
+            signboard: partnerImages.storeSignboardImage,
+        },
+        upiId: String(upiId || '').trim(),
+        applicationSubmittedAt: new Date(),
+    };
+
+    // Everything a pharmacy must hand over, checked against the values that
+    // will actually be stored. See shared/partnerOnboarding.js.
+    {
+        const { assertApplicationComplete, partnerTypeOfSeller } = await import('../../shared/partnerOnboarding.js');
+        const latProbe = toFiniteNumber(latitude);
+        const lngProbe = toFiniteNumber(longitude);
+        assertApplicationComplete(partnerTypeOfSeller(storeFields), {
+            ...payload,
+            ...storeFields,
+            ...images,
+            ...partnerFields,
+            ownerPhone,
+            location: {
+                addressLine1: addressLine1 || '',
+                city: city || '',
+                formattedAddress: formattedAddress || '',
+                coordinates: latProbe !== null && lngProbe !== null ? [lngProbe, latProbe] : undefined,
+            },
+            gstRegistered: gstRegistered === true,
+        });
+    }
 
     const normalizedOpeningTime = normalizeRestaurantTime(openingTime);
     const normalizedClosingTime = normalizeRestaurantTime(closingTime);
@@ -1000,6 +1063,7 @@ export const registerRestaurant = async (payload, files) => {
             // Postpaid subscription model: monthly invoices from GMV at month end.
             ...onboardingFeeFields,
             ...storeFields,
+            ...partnerFields,
             ...images
         });
 

@@ -18,11 +18,11 @@ const partners = [
   },
   {
     type: 'restaurant', icon: Store,
-    title: 'Register Your Restaurant',
-    subtitle: 'Expand your kitchen footprint',
-    description: 'Partner with Quick Drop to list your menu online. Tap into thousands of local orders and leverage our reliable dispatch fleet to maximize kitchen revenue.',
+    title: 'Sell on Quick Drop',
+    subtitle: 'Restaurants, stores and medical stores',
+    description: 'List your restaurant, store or pharmacy on Quick Drop. Reach thousands of local customers and use our delivery fleet — register in minutes and start taking orders once approved.',
     benefits: ['Access to extensive customer database', 'Advanced order & dashboard analytics', 'Flexible pricing & promotional campaigns', 'Professional delivery network integration'],
-    ctaText: 'Register Restaurant', ctaHref: '/food/restaurant/onboarding?step=1',
+    ctaText: 'Become a partner', ctaHref: '/partner',
     color: '#FFB800', gradient: 'from-[#FFB800] to-[#ff5100]',
   }
 ]

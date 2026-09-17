@@ -4360,6 +4360,14 @@ export async function approveRestaurant(id) {
     const existing = await FoodRestaurant.findById(id).lean();
     if (!existing) return null;
 
+    // A pharmacy is approved only with everything it must hand over, whichever
+    // admin screen the approval came from. A pharmacy approved before (and now
+    // only confirming a location change) is not re-checked.
+    if (existing.status !== 'approved') {
+        const { assertApplicationComplete, partnerTypeOfSeller } = await import('../../shared/partnerOnboarding.js');
+        assertApplicationComplete(partnerTypeOfSeller(existing), existing);
+    }
+
     const $set = {
         status: 'approved',
         approvedAt: new Date()

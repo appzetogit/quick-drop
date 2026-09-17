@@ -671,6 +671,13 @@ export const adminAPI = {
     apiClient.put("/food/admin/medical/settings", payload, { contextModule: "admin" }),
   getMedicalRequests: (params = {}) =>
     apiClient.get("/food/admin/medical/requests", { params, contextModule: "admin" }),
+  /** Pharmacy applications with their documents and checklist, and the decision. */
+  getPharmacyApplications: (params = {}) =>
+    apiClient.get("/food/admin/medical/verification", { params, contextModule: "admin" }),
+  approvePharmacyApplication: (id) =>
+    apiClient.post(`/food/admin/medical/verification/${encodeURIComponent(id)}/approve`, {}, { contextModule: "admin" }),
+  rejectPharmacyApplication: (id, reason) =>
+    apiClient.post(`/food/admin/medical/verification/${encodeURIComponent(id)}/reject`, { reason }, { contextModule: "admin" }),
   /** What each menu currently carries, as opposed to what was asked for. */
   getStandingAdjustments: () =>
     apiClient.get("/food/admin/price-adjustments/standing", {

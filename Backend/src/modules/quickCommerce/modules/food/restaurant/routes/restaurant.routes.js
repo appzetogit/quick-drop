@@ -113,6 +113,12 @@ const uploadFields = upload.fields([
     { name: 'fssaiImage', maxCount: 1 },
     // Medical stores: the drug licence a pharmacy must produce to be approved.
     { name: 'drugLicenseImage', maxCount: 1 },
+    { name: 'pharmacistCertificateImage', maxCount: 1 },
+    { name: 'businessRegistrationImage', maxCount: 1 },
+    // Store photos. The front one is how an admin checks the shop is real.
+    { name: 'storeFrontImage', maxCount: 1 },
+    { name: 'storeInsideImage', maxCount: 1 },
+    { name: 'storeSignboardImage', maxCount: 1 },
     { name: 'menuImages', maxCount: 10 },
     // Onboarding: main cover + premises gallery (gallery is shown to the rider at pickup).
     { name: 'coverImage', maxCount: 1 },

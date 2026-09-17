@@ -64,12 +64,20 @@ export async function loadRestaurantForOrdering(restaurantId) {
       // projection it is undefined, every seller reads as non-medical, and a pharmacy
       // order goes through with nothing attached -- the same failure the comment
       // above describes for autoAcceptOrders.
-      'status restaurantName zoneId location isAcceptingOrders autoAcceptOrders outsideHoursOverride openingTime closingTime openDays deliveryTimings isActive storeType',
+      'status restaurantName zoneId location isAcceptingOrders autoAcceptOrders outsideHoursOverride openingTime closingTime openDays deliveryTimings isActive storeType drugLicenseExpiry',
     )
     .lean();
 
   if (!doc) throw new ValidationError('Restaurant not found');
   if (doc.status !== 'approved') throw new ValidationError('Restaurant not available');
+  {
+    // An expired drug licence takes a pharmacy offline, including for an order
+    // from an app that still had it on screen.
+    const { isLicenceExpired } = await import('../../shared/partnerOnboarding.js');
+    if (isLicenceExpired(doc)) {
+      throw new ValidationError('This pharmacy is not taking orders right now.');
+    }
+  }
 
   const [withTimings] = await attachOutletTimingsToRestaurants([doc], {
     useDefaults: false,

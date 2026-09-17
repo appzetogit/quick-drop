@@ -63,9 +63,13 @@ export async function loadMedicalSettings() {
 
 /** Candidate pharmacies with their timings attached, so opening hours can be read. */
 const loadPharmaciesWithTimings = async (zoneId) => {
+    const { notExpiredLicenceClause } = await import('../../shared/partnerOnboarding.js');
     const sellers = await FoodRestaurant.find({
         storeType: MEDICAL_STORE_TYPE,
         status: 'approved',
+        // A pharmacy whose drug licence has run out is not shown or sent
+        // prescriptions until it uploads a current one.
+        ...notExpiredLicenceClause(),
     }).lean();
 
     /*

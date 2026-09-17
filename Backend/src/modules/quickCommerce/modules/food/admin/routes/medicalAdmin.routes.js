@@ -5,6 +5,8 @@ import {
     listMedicalRequestsController,
     updateMedicalSettingsController,
 } from '../controllers/medicalAdmin.controller.js';
+import * as partner from '../../partner/partner.service.js';
+import { sendResponse, sendError } from '../../../../../../utils/response.js';
 
 /**
  * The platform's medical rules and the broadcast log, for the Medical panel.
@@ -32,5 +34,25 @@ const canEditSettings = requireAnyAdminPermission([
 router.get('/settings', canViewSettings, getMedicalSettingsController);
 router.put('/settings', canEditSettings, updateMedicalSettingsController);
 router.get('/requests', canViewSettings, listMedicalRequestsController);
+
+/*
+ * Pharmacy verification: applications with their documents and checklist, and
+ * approve / reject. Approving runs the same requirements list the partner saw
+ * while applying; rejecting needs a reason, because the pharmacy is shown it.
+ */
+const wrap = (fn) => async (req, res) => {
+    try {
+        return sendResponse(res, 200, 'OK', await fn(req));
+    } catch (err) {
+        const code = Number(err?.statusCode) || 500;
+        return sendError(res, code, code < 500 ? err.message : 'Something went wrong');
+    }
+};
+router.get('/verification', canViewSettings, wrap((req) => partner.listApplicationsForAdmin({
+    status: req.query.status,
+    type: 'medical',
+}).then((applications) => ({ applications }))));
+router.post('/verification/:id/approve', canEditSettings, wrap((req) => partner.approveApplication(req.params.id)));
+router.post('/verification/:id/reject', canEditSettings, wrap((req) => partner.rejectApplication(req.params.id, req.body?.reason)));
 
 export default router;

@@ -377,6 +377,59 @@ export const requestRestaurantOtp = async (phone) => {
   return shouldExposeOtp ? { otp } : {};
 };
 
+
+/**
+ * The seller holding this phone number, or null.
+ *
+ * Sellers store their number with or without a country code or formatting, so
+ * this matches the exact value, its digits, the last 10 digits, or a number
+ * ending in them -- otherwise a seller who exists reads as needing to register.
+ */
+export const findRestaurantByPhone = async (phone) => {
+  const digits = String(phone || "").replace(/\D/g, "");
+  const last10 = digits.slice(-10);
+  const phoneCandidates = [phone, digits, last10].filter(Boolean);
+  const phoneOrFields = (field) => [
+    { [field]: { $in: phoneCandidates } },
+    ...(last10 ? [{ [field]: { $regex: new RegExp(last10 + "$") } }] : []),
+  ];
+  return FoodRestaurant.findOne({
+    $or: [
+      ...phoneOrFields("ownerPhone"),
+      ...phoneOrFields("primaryContactNumber"),
+    ],
+  });
+};
+
+/**
+ * Sign a seller in: access and refresh tokens, and the refresh token recorded.
+ * The caller decides whether the seller may sign in; this only issues.
+ */
+export const issueRestaurantSession = async (restaurant) => {
+  const payload = {
+    userId: restaurant._id.toString(),
+    role: ROLES.RESTAURANT,
+    tokenVersion: await bumpTokenVersion(FoodRestaurant, restaurant._id),
+  };
+  const accessToken = signAccessToken(payload);
+  const refreshToken = signRefreshToken(payload);
+  const ttlMs = ms(config.jwtRefreshExpiresIn || "7d");
+  const expiresAt = new Date(Date.now() + ttlMs);
+
+  await FoodRefreshToken.create({
+    userId: restaurant._id,
+    token: refreshToken,
+    expiresAt,
+  });
+
+  return {
+    accessToken,
+    refreshToken,
+    user: restaurant,
+    needsRegistration: false,
+  };
+};
+
 export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform) => {
   console.log(
     `[FCM-LOGIN] Restaurant login platform received: rawPlatform=${String(platform ?? "") || "<empty>"}, hasToken=${Boolean(fcmToken)}`,
@@ -386,23 +439,8 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
     throw new AuthError(result.reason || "OTP verification failed");
   }
 
-  // Restaurants may store ownerPhone with country code or formatting.
-  // Match by exact phone, last-10 digits, or suffix match to avoid false "needsRegistration".
-  const digits = String(phone || "").replace(/\D/g, "");
-  const last10 = digits.slice(-10);
-  const phoneCandidates = [phone, digits, last10].filter(Boolean);
-  const phoneOrFields = (field) => [
-    { [field]: { $in: phoneCandidates } },
-    ...(last10 ? [{ [field]: { $regex: new RegExp(last10 + "$") } }] : []),
-  ];
-
   console.log(`[AUTH] Verifying OTP for restaurant phone: ${phone}`);
-  const restaurant = await FoodRestaurant.findOne({
-    $or: [
-      ...phoneOrFields("ownerPhone"),
-      ...phoneOrFields("primaryContactNumber"),
-    ],
-  });
+  const restaurant = await findRestaurantByPhone(phone);
 
   console.log(`[AUTH] Restaurant lookup result:`, restaurant ? { id: restaurant._id, status: restaurant.status, name: restaurant.restaurantName } : "NOT FOUND");
 
@@ -450,28 +488,7 @@ export const verifyRestaurantOtpAndLogin = async (phone, otp, fcmToken, platform
   // Postpaid subscription model: no onboarding payment or subscription purchase
   // is required to use the platform — dues are billed at each month end.
 
-  const payload = {
-    userId: restaurant._id.toString(),
-    role: ROLES.RESTAURANT,
-    tokenVersion: await bumpTokenVersion(FoodRestaurant, restaurant._id),
-  };
-  const accessToken = signAccessToken(payload);
-  const refreshToken = signRefreshToken(payload);
-  const ttlMs = ms(config.jwtRefreshExpiresIn || "7d");
-  const expiresAt = new Date(Date.now() + ttlMs);
-
-  await FoodRefreshToken.create({
-    userId: restaurant._id,
-    token: refreshToken,
-    expiresAt,
-  });
-
-  return {
-    accessToken,
-    refreshToken,
-    user: restaurant,
-    needsRegistration: false,
-  };
+  return issueRestaurantSession(restaurant);
 };
 
 export const requestDeliveryOtp = async (phone) => {

@@ -168,6 +168,30 @@ const restaurantSchema = new mongoose.Schema(
       default: '',
     },
 
+    /*
+     * Pharmacy onboarding, beyond the licence. What the list of required
+     * documents in shared/partnerOnboarding.js asks for, and what the admin
+     * reviews before approving. Empty on every seller that registered before
+     * these existed, which the review page flags rather than suspending them.
+     */
+    pharmacist: {
+      name: { type: String, trim: true, default: '' },
+      registrationNumber: { type: String, trim: true, default: '' },
+      certificateImage: { type: String, trim: true, default: '' },
+    },
+    businessRegistrationImage: { type: String, trim: true, default: '' },
+    /*
+     * The front photo is how an admin checks the shop is real, so it is
+     * mandatory for a pharmacy; the other two help and are optional.
+     */
+    storePhotos: {
+      front: { type: String, trim: true, default: '' },
+      inside: { type: String, trim: true, default: '' },
+      signboard: { type: String, trim: true, default: '' },
+    },
+    /** When the application was last submitted or resubmitted for review. */
+    applicationSubmittedAt: { type: Date, default: null },
+
     openingTime: {
       type: String,
     },

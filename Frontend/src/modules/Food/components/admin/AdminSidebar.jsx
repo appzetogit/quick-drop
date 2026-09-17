@@ -259,6 +259,12 @@ const VERTICAL_BRANDING = {
         items: [
           {
             type: "link",
+            label: "Pharmacy Verification",
+            path: "/admin/medical/verification",
+            icon: "ShieldCheck",
+          },
+          {
+            type: "link",
             label: "Prescription Orders",
             path: "/admin/medical/prescriptions",
             icon: "FileText",
