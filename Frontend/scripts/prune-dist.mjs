@@ -33,7 +33,13 @@ try {
 }
 
 // Anything a kept file can mention: js/css chunks and hashed static assets.
-const REF = /assets\/([A-Za-z0-9._-]+\.(?:js|css|woff2?|ttf|png|jpe?g|webp|svg|gif|mp4|webm|json))/g;
+//
+// Both spellings count. index.html and Vite's preload map write `assets/X.js`,
+// but a chunk importing a sibling writes `./X.js` -- and a lazy page with no
+// dependencies of its own is referenced ONLY that way. Matching just the first
+// spelling deleted such pages after every build (the /partner page 404'd and
+// the stale-build reloader spun the browser in a reload loop).
+const REF = /(?:assets\/|\.\/)([A-Za-z0-9._-]+\.(?:js|css|woff2?|ttf|png|jpe?g|webp|svg|gif|mp4|webm|json))/g;
 
 const referencesIn = (filePath) => {
     const names = new Set();
