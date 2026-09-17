@@ -482,10 +482,15 @@ adminRouter.patch('/admin/general-settings/:category', updateGeneralSettingsCate
 adminRouter.get('/admin/landing-page/settings', authenticate(['admin']), getLandingPageSettings);
 adminRouter.patch('/admin/landing-page/settings', authenticate(['admin']), updateLandingPageSettings);
 
+// Reads stay public: the apps show these screens before anyone signs in. The
+// writes had no authentication at all -- outside the /admin prefix, so the
+// router-level admin guard never covered them -- letting anyone create, rewrite or
+// delete the onboarding screens every new customer sees. The admin panel already
+// sends its admin token on these paths.
 adminRouter.get('/on-boarding', getUserOnboarding);
-adminRouter.post('/on-boarding', createOnboardingScreen);
-adminRouter.patch('/on-boarding/:id', updateOnboardingScreen);
-adminRouter.delete('/on-boarding/:id', deleteOnboardingScreen);
+adminRouter.post('/on-boarding', authenticate(['admin']), createOnboardingScreen);
+adminRouter.patch('/on-boarding/:id', authenticate(['admin']), updateOnboardingScreen);
+adminRouter.delete('/on-boarding/:id', authenticate(['admin']), deleteOnboardingScreen);
 adminRouter.get('/on-boarding-driver', getDriverOnboarding);
 adminRouter.get('/on-boarding-owner', getOwnerOnboarding);
 

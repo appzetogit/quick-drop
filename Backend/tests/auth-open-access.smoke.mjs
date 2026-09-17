@@ -167,6 +167,35 @@ const main = async () => {
         server.close();
     }
 
+    // --- anonymous writes to admin content and uploads --------------------------
+    console.log('\nanonymous writes');
+    {
+        const { adminRouter: taxiAdminRouter } = await import('../src/modules/taxi/admin/routes/adminRoutes.js');
+        const { createRequire } = await import('node:module');
+        const req2 = createRequire(import.meta.url);
+        const spUploadRoutes = req2('../src/modules/serviceProvider/routes/admin-routes/upload.routes.js');
+        const app = express();
+        app.use(express.json());
+        app.use('/taxi', taxiAdminRouter);
+        app.use('/sp', spUploadRoutes);
+        app.use((err, _req, res, _next) => res.status(err.statusCode || err.status || 500).json({ message: err.message }));
+        const { server, base } = await listen(app);
+        const status = (method, url) => fetch(base + url, { method, headers: { 'content-type': 'application/json' }, body: method === 'GET' ? undefined : '{}' }).then((r) => r.status);
+        await check('taxi on-boarding screens: create, edit and delete need an admin token', async () => {
+            assert.equal(await status('POST', '/taxi/on-boarding'), 401);
+            assert.equal(await status('PATCH', '/taxi/on-boarding/' + new mongoose.Types.ObjectId()), 401);
+            assert.equal(await status('DELETE', '/taxi/on-boarding/' + new mongoose.Types.ObjectId()), 401);
+        });
+        await check('taxi on-boarding screens stay readable before sign-in', async () => {
+            assert.notEqual(await status('GET', '/taxi/on-boarding'), 401);
+        });
+        await check('SP upload signature and direct upload need a signed-in account', async () => {
+            assert.equal(await status('GET', '/sp/upload/sign-signature?folder=x'), 401);
+            assert.equal(await status('POST', '/sp/upload'), 401);
+        });
+        server.close();
+    }
+
     // The finance permission audit is written fire-and-forget; let it land before disconnecting.
     await new Promise((r) => setTimeout(r, 500));
     taxi.server.close();
