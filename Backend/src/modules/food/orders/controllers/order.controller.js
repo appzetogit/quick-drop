@@ -289,7 +289,7 @@ export async function getOrderRouteDeliveryController(req, res, next) {
             lat: req.query.lat,
             lng: req.query.lng,
             target: req.query.target,
-        });
+        }, { deliveryPartnerId: req.user?.userId });
         return sendResponse(res, 200, 'Route', data);
     } catch (err) {
         next(err);
@@ -300,7 +300,7 @@ export async function getOrderRouteDeliveryController(req, res, next) {
  *  both resolved server-side; the customer has no business choosing either. */
 export async function getOrderRouteUserController(req, res, next) {
     try {
-        const data = await orderService.getOrderRoute(req.params.orderId, {});
+        const data = await orderService.getOrderRoute(req.params.orderId, {}, { userId: req.user?.userId });
         return sendResponse(res, 200, 'Route', data);
     } catch (err) {
         next(err);

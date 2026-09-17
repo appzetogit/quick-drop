@@ -1,7 +1,7 @@
 import { FoodOrder } from '../models/order.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
-import { NotFoundError, ValidationError } from '../../../../core/auth/errors.js';
+import { ForbiddenError, NotFoundError, ValidationError } from '../../../../core/auth/errors.js';
 import { logger } from '../../../../utils/logger.js';
 import { buildOrderIdentityFilter } from './order.helpers.js';
 
@@ -59,7 +59,17 @@ const riderOrigin = async (order) => {
   return { lat: Number(p.lastLat), lng: Number(p.lastLng) };
 };
 
-export async function getOrderRoute(orderId, { lat, lng, target } = {}) {
+/**
+ * @param {object} viewer  who is asking -- exactly one of:
+ *   { userId }            the order's customer
+ *   { deliveryPartnerId } the rider assigned to it
+ *
+ * Required. This returned any order's route to any logged-in customer or rider --
+ * the rider's live coordinates and the customer's delivery point -- for an order id
+ * that is a guessable FOD- plus seven digits. The quick-commerce twin already
+ * scoped both callers; this matches it.
+ */
+export async function getOrderRoute(orderId, { lat, lng, target } = {}, viewer = {}) {
   const identity = buildOrderIdentityFilter(orderId);
   if (!identity) throw new ValidationError('Order id required');
 
@@ -68,6 +78,14 @@ export async function getOrderRoute(orderId, { lat, lng, target } = {}) {
     'restaurantName location',
   );
   if (!order) throw new NotFoundError('Order not found');
+
+  const isCustomer = viewer.userId && String(order.userId || '') === String(viewer.userId);
+  // dispatch.deliveryPartnerId is not populated here, so String() compares ids.
+  const isRider = viewer.deliveryPartnerId
+    && String(order.dispatch?.deliveryPartnerId || '') === String(viewer.deliveryPartnerId);
+  if (!isCustomer && !isRider) {
+    throw new ForbiddenError('Not your order');
+  }
 
   const leg = target === 'restaurant' || target === 'customer'
     ? target

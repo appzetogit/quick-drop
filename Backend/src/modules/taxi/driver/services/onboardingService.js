@@ -371,6 +371,12 @@ const normalizeStoredDocument = (value) => {
   };
 };
 
+const requireVerifiedOtp = (session) => {
+  if (!session.otpVerifiedAt) {
+    throw new ApiError(400, 'Verify OTP before continuing');
+  }
+};
+
 const publicSessionPayload = (session, debugOtp = null) => ({
   registrationId: session.registrationId,
   phone: session.phone,
@@ -404,7 +410,20 @@ const publicDriverPayload = (driver) => {
   };
 };
 
-const getSession = async (registrationId, phone = '') => {
+/*
+ * Find a registration session.
+ *
+ * By registrationId -- a random UUID handed out at send-otp -- and NOT by phone,
+ * except where the OTP itself is being checked. The phone fallback let anyone who
+ * knew an applicant's phone number call the unauthenticated onboarding steps as
+ * them: PATCH /onboarding/documents returned their licence, Aadhaar and RC images
+ * and numbers, and POST /onboarding/complete returned a driver access token for the
+ * account. Phone numbers are not secrets; the UUID is the capability.
+ */
+const getSession = async (registrationId, phone = '', { allowPhoneLookup = false } = {}) => {
+  if (!registrationId && !allowPhoneLookup) {
+    throw new ApiError(400, 'registrationId is required');
+  }
   const query = registrationId
     ? { registrationId: String(registrationId) }
     : { phone: normalizePhone(phone) };
@@ -564,7 +583,8 @@ export const startDriverOnboarding = async ({ phone, role = 'driver' }) => {
 };
 
 export const verifyDriverOtp = async ({ registrationId, phone, otp }) => {
-  const session = await getSession(registrationId, phone);
+  // The one step that may find the session by phone: the OTP is what proves it.
+  const session = await getSession(registrationId, phone, { allowPhoneLookup: true });
 
   if (!otp || String(otp).trim().length !== 4) {
     throw new ApiError(400, 'A valid 4-digit OTP is required');
@@ -637,6 +657,7 @@ export const saveDriverPersonalDetails = async ({ registrationId, phone, fullNam
 
 export const saveDriverReferral = async ({ registrationId, phone, referralCode = '' }) => {
   const session = await getSession(registrationId, phone);
+  requireVerifiedOtp(session);
 
   const normalizedReferralCode = normalizeReferralCode(referralCode);
 
@@ -828,6 +849,8 @@ export const saveDriverVehicle = async ({
 
 export const saveDriverDocuments = async ({ registrationId, phone, documents = {} }) => {
   const session = await getSession(registrationId, phone);
+  // Had no OTP check at all.
+  requireVerifiedOtp(session);
 
   const updatedDocuments = {};
   const uploadedDocumentKeys = [];
@@ -1131,9 +1154,13 @@ export const completeDriverOnboarding = async ({ registrationId, phone, document
 
 export const getDriverOnboardingSession = async ({ registrationId, phone }) => {
   const session = await getSession(registrationId, phone);
+  // getSession selects +personal.passwordHash for the steps that need it; it was
+  // returned here verbatim.
+  const personal = session.personal?.toObject ? session.personal.toObject() : { ...(session.personal || {}) };
+  delete personal.passwordHash;
   return {
     session: publicSessionPayload(session),
-    personal: session.personal,
+    personal,
     referralCode: session.referralCode,
     vehicle: session.vehicle,
     documents: session.documents,

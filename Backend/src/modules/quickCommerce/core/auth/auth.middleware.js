@@ -129,13 +129,32 @@ export const authMiddleware = (req, res, next) => {
         adminType: decoded.adminType
     };
 
-    const model = SESSION_SCOPED_MODELS[decoded.role];
-    if (!model) return next();
+    /*
+     * Looked up by the UPPERCASED role, and the account must resolve.
+     *
+     * Keyed on the raw role, a token whose role differed only in case -- a taxi
+     * customer token { role: 'user', sub } -- found no model and went straight through
+     * as role USER with no userId. Every module signs with the same secret, so any
+     * self-registered taxi customer got in, and getOrderById's `if (userId && ...)`
+     * ownership check was skipped: any quick-commerce order, with the customer's and
+     * rider's names, phones and address. Now such a token must resolve to a real
+     * account like any other (a genuine account whose role is stored lowercase still
+     * does), and a non-admin token with no user id is refused.
+     */
+    const normalizedDecoded = { ...decoded, role: req.user.role };
+    const model = SESSION_SCOPED_MODELS[req.user.role];
+    if (!model) {
+        const isAdmin = req.user.role === 'ADMIN' || req.user.role === 'SUPER_ADMIN';
+        if (!req.user.userId && !isAdmin) {
+            return sendError(res, 401, 'Invalid token for this service');
+        }
+        return next();
+    }
 
     // One indexed lookup of two small fields. USER already paid for this to check
     // isActive; the version travels in the same query rather than a second round
     // trip, and the other two roles now share the same path.
-    resolveSessionAccount(model, decoded)
+    resolveSessionAccount(model, normalizedDecoded)
         .then((doc) => {
             if (!doc) return sendError(res, 401, 'Account not found');
 
@@ -145,7 +164,7 @@ export const authMiddleware = (req, res, next) => {
             // once, rather than in every controller that reads req.user.
             req.user.userId = String(doc._id);
             req.user.platformUserId = String(decoded.userId);
-            if (decoded.role === 'USER' && doc.isActive === false) {
+            if (normalizedDecoded.role === 'USER' && doc.isActive === false) {
                 return sendError(res, 401, 'User account is deactivated');
             }
 

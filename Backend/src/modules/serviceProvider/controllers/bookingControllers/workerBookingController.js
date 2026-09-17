@@ -117,16 +117,37 @@ const getJobById = async (req, res) => {
       });
     }
 
-    if (booking.workerId && booking.workerId.toString() !== workerId) {
+    /*
+     * Refused only when ANOTHER worker was assigned, so every unassigned booking --
+     * all open requests and vendor self-jobs -- was readable by every worker, with the
+     * customer's name, phone, email and address. Now: the assigned worker, or a worker
+     * the booking was actually offered to; before acceptance, without the customer's
+     * phone and email.
+     */
+    const isAssigned = booking.workerId && booking.workerId.toString() === workerId;
+    const wasOffered = !booking.workerId && [...(booking.potentialWorkers || []), ...(booking.notifiedWorkers || [])]
+      // potentialWorkers entries are { workerId, distance } subdocuments with their own _id;
+      // notifiedWorkers are plain ids.
+      .some((w) => String(w?.workerId || w) === workerId);
+
+    if (!isAssigned && !wasOffered) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to view this job'
       });
     }
 
+    let data = booking;
+    if (!isAssigned) {
+      data = booking.toObject();
+      if (data.userId && typeof data.userId === 'object') {
+        data.userId = { _id: data.userId._id, name: data.userId.name };
+      }
+    }
+
     res.status(200).json({
       success: true,
-      data: booking
+      data
     });
   } catch (error) {
     console.error('Get job error:', error);

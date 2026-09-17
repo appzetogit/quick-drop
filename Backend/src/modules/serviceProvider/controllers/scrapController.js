@@ -204,7 +204,32 @@ exports.getScrapById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Scrap not found' });
     }
 
-    res.json({ success: true, data: scrap });
+    /*
+     * Any logged-in user, vendor or worker could read any scrap request: the
+     * customer's pickup address and coordinates, name, phone and email. Now the
+     * owner, the vendor who accepted it and admins see it in full; other vendors see
+     * only PENDING requests (the marketplace they accept from) without the customer's
+     * contact details; everyone else gets 404.
+     */
+    const role = String(req.userRole || '').toUpperCase();
+    const me = String(req.user?.id || req.user?._id || '');
+    const ownerId = String(scrap.userId?._id || scrap.userId || '');
+    const vendorId = String(scrap.vendorId?._id || scrap.vendorId || '');
+    const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(role);
+    const isOwner = role === 'USER' && ownerId === me;
+    const isAssignedVendor = role === 'VENDOR' && vendorId === me;
+
+    if (isAdmin || isOwner || isAssignedVendor) {
+      return res.json({ success: true, data: scrap });
+    }
+    if (role === 'VENDOR' && scrap.status === 'pending') {
+      const data = scrap.toObject();
+      if (data.userId && typeof data.userId === 'object') {
+        data.userId = { _id: data.userId._id, name: data.userId.name, profilePhoto: data.userId.profilePhoto };
+      }
+      return res.json({ success: true, data });
+    }
+    return res.status(404).json({ success: false, message: 'Scrap not found' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: 'Server Error' });

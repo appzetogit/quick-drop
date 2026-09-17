@@ -1853,13 +1853,39 @@ export const listApprovedRestaurants = async (query = {}) => {
     return { restaurants, total, page, limit };
 };
 
+/*
+ * Fields a customer must never receive from the PUBLIC restaurant detail endpoint.
+ *
+ * GET /v1/food/restaurant/restaurants/:id is unauthenticated, and returned the whole
+ * document: PAN and name on PAN, GST number/legal name/address, bank account number,
+ * IFSC, account holder, UPI id, the PAN/GST/FSSAI/UPI-QR image URLs (served from
+ * /uploads without auth), the owner's email and phone, and the restaurant's FCM
+ * push tokens. Anyone could list /restaurants and harvest every restaurant's bank
+ * and KYC details.
+ *
+ * A denylist rather than the quick-commerce allowlist: food's detail screen reads
+ * many display fields, and an allowlist that missed one would break the customer
+ * page. None of these are read by the customer restaurant, cart or menu screens.
+ * fssaiNumber stays -- a licence number food apps display.
+ */
+const PUBLIC_RESTAURANT_EXCLUDE = Object.freeze({
+    panNumber: 0, nameOnPan: 0, panImage: 0,
+    gstNumber: 0, gstLegalName: 0, gstAddress: 0, gstImage: 0,
+    fssaiImage: 0, fssaiExpiry: 0,
+    accountNumber: 0, ifscCode: 0, accountHolderName: 0, accountType: 0,
+    upiId: 0, upiQrImage: 0,
+    ownerEmail: 0, ownerPhone: 0, ownerPhoneDigits: 0, ownerPhoneLast10: 0, primaryContactNumber: 0,
+    fcmTokens: 0, fcmTokenMobile: 0,
+    petpoojaOutletId: 0, rejectionReason: 0,
+});
+
 export const getApprovedRestaurantByIdOrSlug = async (idOrSlug) => {
     const value = String(idOrSlug || '').trim();
     if (!value) return null;
 
     // ObjectId path
     if (/^[0-9a-fA-F]{24}$/.test(value)) {
-        const doc = await FoodRestaurant.findOne({ _id: value, status: 'approved' }).lean();
+        const doc = await FoodRestaurant.findOne({ _id: value, status: 'approved' }, PUBLIC_RESTAURANT_EXCLUDE).lean();
         if (!doc) return null;
         const [withOffer] = await attachFreeDeliveryOffer([doc]);
         const decorated = await attachMenuCategories(withOffer);
@@ -1880,7 +1906,7 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug) => {
     const doc = await FoodRestaurant.findOne({
         status: 'approved',
         restaurantNameNormalized
-    }).lean();
+    }, PUBLIC_RESTAURANT_EXCLUDE).lean();
     if (!doc) return null;
     const [withOffer] = await attachFreeDeliveryOffer([doc]);
     const decorated = await attachMenuCategories(withOffer);
