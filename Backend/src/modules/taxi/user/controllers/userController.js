@@ -1624,6 +1624,15 @@ export const getUserWallet = async (req, res) => {
 };
 
 export const topupUserWallet = async (req, res) => {
+  // Credits the requested amount with NO payment ('provider: manual'). Behind the
+  // open-user resolver it let an anonymous request credit any customer's wallet,
+  // spendable on rides or transferable to a driver. The app's pages use the
+  // Razorpay / PhonePe top-up routes; no production calls to this one. Local
+  // testing only, behind an explicit flag.
+  if (String(process.env.TAXI_MANUAL_WALLET_TOPUP_ENABLED || '').toLowerCase() !== 'true') {
+    throw new ApiError(403, 'Manual wallet top-up is disabled. Top up through Razorpay or PhonePe.');
+  }
+
   const amount = normalizeMoneyAmount(req.body?.amount);
   const userId = req.auth?.sub;
   const user = await User.findById(userId).select('_id').lean();

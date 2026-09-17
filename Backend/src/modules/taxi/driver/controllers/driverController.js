@@ -4605,6 +4605,14 @@ export const createDriverWithdrawalRequest = async (req, res) => {
 };
 
 export const topUpMyWallet = async (req, res) => {
+  // Credits the requested amount with NO payment behind it, so any driver could mint
+  // wallet balance and withdraw it. The app tops up through the Razorpay / PhonePe
+  // routes below; nothing calls this one (none in the production API log). Kept for
+  // local testing only, behind an explicit flag.
+  if (String(process.env.TAXI_MANUAL_WALLET_TOPUP_ENABLED || "").toLowerCase() !== "true") {
+    throw new ApiError(403, "Manual wallet top-up is disabled. Top up through Razorpay or PhonePe.");
+  }
+
   const amount = Number(req.body.amount);
 
   if (!Number.isFinite(amount) || amount <= 0) {

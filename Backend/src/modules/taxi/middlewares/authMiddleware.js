@@ -52,6 +52,25 @@ const attachResolvedAuth = (req, payload) => {
   };
 };
 
+/*
+ * "Open user access": acting as a user WITHOUT a token, for local development.
+ *
+ * It was on everywhere, production included. With no Authorization header the
+ * caller became whichever user id it put in x-user-id, the body or the query --
+ * or, sending none, the OLDEST user in the database. That sat in front of 52 taxi
+ * customer routes, among them wallet top-up (which credits the requested amount
+ * with no payment), wallet transfer to a driver, ride booking and the active-ride
+ * poll -- so an anonymous request could credit, spend or read any customer's money
+ * and rides, and a logged-out visitor's home screen was served the oldest
+ * customer's active ride.
+ *
+ * Now: off unless TAXI_OPEN_USER_ACCESS=true, never in production, and it names
+ * an explicit user rather than picking one.
+ */
+export const isOpenUserAccessEnabled = () =>
+  process.env.NODE_ENV !== 'production'
+  && String(process.env.TAXI_OPEN_USER_ACCESS || '').toLowerCase() === 'true';
+
 const resolveOpenUserIdentity = async (req) => {
   const explicitUserId =
     req.headers['x-user-id'] ||
@@ -60,8 +79,10 @@ const resolveOpenUserIdentity = async (req) => {
     req.params?.userId ||
     null;
 
-  const query = explicitUserId ? { _id: explicitUserId } : {};
-  const user = await User.findOne(query).sort({ createdAt: 1 });
+  if (!explicitUserId) {
+    throw new ApiError(401, 'Authorization token is required');
+  }
+  const user = await User.findOne({ _id: explicitUserId });
 
   if (!user) {
     throw new ApiError(404, 'No user account is available for open user access');
@@ -204,7 +225,7 @@ export const authenticateOrResolveUser = (allowedRoles = ['user']) => async (req
   }
 
   try {
-    if (!allowedRoles.includes('user')) {
+    if (!allowedRoles.includes('user') || !isOpenUserAccessEnabled()) {
       throw new ApiError(401, 'Authorization token is required');
     }
 
