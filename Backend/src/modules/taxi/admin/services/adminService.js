@@ -3118,6 +3118,7 @@ export const forgotPassword = async (email) => {
 
   admin.resetPasswordOtp = otp;
   admin.resetPasswordExpires = otpExpires;
+  admin.resetPasswordAttempts = 0;
   await admin.save();
 
   // Send real email
@@ -3140,35 +3141,65 @@ export const forgotPassword = async (email) => {
     `,
   });
 
-  console.log(`[ADMIN FORGOT PASSWORD] OTP for ${email}: ${otp}`);
+  // Development only: a reset code in the production log is a way into the admin
+  // panel for anyone who can read the logs.
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[ADMIN FORGOT PASSWORD] OTP for ${email}: ${otp}`);
+  }
 
   return { message: 'OTP sent to your email' };
 };
 
-export const verifyResetOtp = async ({ email, otp }) => {
-  const admin = await Admin.findOne({ 
-    email: email?.trim().toLowerCase() 
-  }).select('+resetPasswordOtp +resetPasswordExpires');
+/*
+ * Check a submitted reset code, spending an attempt on a wrong one.
+ *
+ * There was no limit: a 6-digit code valid for 10 minutes on unauthenticated,
+ * un-rate-limited routes could be brute-forced into an admin password reset. After
+ * MAX_RESET_ATTEMPTS wrong codes the current code is burnt and a new one must be
+ * requested. The attempt is counted atomically, so parallel guesses cannot all slip
+ * under the limit.
+ */
+const MAX_RESET_ATTEMPTS = 5;
 
-  if (!admin || admin.resetPasswordOtp !== otp || new Date() > admin.resetPasswordExpires) {
-    throw new ApiError(400, 'Invalid or expired OTP');
+const checkResetOtp = async (email, otp) => {
+  const normalizedEmail = email?.trim().toLowerCase();
+  const admin = await Admin.findOne({ email: normalizedEmail })
+    .select('+resetPasswordOtp +resetPasswordExpires +resetPasswordAttempts');
+
+  const usable = admin
+    && admin.resetPasswordOtp
+    && new Date() <= admin.resetPasswordExpires
+    && (admin.resetPasswordAttempts || 0) < MAX_RESET_ATTEMPTS;
+  if (usable && String(otp || '') === admin.resetPasswordOtp) {
+    return admin;
   }
+
+  if (admin && admin.resetPasswordOtp) {
+    const counted = await Admin.findOneAndUpdate(
+      { _id: admin._id },
+      { $inc: { resetPasswordAttempts: 1 } },
+      { new: true },
+    ).select('+resetPasswordAttempts');
+    if ((counted?.resetPasswordAttempts || 0) >= MAX_RESET_ATTEMPTS) {
+      await Admin.updateOne({ _id: admin._id }, { $unset: { resetPasswordOtp: 1, resetPasswordExpires: 1 } });
+    }
+  }
+  throw new ApiError(400, 'Invalid or expired OTP');
+};
+
+export const verifyResetOtp = async ({ email, otp }) => {
+  await checkResetOtp(email, otp);
 
   return { success: true, message: 'OTP verified successfully' };
 };
 
 export const resetPassword = async ({ email, otp, password }) => {
-  const admin = await Admin.findOne({ 
-    email: email?.trim().toLowerCase() 
-  }).select('+resetPasswordOtp +resetPasswordExpires');
-
-  if (!admin || admin.resetPasswordOtp !== otp || new Date() > admin.resetPasswordExpires) {
-    throw new ApiError(400, 'Invalid or expired OTP');
-  }
+  const admin = await checkResetOtp(email, otp);
 
   admin.password = await hashPassword(password);
   admin.resetPasswordOtp = undefined;
   admin.resetPasswordExpires = undefined;
+  admin.resetPasswordAttempts = 0;
   await admin.save();
 
   return { success: true, message: 'Password reset successful' };

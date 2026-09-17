@@ -74,6 +74,12 @@ const adminSchema = new mongoose.Schema(
       type: Date,
       select: false,
     },
+    // Wrong reset codes submitted against the current code. See adminService.
+    resetPasswordAttempts: {
+      type: Number,
+      default: 0,
+      select: false,
+    },
   },
   {
     collection: 'admins',

@@ -888,7 +888,15 @@ export const requestAdminForgotPasswordOtp = async (email) => {
     throw new AuthError("This email is not registered as an admin account.");
   }
 
-  const otp = config.useDefaultOtp
+  /*
+   * Never a fixed code in production. This reused USE_DEFAULT_OTP -- the switch for
+   * customer SMS delivery -- and with it set in production every admin reset code
+   * was "123456": anyone who knew or guessed an admin's email could request a reset,
+   * submit 123456 with a new password, and sign in as that admin. This code is sent
+   * by EMAIL, so the SMS reason for the static OTP never applied to it.
+   */
+  const staticAdminOtp = config.useDefaultOtp && config.nodeEnv !== "production";
+  const otp = staticAdminOtp
     ? "123456"
     : String(crypto.randomInt(100000, 999999));
   const ttlMs = (config.otpExpiryMinutes || 10) * 60 * 1000;
@@ -900,12 +908,13 @@ export const requestAdminForgotPasswordOtp = async (email) => {
     { upsert: true, new: true },
   );
 
-  if (config.useDefaultOtp) {
+  // A reset code in the log is a credential; development only.
+  if (staticAdminOtp) {
     logger.info(`Admin reset OTP for ${normalizedEmail}: ${otp}`);
   }
 
   const sent = await sendAdminResetOtpEmail(normalizedEmail, otp);
-  if (!sent && !config.useDefaultOtp) {
+  if (!sent && !staticAdminOtp) {
     logger.warn(
       `Admin OTP not sent by email to ${normalizedEmail}; check SMTP config.`,
     );
