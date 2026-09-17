@@ -135,6 +135,25 @@ await check('  and a caller asking to keep the original format still gets WebP',
     assert.ok(isWebp(storedBytes(stored.publicId)));
 });
 
+await check('THE UPLOAD BUG: a folder with a space (CLOUDINARY_FOLDER "Quick Drop-taxi") still uploads', async () => {
+    // Every taxi admin upload was refused: "Folder may only contain letters,
+    // numbers, /, _, and -".
+    const stored = await taxi.uploadBufferToCloudinary({
+        buffer: jpeg,
+        mimeType: 'image/jpeg',
+        folder: 'Quick Drop-taxi/app-modules',
+    });
+    assert.match(stored.publicId, /^Quick-Drop-taxi\/app-modules\//);
+    assert.ok(isWebp(storedBytes(stored.publicId)));
+});
+
+await check('  and a folder cannot climb out of the upload root', () => {
+    assert.equal(taxi.asStorageFolder('../../etc/passwd'), 'etc/passwd');
+    assert.equal(taxi.asStorageFolder('a/./b'), 'a/b');
+    assert.equal(taxi.asStorageFolder('a\\b c'), 'a/b-c');
+    assert.equal(taxi.asStorageFolder('   '), 'taxi');
+});
+
 console.log('\nwhat must NOT be converted');
 
 await check('a PDF is stored byte for byte', async () => {

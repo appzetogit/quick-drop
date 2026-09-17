@@ -48,6 +48,7 @@ import {
   Wallet,
   Wrench,
   ShoppingBasket,
+  Pill,
   Zap,
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -1544,6 +1545,19 @@ const AdminLayout = () => {
                 >
                   <ShoppingBasket className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
                   Quick
+                </button>
+                {/* Medical sits beside Quick in every panel's switcher; it was only
+                    added to the food one, so it vanished on the way here. */}
+                <button
+                  type="button"
+                  onClick={() => navigate("/admin/medical")}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
+                  )}
+                >
+                  <Pill className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
+                  Medical
                 </button>
               </div>
             )}
