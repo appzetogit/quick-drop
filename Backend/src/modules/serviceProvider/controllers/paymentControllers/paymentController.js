@@ -3,7 +3,7 @@ const User = require('../../models/User');
 const Settings = require('../../models/Settings');
 const Plan = require('../../models/Plan');
 const { validationResult } = require('express-validator');
-const { PAYMENT_STATUS, BOOKING_STATUS } = require('../../utils/constants');
+const { PAYMENT_STATUS, BOOKING_STATUS, refundableAmountOf } = require('../../utils/constants');
 const { createOrder, verifyPayment, refundPayment } = require('../../services/razorpayService');
 const { createNotification } = require('../notificationControllers/notificationController');
 const { recordBookingEarning } = require('../../services/earningTrackerService');
@@ -120,6 +120,25 @@ const verifyPaymentWebhook = async (req, res) => {
     const Worker = require('../../models/Worker');
     const VendorBill = require('../../models/VendorBill');
 
+    /*
+     * The signature proves order|payment came from Razorpay; it says nothing about
+     * how much was paid. And a booking's razorpayOrderId is never cleared, while its
+     * finalAmount is rewritten when the bill is generated -- so an order created at
+     * checkout for Rs 1 could be paid AFTER a Rs 2000 bill, and this handler marked
+     * the booking paid and credited the partner the full bill.
+     *
+     * So the captured amount is read back from the gateway and must equal the
+     * booking's CURRENT finalAmount, checked inside the claim. It is also recorded as
+     * paidAmount, the cap for every later refund.
+     */
+    const gateway = await confirmGatewayPayment({ orderId: razorpay_order_id, paymentId: razorpay_payment_id });
+    if (!gateway.ok) {
+      return res.status(gateway.status).json({ success: false, message: gateway.message });
+    }
+    const amountFilter = gateway.mock
+      ? {}
+      : { $expr: { $lt: [{ $abs: { $subtract: [{ $ifNull: ['$finalAmount', 0] }, gateway.amount] } }, 0.01] } };
+
     // Booking claim + user transaction + bill + partner wallet credit all commit
     // together or not at all. Notifications and socket emits stay outside — they
     // can't be rolled back, and the callback may be retried on write conflicts.
@@ -130,23 +149,27 @@ const verifyPaymentWebhook = async (req, res) => {
       const booking = await Booking.findOneAndUpdate(
         {
           razorpayOrderId: razorpay_order_id,
-          paymentStatus: { $ne: PAYMENT_STATUS.SUCCESS }
+          paymentStatus: { $ne: PAYMENT_STATUS.SUCCESS },
+          ...amountFilter
         },
-        {
-          $set: {
-            paymentStatus: PAYMENT_STATUS.SUCCESS,
-            paymentMethod: 'online',
-            razorpayPaymentId: razorpay_payment_id,
-            paymentId: razorpay_payment_id
+        [
+          {
+            $set: {
+              paymentStatus: PAYMENT_STATUS.SUCCESS,
+              paymentMethod: 'online',
+              razorpayPaymentId: { $literal: razorpay_payment_id },
+              paymentId: { $literal: razorpay_payment_id },
+              paidAmount: gateway.mock ? '$finalAmount' : gateway.amount
+            }
           }
-        },
+        ],
         { new: true, session }
       );
 
       if (!booking) {
-        // Either no such order, or another request already verified this payment
+        // No such order, already verified -- or the amount no longer matches.
         const existing = await Booking.findOne({ razorpayOrderId: razorpay_order_id })
-          .select('_id')
+          .select('_id paymentStatus finalAmount bookingNumber')
           .session(session);
         return { booking: null, existing };
       }
@@ -237,6 +260,19 @@ const verifyPaymentWebhook = async (req, res) => {
     });
 
     if (!outcome.booking) {
+      if (outcome.existing && outcome.existing.paymentStatus !== PAYMENT_STATUS.SUCCESS) {
+        // Captured at the gateway, but not for what the booking now costs -- the order
+        // predates the bill, or the amounts were tampered with. Not marked paid; the
+        // money sits at Razorpay for an admin to refund or reconcile.
+        console.error(
+          `[Payment] AMOUNT MISMATCH booking ${outcome.existing.bookingNumber}: captured ₹${gateway.amount} `
+          + `for order ${razorpay_order_id} (payment ${razorpay_payment_id}), booking total ₹${outcome.existing.finalAmount}. Not marked paid.`
+        );
+        return res.status(409).json({
+          success: false,
+          message: 'The amount paid does not match the current booking total. Please contact support.'
+        });
+      }
       if (outcome.existing) {
         return res.status(200).json({
           success: true,
@@ -386,13 +422,17 @@ const processWalletPayment = async (req, res) => {
       // debit the wallet twice for the same booking.
       const booking = await Booking.findOneAndUpdate(
         { _id: bookingId, userId, paymentStatus: { $ne: PAYMENT_STATUS.SUCCESS } },
-        {
-          $set: {
-            paymentStatus: PAYMENT_STATUS.SUCCESS,
-            paymentMethod: 'wallet',
-            paymentId: `WALLET_${Date.now()}`
+        [
+          {
+            $set: {
+              paymentStatus: PAYMENT_STATUS.SUCCESS,
+              paymentMethod: 'wallet',
+              paymentId: `WALLET_${Date.now()}`,
+              // What the debit below takes, recorded as the refund cap.
+              paidAmount: '$finalAmount'
+            }
           }
-        },
+        ],
         { new: true, session }
       );
 
@@ -649,7 +689,8 @@ const processRefund = async (req, res) => {
     }
 
     // Never refund more than the customer actually paid
-    const paidAmount = Number(booking.finalAmount) || 0;
+    // What was actually received -- not finalAmount, which a bill can raise after payment.
+    const paidAmount = refundableAmountOf(booking);
     const refundAmount = amount === undefined || amount === null ? paidAmount : Number(amount);
 
     if (!Number.isFinite(refundAmount) || refundAmount <= 0 || refundAmount > paidAmount) {

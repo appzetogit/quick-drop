@@ -1,7 +1,7 @@
 const Booking = require('../models/Booking');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
-const { BOOKING_STATUS, PAYMENT_STATUS, PREPAID_PAYMENT_METHODS } = require('../utils/constants');
+const { BOOKING_STATUS, PAYMENT_STATUS, PREPAID_PAYMENT_METHODS, refundableAmountOf } = require('../utils/constants');
 const { withTransaction, abort } = require('../utils/withTransaction');
 
 /**
@@ -29,14 +29,14 @@ const { withTransaction, abort } = require('../utils/withTransaction');
 const expireTimedOutBooking = async (bookingId, { bookingModel = 'vendor' } = {}) => {
     return withTransaction(async (session) => {
         const current = await Booking.findById(bookingId)
-            .select('paymentStatus paymentMethod finalAmount userId bookingNumber')
+            .select('paymentStatus paymentMethod finalAmount paidAmount userId bookingNumber')
             .session(session)
             .lean();
         if (!current) abort({ cancelled: false, refundAmount: 0 });
 
         const refundAmount =
             current.paymentStatus === PAYMENT_STATUS.SUCCESS && PREPAID_PAYMENT_METHODS.includes(current.paymentMethod)
-                ? Math.max(0, Number(current.finalAmount) || 0)
+                ? refundableAmountOf(current)
                 : 0;
 
         const set = {
@@ -117,7 +117,7 @@ const classifyMissedRefund = (booking, { hasRefundRow = false } = {}) => {
     }
     if (hasRefundRow) return { action: 'review', reason: 'marked paid but a refund row exists' };
 
-    const amount = Math.max(0, Number(booking.finalAmount) || 0);
+    const amount = refundableAmountOf(booking);
     if (!amount) return { action: 'skip', reason: 'nothing paid' };
 
     if (booking.status === BOOKING_STATUS.NO_VENDORS) return { action: 'refund', amount };

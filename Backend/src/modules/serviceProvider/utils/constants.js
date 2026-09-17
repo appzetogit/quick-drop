@@ -75,6 +75,21 @@ const PAYMENT_STATUS = {
  */
 const PREPAID_PAYMENT_METHODS = Object.freeze(['wallet', 'online', 'razorpay', 'upi', 'card']);
 
+/*
+ * The most a refund may return: what was actually received.
+ *
+ * finalAmount is not that. It starts as the checkout total and is overwritten with
+ * the bill total when the job is billed -- so a booking prepaid at Rs 1 and then
+ * billed at Rs 2000 would refund Rs 2000 on cancel. paidAmount is recorded at payment
+ * confirmation; bookings marked paid by a path that does not record it (legacy
+ * rows, cash/QR confirmations) fall back to finalAmount as before.
+ */
+const refundableAmountOf = (booking) => {
+  const paid = Number(booking?.paidAmount);
+  if (Number.isFinite(paid) && paid > 0) return paid;
+  return Math.max(0, Number(booking?.finalAmount) || 0);
+};
+
 // Service Status
 const SERVICE_STATUS = {
   ACTIVE: 'active',
@@ -98,6 +113,7 @@ module.exports = {
   BOOKING_STATUS,
   PAYMENT_STATUS,
   PREPAID_PAYMENT_METHODS,
+  refundableAmountOf,
   SERVICE_STATUS,
   BILL_STATUS
 };

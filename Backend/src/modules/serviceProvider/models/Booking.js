@@ -199,6 +199,14 @@ const bookingSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  // What the customer ACTUALLY paid, captured when the payment is confirmed: the
+  // gateway's captured amount, or the wallet debit. finalAmount is rewritten when
+  // the bill is generated, so refunding "finalAmount" could return more than was
+  // ever received. Every refund is capped at this.
+  paidAmount: {
+    type: Number,
+    default: 0
+  },
   paymentMethod: {
     type: String, // 'wallet', 'razorpay', 'online', 'cash', 'card', 'plan_benefit'
     default: null

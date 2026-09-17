@@ -9,7 +9,7 @@ const Worker = require('../../models/Worker');
 const Review = require('../../models/Review');
 const { validationResult } = require('express-validator');
 const { withTransaction, abort } = require('../../utils/withTransaction');
-const { BOOKING_STATUS, PAYMENT_STATUS, PREPAID_PAYMENT_METHODS } = require('../../utils/constants');
+const { BOOKING_STATUS, PAYMENT_STATUS, PREPAID_PAYMENT_METHODS, refundableAmountOf } = require('../../utils/constants');
 const { createNotification } = require('../notificationControllers/notificationController');
 const { sendNotificationToUser, sendNotificationToVendor, sendNotificationToWorker } = require('../../services/firebaseAdmin');
 
@@ -878,7 +878,9 @@ const cancelBooking = async (req, res) => {
 
       if (isPaid && isWalletOrOnline) {
         // User paid upfront -> Refund (Total - Fee)
-        refundAmount = Math.max(0, booking.finalAmount - cancellationFee);
+        // Capped at what was actually paid: finalAmount becomes the BILL total once
+        // billed, so refunding it returned more than the customer ever paid.
+        refundAmount = Math.max(0, refundableAmountOf(booking) - cancellationFee);
         refundMessage = `Booking cancelled after ${hasReached ? 'professional arrival' : 'journey start'}. Refund of ₹${refundAmount} initiated (Cancellation Fee: ₹${cancellationFee} deducted).`;
       } else {
         // User hasn't paid (e.g. COD or pending) -> Add Penalty to Wallet for Next Booking
@@ -893,7 +895,7 @@ const cancelBooking = async (req, res) => {
       cancellationFee = 0;
 
       if (isPaid && isWalletOrOnline) {
-        refundAmount = booking.finalAmount;
+        refundAmount = refundableAmountOf(booking);
         refundMessage = `Booking cancelled successfully. Full refund of ₹${refundAmount} initiated to your wallet.`;
       } else {
         refundAmount = 0;
