@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@food/components/ui/pop
 import { getFoodDisplayPrice, getFoodVariants, getStoredFoodVariants } from "@food/utils/foodVariants"
 import ItemAvailabilityScheduleEditor, { buildScheduleState, isScheduleEmpty } from "@food/components/ItemAvailabilityScheduleEditor"
 import { PLACEHOLDER_40, PLACEHOLDER_64 } from "@food/utils/imagePlaceholder"
+import { useValueShelfCap } from "@food/utils/valueShelf"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -36,6 +37,27 @@ const createFoodForm = () => ({
   availabilitySchedule: buildScheduleState(null),
   suggestedItemIds: [],
 })
+
+/**
+ * The price the value shelf judges this dish on: what a customer pays, and for
+ * a dish sold by sizes, its cheapest size -- the same figure the server compares
+ * with the shelf price. NaN when nothing is priced yet.
+ */
+const shelfPriceOf = (form) => {
+  const percent = Number(form?.formulationPercent) || 0
+  const pays = (base) => {
+    const n = Number(base)
+    if (!Number.isFinite(n) || n <= 0) return NaN
+    return Math.min(n, Math.round(n * (1 + percent / 100) * 100) / 100)
+  }
+  if (form?.variantsEnabled === true) {
+    const prices = (Array.isArray(form.variants) ? form.variants : [])
+      .map((v) => pays(v?.price))
+      .filter((n) => Number.isFinite(n))
+    return prices.length ? Math.min(...prices) : NaN
+  }
+  return pays(form?.basePrice)
+}
 
 const createVariantDraft = (variant = {}) => ({
   id: String(variant?.id || variant?._id || `variant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
@@ -82,6 +104,13 @@ export default function FoodsList() {
   const [foodFormMode, setFoodFormMode] = useState("add")
   const [foodForm, setFoodForm] = useState(createFoodForm())
   const [editingFood, setEditingFood] = useState(null)
+  /*
+   * The shelf box follows the price until the admin touches it. The shelf price
+   * and the store's name come from 99 Store settings, so neither is written
+   * into this form.
+   */
+  const shelfCap = useValueShelfCap()
+  const [shelfTouched, setShelfTouched] = useState(false)
   const [submittingFood, setSubmittingFood] = useState(false)
   const [categoryOptions, setCategoryOptions] = useState([])
   const [categorySearch, setCategorySearch] = useState("")
@@ -182,6 +211,10 @@ export default function FoodsList() {
               // null when the list did not carry the field, so the edit form
               // leaves the pairings alone instead of saving an empty list.
               suggestedItemIds: Array.isArray(f.suggestedItemIds) ? f.suggestedItemIds.map(String) : null,
+              // Carried so the edit form opens with the shelf box as it really is.
+              showIn99Store: f.showIn99Store === true,
+              ninetyNineStoreExcluded: f.ninetyNineStoreExcluded === true,
+              freeDelivery: f.freeDelivery === true,
               variants: getStoredFoodVariants(f),
               foodType: f.foodType || "Non-Veg",
               approvalStatus: f.approvalStatus || "approved",
@@ -299,7 +332,42 @@ export default function FoodsList() {
     return restaurantsForFilter
   }, [restaurantsForFilter])
 
+  /*
+   * Tick the shelf box when the dish is priced within the shelf price, the same
+   * rule the server applies when it saves:
+   *   - a new dish at or under the price starts ticked;
+   *   - an existing one that qualifies is ticked, unless an admin took it off
+   *     the shelf by hand -- then only a price moved in from above re-ticks it;
+   *   - once the admin clicks the box, it is theirs and stops following.
+   * Above the price the box is left as it was: the shelf hides the dish anyway,
+   * and clearing the marking would lose it if the price later comes back down.
+   */
+  const shelfPrice = shelfPriceOf(foodForm)
+  useEffect(() => {
+    if (!showFoodFormModal || shelfTouched) return
+    const eligible = Number.isFinite(shelfPrice) && shelfPrice > 0 && shelfPrice <= shelfCap
+    if (!eligible) {
+      if (foodFormMode === "add" && foodForm.showIn99Store) {
+        setFoodForm((prev) => ({ ...prev, showIn99Store: false }))
+      }
+      return
+    }
+    if (foodForm.showIn99Store) return
+    if (foodFormMode === "add") {
+      setFoodForm((prev) => ({ ...prev, showIn99Store: true }))
+      return
+    }
+    // What the dish sold for when the form opened, as the server priced it.
+    const storedPrice = Number(editingFood?.price)
+    const cameFromAbove = !(Number.isFinite(storedPrice) && storedPrice > 0 && storedPrice <= shelfCap)
+    if (editingFood?.ninetyNineStoreExcluded !== true || cameFromAbove) {
+      setFoodForm((prev) => ({ ...prev, showIn99Store: true }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shelfPrice, shelfCap, shelfTouched, showFoodFormModal, foodFormMode])
+
   const openAddFoodModal = () => {
+    setShelfTouched(false)
     setFoodFormMode("add")
     setEditingFood(null)
     setFoodForm({
@@ -314,6 +382,7 @@ export default function FoodsList() {
   }
 
   const openEditFoodModal = (food) => {
+    setShelfTouched(false)
     setFoodFormMode("edit")
     setEditingFood(food)
     setFoodForm({
@@ -512,7 +581,17 @@ export default function FoodsList() {
          * the dish. A new dish has none, so it still saves at the base price
          * exactly as before.
          */
-      showIn99Store: foodForm.showIn99Store === true,
+      /*
+       * Sent only when it says something: a new dish, a box the admin clicked,
+       * or a tick the price just earned. Sending the untouched value on every
+       * save recorded "the admin excluded this dish" for every dish above the
+       * shelf price, so raising the price later never brought them in.
+       */
+      ...(foodFormMode === "add"
+        || shelfTouched
+        || (foodForm.showIn99Store === true) !== (editingFood?.showIn99Store === true)
+        ? { showIn99Store: foodForm.showIn99Store === true }
+        : {}),
       freeDelivery: foodForm.freeDelivery === true,
         otherPrice: foodForm.otherPrice === "" ? 0 : Number(foodForm.otherPrice),
         variants: normalizedVariants.map((variant) => ({
@@ -1093,33 +1172,46 @@ export default function FoodsList() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  {"₹"}99 Store
+                  {"₹"}{shelfCap} Store
                 </label>
                 <label className="flex items-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white cursor-pointer">
                   <input
                     type="checkbox"
                     checked={foodForm.showIn99Store === true}
-                    onChange={(e) => setFoodForm((prev) => ({ ...prev, showIn99Store: e.target.checked }))}
+                    onChange={(e) => {
+                      setShelfTouched(true)
+                      setFoodForm((prev) => ({ ...prev, showIn99Store: e.target.checked }))
+                    }}
                     className="h-4 w-4 accent-slate-900"
                   />
-                  <span>Show in the {"₹"}99 store</span>
+                  <span>Show in the {"₹"}{shelfCap} store</span>
                 </label>
                 {(() => {
-                  // The shelf is capped at 99 at read time, so a dish above it is
-                  // simply not shown. Say so here rather than let the admin tick a
-                  // box that quietly does nothing.
-                  const p99 = Number(foodForm.basePrice)
+                  // The shelf applies its price when it is read, so a dish above it
+                  // is simply not shown. Say so rather than let the admin tick a box
+                  // that quietly does nothing.
+                  const eligible = Number.isFinite(shelfPrice) && shelfPrice > 0 && shelfPrice <= shelfCap
                   if (foodForm.showIn99Store !== true) {
-                    return <p className="mt-1 text-xs text-slate-500">Admin-curated shelf in the app.</p>
-                  }
-                  if (Number.isFinite(p99) && p99 > 99) {
                     return (
-                      <p className="mt-1 text-xs text-amber-700">
-                        At {"₹"}{p99} this stays hidden {"—"} the store only shows dishes at {"₹"}99 or less.
+                      <p className="mt-1 text-xs text-slate-500">
+                        {eligible
+                          ? `Priced within ₹${shelfCap}, but kept off the store.`
+                          : `Dishes at ₹${shelfCap} or less are added automatically.`}
                       </p>
                     )
                   }
-                  return <p className="mt-1 text-xs text-slate-600">Will appear in the app{"’"}s {"₹"}99 store.</p>
+                  if (Number.isFinite(shelfPrice) && shelfPrice > shelfCap) {
+                    return (
+                      <p className="mt-1 text-xs text-amber-700">
+                        At {"₹"}{shelfPrice} this stays hidden {"—"} the store only shows dishes at {"₹"}{shelfCap} or less.
+                      </p>
+                    )
+                  }
+                  return (
+                    <p className="mt-1 text-xs text-slate-600">
+                      Will appear in the app{"’"}s {"₹"}{shelfCap} store.
+                    </p>
+                  )
                 })()}
               </div>
               <div>

@@ -3285,6 +3285,15 @@ export async function getFoods(query) {
         // The dish's own "goes well with" picks, which the admin form edits and
         // posts back. Not returned, the next admin save would clear them.
         suggestedItemIds: (f.suggestedItemIds || []).map((x) => String(x)),
+        /*
+         * The shelf and free-delivery flags, which the admin form ticks and
+         * posts back. They were never returned, so every dish opened with both
+         * boxes clear and the next save took it off the shelf -- and recorded
+         * that as the admin deliberately excluding it.
+         */
+        showIn99Store: f.showIn99Store === true,
+        ninetyNineStoreExcluded: f.ninetyNineStoreExcluded === true,
+        freeDelivery: f.freeDelivery === true,
         approvalStatus: f.approvalStatus || 'approved',
         createdAt: f.createdAt,
         updatedAt: f.updatedAt
@@ -3550,7 +3559,17 @@ export async function createFood(body) {
         approvalStatus: 'approved'
     });
     // Born approved, so the approval hook never sees it: decide the shelf here.
-    if (shouldAutoMark99(doc, await getNinetyNineCap())) doc.showIn99Store = true;
+    // An admin who unticked the box while creating it has decided, so that is
+    // kept and remembered; otherwise an eligible dish joins the shelf.
+    if (body.showIn99Store === false || body.showIn99Store === 'false') {
+        doc.showIn99Store = false;
+        doc.ninetyNineStoreExcluded = shouldAutoMark99(doc, await getNinetyNineCap());
+    } else if (shouldAutoMark99(doc, await getNinetyNineCap())) {
+        doc.showIn99Store = true;
+    }
+    if (body.freeDelivery !== undefined) {
+        doc.freeDelivery = body.freeDelivery === true || body.freeDelivery === 'true';
+    }
     await doc.save();
     /*
      * The public menu and cross-restaurant feed are cached for minutes. Writing
