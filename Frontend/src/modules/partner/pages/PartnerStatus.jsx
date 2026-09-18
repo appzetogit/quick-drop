@@ -56,15 +56,23 @@ export default function PartnerStatus() {
           <CheckCircle2 className="h-10 w-10 text-emerald-600" />
           <h1 className="mt-3 text-2xl font-bold">{app?.restaurantName || label} is live</h1>
           <p className="mt-1 text-slate-600">
-            Your {label.toLowerCase()} is approved. Take orders, manage stock and see payouts in the Quick Drop Partner app
-            — sign in there with +91 {session.phone}.
+            Your {label.toLowerCase()} is approved. Take orders, manage stock and see payouts on the dashboard here, or in
+            the Quick Drop Partner app — sign in with +91 {session.phone}.
           </p>
-          <a
-            href={PARTNER_APP_URL}
-            className="mt-5 inline-flex h-12 items-center gap-2 rounded-xl bg-slate-900 px-5 font-semibold text-white"
-          >
-            <Smartphone className="h-5 w-5" /> Get the Partner app
-          </a>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link
+              to={`/partner/login/${session.type}`}
+              className="inline-flex h-12 items-center gap-2 rounded-xl bg-emerald-600 px-5 font-semibold text-white hover:bg-emerald-700"
+            >
+              Sign in to your dashboard
+            </Link>
+            <a
+              href={PARTNER_APP_URL}
+              className="inline-flex h-12 items-center gap-2 rounded-xl border border-slate-300 px-5 font-semibold text-slate-800"
+            >
+              <Smartphone className="h-5 w-5" /> Get the Partner app
+            </a>
+          </div>
         </section>
       )}
 

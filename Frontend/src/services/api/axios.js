@@ -233,6 +233,7 @@ function clearModuleAuth(module) {
     localStorage.removeItem(`${module}_refreshToken`);
     localStorage.removeItem(`${module}_authenticated`);
     localStorage.removeItem(`${module}_user`);
+    if (module === "restaurant") localStorage.removeItem(RESTAURANT_VERTICAL_KEY);
     if (module === "user") {
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
@@ -311,6 +312,24 @@ const currentQcBase = () => {
   return QC_ADMIN_BASES.find((entry) => path.startsWith(entry.base)) || null;
 };
 
+/*
+ * Stores and medical stores use the restaurant web dashboard.
+ *
+ * They are quick-commerce sellers: the same seller endpoints under /qc instead
+ * of /food, which is exactly how the Partner app serves them. The /partner
+ * sign-in marks the session; every restaurant-panel request then goes to /qc,
+ * token refresh included. A normal restaurant login clears the mark
+ * (setAuthData), as does signing out.
+ */
+export const RESTAURANT_VERTICAL_KEY = "restaurant_vertical"
+const restaurantOnQc = () => {
+  try {
+    return localStorage.getItem(RESTAURANT_VERTICAL_KEY) === "qc"
+  } catch {
+    return false
+  }
+}
+
 const rewriteAdminVertical = (url) => {
   if (typeof url !== "string" || !url) return url;
   if (!currentQcBase()) return url;
@@ -385,6 +404,9 @@ apiClient.interceptors.request.use(
     // After the rewrite, so the path it matches is the one actually being sent.
     applyZoneVertical(config);
     config.contextModule = getModuleFromConfig(config);
+    if (config.contextModule === "restaurant" && restaurantOnQc() && typeof config.url === "string") {
+      config.url = config.url.replace(/(^|\/)food\//, "$1qc/");
+    }
 
     // If sending FormData, let the browser set proper multipart boundary.
     if (config.data instanceof FormData) {
@@ -454,7 +476,9 @@ apiClient.interceptors.response.use(
     try {
       // Use relative URL so this works both with an explicit baseURL and with a dev proxy.
       // Use plain axios to avoid interceptor recursion.
-      const refreshUrl = baseURL ? `${baseURL}/food/auth/refresh-token` : "/api/v1/food/auth/refresh-token";
+      // A store's session was issued by quick commerce, so it refreshes there.
+      const authPrefix = module === "restaurant" && restaurantOnQc() ? "qc" : "food";
+      const refreshUrl = baseURL ? `${baseURL}/${authPrefix}/auth/refresh-token` : `/api/v1/${authPrefix}/auth/refresh-token`;
       const { data } = await axios.post(refreshUrl, { refreshToken }, { timeout: 10000 });
       const newAccessToken = data?.data?.accessToken || data?.accessToken;
       if (newAccessToken) {

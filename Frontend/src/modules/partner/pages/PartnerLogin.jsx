@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom"
 import { ArrowLeft, Loader2 } from "lucide-react"
-import { PARTNER_TYPES, partnerApi, partnerSession, errorMessage } from "../partnerApi"
+import { PARTNER_TYPES, partnerApi, partnerSession, errorMessage, openSellerDashboard } from "../partnerApi"
 
 export default function PartnerLogin() {
   const { type } = useParams()
@@ -57,6 +57,12 @@ export default function PartnerLogin() {
       const data = await partnerApi.verifyOtp(digits, otp.trim(), type)
       if (data.state === "other_type") {
         setError(data.message)
+        return
+      }
+      // Approved: signed in, straight into the dashboard.
+      if (data.state === "approved" && data.session?.accessToken) {
+        partnerSession.clear()
+        openSellerDashboard(data.session, navigate)
         return
       }
       partnerSession.set({

@@ -1,4 +1,5 @@
-import apiClient from "@food/api/axios"
+import apiClient, { RESTAURANT_VERTICAL_KEY } from "@food/api/axios"
+import { setAuthData } from "@food/utils/auth"
 
 /**
  * Partner sign-up API (/qc/partner). Stores and medical stores only; restaurants
@@ -76,6 +77,23 @@ export const PARTNER_TYPES = {
     label: "Medical store",
     blurb: "Pharmacies taking prescription orders.",
   },
+}
+
+/**
+ * Sign an approved store or medical store into the web dashboard.
+ *
+ * The restaurant dashboard serves them too, against quick commerce: the mark
+ * set here sends its requests to /qc (see RESTAURANT_VERTICAL_KEY in axios.js).
+ * Set after setAuthData, which clears it for an ordinary restaurant login.
+ */
+export const openSellerDashboard = (session, navigate) => {
+  setAuthData("restaurant", session.accessToken, session.user || null, session.refreshToken || null)
+  try {
+    localStorage.setItem(RESTAURANT_VERTICAL_KEY, "qc")
+  } catch {
+    // Without storage there is no session to keep either.
+  }
+  navigate("/food/restaurant", { replace: true })
 }
 
 export const PARTNER_APP_URL = "https://play.google.com/store/apps/details?id=com.quickdrop.restaurant"
