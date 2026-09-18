@@ -3,6 +3,15 @@ import { useNavigate, useParams } from "react-router-dom"
 import { MapPin, ArrowLeft, Save, X, Hand, Shapes, Search } from "lucide-react"
 import { adminAPI } from "@food/api"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
+import { currentAdminBase } from "@food/components/admin/AdminSidebar"
+
+/*
+ * These screens serve the food, quick-commerce and medical panels. A hardcoded
+ * /admin/food path sent the medical panel's Add/Edit/View into FOOD zone setup,
+ * so a "medical" zone was drawn and saved as a food zone, and every save landed
+ * back in food. The base follows the panel the admin is in.
+ */
+const zoneSetupBase = () => `${currentAdminBase(window.location.pathname)}/zone-setup`
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -317,7 +326,7 @@ export default function AddZone() {
     } catch (error) {
       debugError("Error fetching zone:", error)
       alert("Failed to load zone")
-      navigate("/admin/food/zone-setup")
+      navigate(`${zoneSetupBase()}`)
     } finally {
       setLoading(false)
     }
@@ -838,7 +847,7 @@ export default function AddZone() {
         debugLog("Zone created successfully:", response)
         alert("Zone created successfully!")
       }
-      navigate("/admin/food/zone-setup")
+      navigate(`${zoneSetupBase()}`)
     } catch (error) {
       debugError("Error creating zone:", error)
       
@@ -874,7 +883,7 @@ export default function AddZone() {
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
           <button
-            onClick={() => navigate("/admin/food/zone-setup")}
+            onClick={() => navigate(`${zoneSetupBase()}`)}
             className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
           >
             <ArrowLeft className="w-5 h-5 text-slate-600" />
@@ -1116,7 +1125,7 @@ export default function AddZone() {
           <div className="flex justify-end gap-3 mt-6">
             <button
               type="button"
-              onClick={() => navigate("/admin/food/zone-setup")}
+              onClick={() => navigate(`${zoneSetupBase()}`)}
               className="px-6 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
             >
               Cancel

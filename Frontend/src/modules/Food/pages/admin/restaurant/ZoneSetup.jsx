@@ -2,6 +2,15 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { MapPin, Plus, Search, Edit, Trash2, Eye, Map, Bike } from "lucide-react"
 import { adminAPI } from "@food/api"
+import { currentAdminBase } from "@food/components/admin/AdminSidebar"
+
+/*
+ * These screens serve the food, quick-commerce and medical panels. A hardcoded
+ * /admin/food path sent the medical panel's Add/Edit/View into FOOD zone setup,
+ * so a "medical" zone was drawn and saved as a food zone, and every save landed
+ * back in food. The base follows the panel the admin is in.
+ */
+const zoneSetupBase = () => `${currentAdminBase(window.location.pathname)}/zone-setup`
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -68,21 +77,21 @@ export default function ZoneSetup() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate("/admin/food/zone-setup/delivery-boy-view")}
+              onClick={() => navigate(`${zoneSetupBase()}/delivery-boy-view`)}
               className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
             >
               <Bike className="w-5 h-5" />
               <span>Delivery Boy View</span>
             </button>
             <button
-              onClick={() => navigate("/admin/food/zone-setup/map")}
+              onClick={() => navigate(`${zoneSetupBase()}/map`)}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             >
               <Map className="w-5 h-5" />
               <span>View Map</span>
             </button>
             <button
-              onClick={() => navigate("/admin/food/zone-setup/add")}
+              onClick={() => navigate(`${zoneSetupBase()}/add`)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
             >
               <Plus className="w-5 h-5" />
@@ -120,7 +129,7 @@ export default function ZoneSetup() {
             </p>
             {!searchQuery && (
               <button
-                onClick={() => navigate("/admin/food/zone-setup/add")}
+                onClick={() => navigate(`${zoneSetupBase()}/add`)}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <Plus className="w-5 h-5" />
@@ -142,14 +151,14 @@ export default function ZoneSetup() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => navigate(`/admin/food/zone-setup/view/${zone._id || zone.id}`)}
+                      onClick={() => navigate(`${zoneSetupBase()}/view/${zone._id || zone.id}`)}
                       className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                       title="View"
                     >
                       <Eye className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => navigate(`/admin/food/zone-setup/edit/${zone._id || zone.id}`)}
+                      onClick={() => navigate(`${zoneSetupBase()}/edit/${zone._id || zone.id}`)}
                       className="p-2 text-slate-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                       title="Edit"
                     >
