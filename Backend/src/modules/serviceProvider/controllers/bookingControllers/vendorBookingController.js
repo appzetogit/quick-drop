@@ -5,6 +5,7 @@ const { validationResult } = require('express-validator');
 const { BOOKING_STATUS, PAYMENT_STATUS } = require('../../utils/constants');
 const { DEFAULT_SERVICE_PAYOUT_PCT } = require('../../utils/commission');
 const { withTransaction, abort } = require('../../utils/withTransaction');
+const { effectiveCashLimit } = require('../../utils/cashLimit');
 const { createNotification } = require('../notificationControllers/notificationController');
 const { sendNotificationToUser, sendNotificationToVendor, sendNotificationToWorker } = require('../../services/firebaseAdmin');
 
@@ -1329,7 +1330,7 @@ const collectSelfCash = async (req, res) => {
 
       if (vendorDoc) {
         const currentDues = (vendorDoc.wallet.dues || 0) + grandTotal;
-        const cashLimit = vendorDoc.wallet.cashLimit || 10000;
+        const cashLimit = (await effectiveCashLimit(vendorDoc)).limit;
         // Net owed = dues − earnings (vendor keeps their share from cash)
         const netOwed = currentDues - ((vendorDoc.wallet.earnings || 0) + vendorEarning);
         const isBlocked = netOwed > cashLimit;

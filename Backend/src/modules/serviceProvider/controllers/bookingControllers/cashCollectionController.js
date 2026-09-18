@@ -7,6 +7,7 @@ const { PAYMENT_STATUS, BOOKING_STATUS } = require('../../utils/constants');
 const { recordBookingEarning } = require('../../services/earningTrackerService');
 const { getCommissionRates } = require('../../utils/commission');
 const { withTransaction, abort } = require('../../utils/withTransaction');
+const { effectiveCashLimit } = require('../../utils/cashLimit');
 const { createQRCode, getQRCodePayments } = require('../../services/razorpayService');
 
 /**
@@ -392,7 +393,9 @@ exports.confirmCashCollection = async (req, res) => {
         if (vendor) {
           const newDues = (vendor.wallet?.dues || 0) + grandTotal;
           const newEarnings = (vendor.wallet?.earnings || 0) + vendorEarning;
-          const cashLimit = vendor.wallet?.cashLimit || 10000;
+          // Platform settings decide (Master > Platform settings); the vendor's own
+          // field is the fallback. See utils/cashLimit.js.
+          const cashLimit = (await effectiveCashLimit(vendor)).limit;
           const netOwed = newDues - newEarnings;
           const isOverLimit = netOwed > cashLimit;
 

@@ -88,11 +88,28 @@ const _buildVendorQuery = (filters = {}) => {
     ];
   }
 
-  if (checkCashLimit) {
-    baseQuery.$expr = { $lte: ["$wallet.dues", "$wallet.cashLimit"] };
-  }
+  // The cash-limit check is no longer in the query: the limit now comes from
+  // Platform settings (which the database cannot evaluate per vendor), so it is
+  // applied to the results by withinCashLimit() below. checkCashLimit is still
+  // read by the callers.
+  void checkCashLimit;
 
   return baseQuery;
+};
+
+/*
+ * Keep vendors whose dues are within their effective cash limit, then drop the
+ * wallet from the result so dues never travel with a vendor into booking payloads.
+ * One settings read for the whole candidate list (utils/cashLimit.js).
+ */
+const withinCashLimit = async (vendors, filters = {}) => {
+  let kept = vendors;
+  if (filters.checkCashLimit && vendors.length) {
+    const { effectiveCashLimits } = require('../utils/cashLimit');
+    const limits = await effectiveCashLimits(vendors);
+    kept = vendors.filter((v) => (Number(v.wallet?.dues) || 0) <= (limits.get(String(v._id))?.limit ?? Infinity));
+  }
+  return kept.map(({ wallet, ...rest }) => rest);
 };
 
 /**
@@ -140,7 +157,7 @@ const findNearbyVendors = async (centerLocation, radiusKm = 10, filters = {}) =>
         const vendors = await Vendor.find({
           _id: { $in: vendorIds },
           ...baseQuery
-        }).select('name businessName phone address profilePhoto service rating isOnline availability geoLocation');
+        }).select('name businessName phone address profilePhoto service rating isOnline availability geoLocation wallet.dues wallet.cashLimit');
 
         // Merge distance from cache
         const vendorMap = new Map(vendors.map(v => [v._id.toString(), v.toObject()]));
@@ -152,7 +169,7 @@ const findNearbyVendors = async (centerLocation, radiusKm = 10, filters = {}) =>
           }));
 
         console.log(`[LocationService] Found ${result.length} matching vendors via Redis path`);
-        return result;
+        return withinCashLimit(result, filters);
       }
     }
 
@@ -180,7 +197,7 @@ const findNearbyVendors = async (centerLocation, radiusKm = 10, filters = {}) =>
             }
           }
         })
-          .select('name businessName phone address profilePhoto service rating isOnline availability geoLocation settings')
+          .select('name businessName phone address profilePhoto service rating isOnline availability geoLocation settings wallet.dues wallet.cashLimit')
           .limit(50); // Increased limit as we filter below
 
         // Calculate distance for each vendor
@@ -204,7 +221,7 @@ const findNearbyVendors = async (centerLocation, radiusKm = 10, filters = {}) =>
         });
 
         console.log(`[LocationService] Found ${nearbyVendors.length} vendors using 2dsphere query`);
-        return nearbyVendors;
+        return withinCashLimit(nearbyVendors, filters);
       }
     } catch (geoError) {
       console.warn('[LocationService] 2dsphere query failed, falling back to Haversine:', geoError.message);
@@ -212,7 +229,7 @@ const findNearbyVendors = async (centerLocation, radiusKm = 10, filters = {}) =>
 
     // Fallback: Use Haversine formula (slower but works without geo index)
     const vendors = await Vendor.find(baseQuery)
-      .select('name businessName phone address location profilePhoto service rating isOnline availability settings');
+      .select('name businessName phone address location profilePhoto service rating isOnline availability settings wallet.dues wallet.cashLimit');
 
     console.log(`[LocationService] Haversine fallback: found ${vendors.length} vendors matching baseQuery before distance filter`);
 
@@ -242,7 +259,7 @@ const findNearbyVendors = async (centerLocation, radiusKm = 10, filters = {}) =>
 
     const currentLocCount = nearbyVendors.filter(v => v.isUsingCurrentLocation).length;
     console.log(`[LocationService] Found ${nearbyVendors.length} vendors (Online/Current: ${currentLocCount}) using Haversine`);
-    return nearbyVendors;
+    return withinCashLimit(nearbyVendors, filters);
   } catch (error) {
     console.error('Find nearby vendors error:', error);
     return [];
@@ -289,11 +306,11 @@ const findVendorsByCity = async (city, filters = {}) => {
 
     console.log(`[LocationService] City search query: ${JSON.stringify(baseQuery)}`);
     const vendors = await Vendor.find(baseQuery)
-      .select('name businessName phone address location profilePhoto service rating isOnline availability settings')
+      .select('name businessName phone address location profilePhoto service rating isOnline availability settings wallet.dues wallet.cashLimit')
       .limit(50);
 
     console.log(`[LocationService] Found ${vendors.length} vendors in city: ${city}`);
-    return vendors.map(v => ({ ...v.toObject(), distance: null }));
+    return withinCashLimit(vendors.map(v => ({ ...v.toObject(), distance: null })), filters);
   } catch (error) {
     console.error('Find vendors by city error:', error);
     return [];

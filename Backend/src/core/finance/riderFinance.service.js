@@ -121,20 +121,38 @@ export const resolveRiderIdentity = async (anyId) => {
  * moment they held a single rupee. The taxi minimum-balance rule stays a
  * separate wallet-minimum concern, applied alongside this in resolveBlockState.
  */
-export const resolveSharedCashLimit = async () => {
+export const resolveSharedCashLimit = async ({ partnerId } = {}) => {
+    let legacy = null;
+    let withdrawalLimit = 100;
     try {
         const { getDeliveryCashLimitSettings } = await import(
             '../../modules/food/admin/services/admin.service.js'
         );
         const settings = await getDeliveryCashLimitSettings();
-        return {
-            cashLimit: Math.max(0, Number(settings?.deliveryCashLimit) || 0),
-            withdrawalLimit: Math.max(0, Number(settings?.deliveryWithdrawalLimit) || 100),
-        };
+        legacy = Math.max(0, Number(settings?.deliveryCashLimit) || 0);
+        withdrawalLimit = Math.max(0, Number(settings?.deliveryWithdrawalLimit) || 100);
     } catch (err) {
-        logger.warn(`resolveSharedCashLimit fell back to no limit: ${err.message}`);
-        return { cashLimit: 0, withdrawalLimit: 100 };
+        logger.warn(`resolveSharedCashLimit: food setting unavailable: ${err.message}`);
     }
+
+    /*
+     * The platform setting decides; the food admin figure is today's value and the
+     * fallback until someone sets `finance.cashLimit` in Platform settings.
+     *
+     * No vertical: a rider's limit is ONE figure across taxi, food and quick
+     * commerce -- the whole point of riderFinance -- so it is set globally, or per
+     * partner (keyed on the rider's hub id). Vertical overrides are for partners who
+     * work one vertical, such as service providers.
+     */
+    const { resolveCashLimit } = await import('./cashLimit.service.js');
+    const resolved = await resolveCashLimit({ partnerId, legacy });
+    return {
+        cashLimit: resolved.cashLimit,
+        configuredCashLimit: resolved.configuredCashLimit,
+        enforceCashLimit: resolved.enforce,
+        cashLimitSource: resolved.source,
+        withdrawalLimit,
+    };
 };
 
 /** The taxi wallet rules, read straight from app settings to avoid a cycle. */
@@ -418,7 +436,11 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
 
     const [rules, limits, delivery] = await Promise.all([
         resolveTaxiWalletRules(),
-        resolveSharedCashLimit(),
+        // Partner overrides are keyed on the rider's hub identity: the taxi driver id
+        // for a linked rider, else their own partner id.
+        resolveSharedCashLimit({
+            partnerId: identity.driverId || identity.foodPartnerId || identity.qcPartnerId || undefined,
+        }),
         resolveDeliveryMoney([identity.foodPartnerId, identity.qcPartnerId]),
     ]);
 
@@ -473,6 +495,9 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
         rules: {
             ...rules,
             withdrawalLimit: limits.withdrawalLimit,
+            // Where the cash limit came from, for the admin and support screens.
+            cashLimitSource: limits.cashLimitSource,
+            enforceCashLimit: limits.enforceCashLimit,
         },
     };
 };

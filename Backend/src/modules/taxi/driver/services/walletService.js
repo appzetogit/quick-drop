@@ -270,7 +270,7 @@ export const applyDriverWalletAdjustment = async ({
    * settlement and every top-up, and the delivery aggregates behind a full
    * getRiderFinance call would be paid for on that hot path to read one number.
    */
-  const { cashLimit: sharedCashLimit } = await resolveSharedCashLimit();
+  const { cashLimit: sharedCashLimit } = await resolveSharedCashLimit({ partnerId: driverId });
 
   // ponytail: compute balance AND isBlocked in one atomic aggregation-pipeline update so the
   // block flag is derived from the real post-balance. Deriving it from the pre-read snapshot

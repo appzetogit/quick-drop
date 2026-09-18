@@ -3,6 +3,7 @@ const BookingRequest = require('../../models/BookingRequest');
 const { validationResult } = require('express-validator');
 const { BOOKING_STATUS, PAYMENT_STATUS } = require('../../utils/constants');
 const { withTransaction, abort } = require('../../utils/withTransaction');
+const { effectiveCashLimit } = require('../../utils/cashLimit');
 
 /**
  * Get assigned jobs for worker
@@ -694,7 +695,7 @@ const collectCash = async (req, res) => {
         const vendorDoc = await Vendor.findById(booking.vendorId).select('wallet').session(session);
         if (vendorDoc) {
           const currentDues = (vendorDoc.wallet.dues || 0) + grandTotal;
-          const cashLimit = vendorDoc.wallet.cashLimit || 10000;
+          const cashLimit = (await effectiveCashLimit(vendorDoc)).limit;
           const netOwed = currentDues - ((vendorDoc.wallet.earnings || 0) + vendorEarning);
           const isBlocked = netOwed > cashLimit;
 

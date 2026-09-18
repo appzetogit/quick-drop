@@ -3,6 +3,7 @@ const Transaction = require('../../models/Transaction');
 const Booking = require('../../models/Booking');
 const { createOrder, verifyPayment } = require('../../services/razorpayService');
 const { withTransaction, abort } = require('../../utils/withTransaction');
+const { effectiveCashLimit } = require('../../utils/cashLimit');
 const { confirmGatewayPayment } = require('../../utils/confirmGatewayPayment');
 const PlatformEarning = require('../../models/PlatformEarning');
 
@@ -36,7 +37,7 @@ const getWallet = async (req, res) => {
       data: {
         balance: worker.wallet?.balance || 0,
         dues: worker.wallet?.dues || 0,
-        cashLimit: worker.wallet?.cashLimit || 10000,
+        cashLimit: (await effectiveCashLimit(worker)).display,
         isBlocked: worker.wallet?.isBlocked || false,
         pendingBookings: pendingBookings
       }
@@ -341,7 +342,7 @@ const verifyDuesPayment = async (req, res) => {
       worker.wallet.dues = currentDues - applied;
 
       // Unblock once the outstanding balance is back within the cash limit
-      if (worker.wallet.isBlocked && worker.wallet.dues <= (worker.wallet.cashLimit || 0)) {
+      if (worker.wallet.isBlocked && worker.wallet.dues <= (await effectiveCashLimit(worker)).limit) {
         worker.wallet.isBlocked = false;
         worker.wallet.blockedAt = null;
         worker.wallet.blockReason = null;

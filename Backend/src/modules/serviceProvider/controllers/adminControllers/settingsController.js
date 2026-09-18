@@ -133,6 +133,14 @@ exports.updateSettings = async (req, res, next) => {
 
     // Propagate vendorCashLimit to all existing vendors AND workers if it was changed
     if (vendorCashLimit !== undefined) {
+      // And record it as the service-provider value in Platform settings, which is
+      // what cash limits are now read from (see utils/cashLimit.js). The per-document
+      // push below is kept as the fallback copy.
+      const { recordCashLimit } = require('../../utils/cashLimit');
+      await recordCashLimit({
+        level: 'vertical', scopeId: 'serviceProvider', value: Number(vendorCashLimit),
+        updatedBy: req.user?.id, reason: 'Set from SP settings screen',
+      });
       console.log(`Updating all providers with new cash limit: ${vendorCashLimit}`);
       await Vendor.updateMany(
         {}, // Filter: all vendors

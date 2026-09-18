@@ -6,6 +6,7 @@ const Withdrawal = require('../../models/Withdrawal');
 const mongoose = require('mongoose');
 const { recordSettlement, recordWithdrawal } = require('../../services/earningTrackerService');
 const { withTransaction, abort } = require('../../utils/withTransaction');
+const { effectiveCashLimit, effectiveCashLimits, recordCashLimit } = require('../../utils/cashLimit');
 
 /**
  * Get all vendors with their wallet balances
@@ -54,6 +55,8 @@ const getVendorBalances = async (req, res) => {
     const totalDueToAdmin = Math.abs(totalDueResult[0]?.total || 0);
 
     // Format data
+    // One settings read for the whole page, not one per vendor.
+    const limits = await effectiveCashLimits(vendors);
     const vendorData = vendors.map(v => ({
       _id: v._id,
       name: v.name,
@@ -66,7 +69,7 @@ const getVendorBalances = async (req, res) => {
       amountDue: v.wallet?.dues || 0,
       balance: (v.wallet?.earnings || 0) - (v.wallet?.dues || 0), // Net for reference
       totalCashCollected: v.wallet?.totalCashCollected || 0,
-      cashLimit: v.wallet?.cashLimit || 10000,
+      cashLimit: limits.get(String(v._id))?.display ?? (v.wallet?.cashLimit || 10000),
       isBlocked: v.wallet?.isBlocked || false
     }));
 
@@ -258,7 +261,10 @@ const approveSettlement = async (req, res) => {
       const TargetModel = isWorker ? Worker : Vendor;
       const amount = Number(settlement.amount) || 0;
 
-      const before = await TargetModel.findById(targetId).select('wallet.dues').session(session).lean();
+      const before = await TargetModel.findById(targetId).select('wallet.dues wallet.cashLimit').session(session).lean();
+      // The effective limit (Platform settings, else the partner's own field), as a number
+      // the pipeline below can compare with.
+      const unblockAt = before ? (await effectiveCashLimit({ _id: targetId, wallet: before.wallet })).limit : 0;
       if (!before) abort({ providerMissing: true });
 
       const userRecord = await TargetModel.findOneAndUpdate(
@@ -271,7 +277,7 @@ const approveSettlement = async (req, res) => {
             $set: {
               'wallet.isBlocked': {
                 $cond: [
-                  { $and: ['$wallet.isBlocked', { $lte: ['$wallet.dues', { $ifNull: ['$wallet.cashLimit', 10000] }] }] },
+                  { $and: ['$wallet.isBlocked', { $lte: ['$wallet.dues', unblockAt] }] },
                   false,
                   '$wallet.isBlocked'
                 ]
@@ -665,6 +671,7 @@ const updateCashLimit = async (req, res) => {
 
     vendor.wallet.cashLimit = limit;
 
+
     // Auto unblock if new limit covers dues
     if (vendor.wallet.isBlocked && (vendor.wallet.dues || 0) <= limit) {
       vendor.wallet.isBlocked = false;
@@ -673,6 +680,14 @@ const updateCashLimit = async (req, res) => {
     }
 
     await vendor.save();
+
+    // Recorded only once the vendor save succeeded, so a failed save cannot leave an
+    // override behind. It is what every reader now consults: without it this edit would
+    // be shadowed by any vertical or global value set in Platform settings.
+    await recordCashLimit({
+      level: 'partner', scopeId: vendorId, value: Number(limit),
+      updatedBy: req.user?.id, reason: 'Set from SP vendor cash limit screen',
+    });
 
     res.status(200).json({ success: true, message: 'Cash limit updated successfully', limit });
   } catch (error) {

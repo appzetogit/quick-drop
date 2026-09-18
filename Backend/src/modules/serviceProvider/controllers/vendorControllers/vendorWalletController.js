@@ -6,6 +6,7 @@ const Booking = require('../../models/Booking');
 const Worker = require('../../models/Worker');
 const { uploadPaymentScreenshot } = require('../../utils/cloudinaryUpload');
 const { withTransaction, abort } = require('../../utils/withTransaction');
+const { effectiveCashLimit } = require('../../utils/cashLimit');
 
 /**
  * Get vendor wallet with ledger balance
@@ -83,7 +84,7 @@ const getWallet = async (req, res) => {
         totalCashCollected,
         totalSettled,
         pendingSettlements,
-        cashLimit: vendor.wallet?.cashLimit || 10000,
+        cashLimit: (await effectiveCashLimit(vendor)).display,
         vendor: {
           name: vendor.name,
           businessName: vendor.businessName
