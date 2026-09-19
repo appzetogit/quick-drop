@@ -333,7 +333,12 @@ export default function RestaurantsList() {
         debugError("Error fetching restaurants:", err)
         const status = err?.response?.status
         const serverMessage = err?.response?.data?.message || err?.response?.data?.error
-        if (status === 401) {
+        // Only when the session is really gone. The API client signs the admin
+        // out itself when a refresh is refused; a 401 that survives with the
+        // login still in place is a refresh that could not get through (API
+        // restarting), and throwing the admin out for it was part of the
+        // "panel keeps closing" report.
+        if (status === 401 && !localStorage.getItem("admin_accessToken")) {
           setError(serverMessage || "Session expired or not logged in. Please log in as admin.")
           setRestaurants([])
           try {

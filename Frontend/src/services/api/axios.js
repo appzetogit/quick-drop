@@ -255,6 +255,39 @@ function onRefreshed(newToken, module) {
   refreshSubscribers = [];
 }
 
+/** The server looked at the refresh token and said no: the session is over. */
+const isRefreshRejected = (error) => [400, 401, 403].includes(error?.response?.status);
+
+/*
+ * Refresh, riding out an API restart.
+ *
+ * A restart leaves the API unreachable for ~15 seconds (502s from nginx), so a
+ * transient failure is retried after 2s, 4s and 8s before giving up. A
+ * rejection is final at once -- retrying a refused token only delays sign-out.
+ */
+const REFRESH_RETRY_DELAYS_MS = [2000, 4000, 8000];
+async function postRefreshWithRetry(refreshUrl, refreshToken) {
+  let lastError;
+  for (let attempt = 0; attempt <= REFRESH_RETRY_DELAYS_MS.length; attempt += 1) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, REFRESH_RETRY_DELAYS_MS[attempt - 1]));
+    }
+    try {
+      return await axios.post(refreshUrl, { refreshToken }, { timeout: 10000 });
+    } catch (error) {
+      if (isRefreshRejected(error)) throw error;
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+/** A refresh that could not reach the server: fail the waiting requests, keep the login. */
+function onRefreshAborted(module) {
+  refreshSubscribers.forEach((cb) => cb(null, module));
+  refreshSubscribers = [];
+}
+
 function onRefreshFailed(module) {
   clearModuleAuth(module);
   // Fail any queued requests that were waiting for this refresh
@@ -479,7 +512,7 @@ apiClient.interceptors.response.use(
       // A store's session was issued by quick commerce, so it refreshes there.
       const authPrefix = module === "restaurant" && restaurantOnQc() ? "qc" : "food";
       const refreshUrl = baseURL ? `${baseURL}/${authPrefix}/auth/refresh-token` : `/api/v1/${authPrefix}/auth/refresh-token`;
-      const { data } = await axios.post(refreshUrl, { refreshToken }, { timeout: 10000 });
+      const { data } = await postRefreshWithRetry(refreshUrl, refreshToken);
       const newAccessToken = data?.data?.accessToken || data?.accessToken;
       if (newAccessToken) {
         try {
@@ -493,8 +526,23 @@ apiClient.interceptors.response.use(
         original.headers.Authorization = `Bearer ${newAccessToken}`;
         return apiClient(original);
       }
-    } catch (_) {
-      onRefreshFailed(module);
+    } catch (refreshError) {
+      /*
+       * Sign out ONLY when the server rejected the refresh token.
+       *
+       * This used to sign out on any failure -- including a 502 while the API
+       * was restarting (each restart is ~15s, and they happen several times a
+       * day), a dropped connection, or a 429. An admin whose 15-minute access
+       * token expired inside one of those windows was thrown to the login page
+       * with a 30-day refresh token that was still perfectly valid: the "panel
+       * keeps closing and opening" the client reported. Now a transient failure
+       * fails just this request and keeps the session for the next one.
+       */
+      if (isRefreshRejected(refreshError)) {
+        onRefreshFailed(module);
+      } else {
+        onRefreshAborted(module);
+      }
       return Promise.reject(err);
     } finally {
       isRefreshing = false;

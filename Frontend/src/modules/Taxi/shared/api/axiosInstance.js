@@ -280,6 +280,9 @@ api.interceptors.request.use(
  * refresh call itself and turn one expired token into a logout.
  */
 let refreshInFlight = null;
+// True when the last refresh was refused by the server, false when it merely
+// could not get through (restart, network). Only a refusal signs the admin out.
+let lastRefreshRejected = false;
 
 const readRefreshToken = () => {
   try {
@@ -313,8 +316,30 @@ const refreshAdminAccessToken = async () => {
      */
     const origin = String(BACKEND_ORIGIN || '').replace(/\/+$/, '');
     const url = `${origin}/api/v1/food/auth/refresh-token`;
-    refreshInFlight = axios
-      .post(url, { refreshToken }, { timeout: 10000 })
+    /*
+     * Ride out an API restart (~15s of 502s): retry a transient failure after
+     * 2s, 4s and 8s. A refusal (400/401/403) is final at once. Which of the two
+     * it was is remembered, because only a refusal may end the session -- see
+     * the response interceptor.
+     */
+    const post = async () => {
+      let lastError;
+      for (const delay of [0, 2000, 4000, 8000]) {
+        if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+        try {
+          return await axios.post(url, { refreshToken }, { timeout: 10000 });
+        } catch (err) {
+          if ([400, 401, 403].includes(err?.response?.status)) {
+            lastRefreshRejected = true;
+            throw err;
+          }
+          lastError = err;
+        }
+      }
+      throw lastError;
+    };
+    lastRefreshRejected = false;
+    refreshInFlight = post()
       .then((res) => {
         const token = res?.data?.data?.accessToken || res?.data?.accessToken || null;
         if (token) {
@@ -375,6 +400,15 @@ api.interceptors.response.use(
             error.config.headers = error.config.headers || {};
             error.config.headers.Authorization = `Bearer ${fresh}`;
             return api(error.config);
+          }
+          /*
+           * The refresh could not reach the server (API restarting, network).
+           * The refresh token may be perfectly good, so fail this request and
+           * keep the session: clearing it here is what threw admins out to
+           * the login page several times a day.
+           */
+          if (readRefreshToken() && !lastRefreshRejected) {
+            return Promise.reject({ ...error.response.data, status: error.response.status });
           }
         }
 
