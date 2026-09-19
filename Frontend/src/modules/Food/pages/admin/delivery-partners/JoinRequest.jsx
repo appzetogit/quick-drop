@@ -812,6 +812,25 @@ export default function JoinRequest() {
                         </div>
                       )}
 
+                      {/* Profile photo: the face to check the ID documents against. */}
+                      {viewDetails.documents.profilePhoto?.document && (
+                        <div>
+                          <label className="text-xs font-semibold text-slate-500 uppercase">Profile Photo</label>
+                          <a
+                            href={viewDetails.documents.profilePhoto.document}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 block w-fit"
+                          >
+                            <img
+                              src={viewDetails.documents.profilePhoto.document}
+                              alt="Rider profile"
+                              className="h-20 w-20 rounded-lg object-cover ring-1 ring-slate-200"
+                            />
+                          </a>
+                        </div>
+                      )}
+
                       {/* PAN */}
                       {viewDetails.documents.pan && (
                         <div>

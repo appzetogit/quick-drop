@@ -4027,6 +4027,26 @@ export async function expireExpiredOffers() {
     );
 }
 // ----- Delivery join requests -----
+/*
+ * The rider app stores vehicleType as the id of a taxi vehicle type (the
+ * unified driver app offers taxi's list), so every admin screen printed a raw
+ * id like "6aacf343..." where "EV Scooty" belonged. Resolved here, once per
+ * page; a value that is not an id (older signups stored "bike") passes through.
+ */
+async function vehicleTypeNamesFor(values) {
+    const ids = [...new Set((values || []).map((v) => String(v || '')).filter((v) => /^[a-f0-9]{24}$/i.test(v)))];
+    if (!ids.length) return new Map();
+    try {
+        const { Vehicle } = await import('../../../taxi/admin/models/Vehicle.js');
+        const rows = await Vehicle.find({ _id: { $in: ids } }).select('name').lean();
+        return new Map(rows.map((r) => [String(r._id), r.name || '']));
+    } catch {
+        return new Map();
+    }
+}
+
+const vehicleTypeLabel = (names, value) => names.get(String(value || '')) || value || '';
+
 export async function getDeliveryJoinRequests(query) {
     const { status = 'pending', page = 1, limit = 1000, search, zone, vehicleType } = query;
     const filter = {};
@@ -4071,6 +4091,7 @@ export async function getDeliveryJoinRequests(query) {
     const { getCapabilitiesForPartners: capsFor } = await import('../../../../core/identity/driverCapabilities.service.js');
     const requestCaps = await capsFor(list);
 
+    const vehicleNames = await vehicleTypeNamesFor(list.map((doc) => doc.vehicleType));
     const requests = list.map((doc, index) => ({
         _id: doc._id,
         sl: skip + index + 1,
@@ -4080,7 +4101,7 @@ export async function getDeliveryJoinRequests(query) {
         ...(requestCaps.get(String(doc._id)) || {}),
         zone: doc.city || doc.state || doc.address || '',
         jobType: doc.jobType || '',
-        vehicleType: doc.vehicleType || '',
+        vehicleType: vehicleTypeLabel(vehicleNames, doc.vehicleType),
         status: doc.status === 'rejected' ? 'denied' : doc.status,
         rejectionReason: doc.rejectionReason || undefined,
         profilePhoto: doc.profilePhoto || null,
@@ -4220,6 +4241,7 @@ export async function getDeliveryPartners(query) {
     const { getCapabilitiesForPartners } = await import('../../../../core/identity/driverCapabilities.service.js');
     const capsById = await getCapabilitiesForPartners(list);
 
+    const vehicleNames = await vehicleTypeNamesFor(list.map((doc) => doc.vehicleType));
     const deliveryPartners = list.map((doc, index) => ({
         _id: doc._id,
         sl: skip + index + 1,
@@ -4229,7 +4251,7 @@ export async function getDeliveryPartners(query) {
         ...(capsById.get(String(doc._id)) || {}),
         deliveryId: doc._id ? `DP-${doc._id.toString().slice(-8).toUpperCase()}` : null,
         zone: doc.city || doc.state || doc.address || '',
-        vehicleType: doc.vehicleType || '',
+        vehicleType: vehicleTypeLabel(vehicleNames, doc.vehicleType),
         status: doc.status,
         profilePhoto: doc.profilePhoto || null,
         profileImage: doc.profilePhoto ? { url: doc.profilePhoto } : null
@@ -4820,6 +4842,7 @@ export async function getDeliveryPartnerById(id) {
     const deliveryId = partner._id ? `DP-${partner._id.toString().slice(-8).toUpperCase()}` : null;
     const { getCapabilitiesForPartners } = await import('../../../../core/identity/driverCapabilities.service.js');
     const caps = (await getCapabilitiesForPartners([partner])).get(String(partner._id));
+    const vehicleNames = await vehicleTypeNamesFor([partner.vehicleType]);
     return {
         ...partner,
         ...caps,
@@ -4834,7 +4857,19 @@ export async function getDeliveryPartnerById(id) {
             pan: (partner.panPhoto || partner.panNumber)
                 ? { number: partner.panNumber || null, document: partner.panPhoto || null }
                 : null,
-            drivingLicense: partner.drivingLicensePhoto ? { document: partner.drivingLicensePhoto } : null,
+            // The number was collected at signup and never passed on, so the
+            // admin saw a licence photo with nothing to check it against.
+            drivingLicense: (partner.drivingLicensePhoto || partner.drivingLicenseNumber)
+                ? {
+                    number: partner.drivingLicenseNumber || null,
+                    document: partner.drivingLicensePhoto || null,
+                    expiryDate: partner.drivingLicenseExpiry || null,
+                }
+                : null,
+            vehicleRC: (partner.vehicleRcPhoto || partner.rcPhoto || partner.vehicleRcNumber)
+                ? { number: partner.vehicleRcNumber || null, document: partner.vehicleRcPhoto || partner.rcPhoto || null }
+                : null,
+            profilePhoto: partner.profilePhoto ? { document: partner.profilePhoto } : null,
             bankDetails:
                 partner.bankAccountHolderName || partner.bankAccountNumber || partner.bankIfscCode || partner.bankName
                     ? {
@@ -4850,7 +4885,7 @@ export async function getDeliveryPartnerById(id) {
             : null,
         vehicle: (partner.vehicleType || partner.vehicleName || partner.vehicleNumber)
             ? {
-                type: partner.vehicleType,
+                type: vehicleTypeLabel(vehicleNames, partner.vehicleType),
                 brand: partner.vehicleName,
                 model: partner.vehicleName,
                 number: partner.vehicleNumber
