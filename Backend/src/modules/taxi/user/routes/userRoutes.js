@@ -38,6 +38,7 @@ import {
   updateMyActiveRentalLocation,
   updateCurrentUser,
   uploadUserProfileImage,
+  uploadParcelPhoto,
   verifyBusBookingPayment,
   verifyRentalAdvancePayment,
   verifyRazorpayWalletTopup,
@@ -81,6 +82,7 @@ userRouter.post('/register', asyncHandler(registerUser));
 userRouter.post('/signup', asyncHandler(signupUser));
 userRouter.post('/login', asyncHandler(loginUser));
 userRouter.post('/profile-image', asyncHandler(uploadUserProfileImage));
+userRouter.post('/parcel-photo', asyncHandler(uploadParcelPhoto));
 userRouter.post('/auth/send-otp', asyncHandler(startUserOtpRequest));
 userRouter.post('/auth/verify-otp', asyncHandler(verifyUserOtpRequest));
 userRouter.post('/otp-login', asyncHandler(verifyUserPhoneForOtpLogin));

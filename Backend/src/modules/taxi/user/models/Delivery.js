@@ -115,6 +115,24 @@ const deliverySchema = new mongoose.Schema(
         default: '',
         trim: true,
       },
+      // Photographs of the parcel, as Cloudinary URLs.
+      //
+      // `photos` is what the sender showed at booking; the other two are what
+      // the captain photographed at each end. They are kept apart on purpose:
+      // the whole value of a delivery photo is that it can be held against the
+      // booking photo, which one merged list would make impossible.
+      photos: {
+        type: [String],
+        default: [],
+      },
+      pickupPhotos: {
+        type: [String],
+        default: [],
+      },
+      deliveryPhotos: {
+        type: [String],
+        default: [],
+      },
       deliveryScope: {
         type: String,
         enum: ['city', 'outstation'],

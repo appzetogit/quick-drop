@@ -33,7 +33,44 @@ const deliveryPartnerSchema = new mongoose.Schema(
         state: {
             type: String
         },
-        vehicleType: {
+        /**
+     * What the partner said they have at onboarding, and which of the
+     * options under it they ticked.
+     *
+     * This is a REQUEST, not a grant. The admin reads it on the approval
+     * screen and decides which capabilities to hand over; nothing here
+     * puts the partner into a dispatch pool.
+     */
+    driverClass: {
+        type: String,
+        enum: ['two_wheeler', 'passenger_taxi', 'parcel_vehicle', ''],
+        default: '',
+        index: true,
+    },
+    /**
+     * Whatever the admin asked this class of driver for, as uploaded.
+     *
+     * Keyed by the catalogue entry, so a document added in the panel
+     * lands here without a schema change. Deliberately NOT where the four
+     * original fields live: aadhar, PAN, licence and the profile photo are
+     * read by name all over the admin panel and by every partner that
+     * predates this, and moving them would break both.
+     */
+    onboardingDocuments: [
+        {
+            _id: false,
+            key: { type: String, default: '', trim: true },
+            name: { type: String, default: '', trim: true },
+            number: { type: String, default: '', trim: true },
+            frontUrl: { type: String, default: '', trim: true },
+            backUrl: { type: String, default: '', trim: true },
+        },
+    ],
+    serviceIntents: {
+        type: [String],
+        default: [],
+    },
+    vehicleType: {
             type: String
         },
         vehicleName: {

@@ -4980,9 +4980,15 @@ export async function approveDeliveryPartner(id, { serviceCapabilities } = {}) {
     // only: that is what a food-app signup could always be offered, and the
     // admin has to opt them into taxi or grocery explicitly.
     const { applyPartnerCapabilities } = await import('../../../../core/identity/driverCapabilities.service.js');
+    // What the driver asked for at onboarding, as the starting point. An
+    // explicit list from the admin still wins; this only decides what happens
+    // when none is sent. Falls back to ['delivery'] for an applicant who
+    // registered before the question existed and so asked for nothing.
+    const { capabilitiesForIntents } = await import('../../../taxi/shared/driverClasses.js');
+    const requested = capabilitiesForIntents(partner.serviceIntents || []);
     const capabilityResult = await applyPartnerCapabilities(
         partner,
-        serviceCapabilities ?? ['delivery'],
+        serviceCapabilities ?? (requested.length ? requested : ['delivery']),
         { approved: true },
     );
 

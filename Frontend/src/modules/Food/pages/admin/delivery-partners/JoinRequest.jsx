@@ -4,6 +4,48 @@ import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { exportJoinRequestsToExcel, exportJoinRequestsToPDF } from "@food/components/admin/deliveryman/joinRequestExportUtils"
+/**
+ * What the applicant answered at onboarding, in words.
+ *
+ * Mirrors taxi/shared/driverClasses.js. Kept short on purpose: the panel only
+ * has to READ the answer, and the rule that turns it into capabilities lives
+ * on the server where the approval is actually applied.
+ */
+const CLASS_LABELS = {
+  two_wheeler: 'Has a 2 wheeler',
+  passenger_taxi: 'Has a taxi for passengers',
+  parcel_vehicle: 'Has a vehicle for parcels',
+}
+
+const INTENT_LABELS = {
+  food_daily_medical_parcel: 'Food + Daily needs + Medical + Bike parcel',
+  bike_taxi_parcel: 'Bike Taxi + Bike parcel',
+  three_wheeler: '3 wheeler',
+  four_wheeler: '4 wheeler',
+  parcel_delivery: 'Parcel delivery',
+  heavy_parcel_delivery: 'Heavy delivery',
+}
+
+/** Which capabilities each answer asks for. */
+const INTENT_CAPABILITIES = {
+  food_daily_medical_parcel: ['delivery', 'quickCommerce', 'parcel'],
+  bike_taxi_parcel: ['taxi', 'parcel'],
+  three_wheeler: ['taxi'],
+  four_wheeler: ['taxi'],
+  parcel_delivery: ['parcel'],
+  heavy_parcel_delivery: ['parcel'],
+}
+
+const capabilitiesRequestedBy = (intents) => {
+  const out = []
+  for (const intent of intents || []) {
+    for (const capability of INTENT_CAPABILITIES[intent] || []) {
+      if (!out.includes(capability)) out.push(capability)
+    }
+  }
+  return out
+}
+
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -24,7 +66,17 @@ export default function JoinRequest() {
   const [rejectionReason, setRejectionReason] = useState("")
   // Which verticals the driver will be offered. Defaults to food only: the
   // admin opts a driver into grocery or taxi explicitly.
+  // Seeded from the applicant when the dialog opens; see the effect below.
   const [approveCapabilities, setApproveCapabilities] = useState(["delivery"])
+
+  // Pre-tick what they asked for, every time a request is opened. Falls
+  // back to food delivery for anyone who registered before onboarding
+  // asked the question, which is what the default always was.
+  useEffect(() => {
+    if (!isApproveOpen || !selectedRequest) return
+    const requested = capabilitiesRequestedBy(selectedRequest.serviceIntents)
+    setApproveCapabilities(requested.length ? requested : ["delivery"])
+  }, [isApproveOpen, selectedRequest])
   const [filters, setFilters] = useState({
     zone: "",
     jobType: "",
@@ -514,6 +566,21 @@ export default function JoinRequest() {
             <p className="text-sm text-slate-700">
               Are you sure you want to approve "{selectedRequest?.name}"'s join request?
             </p>
+            {selectedRequest?.driverClass || selectedRequest?.serviceIntents?.length ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase mb-1">What they applied for</p>
+                <p className="text-sm font-semibold text-slate-800">
+                  {CLASS_LABELS[selectedRequest?.driverClass] || selectedRequest?.driverClass || "Not stated"}
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {(selectedRequest?.serviceIntents || []).map((intent) => (
+                    <li key={intent} className="text-sm text-slate-700">
+                      • {INTENT_LABELS[intent] || intent}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Which orders will they take?</p>
               <div className="space-y-2">
@@ -521,6 +588,11 @@ export default function JoinRequest() {
                   ["delivery", "Food delivery"],
                   ["quickCommerce", "Quick Commerce"],
                   ["taxi", "Taxi rides"],
+                  // Parcel and porter jobs. Separate from taxi because they
+                  // are dispatched to the same drivers by the same service:
+                  // without its own box there is no way to approve someone
+                  // for boxes but not for passengers.
+                  ["parcel", "Parcel & Porter"],
                 ].map(([key, label]) => (
                   <label key={key} className="flex items-center gap-2 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white cursor-pointer">
                     <input
