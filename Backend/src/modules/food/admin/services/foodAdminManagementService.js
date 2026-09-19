@@ -17,6 +17,16 @@ import { ApiError } from '../../../../utils/ApiError.js';
 import { normalizeAdminPermissions } from '../../../../core/admin/adminAccess.util.js';
 import mongoose from 'mongoose';
 
+/** Zone ids from whatever the panel sent: ids, or { _id } / { id } objects. */
+const normalizeZoneIdList = (value) => {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (entry && typeof entry === 'object' ? entry._id || entry.id : entry))
+    .map((id) => String(id || '').trim())
+    .filter((id) => /^[a-f0-9]{24}$/i.test(id));
+};
+
 /**
  * Lists the catalog of food permission resources.
  */
@@ -122,11 +132,11 @@ export async function createFoodAdminAccount(currentAdmin, payload) {
     phone,
     adminLevel,
     permissions = [],
-    food_zone_ids = [],
     password,
     password_confirmation,
     active
   } = payload;
+  const food_zone_ids = normalizeZoneIdList(payload.food_zone_ids) || [];
 
   if (!password || password.length < 6) {
     throw new ValidationError('Password must be at least 6 characters');
@@ -201,11 +211,13 @@ export async function updateFoodAdminAccount(currentAdmin, targetId, payload) {
     name,
     phone,
     permissions,
-    food_zone_ids,
     password,
     password_confirmation,
     active
   } = payload;
+  // The edit form loads zones populated ({ _id, name }) and posts them back
+  // mixed with plain ids, which failed the cast and answered 500. Ids only.
+  const food_zone_ids = normalizeZoneIdList(payload.food_zone_ids);
 
   if (password || password_confirmation) {
     if (!password || password.length < 6) {

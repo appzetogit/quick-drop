@@ -183,7 +183,18 @@ export const optimizeImageForStorage = async (inputBuffer, mimeType) => {
     const maxWidth = getWebpMaxWidth();
     const quality = getWebpQuality();
 
-    const metadata = await sharp(inputBuffer, { failOn: 'none' }).metadata();
+    /*
+     * The declared type is only what the browser or app claimed. An iPhone HEIC
+     * photo sent as image/jpeg, or a truncated upload, reaches here and sharp
+     * throws "Input buffer contains unsupported image format" -- which surfaced
+     * as a 500 on rider registration. It is the uploader's file, so say so.
+     */
+    let metadata;
+    try {
+        metadata = await sharp(inputBuffer, { failOn: 'none' }).metadata();
+    } catch {
+        throw new ValidationError('This photo could not be read. Please upload a JPEG, PNG or WebP image.');
+    }
     const needsResize = Boolean(metadata.width && metadata.width > maxWidth);
 
     if (normalizedMime === WEBP_MIME && !needsResize) {

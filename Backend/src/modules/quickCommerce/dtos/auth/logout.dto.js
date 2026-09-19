@@ -13,7 +13,7 @@ const schema = z.object({
      * Absence is a no-op, reported as invalidated:false, not an error.
      */
     refreshToken: z.string().min(1).nullish(),
-    fcmToken: z.string().optional(),
+    fcmToken: z.string().nullish(),
     platform: z.preprocess(
         (value) => normalizePlatform(value, { allowUndefined: true }),
         z.enum(['web', 'mobile']).optional()

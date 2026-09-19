@@ -12,7 +12,9 @@ const schema = z.object({
      * Absence is a no-op, reported as invalidated:false, not an error.
      */
     refreshToken: z.string().min(1, 'Refresh token is required').nullish(),
-    fcmToken: z.string().optional(),
+    // null as well as absent: apps send fcmToken: null when push was never
+    // granted, and a 400 here aborted the logout.
+    fcmToken: z.string().nullish(),
     platform: z.enum(['web', 'mobile']).optional()
 });
 
