@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { normalizeDriverClass, normalizeDriverIntents } from '../../../taxi/shared/driverClasses.js';
 import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { DeliverySupportTicket } from '../models/supportTicket.model.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
@@ -8,11 +9,54 @@ import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
 
+/**
+ * The documents the admin asked for, as the app sent them.
+ *
+ * Field names are `doc_<key>_front`, `doc_<key>_back` and `docnum_<key>`,
+ * where <key> is the catalogue entry. Uploaded in parallel: a partner with
+ * six documents on a phone connection should not wait for six round trips.
+ *
+ * A document with nothing filled in is skipped rather than stored empty, so
+ * the list says what was actually produced.
+ */
+const collectCatalogueDocuments = async (payload = {}, files = {}) => {
+    const keys = new Set();
+    for (const field of Object.keys(files || {})) {
+        const match = /^doc_(.+)_(front|back)$/.exec(field);
+        if (match) keys.add(match[1]);
+    }
+    for (const field of Object.keys(payload || {})) {
+        const match = /^docnum_(.+)$/.exec(field);
+        if (match) keys.add(match[1]);
+    }
+    if (!keys.size) return [];
+
+    const entries = await Promise.all(
+        [...keys].map(async (key) => {
+            const front = files?.[`doc_${key}_front`]?.[0];
+            const back = files?.[`doc_${key}_back`]?.[0];
+            const [frontUrl, backUrl] = await Promise.all([
+                front ? uploadImageBuffer(front.buffer, 'food/delivery/documents') : '',
+                back ? uploadImageBuffer(back.buffer, 'food/delivery/documents') : '',
+            ]);
+            return {
+                key,
+                name: String(payload?.[`docname_${key}`] || '').trim(),
+                number: String(payload?.[`docnum_${key}`] || '').trim(),
+                frontUrl: frontUrl || '',
+                backUrl: backUrl || '',
+            };
+        }),
+    );
+
+    return entries.filter((entry) => entry.frontUrl || entry.backUrl || entry.number);
+};
+
 export const registerDeliveryPartner = async (payload, files) => {
     const { 
         name, phone, email, countryCode, address, city, state, 
         vehicleType, vehicleName, vehicleNumber, drivingLicenseNumber, panNumber, aadharNumber,
-        fcmToken, platform,
+        fcmToken, platform, driverClass, serviceIntents,
         profilePhoto: preExistingProfilePhoto,
         aadharPhoto: preExistingAadharPhoto,
         panPhoto: preExistingPanPhoto,
@@ -79,6 +123,15 @@ export const registerDeliveryPartner = async (payload, files) => {
         drivingLicenseNumber,
         panNumber,
         aadharNumber,
+        // Recorded as asked, filtered to the options that belong to the
+        // class. A cross-class pick is dropped rather than refused: it
+        // means a confused client, not a bad applicant.
+        onboardingDocuments: await collectCatalogueDocuments(payload, files),
+        driverClass: normalizeDriverClass(driverClass) || '',
+        serviceIntents: normalizeDriverIntents(
+            typeof serviceIntents === 'string' ? serviceIntents.split(',') : serviceIntents,
+            driverClass,
+        ),
         status: 'pending',
         ...images
     });

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { getOnboardingRequirements, listOnboardingOptions } from '../services/onboardingRequirements.service.js';
 import { registerDeliveryPartner, updateDeliveryPartnerProfile, updateDeliveryPartnerBankDetails, listSupportTicketsByPartner, createSupportTicket, getSupportTicketByIdAndPartner, updateDeliveryPartnerDetails, updateDeliveryPartnerProfilePhotoBase64, updateDeliveryAvailability, getDeliveryPartnerWallet, getDeliveryPartnerEarnings, getDeliveryPartnerTripHistory, getDeliveryPocketDetails, getActiveEarningAddonsForPartner, deleteDeliveryPartnerAccount } from '../services/delivery.service.js';
 import { createDeliveryCashDepositOrder, getDeliveryPartnerWalletEnhanced, requestDeliveryWithdrawal, verifyDeliveryCashDepositPayment } from '../services/deliveryFinance.service.js';
 import { getDeliveryCashLimitSettings, getDeliveryEmergencyHelp } from '../../admin/services/admin.service.js';
@@ -6,6 +7,36 @@ import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransa
 import { validateDeliveryRegisterDto, validateDeliveryProfileUpdateDto, validateDeliveryBankDetailsDto } from '../validators/delivery.validator.js';
 import { sendResponse } from '../../../../utils/response.js';
 import { getDeliveryReferralStats } from '../services/deliveryReferral.service.js';
+
+/** The "what do you have?" tree. */
+export const onboardingOptionsController = async (req, res, next) => {
+    try {
+        return sendResponse(res, 200, 'Onboarding options', listOnboardingOptions());
+    } catch (error) {
+        next(error);
+    }
+};
+
+/** The vehicle types and documents that apply to one answer. */
+export const onboardingRequirementsController = async (req, res, next) => {
+    try {
+        const raw = req.query?.intents;
+        const intents = Array.isArray(raw)
+            ? raw
+            : String(raw || '')
+                  .split(',')
+                  .map((value) => value.trim())
+                  .filter(Boolean);
+
+        const data = await getOnboardingRequirements({
+            driverClass: req.query?.driverClass,
+            intents,
+        });
+        return sendResponse(res, 200, 'Onboarding requirements', data);
+    } catch (error) {
+        next(error);
+    }
+};
 
 export const registerDeliveryPartnerController = async (req, res, next) => {
     try {

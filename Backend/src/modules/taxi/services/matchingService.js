@@ -34,7 +34,7 @@ const normalizeVehicleTypeIds = (vehicleTypeIds = [], vehicleTypeId = null) => {
   return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
 };
 
-export const buildDriverMatchFilters = ({ zoneId, vehicleTypeId, vehicleTypeIds, vehicleTypeKeys, transportType }) => {
+export const buildDriverMatchFilters = ({ zoneId, vehicleTypeId, vehicleTypeIds, vehicleTypeKeys, transportType, serviceType }) => {
   const normalizedVehicleTypeIds = normalizeVehicleTypeIds(vehicleTypeIds, vehicleTypeId);
   const normalizedVehicleTypeKeys = Array.isArray(vehicleTypeKeys)
     ? [...new Set(vehicleTypeKeys.map(normalizeVehicleKey).filter(Boolean))]
@@ -97,7 +97,11 @@ export const buildDriverMatchFilters = ({ zoneId, vehicleTypeId, vehicleTypeIds,
   // Flag-gated; legacy behavior is untouched while UNIFIED_DISPATCH_ENABLED is off.
   if (config.unifiedDispatchEnabled) {
     baseFilters.workMode = { $in: ['all', 'taxi'] };
-    baseFilters.serviceCapabilities = 'taxi';
+    // A parcel is not a passenger. Asking for the taxi capability on a
+    // parcel job matched the wrong people in both directions: a
+    // parcel-only driver got nothing, and a passenger driver got boxes.
+    baseFilters.serviceCapabilities =
+      String(serviceType || '').trim().toLowerCase() === 'parcel' ? 'parcel' : 'taxi';
     if (transportType !== 'pooling') {
       // Pool drivers legitimately hold a group; the lock isn't used for pooled rides.
       baseFilters.activeAssignment = null;
@@ -258,12 +262,14 @@ const findDriversForZone = async ({
   normalizedVehicleTypeIds,
   vehicleTypeKeys,
   transportType,
+  serviceType,
 }) => {
   const commonFilters = buildDriverMatchFilters({
     zoneId,
     vehicleTypeIds: normalizedVehicleTypeIds,
     vehicleTypeKeys,
     transportType,
+    serviceType,
   });
   const selectedFields =
     'name phone socketId vehicleTypeId vehicleType vehicleIconType vehicleNumber vehicleColor vehicleMake vehicleModel rating location zoneId isOnline isOnRide routeBooking isPoolEnabled activePoolGroupId poolOccupiedSeats maxPoolSeats activePoolRideCount';
@@ -303,6 +309,7 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
     vehicleTypeId,
     vehicleTypeIds,
     transportType,
+    serviceType,
   } = options;
   const normalizedVehicleTypeIds = normalizeVehicleTypeIds(vehicleTypeIds, vehicleTypeId);
   const allowedVehicles = normalizedVehicleTypeIds.length
@@ -325,6 +332,7 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
     normalizedVehicleTypeIds,
     vehicleTypeKeys,
     transportType,
+    serviceType,
   });
 
   const requestedSeats = Number(options.seats || 1);
@@ -374,6 +382,7 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
       normalizedVehicleTypeIds,
       vehicleTypeKeys,
       transportType,
+      serviceType,
     });
 
     drivers = drivers.filter(filterPoolingEligible);
@@ -445,6 +454,7 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
         normalizedVehicleTypeIds,
         vehicleTypeKeys,
         transportType,
+        serviceType,
       });
 
       const fallbackBlockedDriverIds = await getDriverIdsBlockedByUpcomingScheduledRides(

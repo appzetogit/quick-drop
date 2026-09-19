@@ -19,10 +19,12 @@ import {
 import { getRestaurantSubscriptionSettings } from '../../admin/services/admin.service.js';
 import {
     assertMedicalOnboarding,
+    isMedicalStore,
     mergeStoreTypeUpdate,
     normalizeDrugLicenceInput,
     normalizeStoreTypeInput,
 } from '../../shared/storeType.js';
+import { ZONE_VERTICALS, findZoneForPoint } from '../../shared/zoneServiceability.js';
 import { GST_RATE } from './subscriptionPlan.service.js';
 import {
     createRazorpayOrder,
@@ -673,6 +675,45 @@ export const createRestaurantOnboardingFeeOrder = async ({ ownerPhone }) => {
     };
 };
 
+/**
+ * The zone a newly registering seller belongs to.
+ *
+ * An explicit id wins, so an admin registering on someone behalf can still
+ * place a store by hand. Otherwise the pinned coordinates are matched against
+ * the active zone polygons -- the same check the order path runs, so a shop is
+ * findable on day one by the same rule that will later serve its orders.
+ *
+ * The map depends on the trade: a pharmacy is matched against MEDICAL zones,
+ * because that is where createPrescriptionOrder looks.
+ *
+ * Returns undefined when no zone contains the pin, which stores exactly what
+ * is stored today. This module tolerates a seller with no zone by design, so
+ * refusing the registration would break a case that currently works.
+ */
+const resolveOnboardingZoneId = async ({ zoneId, latitude, longitude, storeType }) => {
+    const explicit = String(zoneId || '').trim();
+    if (explicit && mongoose.Types.ObjectId.isValid(explicit)) {
+        return new mongoose.Types.ObjectId(explicit);
+    }
+
+    const lat = toFiniteNumber(latitude);
+    const lng = toFiniteNumber(longitude);
+    if (lat === null || lng === null) return undefined;
+
+    const vertical = isMedicalStore(storeType)
+        ? ZONE_VERTICALS.MEDICAL
+        : ZONE_VERTICALS.QUICK;
+
+    try {
+        const zone = await findZoneForPoint(lat, lng, vertical);
+        return zone && zone._id ? new mongoose.Types.ObjectId(String(zone._id)) : undefined;
+    } catch (err) {
+        // A zone lookup that fails must not fail the signup: the seller is
+        // created unzoned, exactly as it was before this existed.
+        return undefined;
+    }
+};
+
 export const registerRestaurant = async (payload, files) => {
     const {
         restaurantName,
@@ -1006,6 +1047,15 @@ export const registerRestaurant = async (payload, files) => {
     try {
         const latNum = toFiniteNumber(latitude);
         const lngNum = toFiniteNumber(longitude);
+        // Derived from the pin rather than expected from the client: no app
+        // or panel sends a zone at registration, which is why every store
+        // onboarded through them had none.
+        const resolvedZoneId = await resolveOnboardingZoneId({
+            zoneId,
+            latitude: latNum,
+            longitude: lngNum,
+            storeType,
+        });
         const restaurant = await FoodRestaurant.create({
             restaurantName,
             restaurantNameNormalized,
@@ -1017,9 +1067,7 @@ export const registerRestaurant = async (payload, files) => {
             ownerPhoneLast10,
             primaryContactNumber,
             pureVegRestaurant: pureVegRestaurant === true,
-            zoneId: zoneId && mongoose.Types.ObjectId.isValid(String(zoneId).trim())
-                ? new mongoose.Types.ObjectId(String(zoneId).trim())
-                : undefined,
+            zoneId: resolvedZoneId,
             // Store unified location object (geo + address).
             location: {
                 type: 'Point',

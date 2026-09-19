@@ -1251,6 +1251,9 @@ const dispatchAttempt = async (rideId, attemptIndex = 0) => {
       vehicleTypeId: ride.vehicleTypeId,
       vehicleTypeIds: dispatchVehicleTypeIds,
       transportType: normalizeRideTransportType(ride),
+      // 'parcel' sends this to drivers approved to carry parcels rather
+      // than to every taxi driver in range.
+      serviceType: ride.serviceType,
     });
     const effectiveRadius = Number.isFinite(searchRadiusMeters) && searchRadiusMeters > 0
       ? searchRadiusMeters
@@ -1405,6 +1408,9 @@ export const notifyLateAvailableDriver = async (driverId) => {
       vehicleTypeId: ride.vehicleTypeId,
       vehicleTypeIds: dispatchVehicleTypeIds,
       transportType: normalizeRideTransportType(ride),
+      // 'parcel' sends this to drivers approved to carry parcels rather
+      // than to every taxi driver in range.
+      serviceType: ride.serviceType,
     });
 
     const matchedDriver = drivers.find((item) => String(item._id) === driverKey);

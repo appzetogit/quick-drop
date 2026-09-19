@@ -25,7 +25,7 @@ import { applyPromoToRideInTransaction } from './promoService.js';
 import { getTipSettings } from './appSettingsService.js';
 import { getBidRideSettings } from './transportSettingsService.js';
 import { computeRideFare } from '../common/rideFare.js';
-import { measureTrip } from '../common/tripMeasure.js';
+import { measureTrip, measureTripRoad } from '../common/tripMeasure.js';
 
 const clearUserActiveRideIfPresent = async (user) => {
   if (!user?.currentRideId) {
@@ -382,12 +382,37 @@ const generateRideOtp = () => String(Math.floor(1000 + Math.random() * 9000));
 const DEFAULT_BID_STEP_AMOUNT = 10;
 const DEFAULT_MAX_BID_STEPS = 5;
 
+/**
+ * The sender's photos, as a list of URLs.
+ *
+ * Capped at two: they are shown side by side and an unbounded list from a
+ * client is a document that grows without limit. Anything that is not a plain
+ * http(s) URL is dropped -- the upload endpoint returns URLs, so a data URI
+ * here means someone tried to store an image in the ride document.
+ */
+const normalizeParcelPhotos = (value) => {
+  const list = Array.isArray(value) ? value : [value];
+  return list
+    .map((item) => String(item || '').trim())
+    .filter((url) => {
+      const lower = url.toLowerCase();
+      return lower.startsWith('http://') || lower.startsWith('https://');
+    })
+    .slice(0, 2);
+};
+
 const normalizeParcelPayload = (parcel = {}) => ({
   category: String(parcel.category || '').trim(),
   weight: String(parcel.weight || '').trim(),
   description: String(parcel.description || '').trim(),
   deliveryCategory: String(parcel.deliveryCategory || parcel.delivery_category || '').trim().toLowerCase(),
   goodsTypeFor: String(parcel.goodsTypeFor || parcel.goods_type_for || '').trim(),
+  photos: normalizeParcelPhotos(parcel.photos),
+  // The captain fills these in later, through the parcel-photos route.
+  // Never taken from the booking payload: a sender must not be able to
+  // supply the proof that the parcel was collected in good condition.
+  pickupPhotos: [],
+  deliveryPhotos: [],
   deliveryScope: String(parcel.deliveryScope || (parcel.isOutstation ? 'outstation' : 'city')).trim().toLowerCase() === 'outstation'
     ? 'outstation'
     : 'city',
@@ -941,7 +966,7 @@ export const quoteRideFares = async ({
   const dropPoint = normalizePoint(dropCoords, 'dropCoords');
   const surgeZone = await findSurgeZoneForPickup({ pickupPoint, serviceLocationId, transportType });
   // Measured exactly as createRideRecord measures it.
-  const trip = measureTrip({ pickup: pickupPoint, drop: dropPoint, stops });
+  const trip = await measureTripRoad({ pickup: pickupPoint, drop: dropPoint, stops });
   const distanceMeters = trip ? trip.distanceMeters : 0;
   const durationMinutes = trip ? trip.durationMinutes : 0;
 
@@ -962,7 +987,18 @@ export const quoteRideFares = async ({
       ? Math.max(0, Number(pricingRule?.ride_surge_amount || 0))
       : 0;
     const fare = computeRideFare({ pricingRule, transportType, distanceMeters, durationMinutes, surgeAmount });
-    return { vehicleTypeId, available: Boolean(fare), fare };
+    // The measured trip travels with the quote so the app can SHOW the same
+    // distance it is being charged for. Without it the app displayed its own
+    // straight-line figure beside a road-distance fare -- two numbers for one
+    // journey, and the smaller one on screen.
+    return {
+      vehicleTypeId,
+      available: Boolean(fare),
+      fare,
+      measuredDistanceMeters: distanceMeters,
+      measuredDurationMinutes: durationMinutes,
+      distanceSource: trip ? (trip.source || 'straight_line') : 'unknown',
+    };
   }));
 };
 
@@ -1063,7 +1099,7 @@ export const createRideRecord = async ({
    * any trip. Measured the way the app measures it (common/tripMeasure.js), so
    * an honest booking is priced exactly as before.
    */
-  const measuredTrip = measureTrip({ pickup: pickupCoords, drop: dropCoords, stops });
+  const measuredTrip = await measureTripRoad({ pickup: pickupCoords, drop: dropCoords, stops });
   const safeEstimatedDistanceMeters = measuredTrip ? measuredTrip.distanceMeters : 0;
   const safeEstimatedDurationMinutes = measuredTrip ? measuredTrip.durationMinutes : 0;
   const clientFare = Number(fare);

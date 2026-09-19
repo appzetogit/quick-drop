@@ -146,6 +146,24 @@ const vehicleSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    /**
+     * The home-screen modules that offer this vehicle type.
+     *
+     * Ids of TaxiAppModule documents — Bike Taxi, Car Taxi, Bike Parcel and
+     * so on — so the set is whatever the admin has created rather than a
+     * list frozen in code.
+     *
+     * EMPTY MEANS EVERY MODULE. Every vehicle type that predates this field
+     * has none, and must go on being offered everywhere it is offered today;
+     * treating empty as "no modules" would empty the booking screen for the
+     * whole platform the moment this shipped.
+     */
+    app_modules: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: 'TaxiAppModule',
+      default: [],
+      index: true,
+    },
     supported_other_vehicle_types: {
       type: [ObjectId],
       ref: 'TaxiVehicle',

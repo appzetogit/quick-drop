@@ -8,7 +8,9 @@ import {
     createOrderEmergencyRequestController,
     getOrderEmergencyRequestController
 } from '../controllers/orderEmergencyRequest.controller.js';
-import { registerDeliveryPartnerController, updateDeliveryPartnerProfileController, updateDeliveryPartnerBankDetailsController, listSupportTicketsController, createSupportTicketController, getSupportTicketByIdController, updateDeliveryPartnerDetailsController, updateDeliveryPartnerProfilePhotoBase64Controller, updateAvailabilityController, getWalletController, createWithdrawalRequestController, createCashDepositOrderController, verifyCashDepositPaymentController, getEarningsController, getTripHistoryController, getPocketDetailsController, getEmergencyHelpController, getCashLimitController, getDeliveryReferralStatsController, getActiveEarningAddonsController, deleteDeliveryPartnerAccountController } from '../controllers/delivery.controller.js';
+import { onboardingOptionsController,
+    onboardingRequirementsController,
+    registerDeliveryPartnerController, updateDeliveryPartnerProfileController, updateDeliveryPartnerBankDetailsController, listSupportTicketsController, createSupportTicketController, getSupportTicketByIdController, updateDeliveryPartnerDetailsController, updateDeliveryPartnerProfilePhotoBase64Controller, updateAvailabilityController, getWalletController, createWithdrawalRequestController, createCashDepositOrderController, verifyCashDepositPaymentController, getEarningsController, getTripHistoryController, getPocketDetailsController, getEmergencyHelpController, getCashLimitController, getDeliveryReferralStatsController, getActiveEarningAddonsController, deleteDeliveryPartnerAccountController } from '../controllers/delivery.controller.js';
 
 const router = express.Router();
 
@@ -20,7 +22,32 @@ const uploadFields = upload.fields([
     { name: 'upiQrCode', maxCount: 1 }
 ]);
 
-router.post('/register', uploadFields, registerDeliveryPartnerController);
+// Read before the form is filled in, by someone who has no account yet —
+// the same reason /register itself is open.
+router.get('/onboarding/options', onboardingOptionsController);
+router.get('/onboarding/requirements', onboardingRequirementsController);
+/**
+ * Regroups an `any()` upload back into the shape `fields()` produces.
+ *
+ * Registration has to accept file fields nobody can name in advance --
+ * the admin invents them when they add a document -- and multer refuses
+ * an unnamed field. `any()` takes everything but hands back an ARRAY,
+ * which every existing reader of `files.profilePhoto[0]` would break on.
+ * This puts it back.
+ */
+const groupUploadedFiles = (req, _res, next) => {
+    if (Array.isArray(req.files)) {
+        const grouped = {};
+        for (const file of req.files) {
+            if (!grouped[file.fieldname]) grouped[file.fieldname] = [];
+            grouped[file.fieldname].push(file);
+        }
+        req.files = grouped;
+    }
+    next();
+};
+
+router.post('/register', upload.any(), groupUploadedFiles, registerDeliveryPartnerController);
 
 /**
  * Public: is this vehicle number free to register?

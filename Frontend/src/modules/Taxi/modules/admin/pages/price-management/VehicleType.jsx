@@ -129,6 +129,10 @@ const defaultFormData = {
   status: 1,
   active: true,
   supported_other_vehicle_types: [],
+  // Empty = offered under every module. Never default this to "all module
+  // ids": an admin who adds a module later would then have to revisit every
+  // vehicle to include it.
+  app_modules: [],
   vehicle_preference: [],
 };
 
@@ -261,6 +265,9 @@ const VehicleType = ({ mode: propMode }) => {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [pagination, setPagination] = useState({ total: 0, current_page: 1 });
+  // The modules an admin has actually created, not a hardcoded list, so a
+  // new module appears here the moment it exists.
+  const [appModules, setAppModules] = useState([]);
   const [errorMessage, setErrorMessage] = useState('');
   const [formData, setFormData] = useState({ ...defaultFormData, transport_type: '' });
   const { transportTypes } = useTaxiTransportTypes();
@@ -332,6 +339,9 @@ const VehicleType = ({ mode: propMode }) => {
               delivery_distance_pricing: normalizeDeliveryDistancePricing(selectedVehicle.delivery_distance_pricing),
               status: Number(selectedVehicle.status ?? (selectedVehicle.active !== false ? 1 : 0)),
               active: selectedVehicle.active !== false && Number(selectedVehicle.status ?? 1) !== 0,
+              app_modules: Array.isArray(selectedVehicle.app_modules)
+                ? selectedVehicle.app_modules.map((item) => String(item?._id || item))
+                : [],
               supported_other_vehicle_types: Array.isArray(selectedVehicle.supported_other_vehicle_types)
                 ? selectedVehicle.supported_other_vehicle_types.map((item) => String(item?._id || item))
                 : typeof selectedVehicle.supported_vehicles === 'string' && selectedVehicle.supported_vehicles
@@ -376,6 +386,35 @@ const VehicleType = ({ mode: propMode }) => {
     }
     return iconMap[formData.icon_types] || CarIcon;
   }, [formData.icon_types, formData.map_icon]);
+
+  // The modules an admin has actually created, so a new one appears in the
+  // picker the moment it exists rather than needing a code change.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get('/admin/common/app-modules', { params: { per_page: 100 } })
+      .then((response) => {
+        if (cancelled) return;
+        const payload = unwrap(response);
+        const rows = Array.isArray(payload?.results)
+          ? payload.results
+          : Array.isArray(payload)
+            ? payload
+            : [];
+        setAppModules(
+          rows.map((row) => ({
+            id: String(row._id || row.id),
+            name: row.name || 'Module',
+          })),
+        );
+      })
+      // A module list that fails to load must not block saving a vehicle:
+      // the picker stays empty, which means "every module".
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const availableSupportVehicles = useMemo(
     () => vehicles.filter((item) => String(item.id) !== String(id)),
@@ -444,6 +483,7 @@ const VehicleType = ({ mode: propMode }) => {
             },
         status: formData.active ? 1 : 0,
         active: formData.active,
+        app_modules: sanitizeObjectIdList(formData.app_modules),
         supported_other_vehicle_types: sanitizeObjectIdList(formData.supported_other_vehicle_types),
         vehicle_preference: sanitizeObjectIdList(formData.vehicle_preference),
       };
@@ -985,6 +1025,21 @@ const VehicleType = ({ mode: propMode }) => {
               className={inputClass}
               placeholder="Parcel Delivery"
             />
+          </div>
+
+          <div className="lg:col-span-2">
+            <VehicleMultiSelect
+              label="App Modules"
+              options={appModules}
+              value={formData.app_modules}
+              onChange={(next) => updateForm('app_modules', next)}
+              placeholder="Offered under every module"
+            />
+            <p className="mt-1.5 text-xs text-slate-500">
+              Which home-screen modules offer this vehicle. Pick none to offer
+              it under all of them — so Bike Taxi can show only Scooty,
+              Motorcycle and EV Scooty.
+            </p>
           </div>
 
           <div className="lg:col-span-2">

@@ -17,6 +17,7 @@ import {
   submitRideReview,
   updateRideBidCeiling,
   updateRideStatus,
+  addParcelPhotos,
   verifyRazorpayRideCompletion,
   verifyRazorpayRideTip,
   validateLocation,
@@ -41,6 +42,7 @@ rideRouter.patch('/:rideId/bids/ceiling', authenticate(['user']), asyncHandler(u
 rideRouter.post('/:rideId/bids/:bidId/accept', authenticate(['user']), asyncHandler(acceptRideBid));
 rideRouter.get('/:rideId', authenticateOrResolveUser(['user', 'driver']), asyncHandler(getRideById));
 rideRouter.patch('/:rideId/status', authenticate(['driver']), asyncHandler(updateRideStatus));
+rideRouter.post('/:rideId/parcel-photos', authenticate(['driver']), asyncHandler(addParcelPhotos));
 rideRouter.post('/:rideId/complete-payment/razorpay/order', authenticate(['user']), asyncHandler(createRazorpayRideCompletionOrder));
 rideRouter.post('/:rideId/complete-payment/razorpay/verify', authenticate(['user']), asyncHandler(verifyRazorpayRideCompletion));
 rideRouter.post('/:rideId/complete-payment/wallet', authenticate(['user']), asyncHandler(payRideCompletionWithWallet));
