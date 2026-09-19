@@ -20,6 +20,16 @@ const deliveryRegisterSchema = z.object({
     address: z.string().optional(),
     city: z.string().optional(),
     state: z.string().optional(),
+    // What the partner answered to "what do you have?". zod strips unnamed
+    // keys, so without these the answer would arrive and vanish.
+    driverClass: z
+        .enum(['two_wheeler', 'passenger_taxi', 'parcel_vehicle'])
+        .optional()
+        .or(z.literal('')),
+    // Sent as an array, or comma-separated when it comes through multipart.
+    serviceIntents: z
+        .union([z.array(z.string()), z.string()])
+        .optional(),
     vehicleType: z.string().optional(),
     vehicleName: z.string().optional(),
     vehicleNumber: z.string().optional(),
@@ -43,12 +53,29 @@ const deliveryRegisterSchema = z.object({
     platform: z.enum(['web', 'mobile']).optional().default('web')
 });
 
+/**
+ * The text that belongs to an admin-defined document.
+ *
+ * `docnum_<key>` is the number on it, `docname_<key>` the label the app
+ * showed. Both are keyed by a catalogue entry that did not exist when this
+ * schema was written, which is exactly why they are matched by prefix.
+ */
+const carriedDocumentFields = (body = {}) => {
+    const out = {};
+    for (const [key, value] of Object.entries(body || {})) {
+        if (/^(docnum_|docname_)/.test(key)) {
+            out[key] = String(value ?? '').trim().slice(0, 120);
+        }
+    }
+    return out;
+};
+
 export const validateDeliveryRegisterDto = (body) => {
     const result = deliveryRegisterSchema.safeParse(body);
     if (!result.success) {
         throw new ValidationError(result.error.errors[0].message);
     }
-    return result.data;
+    return { ...result.data, ...carriedDocumentFields(body) };
 };
 
 const deliveryProfileUpdateSchema = z.object({

@@ -73,6 +73,23 @@ const driverNeededDocumentSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    /**
+     * Which kinds of driver have to produce this document.
+     *
+     * Empty means everyone, which is what every document in the catalogue
+     * meant before this field existed -- reading "unset" as "nobody" would
+     * empty the upload list on the day it ships.
+     *
+     * A commercial badge belongs on a passenger taxi and nowhere else; a
+     * goods permit belongs on a parcel vehicle. Asking a bike rider for
+     * either is how an onboarding gets abandoned.
+     */
+    applies_to: {
+      type: [String],
+      enum: ['two_wheeler', 'passenger_taxi', 'parcel_vehicle'],
+      default: [],
+      index: true,
+    },
     field_key: {
       type: String,
       default: '',

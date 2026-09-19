@@ -148,8 +148,37 @@ const driverSchema = new mongoose.Schema(
     // being folded into 'delivery'. A driver can hold any combination.
     serviceCapabilities: {
       type: [String],
-      enum: ['taxi', 'delivery', 'quickCommerce'],
+      // 'parcel' is separate from 'taxi' on purpose. Parcel jobs ride the
+      // same dispatcher as passenger trips, so without a capability of its
+      // own a driver who signed up to carry boxes would be offered people.
+      enum: ['taxi', 'delivery', 'quickCommerce', 'parcel'],
       default: ['taxi'],
+    },
+    /**
+     * What the driver said they have, at onboarding: a two wheeler, a taxi
+     * for passengers, or a vehicle for parcels.
+     *
+     * Decides which sub-options they were offered, which vehicle types they
+     * could pick and which documents they had to upload. Kept so the admin
+     * reviewing the application can see what was asked of them.
+     */
+    driverClass: {
+      type: String,
+      enum: ['two_wheeler', 'passenger_taxi', 'parcel_vehicle', ''],
+      default: '',
+      index: true,
+    },
+    /**
+     * The tick-boxes under that choice -- what the driver ASKED to do.
+     *
+     * Deliberately not the same thing as serviceCapabilities, which is what
+     * the admin GRANTED. Keeping the request apart from the grant is what
+     * lets the approval screen show "they asked for food + parcel" next to
+     * the boxes the admin is about to tick.
+     */
+    serviceIntents: {
+      type: [String],
+      default: [],
     },
     /**
      * The in-app toggle: which job streams the driver wants right now.

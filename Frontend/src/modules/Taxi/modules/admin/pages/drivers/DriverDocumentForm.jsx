@@ -9,8 +9,23 @@ const labelClass = 'block text-xs font-semibold text-gray-500 mb-1.5';
 const selectPlaceholderClass = 'text-gray-400';
 const customVehicleFieldSentinel = '__custom__';
 
+/**
+ * The three answers a driver can give to "what do you have?".
+ *
+ * Mirrors taxi/shared/driverClasses.js, which is where the rule lives. The
+ * panel only needs the labels.
+ */
+const driverClassOptions = [
+  { value: 'two_wheeler', label: 'Apply in 2 wheeler' },
+  { value: 'passenger_taxi', label: 'Taxi for passenger delivery' },
+  { value: 'parcel_vehicle', label: 'Parcel delivery vehicle' },
+];
+
 const initialDocumentForm = {
   name: '',
+  // Empty = every driver, which is what the catalogue meant before this
+  // field existed.
+  applies_to: [],
   account_type: '',
   has_expiry_date: '',
   image_type: '',
@@ -110,6 +125,7 @@ const fromDocumentResponse = (payload = {}) => ({
   identify_number_key: payload.identify_number_key || '',
   is_editable: normalizeBooleanLike(payload.is_editable, false),
   is_required: normalizeBooleanLike(payload.is_required, false),
+  applies_to: Array.isArray(payload.applies_to) ? payload.applies_to : [],
   active: normalizeBooleanLike(payload.active, true),
 });
 
@@ -276,6 +292,7 @@ const DriverDocumentForm = () => {
             documentForm.has_identify_number === '1' ? String(documentForm.identify_number_key || '').trim() : '',
           is_editable: Boolean(documentForm.is_editable),
           is_required: Boolean(documentForm.is_required),
+          applies_to: Array.isArray(documentForm.applies_to) ? documentForm.applies_to : [],
           active: Boolean(documentForm.active),
         };
 
@@ -648,6 +665,34 @@ const DriverDocumentForm = () => {
             ) : (
               <div />
             )}
+
+            <div className="md:col-span-2 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+              <p className="text-xs font-semibold text-gray-500 mb-3">Who has to produce this?</p>
+              <div className="flex flex-wrap gap-6">
+                {driverClassOptions.map((option) => (
+                  <label key={option.value} className="flex items-center gap-3 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={(documentForm.applies_to || []).includes(option.value)}
+                      onChange={(event) => {
+                        const current = documentForm.applies_to || [];
+                        handleDocumentChange(
+                          'applies_to',
+                          event.target.checked
+                            ? [...current, option.value]
+                            : current.filter((item) => item !== option.value),
+                        );
+                      }}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-gray-500">
+                Leave all three clear to ask every driver for it. Tick one or more to ask only those
+                drivers — a commercial badge belongs on a passenger taxi, not on a bike.
+              </p>
+            </div>
 
             <div className="md:col-span-2 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
               <div className="flex flex-wrap gap-6">

@@ -645,9 +645,47 @@ export const getVehicleTypes = asyncHandler(async (req, res) =>
 export const getVehicleTypeCatalog = asyncHandler(async (_req, res) =>
   ok(res, await adminService.listVehicleCatalog()),
 );
-export const getPublicVehicleTypeCatalog = asyncHandler(async (_req, res) =>
-  ok(res, await adminService.listPublicVehicleCatalog()),
-);
+/**
+ * `?appModuleId=` narrows the catalogue to the module the customer is
+ * booking from. Omitted, it returns everything, which is what every
+ * existing caller gets.
+ */
+/**
+ * The zone a catalogue request is for.
+ *
+ * An explicit zoneId wins. Otherwise the pickup coordinates are matched
+ * against the zone polygons -- the same lookup dispatch uses, so the vehicles
+ * a rider is shown are the ones that zone can actually price and dispatch.
+ *
+ * Returns null when there is no location to go on, or the point falls outside
+ * every zone. The caller then filters nothing.
+ */
+const resolveCatalogZoneId = async (query = {}) => {
+  const explicit = String(query.zoneId || '').trim();
+  if (explicit) return explicit;
+
+  const lat = Number(query.lat);
+  const lng = Number(query.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  try {
+    const { findZoneByPickup } = await import('../../services/matchingService.js');
+    const zone = await findZoneByPickup([lng, lat]);
+    return zone?._id ? String(zone._id) : null;
+  } catch {
+    // A zone lookup that fails must not fail the catalogue: the rider gets
+    // the full list rather than an error.
+    return null;
+  }
+};
+
+export const getPublicVehicleTypeCatalog = asyncHandler(async (req, res) => {
+  const zoneId = await resolveCatalogZoneId(req.query || {});
+  return ok(
+    res,
+    await adminService.listPublicVehicleCatalog(req.query?.appModuleId || null, { zoneId }),
+  );
+});
 export const getPublicRentalVehicleCatalog = asyncHandler(async (_req, res) =>
   ok(res, { results: await adminService.listPublicRentalVehicleCatalog() }),
 );

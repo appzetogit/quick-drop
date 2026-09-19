@@ -235,12 +235,15 @@ export async function syncDeliveryApproval(driver) {
  * capability in all three matchers -- food, quick-commerce and taxi -- so this
  * is purely about who sets it, not about adding enforcement.
  */
-export const SERVICE_CAPABILITIES = Object.freeze(['taxi', 'delivery', 'quickCommerce']);
+// Ordered widest-first; the order is what two admins ticking the same boxes
+// store, so it must stay stable.
+export const SERVICE_CAPABILITIES = Object.freeze(['taxi', 'delivery', 'quickCommerce', 'parcel']);
 
 export const CAPABILITY_LABELS = Object.freeze({
     delivery: 'Food delivery',
     quickCommerce: 'Quick Commerce',
     taxi: 'Taxi',
+    parcel: 'Parcel & Porter',
 });
 
 /**
@@ -287,7 +290,10 @@ export function normalizeCapabilities(input) {
  */
 export function coerceWorkMode(currentMode, capabilities) {
     const caps = new Set(capabilities);
-    const canTaxi = caps.has('taxi');
+    // Parcel jobs are dispatched by the ride dispatcher, so the mode that
+    // receives them is 'taxi'. A driver holding only 'parcel' was coerced
+    // to 'delivery' and then sat online being offered nothing at all.
+    const canTaxi = caps.has('taxi') || caps.has('parcel');
     const canDeliver = caps.has('delivery') || caps.has('quickCommerce');
     const mode = String(currentMode || 'all');
 

@@ -17,6 +17,15 @@
  * trip, so an invented stop raises the fare, never lowers it.
  */
 
+import { resolveDeliveryDistanceKm } from '../../food/orders/services/deliveryDistance.service.js';
+
+/**
+ * `road` (default) measures along roads; `straight` restores the old
+ * crow-flies behaviour without a deploy, should the routing bill or a
+ * provider outage make that necessary.
+ */
+const TAXI_DISTANCE_SOURCE = String(process.env.TAXI_DISTANCE_SOURCE || 'road').toLowerCase();
+
 export const FARE_SPEED_KMPH = 25;
 export const MAX_STOPS = 5;
 
@@ -74,5 +83,61 @@ export function measureTrip({ pickup, drop, stops = [] } = {}) {
         distanceMeters,
         durationMinutes: (distanceMeters / 1000 / FARE_SPEED_KMPH) * 60,
         stopCount: points.length - 2,
+    };
+}
+
+/**
+ * The same trip, measured along roads.
+ *
+ * One routing lookup per leg (pickup -> stop -> ... -> drop), each cached by
+ * the shared resolver, so a repeated quote for the same two points costs
+ * nothing. Any leg the provider cannot route falls back to that leg's
+ * straight line scaled by the resolver's road factor — an estimate, never a
+ * bare crow-flies figure.
+ *
+ * Returns the same shape as [measureTrip] plus `source`, so callers that only
+ * read distanceMeters need no change.
+ */
+export async function measureTripRoad({ pickup, drop, stops = [] } = {}) {
+    const straight = measureTrip({ pickup, drop, stops });
+    if (!straight) return null;
+    if (TAXI_DISTANCE_SOURCE === 'straight') {
+        return { ...straight, source: 'straight_line' };
+    }
+
+    const from = toLatLng(pickup);
+    const to = toLatLng(drop);
+    const points = [from, ...normalizeStops(stops), to];
+
+    let meters = 0;
+    let source = 'road';
+    for (let i = 1; i < points.length; i += 1) {
+        try {
+            const leg = await resolveDeliveryDistanceKm(points[i - 1], points[i]);
+            const km = Number(leg?.km);
+            if (Number.isFinite(km) && km > 0) {
+                meters += km * 1000;
+                if (leg.source !== 'road') source = leg.source;
+                continue;
+            }
+        } catch {
+            // fall through to the straight line for this leg
+        }
+        meters += distanceBetweenMeters(points[i - 1], points[i]);
+        source = 'straight_line_estimated';
+    }
+
+    // A road route is never shorter than the straight line between the same
+    // points. If it came back shorter the lookup is wrong, and the honest
+    // answer is the geometry we can prove.
+    if (meters < straight.distanceMeters) {
+        return { ...straight, source: 'straight_line' };
+    }
+
+    return {
+        distanceMeters: meters,
+        durationMinutes: (meters / 1000 / FARE_SPEED_KMPH) * 60,
+        stopCount: points.length - 2,
+        source,
     };
 }

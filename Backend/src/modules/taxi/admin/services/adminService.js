@@ -79,9 +79,10 @@ import {
 } from './adminAccessService.js';
 
 const PUBLIC_VEHICLE_CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
+// Keyed by module id (or "all"), because the catalogue now differs per
+// module and one shared slot would serve the wrong list.
 let publicVehicleCatalogCache = {
-  expiresAt: 0,
-  value: null,
+  byModule: {},
 };
 
 const deepMerge = (target, source) => {
@@ -1943,6 +1944,32 @@ const serializeDriverVehicleField = (item) => {
   };
 };
 
+/**
+ * Which driver classes a document is demanded of.
+ *
+ * An empty list means everyone, which is what every document meant before
+ * this existed -- so an admin who never opens the boxes changes nothing.
+ * Unknown values are dropped rather than refused: a stale panel build must
+ * not be able to fail a save.
+ */
+const DRIVER_DOCUMENT_CLASSES = ['two_wheeler', 'passenger_taxi', 'parcel_vehicle'];
+
+const normalizeDocumentAppliesTo = (value) => {
+  const raw = Array.isArray(value)
+    ? value
+    : String(value ?? '')
+        .split(',')
+        .map((item) => item.trim());
+
+  const seen = new Set();
+  for (const item of raw) {
+    const key = String(item || '').trim().toLowerCase();
+    if (DRIVER_DOCUMENT_CLASSES.includes(key)) seen.add(key);
+  }
+  // Stable order, so two admins ticking the same boxes store the same array.
+  return DRIVER_DOCUMENT_CLASSES.filter((key) => seen.has(key));
+};
+
 const serializeDriverNeededDocument = (item) => ({
   _id: item._id,
   id: item._id,
@@ -1956,6 +1983,11 @@ const serializeDriverNeededDocument = (item) => ({
   is_editable: Boolean(item.is_editable),
   is_required: Boolean(item.is_required),
   active: item.active !== false,
+  // Which driver classes must produce it. Empty = everyone, which is how
+  // the catalogue behaved before this field existed. Returned so the edit
+  // form can re-tick the boxes -- without it a saved value never came back
+  // and the boxes looked cleared on every reload.
+  applies_to: Array.isArray(item.applies_to) ? item.applies_to : [],
   status: item.active === false ? 'inactive' : 'active',
   createdAt: item.createdAt,
   updatedAt: item.updatedAt,
@@ -5838,6 +5870,12 @@ export const listVehicleCatalog = async () => {
     delivery_category: item.delivery_category || '',
     ride_surge_amount: Number(item.ride_surge_amount || 0),
     delivery_distance_pricing: normalizeDeliveryDistancePricing(item.delivery_distance_pricing),
+    // Sent as an array of id strings so the form can re-tick the boxes.
+    // Without this the saved value never came back and the picker looked
+    // empty again on every refresh.
+    app_modules: Array.isArray(item.app_modules)
+      ? item.app_modules.map((v) => String(v))
+      : [],
     supported_vehicles: Array.isArray(item.supported_other_vehicle_types)
       ? item.supported_other_vehicle_types.map((v) => String(v)).join(',')
       : '',
@@ -5861,17 +5899,75 @@ export const listVehicleCatalog = async () => {
   };
 };
 
-export const listPublicVehicleCatalog = async () => {
-  if (publicVehicleCatalogCache.value && publicVehicleCatalogCache.expiresAt > Date.now()) {
-    return publicVehicleCatalogCache.value;
+/**
+ * The vehicle types a module offers, or the whole catalogue.
+ *
+ * A vehicle with no modules set is offered under all of them, so an
+ * unconfigured platform behaves exactly as it did before this existed.
+ */
+/**
+ * The vehicles an admin has actually priced in one zone.
+ *
+ * Includes rows with no zone of their own, which price the vehicle
+ * everywhere. Returns null when the zone is unknown, meaning "do not filter".
+ */
+const vehicleIdsPricedInZone = async (zoneId) => {
+  if (!zoneId || !mongoose.Types.ObjectId.isValid(String(zoneId))) return null;
+
+  const rows = await SetPrice.find({
+    $or: [
+      { zone_id: new mongoose.Types.ObjectId(String(zoneId)) },
+      { zone_id: null },
+      { zone_id: { $exists: false } },
+    ],
+    // Only a live rule counts. A switched-off price is the admin saying the
+    // vehicle is not on offer, which is exactly what this reads.
+    $and: [
+      { $or: [{ status: 'active' }, { status: { $exists: false } }] },
+      { $or: [{ active: 1 }, { active: true }, { active: { $exists: false } }] },
+    ],
+  })
+    .select('vehicle_type')
+    .lean();
+
+  return new Set(rows.map((row) => String(row.vehicle_type)).filter(Boolean));
+};
+
+export const listPublicVehicleCatalog = async (appModuleId = null, { zoneId = null } = {}) => {
+  // The zone is part of the key: one shared slot would let the first zone
+  // asked answer for every other one, which is the same bug the per-module
+  // key already fixed once.
+  const moduleKey = String(appModuleId || 'all') + '|' + String(zoneId || 'any');
+  // Keyed per module: one shared slot would let the first module asked
+  // answer for every other one.
+  const cached = publicVehicleCatalogCache.byModule?.[moduleKey];
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
   }
 
-  const items = await Vehicle.find()
-    .select('name short_description description transport_type dispatch_type icon_types delivery_category delivery_distance_pricing capacity ride_surge_amount image icon map_icon status active')
+  // Empty app_modules means every module, so a module asks for its own
+  // vehicles OR the ones that belong to all of them.
+  const filter = appModuleId
+    ? {
+        $or: [
+          { app_modules: appModuleId },
+          { app_modules: { $size: 0 } },
+          { app_modules: { $exists: false } },
+        ],
+      }
+    : {};
+
+  const items = await Vehicle.find(filter)
+    .select('name short_description description transport_type dispatch_type icon_types delivery_category delivery_distance_pricing capacity ride_surge_amount image icon map_icon status active app_modules')
     .sort({ createdAt: -1 })
     .lean();
 
-  const results = items.map((item) => ({
+  // Priced in this zone, or not offered in it. Null means the zone could
+  // not be worked out, and then nothing is filtered.
+  const priced = await vehicleIdsPricedInZone(zoneId);
+  const offered = priced ? items.filter((item) => priced.has(String(item._id))) : items;
+
+  const results = offered.map((item) => ({
     id: String(item._id),
     _id: item._id,
     name: item.name || '',
@@ -5888,6 +5984,9 @@ export const listPublicVehicleCatalog = async () => {
     map_icon: item.map_icon || item.icon || item.image || '',
     status: item.status ?? 1,
     active: item.active !== false && Number(item.status ?? 1) !== 0,
+    // Sent so the admin panel can show what is ticked without a second
+    // request, and so a client can explain why a list is short.
+    app_modules: (item.app_modules || []).map(String),
   }));
 
   const payload = {
@@ -5903,9 +6002,12 @@ export const listPublicVehicleCatalog = async () => {
     },
   };
 
-  publicVehicleCatalogCache = {
-    value: payload,
-    expiresAt: Date.now() + PUBLIC_VEHICLE_CATALOG_CACHE_TTL_MS,
+  publicVehicleCatalogCache.byModule = {
+    ...(publicVehicleCatalogCache.byModule || {}),
+    [moduleKey]: {
+      value: payload,
+      expiresAt: Date.now() + PUBLIC_VEHICLE_CATALOG_CACHE_TTL_MS,
+    },
   };
 
   return payload;
@@ -5961,6 +6063,9 @@ export const createVehicleType = async (payload) => {
     map_icon: mapIcon,
     status: Number(payload.status ?? 1) ? 1 : 0,
     active: Number(payload.status ?? 1) === 1,
+    app_modules: Array.isArray(payload.app_modules)
+      ? payload.app_modules.filter(Boolean).map(toObjectId)
+      : [],
     supported_other_vehicle_types: Array.isArray(payload.supported_other_vehicle_types)
       ? payload.supported_other_vehicle_types.filter(Boolean).map(toObjectId)
       : [],
@@ -5969,7 +6074,7 @@ export const createVehicleType = async (payload) => {
       : [],
   });
 
-  publicVehicleCatalogCache = { value: null, expiresAt: 0 };
+  publicVehicleCatalogCache = { byModule: {} };
 
   return vehicle.toObject();
 };
@@ -6035,6 +6140,13 @@ export const updateVehicleType = async (id, payload) => {
     vehicle.status = Number(payload.status) ? 1 : 0;
     vehicle.active = vehicle.status === 1;
   }
+  // An empty array is a real choice here ("offer under every module"), so
+  // only an absent key means leave it alone.
+  if (payload.app_modules !== undefined) {
+    vehicle.app_modules = Array.isArray(payload.app_modules)
+      ? payload.app_modules.filter(Boolean).map(toObjectId)
+      : [];
+  }
   if (payload.supported_other_vehicle_types !== undefined) {
     vehicle.supported_other_vehicle_types = Array.isArray(payload.supported_other_vehicle_types)
       ? payload.supported_other_vehicle_types.filter(Boolean).map(toObjectId)
@@ -6047,7 +6159,7 @@ export const updateVehicleType = async (id, payload) => {
   }
 
   await vehicle.save();
-  publicVehicleCatalogCache = { value: null, expiresAt: 0 };
+  publicVehicleCatalogCache = { byModule: {} };
   return vehicle.toObject();
 };
 
@@ -6056,7 +6168,7 @@ export const deleteVehicleType = async (id) => {
   if (!deleted) {
     throw new ApiError(404, 'Vehicle type not found');
   }
-  publicVehicleCatalogCache = { value: null, expiresAt: 0 };
+  publicVehicleCatalogCache = { byModule: {} };
   return true;
 };
 
@@ -8823,6 +8935,7 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
       is_editable: normalizeBoolean(payload.is_editable),
       is_required: normalizeBoolean(payload.is_required),
       active: payload.active !== undefined ? normalizeBoolean(payload.active) : true,
+      applies_to: normalizeDocumentAppliesTo(payload.applies_to),
       ...keys,
     });
 
@@ -8929,6 +9042,13 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
     item.front_key = keys.front_key;
     item.back_key = keys.back_key;
 
+    // Which classes of driver must produce this. Absent means "not sent,
+    // leave alone"; an empty ARRAY is a real value meaning "everyone", so
+    // clearing all three boxes has to be savable.
+    if (payload.applies_to !== undefined) {
+      item.applies_to = normalizeDocumentAppliesTo(payload.applies_to);
+    }
+
     await item.save();
     return serializeDriverNeededDocument(item.toObject());
   };
@@ -8991,7 +9111,6 @@ export const listOwnerDocumentUploadFields = async ({ activeOnly = true } = {}) 
     if (payload.active !== undefined) {
       item.active = normalizeBoolean(payload.active);
     }
-
     await item.save();
     return serializeOwnerNeededDocument(item.toObject());
   };
