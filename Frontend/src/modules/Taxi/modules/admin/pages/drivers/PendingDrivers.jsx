@@ -19,6 +19,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { adminService } from '../../services/adminService';
+import { adminAPI } from '@food/api';
 
 const ACTION_MENU_WIDTH = 238;
 const ACTION_MENU_GAP = 8;
@@ -36,6 +37,30 @@ const PendingDrivers = () => {
   const [passwordModal, setPasswordModal] = useState({ isOpen: false, driverId: null, password: '', isSubmitting: false });
   const [page, setPage] = useState(1);
   const [paginator, setPaginator] = useState(null);
+  /*
+   * Riders who signed up in the delivery app. They are food delivery partners
+   * until approved -- the unified taxi driver is created on approval (see
+   * ensureUnifiedDriverForPartner) -- so this taxi list never shows them, and an
+   * admin looking here sees "no pending drivers" while one is waiting. Listed
+   * as a pointer to where they are approved, not approved from here: approving
+   * the taxi half alone would leave the food half pending and the rider would
+   * never be offered an order.
+   */
+  const [pendingRiders, setPendingRiders] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    adminAPI
+      .getDeliveryPartnerJoinRequests({ status: 'pending', limit: 50 })
+      .then((res) => {
+        const rows = res?.data?.data?.requests || res?.data?.requests || [];
+        if (!cancelled) setPendingRiders(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const openActionMenu = (driverId, anchorEl) => {
     const rect = anchorEl.getBoundingClientRect();
@@ -248,6 +273,28 @@ const PendingDrivers = () => {
           </button>
         </div>
       </div>
+
+      {pendingRiders.length > 0 && (
+        <div className="mb-6 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 md:flex-row md:items-center md:justify-between">
+          <div className="text-sm text-amber-900">
+            <p className="font-semibold">
+              {pendingRiders.length} delivery rider {pendingRiders.length === 1 ? 'application is' : 'applications are'} waiting for approval
+            </p>
+            <p className="mt-0.5 text-amber-800">
+              {pendingRiders.slice(0, 3).map((r) => r.name || r.phone).filter(Boolean).join(', ')}
+              {pendingRiders.length > 3 ? ` and ${pendingRiders.length - 3} more` : ''} signed up in the delivery app. Approve
+              them under Food &rsaquo; Delivery Partners; they appear here once approved.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/admin/food/delivery-partners/join-request')}
+            className="shrink-0 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
+          >
+            Review rider applications
+          </button>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-4 items-end">
