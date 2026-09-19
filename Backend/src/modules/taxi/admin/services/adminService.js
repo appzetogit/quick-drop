@@ -29,6 +29,8 @@ import { PoolingVehicle } from '../models/PoolingVehicle.js';
 import { RentalVehicleType } from '../models/RentalVehicleType.js';
 import { RentalQuoteRequest } from '../models/RentalQuoteRequest.js';
 import { SetPrice } from '../models/SetPrice.js';
+import { SurgeSlot } from '../models/SurgeSlot.js';
+import { findOverlappingSlot, normalizeSurgeSlot } from '../../common/surgeSlot.js';
 import { ServiceLocation } from '../models/ServiceLocation.js';
 import { ServiceCenterStaff } from '../models/ServiceCenterStaff.js';
 import { ServiceStore } from '../models/ServiceStore.js';
@@ -6425,6 +6427,84 @@ export const deleteSetPrice = async (id, currentAdmin = null) => {
   }
   const deleted = await SetPrice.findByIdAndDelete(id);
   if (!deleted) throw new ApiError(404, 'Set Price not found');
+  return true;
+};
+
+/*
+ * Time-slot surge (models/SurgeSlot.js, common/surgeSlot.js). Gated like Set
+ * Price; a sub-admin sees and edits only slots whose zones are all theirs.
+ */
+const serializeSurgeSlot = (slot) => ({
+  ...slot,
+  id: String(slot._id),
+  zone_ids: (slot.zone_ids || []).map(String),
+  vehicle_type_ids: (slot.vehicle_type_ids || []).map(String),
+  all_vehicles: (slot.vehicle_type_ids || []).length === 0,
+});
+
+const assertSurgeSlotZones = async (currentAdmin, zoneIds = []) => {
+  if (!currentAdmin) return;
+  assertAdminPermission(currentAdmin, 'set_prices.view', 'surge pricing');
+  for (const zoneId of zoneIds) {
+    await assertZoneAccess(currentAdmin, zoneId);
+  }
+};
+
+export const listSurgeSlots = async (currentAdmin = null) => {
+  const query = {};
+  if (currentAdmin) {
+    assertAdminPermission(currentAdmin, 'set_prices.view', 'surge pricing');
+    if (!isSuperAdmin(currentAdmin)) {
+      const scoped = await getScopedZoneIds(currentAdmin);
+      query.zone_ids = { $not: { $elemMatch: { $nin: scoped } } };
+    }
+  }
+  const slots = await SurgeSlot.find(query).sort({ createdAt: -1 }).lean();
+  return slots.map(serializeSurgeSlot);
+};
+
+const saveSurgeSlot = async (id, payload, currentAdmin) => {
+  let slot;
+  try {
+    slot = normalizeSurgeSlot(payload);
+  } catch (error) {
+    throw new ApiError(400, error.message);
+  }
+  if (slot.zone_ids.some((z) => !mongoose.Types.ObjectId.isValid(z))
+    || slot.vehicle_type_ids.some((v) => !mongoose.Types.ObjectId.isValid(v))) {
+    throw new ApiError(400, 'Unknown zone or vehicle');
+  }
+  if (id) {
+    const existing = await SurgeSlot.findById(id).select('zone_ids').lean();
+    if (!existing) throw new ApiError(404, 'Surge slot not found');
+    await assertSurgeSlotZones(currentAdmin, existing.zone_ids);
+  }
+  await assertSurgeSlotZones(currentAdmin, slot.zone_ids);
+
+  const others = await SurgeSlot.find({
+    zone_ids: { $in: slot.zone_ids },
+    active: true,
+    ...(id ? { _id: { $ne: id } } : {}),
+  }).lean();
+  const clash = findOverlappingSlot(slot, others);
+  if (clash) {
+    throw new ApiError(409, `Overlaps "${clash.name || `${clash.start_time}-${clash.end_time}`}" (${clash.percent}%) for the same zone and vehicle`);
+  }
+
+  const saved = id
+    ? await SurgeSlot.findByIdAndUpdate(id, slot, { new: true }).lean()
+    : (await SurgeSlot.create(slot)).toObject();
+  return serializeSurgeSlot(saved);
+};
+
+export const createSurgeSlot = (payload, currentAdmin = null) => saveSurgeSlot(null, payload, currentAdmin);
+export const updateSurgeSlot = (id, payload, currentAdmin = null) => saveSurgeSlot(id, payload, currentAdmin);
+
+export const deleteSurgeSlot = async (id, currentAdmin = null) => {
+  const existing = await SurgeSlot.findById(id).select('zone_ids').lean();
+  if (!existing) throw new ApiError(404, 'Surge slot not found');
+  await assertSurgeSlotZones(currentAdmin, existing.zone_ids);
+  await SurgeSlot.deleteOne({ _id: id });
   return true;
 };
 

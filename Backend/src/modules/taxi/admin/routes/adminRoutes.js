@@ -52,6 +52,10 @@ import {
   deletePoolingRoute,
   deleteRentalVehicleType,
   deleteSetPrice,
+  getSurgeSlots,
+  createSurgeSlot,
+  updateSurgeSlot,
+  deleteSurgeSlot,
   deleteServiceLocation,
   deleteServiceStore,
   deleteUser,
@@ -331,6 +335,10 @@ adminRouter.get('/admin/types/set-prices', getSetPrices);
 adminRouter.post('/admin/types/set-prices', createSetPrice);
 adminRouter.patch('/admin/types/set-prices/:id', updateSetPrice);
 adminRouter.delete('/admin/types/set-prices/:id', deleteSetPrice);
+adminRouter.get('/admin/types/surge-slots', getSurgeSlots);
+adminRouter.post('/admin/types/surge-slots', createSurgeSlot);
+adminRouter.patch('/admin/types/surge-slots/:id', updateSurgeSlot);
+adminRouter.delete('/admin/types/surge-slots/:id', deleteSurgeSlot);
 adminRouter.get('/admin/airports', getAirports);
 adminRouter.post('/admin/airports', createAirport);
 adminRouter.patch('/admin/airports/:id', updateAirport);

@@ -25,6 +25,8 @@ import { applyPromoToRideInTransaction } from './promoService.js';
 import { getTipSettings } from './appSettingsService.js';
 import { getBidRideSettings } from './transportSettingsService.js';
 import { computeRideFare } from '../common/rideFare.js';
+import { pickSurgeSlot, surgeFromPercent } from '../common/surgeSlot.js';
+import { SurgeSlot } from '../admin/models/SurgeSlot.js';
 import { measureTrip } from '../common/tripMeasure.js';
 
 const clearUserActiveRideIfPresent = async (user) => {
@@ -920,6 +922,30 @@ const findSurgeZoneForPickup = async ({ pickupPoint, serviceLocationId = null, t
 };
 
 /**
+ * The surge for one vehicle in the pickup zone. An admin's time slot, while it
+ * runs, is a percentage of the fare and replaces the zone's flat surge; outside
+ * every slot the flat surge applies as before (when the zone has it switched on).
+ */
+const loadZoneSurgeSlots = async (zoneId) =>
+  zoneId ? SurgeSlot.find({ zone_ids: zoneId, active: true }).lean() : [];
+
+export const resolveRideSurge = ({ surgeZone, pricingRule, slots = [], vehicleTypeId, fareBeforeSurge, at = new Date() }) => {
+  const slot = pickSurgeSlot(slots, { zoneId: surgeZone?._id, vehicleTypeId, at });
+  if (slot) {
+    return {
+      amount: surgeFromPercent(fareBeforeSurge, slot.percent),
+      percent: Number(slot.percent),
+      slotId: slot._id || null,
+      slotName: slot.name || `${slot.start_time}-${slot.end_time}`,
+    };
+  }
+  const amount = surgeZone?.ride_surge_enabled
+    ? Math.max(0, Number(pricingRule?.ride_surge_amount || 0))
+    : 0;
+  return { amount, percent: 0, slotId: null, slotName: '' };
+};
+
+/**
  * What the booking screen shows: the fare each ride type would be booked at for
  * this trip. Same zone, same price lookup (borrowing included) and the same
  * calculation as createRideRecord, so the two cannot disagree.
@@ -940,6 +966,7 @@ export const quoteRideFares = async ({
   const pickupPoint = normalizePoint(pickupCoords, 'pickupCoords');
   const dropPoint = normalizePoint(dropCoords, 'dropCoords');
   const surgeZone = await findSurgeZoneForPickup({ pickupPoint, serviceLocationId, transportType });
+  const surgeSlots = await loadZoneSurgeSlots(surgeZone?._id);
   // Measured exactly as createRideRecord measures it.
   const trip = measureTrip({ pickup: pickupPoint, drop: dropPoint, stops });
   const distanceMeters = trip ? trip.distanceMeters : 0;
@@ -958,11 +985,13 @@ export const quoteRideFares = async ({
       transportType,
       vehicleTypeId,
     });
-    const surgeAmount = surgeZone?.ride_surge_enabled
-      ? Math.max(0, Number(pricingRule?.ride_surge_amount || 0))
-      : 0;
-    const fare = computeRideFare({ pricingRule, transportType, distanceMeters, durationMinutes, surgeAmount });
-    return { vehicleTypeId, available: Boolean(fare), fare };
+    const base = computeRideFare({ pricingRule, transportType, distanceMeters, durationMinutes });
+    if (!base) return { vehicleTypeId, available: false, fare: null };
+    const surge = resolveRideSurge({
+      surgeZone, pricingRule, slots: surgeSlots, vehicleTypeId, fareBeforeSurge: base.fareBeforeSurge,
+    });
+    const fare = computeRideFare({ pricingRule, transportType, distanceMeters, durationMinutes, surgeAmount: surge.amount });
+    return { vehicleTypeId, available: true, fare: { ...fare, surgePercent: surge.percent, surgeSlotName: surge.slotName } };
   }));
 };
 
@@ -1190,9 +1219,14 @@ export const createRideRecord = async ({
     : pricingNegotiationMode === 'user_increment_only'
       ? bidRideRange.userBidCeilingFare
       : safeFare;
-  const rideSurgeAmount = Boolean(surgeZone?.ride_surge_enabled)
-    ? Math.max(0, Number(pricingRule?.ride_surge_amount || 0))
-    : 0;
+  const rideSurge = resolveRideSurge({
+    surgeZone,
+    pricingRule,
+    slots: await loadZoneSurgeSlots(surgeZone?._id),
+    vehicleTypeId: primaryVehicleTypeId,
+    fareBeforeSurge: safeFare,
+  });
+  const rideSurgeAmount = rideSurge.amount;
   const effectiveStartingFareWithoutSurge = pricingNegotiationMode === 'user_increment_only'
     ? effectiveUserMaxBidFare
     : safeFare;
@@ -1214,8 +1248,11 @@ export const createRideRecord = async ({
     time_price: normalizedTransportType === 'intercity' && pricingRule?.outstation_time_price !== undefined && pricingRule?.outstation_time_price !== null
       ? Math.max(0, Number(pricingRule.outstation_time_price ?? 0))
       : Math.max(0, Number(pricingRule?.time_price ?? 0)),
-    ride_surge_enabled: Boolean(surgeZone?.ride_surge_enabled) && rideSurgeAmount > 0,
+    ride_surge_enabled: rideSurgeAmount > 0,
     ride_surge_amount: rideSurgeAmount,
+    surge_percent: rideSurge.percent,
+    surge_slot_id: rideSurge.slotId,
+    surge_slot_name: rideSurge.slotName,
     fare_before_surge: effectiveStartingFareWithoutSurge,
     // What the rider agreed to. A promo lowers it below (see the promo branch);
     // an accepted bid replaces it (acceptRideBidAssignment).
@@ -1588,6 +1625,8 @@ export const serializeRideRealtime = (ride) => ({
       fare_before_surge: Number(ride.pricingSnapshot.fare_before_surge ?? 0),
       surge_zone_id: ride.pricingSnapshot.surge_zone_id ? String(ride.pricingSnapshot.surge_zone_id) : null,
       surge_zone_name: ride.pricingSnapshot.surge_zone_name || '',
+      surge_percent: Number(ride.pricingSnapshot.surge_percent ?? 0),
+      surge_slot_name: ride.pricingSnapshot.surge_slot_name || '',
       allowed_payment_methods: normalizeAllowedRidePaymentMethods(ride.pricingSnapshot.allowed_payment_methods),
       user_cancellation_fee_type: ride.pricingSnapshot.user_cancellation_fee_type || 'percentage',
       user_cancellation_fee: Number(ride.pricingSnapshot.user_cancellation_fee ?? 0),

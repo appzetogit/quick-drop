@@ -787,6 +787,19 @@ export const deleteSetPrice = asyncHandler(async (req, res) => {
   await adminService.deleteSetPrice(req.params.id, req.auth?.admin);
   ok(res, { deleted: true });
 });
+export const getSurgeSlots = asyncHandler(async (req, res) =>
+  ok(res, { results: await adminService.listSurgeSlots(req.auth?.admin) }),
+);
+export const createSurgeSlot = asyncHandler(async (req, res) =>
+  ok(res, await adminService.createSurgeSlot(req.body, req.auth?.admin)),
+);
+export const updateSurgeSlot = asyncHandler(async (req, res) =>
+  ok(res, await adminService.updateSurgeSlot(req.params.id, req.body, req.auth?.admin)),
+);
+export const deleteSurgeSlot = asyncHandler(async (req, res) => {
+  await adminService.deleteSurgeSlot(req.params.id, req.auth?.admin);
+  ok(res, { deleted: true });
+});
 
 export const getAirports = asyncHandler(async (req, res) =>
   ok(res, { airports: await adminService.listAirports(req.auth?.admin) }),

@@ -1525,6 +1525,7 @@ function TaxiApp() {
                   path="set-price/surge/:id"
                   element={<AdminSurgePricing />}
                 />
+                <Route path="surge" element={<AdminSurgePricing />} />
                 <Route path="goods-types" element={<AdminGoodsTypes />} />
                 <Route
                   path="goods-types/create"

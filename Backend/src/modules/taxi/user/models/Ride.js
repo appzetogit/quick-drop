@@ -570,6 +570,22 @@ const rideSchema = new mongoose.Schema(
         ref: 'TaxiZone',
         default: null,
       },
+      // Set when an admin's time-slot surge priced the ride (percent of the fare).
+      surge_percent: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+      surge_slot_id: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'TaxiSurgeSlot',
+        default: null,
+      },
+      surge_slot_name: {
+        type: String,
+        default: '',
+        trim: true,
+      },
       surge_zone_name: {
         type: String,
         default: '',
