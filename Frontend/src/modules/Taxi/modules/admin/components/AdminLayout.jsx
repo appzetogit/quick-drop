@@ -55,6 +55,7 @@ import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import quickSpicyLogo from "@food/assets/k9-logo.jpg";
 import { getCachedSettings, loadBusinessSettings, normalizeCompanyName } from "@food/utils/businessSettings";
+import { refreshAdminAccess } from "@food/utils/adminAccess";
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
@@ -671,9 +672,12 @@ const AdminLayout = () => {
     ? businessCompanyName
     : `${businessCompanyName} Taxi`;
   useEffect(() => {
-    const syncAdminProfile = () => setAdminProfile(readAdminProfile());
+    // A fresh object each time: the menu filter also reads the shared access
+    // record (hasAdminPermission), and must re-run when that arrives.
+    const syncAdminProfile = () => setAdminProfile({ ...readAdminProfile() });
     window.addEventListener('storage', syncAdminProfile);
     syncAdminProfile();
+    refreshAdminAccess().then(syncAdminProfile);
     return () => window.removeEventListener('storage', syncAdminProfile);
   }, []);
 

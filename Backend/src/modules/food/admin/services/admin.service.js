@@ -4242,9 +4242,18 @@ export async function getDeliveryPartners(query) {
     const capsById = await getCapabilitiesForPartners(list);
 
     const vehicleNames = await vehicleTypeNamesFor(list.map((doc) => doc.vehicleType));
+    // The list has a Total Orders column that nothing filled, so it read 0 for
+    // every rider. Delivered food orders, one grouped query for the page.
+    const orderCounts = new Map(
+        (await FoodOrder.aggregate([
+            { $match: { 'dispatch.deliveryPartnerId': { $in: list.map((d) => d._id) }, orderStatus: 'delivered' } },
+            { $group: { _id: '$dispatch.deliveryPartnerId', n: { $sum: 1 } } },
+        ])).map((r) => [String(r._id), r.n]),
+    );
     const deliveryPartners = list.map((doc, index) => ({
         _id: doc._id,
         sl: skip + index + 1,
+        totalOrders: orderCounts.get(String(doc._id)) || 0,
         name: doc.name || '',
         email: doc.email || '',
         phone: doc.phone || '',
@@ -5449,6 +5458,22 @@ export async function updateDeliveryWithdrawalStatus(id, { status, adminNote, re
     return withFinanceLock(await riderWithdrawalLockKey(deliveryPartnerId), decide);
 }
 
+/*
+ * The rider's money as the rider app shows it: getRiderFinance, which sums
+ * food, quick commerce and taxi. The admin list read the food wallet
+ * document's cashInHand, which the delivery flow stopped writing when money
+ * moved to the shared ledger -- so riders read Rs 0 here while their app
+ * showed the real figure.
+ */
+export async function unifiedFinanceFor(partnerId) {
+    try {
+        const { getRiderFinance } = await import('../../../../core/finance/riderFinance.service.js');
+        return await getRiderFinance(partnerId);
+    } catch {
+        return null;
+    }
+}
+
 /**
  * Fetch delivery partner wallets with financial summary
  */
@@ -5478,7 +5503,28 @@ export async function getDeliveryWallets(query = {}) {
     const globalLimit = Number(cashLimitSettings?.deliveryCashLimit || 0);
 
     const wallets = await Promise.all(partners.map(async (p) => {
-        const wallet = await FoodDeliveryWallet.findOne({ deliveryPartnerId: p._id }).lean();
+        const [wallet, finance] = await Promise.all([
+            FoodDeliveryWallet.findOne({ deliveryPartnerId: p._id }).lean(),
+            unifiedFinanceFor(p._id),
+        ]);
+        if (finance) {
+            const d = finance.breakdown?.delivery || {};
+            return {
+                walletId: wallet?._id,
+                deliveryId: p._id,
+                name: p.name,
+                deliveryIdString: p.phone,
+                pocketBalance: finance.walletBalance,
+                cashCollected: finance.cashInHand,
+                cashLimit: finance.cashLimit,
+                remainingCashLimit: finance.availableCashLimit,
+                availableCashLimit: finance.availableCashLimit,
+                totalEarning: Number(d.totalEarned || 0),
+                bonus: Number(d.totalBonus || 0),
+                totalWithdrawn: Number(d.totalWithdrawn || 0),
+                isBlocked: finance.isBlocked,
+            };
+        }
         
         return {
             walletId: wallet?._id,

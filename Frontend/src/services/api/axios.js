@@ -234,6 +234,7 @@ function clearModuleAuth(module) {
     localStorage.removeItem(`${module}_authenticated`);
     localStorage.removeItem(`${module}_user`);
     if (module === "restaurant") localStorage.removeItem(RESTAURANT_VERTICAL_KEY);
+    if (module === "admin") localStorage.removeItem("admin_access");
     if (module === "user") {
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");

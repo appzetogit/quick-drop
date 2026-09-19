@@ -218,6 +218,24 @@ export const appServicesAPI = {
     ),
 };
 
+/**
+ * Admin accounts for every panel (food, quick commerce, medical, taxi). Platform
+ * level, so the same list and the same permissions whichever panel it is opened
+ * from.
+ */
+export const adminAccountsAPI = {
+  me: () => apiClient.get("/platform/admins/me", { contextModule: "admin" }),
+  meta: () => apiClient.get("/platform/admins/meta", { contextModule: "admin" }),
+  list: (params) => apiClient.get("/platform/admins", { params, contextModule: "admin" }),
+  get: (id) => apiClient.get(`/platform/admins/${encodeURIComponent(id)}`, { contextModule: "admin" }),
+  create: (data) => apiClient.post("/platform/admins", data, { contextModule: "admin" }),
+  update: (id, data) =>
+    apiClient.patch(`/platform/admins/${encodeURIComponent(id)}`, data, { contextModule: "admin" }),
+  setStatus: (id, isActive) =>
+    apiClient.patch(`/platform/admins/${encodeURIComponent(id)}/status`, { isActive }, { contextModule: "admin" }),
+  remove: (id) => apiClient.delete(`/platform/admins/${encodeURIComponent(id)}`, { contextModule: "admin" }),
+};
+
 export const adminAPI = {
   getFoodAssignableZones: () =>
     apiClient.get("/food/admin/admin-management/assignable-zones", { contextModule: "admin" }),

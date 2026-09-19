@@ -38,6 +38,8 @@ import qcRouter from '../modules/quickCommerce/routes/index.js';
 import platformModuleRoutes from '../core/modules/module.routes.js';
 import platformSettingRoutes from '../core/config/config.routes.js';
 import appServicesRoutes from '../core/appServices/appServices.routes.js';
+import platformAdminRoutes from '../core/admin/platformAdmins.routes.js';
+import { refuseRestrictedAdminWrites } from '../core/admin/enforceAdminAccess.middleware.js';
 import { requireModuleEnabled } from '../middleware/moduleEnabled.js';
 import { MODULES } from '../core/modules/moduleRegistry.js';
 
@@ -98,7 +100,7 @@ router.use('/v1/platform/modules', platformModuleRoutes);
  * Authenticated admins only. Writes additionally require `settings.write`,
  * enforced inside the router.
  */
-router.use('/v1/platform/settings', authMiddleware, requireRoles('ADMIN'), platformSettingRoutes);
+router.use('/v1/platform/settings', authMiddleware, requireRoles('ADMIN'), refuseRestrictedAdminWrites, platformSettingRoutes);
 
 /*
  * Which services the customer app shows, platform-wide and per zone. The read
@@ -106,6 +108,8 @@ router.use('/v1/platform/settings', authMiddleware, requireRoles('ADMIN'), platf
  * the router. See core/appServices.
  */
 router.use('/v1/platform/app-services', appServicesRoutes);
+// Admin accounts for every panel (food, quick commerce, medical, taxi).
+router.use('/v1/platform/admins', platformAdminRoutes);
 
 router.get('/v1/health', (req, res) => {
     res.status(200).json({ status: 'UP', message: 'Server is healthy' });

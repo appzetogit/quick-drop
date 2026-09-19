@@ -220,6 +220,8 @@ import {
   uploadImage,
 } from '../controllers/poolingController.js';
 import { promotionsRouter } from '../promotions/routes/index.js';
+import { enforceAdminAccess } from '../../../../core/admin/enforceAdminAccess.middleware.js';
+import { resolveTaxiAdminResource } from '../../../../core/admin/adminAccessPolicy.js';
 import { listSafetyAlerts, resolveSafetyAlert } from '../../safety/controllers/safetyController.js';
 
 export const adminRouter = Router();
@@ -236,6 +238,9 @@ adminRouter.get('/admin/service-locations/nearby', getNearbyServiceLocations);
 adminRouter.get('/admin/notification-channels', getNotificationChannels);
 adminRouter.get('/admin/zones', getZones);
 adminRouter.use('/admin', authenticate(['admin']), requireServiceAccess('taxi'));
+// The shared sub-admin permissions (core/admin/adminAccessPolicy.js). Taxi's own
+// list was stored but only the admin-management screen ever checked it.
+adminRouter.use('/admin', enforceAdminAccess('taxi', resolveTaxiAdminResource, { prefix: '/admin' }));
 
 adminRouter.get('/admin/permissions', getAdminPermissions);
 adminRouter.get('/admin/admin-management/admins', getAdmins);

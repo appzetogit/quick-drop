@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { Outlet, useLocation } from "react-router-dom"
 import AdminSidebar from "./AdminSidebar"
 import AdminNavbar from "./AdminNavbar"
+import AdminPageGate from "./AdminPageGate"
 import { API_BASE_URL } from "@food/api/config"
 import { ContentPageSkeleton } from "@food/components/ui/loading-skeletons"
 
@@ -84,7 +85,9 @@ export default function AdminLayout() {
                 <ContentPageSkeleton hero={false} className="bg-transparent dark:bg-transparent min-h-0" />
              </div>
           ) : (
-             <Outlet />
+             <AdminPageGate>
+               <Outlet />
+             </AdminPageGate>
           )}
         </main>
       </div>

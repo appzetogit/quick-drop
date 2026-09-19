@@ -163,6 +163,7 @@ const clearStaleAuthState = (role = '', staleToken = '') => {
     }
     localStorage.removeItem('admin_refreshToken');
     localStorage.removeItem('admin_user');
+    localStorage.removeItem('admin_access');
     if (!staleToken || localStorage.getItem('adminToken') === staleToken) {
       localStorage.removeItem('adminToken');
     }

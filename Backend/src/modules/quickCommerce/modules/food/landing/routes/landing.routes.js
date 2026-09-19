@@ -2,6 +2,7 @@ import express from 'express';
 import { upload } from '../../../../middleware/upload.js';
 import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
 import { requireRoles } from '../../../../../../core/roles/role.middleware.js';
+import { enforceAdminAccess } from '../../../../../../core/admin/enforceAdminAccess.middleware.js';
 import {
     listHeroBannersController,
     uploadHeroBannersController,
@@ -91,6 +92,8 @@ const router = express.Router();
  */
 const LANDING_MANAGED_PREFIXES = [/^\/hero-banners/, /^\/top-banners/];
 
+const bannerAccess = enforceAdminAccess('quickCommerce', () => 'cms');
+
 const requireAdminForLandingWrites = (req, res, next) => {
     if (req.method === 'OPTIONS') return next();
     const path = req.path || '';
@@ -102,7 +105,11 @@ const requireAdminForLandingWrites = (req, res, next) => {
 
     return authMiddleware(req, res, (err) => {
         if (err) return next(err);
-        return requireRoles('ADMIN')(req, res, next);
+        return requireRoles('ADMIN')(req, res, (roleErr) => {
+            if (roleErr) return next(roleErr);
+            // Sub-admins need "Banners & pages" (core/admin/adminAccessPolicy.js).
+            return bannerAccess(req, res, next);
+        });
     });
 };
 

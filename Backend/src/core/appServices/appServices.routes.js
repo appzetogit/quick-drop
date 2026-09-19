@@ -2,6 +2,7 @@ import express from 'express';
 import { authMiddleware } from '../auth/auth.middleware.js';
 import { requireRoles } from '../roles/role.middleware.js';
 import { requireFinancePermission } from '../admin/requireFinancePermission.middleware.js';
+import { refuseRestrictedAdminWrites } from '../admin/enforceAdminAccess.middleware.js';
 import { sendResponse, sendError } from '../../utils/response.js';
 import {
     resolveAppServicesAt,
@@ -44,7 +45,7 @@ router.get('/', async (req, res) => {
 });
 
 const admin = express.Router();
-admin.use(authMiddleware, requireRoles('ADMIN'));
+admin.use(authMiddleware, requireRoles('ADMIN'), refuseRestrictedAdminWrites);
 
 admin.get('/', async (_req, res) => {
     try {

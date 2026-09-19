@@ -54,7 +54,9 @@ const hydrateAdmin = async (req) => {
     if (!platform) return null;
 
     const access = Array.isArray(platform.servicesAccess) ? platform.servicesAccess : [];
-    if (access.length > 0 && !access.includes('quickCommerce')) return null;
+    // Medical is served by this API too; which sections a platform sub-admin may
+    // open here is decided earlier, by enforceAdminAccess.
+    if (access.length > 0 && !access.includes('quickCommerce') && !access.includes('medical')) return null;
 
     const bridged = {
         // Full QC access for admitted platform admins. Per-section QC permissions only

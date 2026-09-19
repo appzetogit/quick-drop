@@ -322,8 +322,9 @@ const AdminLanguages = lazy(() => import('./modules/admin/pages/masters/Language
 const AdminPreferences = lazy(() => import('./modules/admin/pages/masters/Preferences'));
 
 // Admin Management
-const AdminAdmins = lazy(() => import('./modules/admin/pages/management/Admins'));
-const AdminAdminCreate = lazy(() => import('./modules/admin/pages/management/AdminCreate'));
+// The same admin-accounts screen as the other panels: one account, any panels.
+const AdminAdmins = lazy(() => import('@food/pages/admin/management/AdminAccounts'));
+const AdminAdminCreate = AdminAdmins;
 
 const AdminReportPlaceholder = ({ title }) => (
   <div className="flex flex-col items-center justify-center min-h-[500px] text-gray-400 bg-white rounded-[32px] border border-gray-100 shadow-sm p-10 mx-6">

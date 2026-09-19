@@ -44,7 +44,62 @@ export const ADMIN_PERMISSION_GROUPS = [
 
 export const ALL_ADMIN_PERMISSIONS = ADMIN_PERMISSION_GROUPS.flatMap((group) => group.items.map((item) => item.key));
 
+/*
+ * Taxi's menu keys, mapped onto the permissions every admin panel shares (see
+ * Backend core/admin/adminAccessPolicy.js). Accounts are managed in one place
+ * now, so a sub-admin given "Riders & drivers" there must see Drivers here.
+ */
+const SHARED_RESOURCE = {
+  'dashboard.view': 'dashboard',
+  'earnings.view': 'reports',
+  'reports.view': 'reports',
+  'chat.view': 'support',
+  'support.view': 'support',
+  'promotions.view': 'promotions',
+  'referrals.view': 'referrals',
+  'subadmins.manage': 'subadmins',
+  'users.view': 'customers',
+  'wallet.view': 'wallet',
+  'drivers.view': 'delivery',
+  'owners.view': 'fleet',
+  'service_locations.view': 'zones',
+  'zones.view': 'zones',
+  'airports.view': 'zones',
+  'geofencing.view': 'zones',
+  'service_stores.view': 'fleet',
+  'vehicle_types.view': 'fleet',
+  'rental.view': 'fleet',
+  'goods_types.view': 'fleet',
+  'bus_service.view': 'fleet',
+  'pooling.view': 'fleet',
+  'set_prices.view': 'fee_settings',
+  'trips.view': 'orders',
+  'deliveries.view': 'orders',
+  'ongoing.view': 'orders',
+  'settings.view': 'settings',
+};
+
+/** The access record the admin panels fetch from /platform/admins/me, if present. */
+const readSharedAccess = () => {
+  try {
+    const raw = localStorage.getItem('admin_access');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
 export const hasAdminPermission = (adminInfo = {}, permission) => {
+  const shared = readSharedAccess();
+  if (shared) {
+    if (shared.isSuperAdmin !== false) return true;
+    const perms = Array.isArray(shared.permissions) ? shared.permissions : [];
+    if (perms.includes('*')) return true;
+    const resource = SHARED_RESOURCE[permission];
+    if (resource && (perms.includes(`${resource}.read`) || perms.includes(`${resource}.write`))) return true;
+    return perms.includes(permission);
+  }
+
   const type = String(adminInfo?.admin_type || adminInfo?.role || '').toLowerCase();
   
   const isSuper = 

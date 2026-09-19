@@ -28,6 +28,8 @@ import * as restaurantAppBanner from '../controllers/restaurantAppBanner.control
 
 // Master's, not a fork's: one permission model, or the fork is a way around it.
 import { requireFinancePermission } from '../../../../../../core/admin/requireFinancePermission.middleware.js';
+import { enforceAdminAccess } from '../../../../../../core/admin/enforceAdminAccess.middleware.js';
+import { resolveStoreAdminResource } from '../../../../../../core/admin/adminAccessPolicy.js';
 
 const router = express.Router();
 
@@ -48,6 +50,10 @@ const requireAdmin = (req, _res, next) => {
 };
 
 router.use(requireAdmin);
+// Platform admins (the `admins` collection) are checked here against the shared
+// permissions, covering the Quick Commerce and the Medical panel alike. Before
+// this, hydrateAdmin below admitted every one of them as a QC superadmin.
+router.use(enforceAdminAccess('quickCommerce', resolveStoreAdminResource));
 router.use(async (req, _res, next) => {
     try {
         const admin = await FoodAdmin.findById(req.user?.userId)

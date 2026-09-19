@@ -150,6 +150,8 @@ export function clearModuleAuth(module) {
   localStorage.removeItem(`${module}_refreshToken`);
   localStorage.removeItem(`${module}_authenticated`);
   localStorage.removeItem(`${module}_user`);
+  // What the admin may open is per account: never carry it into the next sign-in.
+  if (module === "admin") localStorage.removeItem("admin_access");
   // Clear cached FCM web token for this module
   localStorage.removeItem(`fcm_web_registered_token_${module}`);
   if (module === "restaurant") {
@@ -249,6 +251,9 @@ export function setAuthData(module, token, user, refreshToken = null) {
     const refreshTokenKey = `${module}_refreshToken`;
     const authKey = `${module}_authenticated`;
     const userKey = `${module}_user`;
+
+    // A new admin sign-in may be a different account with different access.
+    if (module === "admin") localStorage.removeItem("admin_access");
 
     // Prevent stale restaurant profile data from previous account after re-login.
     if (module === "restaurant") {

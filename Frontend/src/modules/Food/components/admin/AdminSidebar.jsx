@@ -62,6 +62,7 @@ import { rulesFor, VERTICAL } from "@food/utils/verticalVocabulary"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
 import quickSpicyLogo from "@food/assets/k9-logo.jpg"
 import { useSettings } from "../../../Taxi/shared/context/SettingsContext"
+import { useAdminAccess, filterMenuForAccess, hasPanel, isRestricted } from "@food/utils/adminAccess"
 /**
  * Which service tabs this admin may see.
  *
@@ -340,9 +341,25 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   const { activeLogo } = useSettings()
   const location = useLocation()
   const adminBase = currentAdminBase(location.pathname)
-  const verticalMenu = useMemo(() => rebaseAdminMenu(adminSidebarMenu, adminBase), [adminBase])
+  const access = useAdminAccess()
+  // A sub-admin sees only what they were given. The server refuses the rest
+  // anyway; hiding it here is what makes the panel usable rather than a wall of
+  // "no access" screens.
+  const verticalMenu = useMemo(
+    () => filterMenuForAccess(rebaseAdminMenu(adminSidebarMenu, adminBase), access),
+    [adminBase, access],
+  )
   const navigate = useNavigate()
-  const serviceAccess = useServiceAccess()
+  const storedAccess = useServiceAccess()
+  const serviceAccess = isRestricted(access)
+    ? {
+        food: hasPanel(access, "food"),
+        taxi: hasPanel(access, "taxi"),
+        serviceProvider: false,
+        quickCommerce: hasPanel(access, "quickCommerce"),
+        medical: hasPanel(access, "medical"),
+      }
+    : { ...storedAccess, medical: storedAccess.quickCommerce }
   const [searchQuery, setSearchQuery] = useState("")
   const [badges, setBadges] = useState({})
 
@@ -1127,9 +1144,9 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                 Quick
               </button>
               )}
-              {/* Medical: the quick-commerce panel narrowed to pharmacies. Gated
-                  on quick-commerce access because that is whose data it shows. */}
-              {serviceAccess.quickCommerce && (
+              {/* Medical: the quick-commerce panel narrowed to pharmacies. Its own
+                  switch in admin accounts, so a pharmacy team need not see groceries. */}
+              {serviceAccess.medical && (
               <button
                 type="button"
                 onClick={() => navigate("/admin/medical")}

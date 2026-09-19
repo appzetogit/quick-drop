@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { ForbiddenError, AuthError } from '../../../../core/auth/errors.js';
 import { FoodAdmin } from '../../../../core/admin/admin.model.js';
 import { serializeAdminContext, hasAdminPermission } from '../../../../core/admin/adminHierarchy.service.js';
@@ -34,6 +35,23 @@ export const invalidateAdminCache = (adminId) => {
 /** Drop everything. For bulk permission changes. */
 export const clearAdminCache = () => adminCache.clear();
 
+/*
+ * structuredClone does not keep ObjectIds: they come back as plain objects that
+ * hydrate() cannot read, so every cache hit produced an admin with NO _id. Any
+ * sub-admin created within 15s of the creator's previous request was saved with
+ * parentAdminId unset -- and an admin without a parent reads as a legacy owner,
+ * so those sub-admins had full access. Clone by hand, keeping ids and dates.
+ */
+const cloneDoc = (value) => {
+    if (value instanceof mongoose.Types.ObjectId) return new mongoose.Types.ObjectId(String(value));
+    if (value instanceof Date) return new Date(value.getTime());
+    if (Array.isArray(value)) return value.map(cloneDoc);
+    if (value && typeof value === 'object') {
+        return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cloneDoc(v)]));
+    }
+    return value;
+};
+
 const loadAdmin = async (userId) => {
     const key = String(userId);
     const hit = adminCache.get(key);
@@ -45,7 +63,7 @@ const loadAdmin = async (userId) => {
         // into every other request holding the same instance; and consumers here
         // (managementService.*) are written against a document, so handing them a
         // POJO would be a silent behaviour change.
-        return FoodAdmin.hydrate(structuredClone(hit.doc));
+        return FoodAdmin.hydrate(cloneDoc(hit.doc));
     }
 
     const admin = await FoodAdmin.findById(userId);
@@ -54,6 +72,9 @@ const loadAdmin = async (userId) => {
     }
     return admin;
 };
+
+/** The same cached lookup, for the permission guard every admin panel shares. */
+export const loadAdminCached = (userId) => loadAdmin(userId);
 
 /**
  * Middleware to load and attach the serialized admin hierarchy context to the request.

@@ -13,6 +13,8 @@ import * as orderController from '../../orders/controllers/order.controller.js';
 import { getAdminPageController, upsertAdminPageController } from '../controllers/pageContent.controller.js';
 import { upload } from '../../../../middleware/upload.js';
 import { requireFinancePermission } from '../../../../core/admin/requireFinancePermission.middleware.js';
+import { enforceAdminAccess } from '../../../../core/admin/enforceAdminAccess.middleware.js';
+import { resolveStoreAdminResource } from '../../../../core/admin/adminAccessPolicy.js';
 
 const router = express.Router();
 
@@ -28,6 +30,9 @@ const requireAdmin = (req, _res, next) => {
 };
 
 router.use(requireAdmin);
+// Every route below is checked against the admin's permissions (sub-admins only;
+// superadmins pass). See core/admin/adminAccessPolicy.js for the path table.
+router.use(enforceAdminAccess('food', resolveStoreAdminResource));
 
 // ----- Broadcast Notifications -----
 router.post('/notifications/broadcast', notificationBroadcastController.createBroadcastNotificationController);

@@ -8,6 +8,11 @@ import { FoodAdmin } from './admin.model.js';
  * @param {Object} admin
  * @returns {string} One of ADMIN_LEVELS
  */
+const isOrphanedSubadmin = (admin) =>
+  Boolean(admin.module)
+  && admin.admin_type === 'subadmin'
+  && !(Array.isArray(admin.permissions) && admin.permissions.includes('*'));
+
 export function resolveAdminLevel(admin) {
   if (!admin) return ADMIN_LEVELS.SUBADMIN;
   
@@ -35,7 +40,11 @@ export function resolveAdminLevel(admin) {
     
     // Legacy migration: If they have no parentAdminId, treat them as PLATFORM_SUPERADMIN.
     // Prior to the hierarchy feature, all admins were superadmins.
-    if (!admin.parentAdminId) {
+    //
+    // Except accounts the sub-admin screens made: those name a module and say
+    // admin_type 'subadmin'. A cache bug saved some of them without a parent,
+    // which made them owners; this keeps them sub-admins.
+    if (!admin.parentAdminId && !isOrphanedSubadmin(admin)) {
       return ADMIN_LEVELS.PLATFORM_SUPERADMIN;
     }
   }

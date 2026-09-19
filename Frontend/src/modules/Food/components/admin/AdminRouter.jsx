@@ -143,12 +143,12 @@ const AdminSignup = lazy(() => import("@food/pages/admin/auth/AdminSignup"));
 const AdminForgotPassword = lazy(() => import("@food/pages/admin/auth/AdminForgotPassword"));
 // Hidden with the /admin/sp route below; uncomment both together.
 // const SPAdminRoutes = lazy(() => import("@sp/admin/routes"));
-const FoodSubadmins = lazy(() => import("@food/pages/admin/management/FoodSubadmins"));
+// One admin-accounts screen for every panel (food, quick commerce, medical, taxi).
+const AdminAccounts = lazy(() => import("@food/pages/admin/management/AdminAccounts"));
 const MedicalPrescriptionOrders = lazy(() => import("@food/pages/admin/medical/PrescriptionOrders"));
 const MedicalDrugLicences = lazy(() => import("@food/pages/admin/medical/DrugLicences"));
 const MedicalRequests = lazy(() => import("@food/pages/admin/medical/MedicalRequests"));
 const PharmacyVerification = lazy(() => import("@food/pages/admin/medical/PharmacyVerification"));
-const FoodSubadminCreate = lazy(() => import("@food/pages/admin/management/FoodSubadminCreate"));
 
 /**
  * The admin pages for one vertical.
@@ -280,9 +280,9 @@ const verticalAdminRoutes = (
              <Route path="employees/add" element={<Navigate to="../management/admins/create" replace />} />
 
             {/* SUBADMIN MANAGEMENT */}
-            <Route path="management/admins" element={<FoodSubadmins />} />
-            <Route path="management/admins/create" element={<FoodSubadminCreate />} />
-            <Route path="management/admins/edit/:id" element={<FoodSubadminCreate />} />
+            <Route path="management/admins" element={<AdminAccounts />} />
+            <Route path="management/admins/create" element={<AdminAccounts />} />
+            <Route path="management/admins/edit/:id" element={<AdminAccounts />} />
 
             {/* SYSTEM & BUSINESS SETTINGS */}
             <Route path="business-setup" element={<BusinessSetup />} />

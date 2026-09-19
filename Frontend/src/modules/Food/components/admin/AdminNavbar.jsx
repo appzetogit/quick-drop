@@ -229,6 +229,7 @@ export default function AdminNavbar({ onMenuClick }) {
       localStorage.removeItem('admin_accessToken');
       localStorage.removeItem('admin_authenticated');
       localStorage.removeItem('admin_user');
+      localStorage.removeItem('admin_access');
       localStorage.removeItem('admin_sidebar_state');
       localStorage.removeItem('admin_recent_searches');
 
@@ -249,6 +250,7 @@ export default function AdminNavbar({ onMenuClick }) {
       localStorage.removeItem('admin_accessToken');
       localStorage.removeItem('admin_authenticated');
       localStorage.removeItem('admin_user');
+      localStorage.removeItem('admin_access');
       localStorage.removeItem('admin_sidebar_state');
       localStorage.removeItem('admin_recent_searches');
       sessionStorage.removeItem('adminAuthData');

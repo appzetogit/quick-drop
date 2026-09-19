@@ -6135,8 +6135,37 @@ export async function getDeliveryWallets(query = {}) {
     const partnerIds = partners.map(p => p._id);
     const statsMap = await getBulkDeliveryPartnerStats(partnerIds);
 
-    const wallets = partners.map((p) => {
+    // Same figures as the rider app (see the food admin service).
+    const finances = await Promise.all(partners.map(async (p) => {
+        try {
+            const { getRiderFinance } = await import('../../../../../../core/finance/riderFinance.service.js');
+            return await getRiderFinance(p._id);
+        } catch {
+            return null;
+        }
+    }));
+    const wallets = partners.map((p, i) => {
         const stats = statsMap.get(p._id.toString()) || {};
+        const finance = finances[i];
+        if (finance) {
+            const d = finance.breakdown?.delivery || {};
+            return {
+                walletId: p._id,
+                deliveryId: p._id,
+                name: p.name,
+                deliveryIdString: p.phone,
+                pocketBalance: finance.walletBalance,
+                cashCollected: finance.cashInHand,
+                cashLimit: finance.cashLimit,
+                remainingCashLimit: finance.availableCashLimit,
+                availableCashLimit: finance.availableCashLimit,
+                totalEarning: Number(d.totalEarned || 0),
+                bonus: Number(d.totalBonus || 0),
+                totalWithdrawn: Number(d.totalWithdrawn || 0),
+                isBlocked: finance.isBlocked,
+                totalOrders: stats.totalOrders || 0,
+            };
+        }
         return {
             walletId: p._id, // Using partner ID as wallet ID fallback
             deliveryId: p._id,

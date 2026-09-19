@@ -64,6 +64,7 @@ import {
 } from '../controllers/top10GourmetAdmin.controller.js';
 import { getPublicPageController } from '../../admin/controllers/pageContent.controller.js';
 import { getPublicReferralSettingsController } from '../controllers/publicReferralSettings.controller.js';
+import { enforceAdminAccess } from '../../../../core/admin/enforceAdminAccess.middleware.js';
 
 
 /*
@@ -81,7 +82,9 @@ import { getPublicReferralSettingsController } from '../controllers/publicReferr
  * Applied per route rather than with router.use, because the public reads the
  * customer app depends on are registered in the same router and must stay open.
  */
-const adminOnly = [authMiddleware, requireRoles('ADMIN')];
+// Banners are the "Banners & pages" permission for sub-admins, like the rest of
+// the admin API (core/admin/adminAccessPolicy.js).
+const adminOnly = [authMiddleware, requireRoles('ADMIN'), enforceAdminAccess('food', () => 'cms')];
 const router = express.Router();
 
 // Public CMS pages (About + legal). No auth required.
