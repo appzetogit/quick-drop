@@ -41,6 +41,14 @@ export const STORE_TYPE_LABELS = Object.freeze({
     general: 'General Store',
 });
 
+/**
+ * Mongo condition for "a Quick Shop seller": anything but a pharmacy. Quick Shop
+ * and Medical share one seller collection, so every customer-facing Quick Shop
+ * query must say this, or pharmacies and medicines turn up among the groceries.
+ * `$ne` also matches sellers saved before storeType existed (they are grocery).
+ */
+export const QUICK_SHOP_SELLER_FILTER = Object.freeze({ storeType: { $ne: MEDICAL_STORE_TYPE } });
+
 export const isMedicalStore = (storeType) => String(storeType || '').trim().toLowerCase() === MEDICAL_STORE_TYPE;
 
 /**

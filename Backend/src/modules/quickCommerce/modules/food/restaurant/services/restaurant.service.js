@@ -23,6 +23,7 @@ import {
     mergeStoreTypeUpdate,
     normalizeDrugLicenceInput,
     normalizeStoreTypeInput,
+    QUICK_SHOP_SELLER_FILTER,
 } from '../../shared/storeType.js';
 import { ZONE_VERTICALS, findZoneForPoint } from '../../shared/zoneServiceability.js';
 import { GST_RATE } from './subscriptionPlan.service.js';
@@ -2073,8 +2074,12 @@ export const listApprovedRestaurants = async (query = {}) => {
     // ?storeType=pharmacy — what the Medical tab lists. Validated rather than
     // passed through, so an unknown value is refused instead of quietly matching
     // nothing and looking like an empty neighbourhood.
+    // With no type asked for this is the Quick Shop list, which must not
+    // include pharmacies -- they have their own tab.
     if (query.storeType !== undefined && String(query.storeType).trim()) {
         filter.storeType = normalizeStoreTypeInput(query.storeType);
+    } else {
+        Object.assign(filter, QUICK_SHOP_SELLER_FILTER);
     }
     if (query.cuisine && String(query.cuisine).trim()) {
         const cuisine = normalizeCuisine(query.cuisine);
