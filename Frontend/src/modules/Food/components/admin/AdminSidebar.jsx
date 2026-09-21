@@ -205,6 +205,8 @@ const VERTICAL_BRANDING = {
     hiddenPaths: ['/admin/food/delivery-radius'],
     hiddenSections: [],
     // Stock is counted per product size in quick commerce; food dishes are not.
+    // First in the menu: it is what a grocery operator checks most.
+    extraSectionsFirst: true,
     extraSections: [
       {
         type: "section",
@@ -261,11 +263,18 @@ const VERTICAL_BRANDING = {
      *
      * Paths are already based here, so rebaseAdminMenu leaves them alone.
      */
+    extraSectionsFirst: true,
     extraSections: [
       {
         type: "section",
         label: "MEDICAL",
         items: [
+          {
+            type: "link",
+            label: "Stock",
+            path: "/admin/medical/stock",
+            icon: "Package",
+          },
           {
             type: "link",
             label: "Pharmacy Verification",
@@ -289,12 +298,6 @@ const VERTICAL_BRANDING = {
             label: "Prescription Requests",
             path: "/admin/medical/requests",
             icon: "Send",
-          },
-          {
-            type: "link",
-            label: "Stock",
-            path: "/admin/medical/stock",
-            icon: "Package",
           },
         ],
       },
@@ -345,10 +348,14 @@ export const rebaseAdminMenu = (nodes, base) => {
     }))
   // Only at the top level: a nested call would append the vertical's own
   // sections inside every expandable item it recursed into.
-  const { extraSections = [] } = brandingFor(base)
-  return nodes === adminSidebarMenu && extraSections.length > 0
-    ? [...rebased, ...extraSections]
-    : rebased
+  const { extraSections = [], extraSectionsFirst = false } = brandingFor(base)
+  if (nodes !== adminSidebarMenu || extraSections.length === 0) return rebased
+  if (!extraSectionsFirst) return [...rebased, ...extraSections]
+  // Keep MASTER (platform-wide screens) above everything, then this vertical's own.
+  const masterAt = rebased.findIndex((n) => n.label === "MASTER")
+  return masterAt === -1
+    ? [...extraSections, ...rebased]
+    : [...rebased.slice(0, masterAt + 1), ...extraSections, ...rebased.slice(masterAt + 1)]
 }
 
 export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange }) {
