@@ -189,13 +189,48 @@ export default function StockManager({ scope = "admin" }) {
     }
   }
 
-  const commitDraft = (row) => {
-    const key = keyOf(row)
-    if (!(key in drafts)) return
-    const raw = drafts[key]
-    if (raw === "" && row.stockQty === null) return setDrafts(({ [key]: _, ...rest }) => rest)
-    if (raw !== "" && Number(raw) === Number(row.stockQty)) return setDrafts(({ [key]: _, ...rest }) => rest)
-    save(row, { mode: "set", value: raw === "" ? null : Number(raw) }, raw === "" ? "Stopped tracking" : "Stock updated")
+  /* Edits wait for Save. drafts[key] = { stock?, low? } as typed. */
+  const setDraft = (key, field, value) => setDrafts((d) => ({ ...d, [key]: { ...(d[key] || {}), [field]: value } }))
+  const dropDraft = (key) => setDrafts(({ [key]: _, ...rest }) => rest)
+  const same = (typed, saved) => (typed === "" ? saved === null || saved === undefined : Number(typed) === Number(saved))
+  const changesOf = (row) => {
+    const d = drafts[keyOf(row)]
+    if (!d) return null
+    const out = {}
+    if (d.stock !== undefined && !same(d.stock, row.stockQty)) {
+      out.mode = "set"
+      out.value = d.stock === "" ? null : Number(d.stock)
+    }
+    if (d.low !== undefined && !same(d.low, row.lowStockThreshold)) out.lowStockThreshold = d.low === "" ? null : Number(d.low)
+    return Object.keys(out).length ? out : null
+  }
+  const pending = rows.filter((r) => changesOf(r))
+  const [savingAll, setSavingAll] = useState(false)
+
+  const saveRow = (row) => {
+    const changes = changesOf(row)
+    if (!changes) return dropDraft(keyOf(row))
+    save(row, changes, "Saved")
+  }
+
+  const saveAll = async () => {
+    setSavingAll(true)
+    try {
+      const res = await stockAPI.bulk(scope, {
+        rows: pending.map((r) => ({ itemId: r.itemId, variantId: r.variantId, ...changesOf(r) })),
+      })
+      const out = res?.data?.data
+      const firstError = out?.results?.find((x) => !x.ok)
+      toast.success(`${out?.updated || 0} saved`, {
+        description: out?.failed ? `${out.failed} not saved. Row ${firstError.row}: ${firstError.error}` : undefined,
+      })
+      setDrafts({})
+      load()
+    } catch (err) {
+      toast.error(errText(err, "Could not save"))
+    } finally {
+      setSavingAll(false)
+    }
   }
 
   const runBulk = async () => {
@@ -294,7 +329,7 @@ export default function StockManager({ scope = "admin" }) {
             <h1 className="text-2xl font-semibold text-neutral-900">Stock</h1>
             <p className="mt-1 max-w-2xl text-sm text-neutral-600">
               Units on hand for every product and size. An order takes stock off the size bought; a cancel or return puts it back.
-              Leave a count empty to sell without a limit.
+              Leave a count empty to sell without a limit. Type the new numbers, then press Save or Enter.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -409,9 +444,10 @@ export default function StockManager({ scope = "admin" }) {
                   {rows.map((r) => {
                     const key = keyOf(r)
                     const busy = savingKey === key
-                    const draft = drafts[key]
+                    const draft = drafts[key] || {}
+                    const changed = Boolean(changesOf(r))
                     return (
-                      <tr key={key} className={r.status === "out" ? "bg-red-50/40" : ""}>
+                      <tr key={key} className={changed ? "bg-amber-50/60" : r.status === "out" ? "bg-red-50/40" : ""}>
                         <td className="px-4 py-2.5">
                           <input
                             type="checkbox"
@@ -448,15 +484,14 @@ export default function StockManager({ scope = "admin" }) {
                               type="number"
                               min="0"
                               inputMode="numeric"
-                              value={draft !== undefined ? draft : r.stockQty ?? ""}
+                              value={draft.stock !== undefined ? draft.stock : r.stockQty ?? ""}
                               placeholder="No limit"
                               disabled={busy}
                               aria-label={`Stock for ${r.itemName} ${r.variantName}`}
-                              onChange={(e) => setDrafts((d) => ({ ...d, [key]: e.target.value }))}
-                              onBlur={() => commitDraft(r)}
+                              onChange={(e) => setDraft(key, "stock", e.target.value)}
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") e.currentTarget.blur()
-                                if (e.key === "Escape") setDrafts(({ [key]: _, ...rest }) => rest)
+                                if (e.key === "Enter") saveRow(r)
+                                if (e.key === "Escape") dropDraft(key)
                               }}
                               className="w-24 rounded-md border border-neutral-300 px-2 py-1 text-sm tabular-nums focus:border-neutral-900 focus:outline-none"
                             />
@@ -476,23 +511,40 @@ export default function StockManager({ scope = "admin" }) {
                           <input
                             type="number"
                             min="0"
-                            defaultValue={r.lowStockThreshold ?? ""}
-                            key={`${key}-low-${r.lowStockThreshold}`}
+                            value={draft.low !== undefined ? draft.low : r.lowStockThreshold ?? ""}
                             placeholder="—"
+                            disabled={busy}
                             aria-label={`Low-stock level for ${r.itemName} ${r.variantName}`}
-                            onBlur={(e) => {
-                              const v = e.target.value
-                              const next = v === "" ? null : Number(v)
-                              if (next !== (r.lowStockThreshold ?? null)) save(r, { lowStockThreshold: next }, "Low-stock level saved")
+                            onChange={(e) => setDraft(key, "low", e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveRow(r)
+                              if (e.key === "Escape") dropDraft(key)
                             }}
                             className="w-16 rounded-md border border-neutral-200 px-2 py-1 text-sm tabular-nums focus:border-neutral-900 focus:outline-none"
                           />
                         </td>
                         <td className="px-4 py-2.5"><StatusPill status={r.status} /></td>
                         <td className="px-4 py-2.5 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                          {changed && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => saveRow(r)}
+                                className="inline-flex items-center gap-1 rounded-md bg-neutral-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-neutral-800 disabled:opacity-60"
+                              >
+                                {busy && <Loader2 className="h-3 w-3 animate-spin" />} Save
+                              </button>
+                              <button type="button" onClick={() => dropDraft(key)} className="rounded-md px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100">
+                                Undo
+                              </button>
+                            </>
+                          )}
                           <button type="button" onClick={() => setHistoryRow(r)} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900">
                             <History className="h-3.5 w-3.5" /> History
                           </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -512,6 +564,26 @@ export default function StockManager({ scope = "admin" }) {
           )}
         </div>
       </div>
+
+      {pending.length > 0 && (
+        <div className="sticky bottom-4 z-40 mx-auto mt-4 flex max-w-7xl flex-wrap items-center justify-between gap-3 rounded-xl bg-neutral-900 px-4 py-3 text-sm text-white shadow-xl">
+          <span>
+            <span className="font-semibold">{pending.length} unsaved change{pending.length === 1 ? "" : "s"}</span>
+            <span className="ml-2 text-white/60">Edited rows are highlighted.</span>
+          </span>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setDrafts({})} className="rounded-lg px-3 py-1.5 text-white/80 hover:bg-white/10">Discard</button>
+            <button
+              type="button"
+              disabled={savingAll}
+              onClick={saveAll}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white px-4 py-1.5 font-semibold text-neutral-900 hover:bg-neutral-100 disabled:opacity-60"
+            >
+              {savingAll && <Loader2 className="h-4 w-4 animate-spin" />} Save all
+            </button>
+          </div>
+        </div>
+      )}
 
       {historyRow && <HistoryPanel scope={scope} row={historyRow} onClose={() => setHistoryRow(null)} />}
     </div>
