@@ -170,6 +170,33 @@ await check('every change is recorded with its reason', async () => {
   assert.ok((await QCStockMovement.countDocuments({ reason: 'cancel' })) >= 1);
 });
 
+await check('the store is told once when a size runs low, and when it runs out', async () => {
+  const { FoodNotification } = await import('../src/modules/quickCommerce/core/notifications/models/notification.model.js');
+  const tea = await FoodItem.create({
+    restaurantId: storeA, name: 'Tea', price: 50, isAvailable: true,
+    variants: [{ name: '250 g', price: 50, stockQty: 6, lowStockThreshold: 3 }],
+  });
+  const v250 = tea.variants[0];
+  const alerts = () => FoodNotification.find({ ownerId: storeA, source: 'STOCK_ALERT', 'metadata.itemId': String(tea._id) }).lean();
+  const settle = () => new Promise((r) => setTimeout(r, 300));
+  await inv.reserveStockForItems([{ itemId: tea._id, variantId: v250._id, quantity: 2 }]); // 6 -> 4
+  await settle();
+  assert.equal((await alerts()).length, 0, 'still above the warning level');
+  await inv.reserveStockForItems([{ itemId: tea._id, variantId: v250._id, quantity: 1 }]); // 4 -> 3
+  await settle();
+  let list = await alerts();
+  assert.equal(list.length, 1);
+  assert.match(list[0].message, /Only 3 left of Tea \(250 g\)/);
+  await inv.reserveStockForItems([{ itemId: tea._id, variantId: v250._id, quantity: 1 }]); // 3 -> 2
+  await settle();
+  assert.equal((await alerts()).length, 1, 'no repeat while it stays low');
+  await inv.reserveStockForItems([{ itemId: tea._id, variantId: v250._id, quantity: 2 }]); // 2 -> 0
+  await settle();
+  list = await alerts();
+  assert.equal(list.length, 2);
+  assert.ok(list.some((n) => n.title === 'Out of stock'));
+});
+
 await mongoose.disconnect();
 await mongo.stop();
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');

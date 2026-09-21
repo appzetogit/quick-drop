@@ -52,7 +52,7 @@ const notificationSchema = new mongoose.Schema(
         source: {
             type: String,
             // SUPPORT_RESPONSE came from quick-commerce, which had drifted ahead of food.
-            enum: ['ADMIN_BROADCAST', 'FSSAI_EXPIRY', 'SUPPORT_RESPONSE', 'BOOKING', 'RIDE', 'ORDER', 'PAYMENT', 'SYSTEM'],
+            enum: ['ADMIN_BROADCAST', 'FSSAI_EXPIRY', 'SUPPORT_RESPONSE', 'BOOKING', 'RIDE', 'ORDER', 'PAYMENT', 'SYSTEM', 'STOCK_ALERT'],
             default: 'ADMIN_BROADCAST',
             index: true
         },

@@ -19,7 +19,7 @@ import { logger } from '../../../../utils/logger.js';
  */
 
 const isId = (v) => mongoose.Types.ObjectId.isValid(String(v || ''));
-const STOCK_FIELDS = 'name restaurantId stockQty variants isAvailable stockOffMode';
+const STOCK_FIELDS = 'name restaurantId stockQty lowStockThreshold variants isAvailable stockOffMode';
 
 /** Same item can appear on several lines; the shelf sees the sum. Kept for callers. */
 export function totalQuantityByItem(items = []) {
@@ -70,6 +70,57 @@ export async function syncAvailability(doc, { revive = false } = {}) {
     await FoodItem.updateOne({ _id: doc._id }, { $set: { isAvailable: false } });
   } else if (!out && revive && doc.isAvailable === false && !doc.stockOffMode) {
     await FoodItem.updateOne({ _id: doc._id, stockOffMode: { $in: [null, undefined] } }, { $set: { isAvailable: true } });
+  }
+}
+
+/**
+ * Tell the store when a count runs low or out.
+ *
+ * Fires on the CROSSING only -- the sale that takes a size from above its
+ * "warn me at" level to at-or-below it, or from something to nothing -- so one
+ * drop sends one alert, not one per sale while it stays low. In-app (the
+ * notifications list) and push. Never throws, never blocks the sale.
+ */
+export async function alertIfStockCrossed(doc, { variantId = '', before, after }) {
+  try {
+    if (!doc?.restaurantId || after === null || after === undefined || before === null || before === undefined) return;
+    const variant = variantOf(doc, variantId);
+    const low = variant ? (variant.lowStockThreshold ?? doc.lowStockThreshold) : doc.lowStockThreshold;
+    const ranOut = Number(before) > 0 && Number(after) <= 0;
+    const wentLow = !ranOut && low !== null && low !== undefined
+      && Number(before) > Number(low) && Number(after) <= Number(low);
+    if (!ranOut && !wentLow) return;
+
+    const label = variant ? `${doc.name} (${variant.name})` : doc.name;
+    const title = ranOut ? 'Out of stock' : 'Running low on stock';
+    const message = ranOut
+      ? `${label} just sold out and is hidden from customers. Restock it to start selling again.`
+      : `Only ${after} left of ${label}. Restock soon so it does not sell out.`;
+    const data = {
+      type: ranOut ? 'stock_out' : 'stock_low',
+      itemId: String(doc._id),
+      variantId: variantId ? String(variantId) : '',
+      restaurantId: String(doc.restaurantId),
+      left: String(after),
+      link: '/restaurant/stock',
+    };
+
+    const { FoodNotification } = await import('../../../../core/notifications/models/notification.model.js');
+    await FoodNotification.create({
+      ownerType: 'RESTAURANT',
+      ownerId: doc.restaurantId,
+      title,
+      message,
+      link: '/restaurant/stock',
+      source: 'STOCK_ALERT',
+      category: 'inventory',
+      metadata: data,
+    }).catch((err) => logger.warn(`[stock] in-app alert not saved: ${err?.message || err}`));
+
+    const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
+    await notifyOwnersSafely([{ ownerType: 'RESTAURANT', ownerId: doc.restaurantId }], { title, body: message, data });
+  } catch (err) {
+    logger.warn(`[stock] alert failed for ${doc?._id}: ${err?.message || err}`);
   }
 }
 
@@ -136,6 +187,7 @@ export async function reserveStockForItems(items = [], { orderId = null } = {}) 
         const after = variantOf(res, line.variantId)?.stockQty;
         await recordMovement(res, { variantId: line.variantId, delta: -line.qty, after, reason: 'sale', orderId });
         await syncAvailability(res);
+        void alertIfStockCrossed(res, { variantId: line.variantId, before: Number(after) + line.qty, after });
         continue;
       }
       const fresh = await FoodItem.findById(doc._id).select(STOCK_FIELDS).lean();
@@ -162,6 +214,7 @@ export async function reserveStockForItems(items = [], { orderId = null } = {}) 
       taken.push({ itemId, variantId: '', qty });
       await recordMovement(res, { delta: -qty, after: res.stockQty, reason: 'sale', orderId });
       await syncAvailability(res);
+      void alertIfStockCrossed(res, { before: Number(res.stockQty) + qty, after: res.stockQty });
       continue;
     }
 
