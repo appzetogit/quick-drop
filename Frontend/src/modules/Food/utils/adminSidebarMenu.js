@@ -285,6 +285,7 @@ export const adminSidebarMenu = [
       { type: "link", label: "Google Maps Key", path: "/admin/food/map-settings", icon: "MapPin" },
       { type: "link", label: "Broadcast Notification", path: "/admin/food/broadcast-notification", icon: "Bell" },
       { type: "link", label: "PetPooja Integration", path: "/admin/food/petpooja-settings", icon: "Package" },
+      { type: "link", label: "Order Cancellation", path: "/admin/food/order-cancellation", icon: "X" },
     ],
   },
   {

@@ -786,6 +786,13 @@ export async function getOrderById(
     if (!drop.verified && secret) {
       out.handoverOtp = secret;
     }
+    // Whether the app may offer Cancel, and until when (countdown).
+    try {
+      const { getCancelRules, cancellationForClient } = await import("./cancellationPolicy.js");
+      out.cancellation = cancellationForClient(order, await getCancelRules());
+    } catch {
+      /* the app falls back to its own status check */
+    }
     return out;
   }
 
@@ -968,11 +975,14 @@ export async function cancelOrder(orderId, userId, reason) {
   });
   if (!order) throw new NotFoundError("Order not found");
 
-  const allowed = ["created"];
-  if (!allowed.includes(order.orderStatus))
-    throw new ValidationError("Order cannot be cancelled");
+  // Waiting for the restaurant: always. After it accepts: only inside the
+  // window the admin set (Food -> Order cancellation), see cancellationPolicy.
+  const { getCancelRules, judgeUserCancel } = await import("./cancellationPolicy.js");
+  const verdict = judgeUserCancel(order, await getCancelRules());
+  if (!verdict.allowed) throw new ValidationError(verdict.reason || "Order cannot be cancelled");
 
   const from = order.orderStatus;
+  const assignedRiderId = order.dispatch?.deliveryPartnerId ? String(order.dispatch.deliveryPartnerId) : null;
   order.orderStatus = "cancelled_by_user";
   pushStatusHistory(order, {
     byRole: "USER",
@@ -1054,9 +1064,33 @@ export async function cancelOrder(orderId, userId, reason) {
       };
       io.to(rooms.user(userId)).emit("order_status_update", payload);
       io.to(rooms.restaurant(order.restaurantId)).emit("order_status_update", payload);
+      // Cancelled after acceptance, a rider may already be on the way.
+      if (assignedRiderId) io.to(rooms.delivery(assignedRiderId)).emit("order_status_update", payload);
     }
   } catch (err) {
     logger.warn(`cancelOrder socket emit failed: ${err?.message || err}`);
+  }
+
+  if (from !== "created") {
+    // Accepted orders are already in the kitchen: say so loudly, and stop the rider.
+    await notifyOwnersSafely(
+      [{ ownerType: "RESTAURANT", ownerId: order.restaurantId }],
+      {
+        title: "Customer cancelled an accepted order",
+        body: `Order #${order.order_id || order._id} was cancelled by the customer. Stop preparing it.`,
+        data: { type: "order_cancelled_by_user", orderId: String(order._id), orderMongoId: String(order._id) },
+      },
+    );
+    if (assignedRiderId) {
+      await notifyOwnersSafely(
+        [{ ownerType: "DELIVERY_PARTNER", ownerId: assignedRiderId }],
+        {
+          title: "Order cancelled",
+          body: `Order #${order.order_id || order._id} was cancelled by the customer. You do not need to pick it up.`,
+          data: { type: "order_cancelled", orderId: String(order._id), orderMongoId: String(order._id) },
+        },
+      );
+    }
   }
 
   return normalizeOrderForClient(order);

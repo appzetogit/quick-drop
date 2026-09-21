@@ -167,6 +167,7 @@ const PAGE_RULES = [
   ["/business-setup", "settings"],
   ["/map-settings", "settings"],
   ["/petpooja-settings", "settings"],
+  ["/order-cancellation", "settings"],
 ]
 
 export function resourceForPath(pathname = "") {

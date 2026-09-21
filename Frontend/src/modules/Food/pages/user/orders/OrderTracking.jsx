@@ -332,6 +332,8 @@ const transformOrderForTracking = (apiOrder, previousOrder = null, explicitResta
     dispatch: apiOrder?.dispatch || previousOrder?.dispatch || null,
     assignmentInfo: apiOrder?.assignmentInfo || previousOrder?.assignmentInfo || null,
     tracking: apiOrder?.tracking || previousOrder?.tracking || {},
+    // From the server: can the customer still cancel, and until when.
+    cancellation: apiOrder?.cancellation ?? previousOrder?.cancellation ?? null,
     deliveryState: apiOrder?.deliveryState || previousOrder?.deliveryState || null,
     createdAt: apiOrder?.createdAt || previousOrder?.createdAt || null,
     totalAmount: apiOrder?.pricing?.total || apiOrder?.totalAmount || previousOrder?.totalAmount || 0,
@@ -709,11 +711,20 @@ export default function OrderTracking() {
     return Number.isFinite(parsed) ? parsed : null
   }, [order?.tracking?.confirmed?.timestamp, order?.tracking?.preparing?.timestamp, order?.updatedAt, order?.createdAt])
 
+  /*
+   * The cancel window after the restaurant accepts is the admin's setting,
+   * and the server says when it closes (order.cancellation.until). This used
+   * to be a hard-coded minute the server never honoured, so the button showed
+   * and every tap was refused.
+   */
+  const cancelUntilMs = order?.cancellation?.until ? new Date(order.cancellation.until).getTime() : null
   const editWindowRemainingMs = useMemo(() => {
-    if (!isAdminAccepted || !acceptedAtMs) return 0
-    const remaining = 60000 - (timerNow - acceptedAtMs)
-    return Math.max(0, remaining)
-  }, [isAdminAccepted, acceptedAtMs, timerNow])
+    if (!isAdminAccepted || !cancelUntilMs || order?.cancellation?.allowed !== true) return 0
+    return Math.max(0, cancelUntilMs - timerNow)
+  }, [isAdminAccepted, cancelUntilMs, order?.cancellation?.allowed, timerNow])
+  const canCancelNow = order?.cancellation
+    ? order.cancellation.allowed === true && (!cancelUntilMs || cancelUntilMs > timerNow)
+    : ["created", "pending"].includes(order?.status)
 
   const isEditWindowOpen = editWindowRemainingMs > 0
 
@@ -1433,7 +1444,7 @@ export default function OrderTracking() {
           </div>
         </div>
 
-        {/* 1-minute cancellation window after admin acceptance */}
+        {/* Cancel window after the restaurant accepts (admin setting), with a countdown */}
         {isAdminAccepted && isEditWindowOpen && (
           <motion.div
             className="bg-white dark:bg-zinc-900 rounded-xl p-4 shadow-sm border border-primary-orange/10 dark:border-zinc-800"
@@ -1454,8 +1465,8 @@ export default function OrderTracking() {
           </motion.div>
         )}
 
-        {/* Cancel Button - Only show if NOT delivered/cancelled */}
-        {!isDeliveredOrder && !isCancelledOrder && (
+        {/* Cancel Button - only while the server still allows it (the countdown card covers the accepted window) */}
+        {!isDeliveredOrder && !isCancelledOrder && canCancelNow && !(isAdminAccepted && isEditWindowOpen) && (
           <div className="px-2">
             <button onClick={handleCancelOrder} className="w-full py-4 text-sm font-bold text-red-500 bg-red-50 dark:bg-red-950/20 rounded-2xl hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors flex items-center justify-center gap-2">
               <X className="w-4 h-4" />

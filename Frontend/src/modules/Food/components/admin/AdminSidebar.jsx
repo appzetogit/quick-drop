@@ -202,7 +202,8 @@ const VERTICAL_BRANDING = {
     // A restaurant's delivery radius exists only on the food API; the
     // quick-commerce fork has no such route, so the link would open a page
     // that can only fail.
-    hiddenPaths: ['/admin/food/delivery-radius'],
+    // Food only: the cancellation window lives on the food API.
+    hiddenPaths: ['/admin/food/delivery-radius', '/admin/food/order-cancellation'],
     hiddenSections: [],
     // Stock is counted per product size in quick commerce; food dishes are not.
     // First in the menu: it is what a grocery operator checks most.

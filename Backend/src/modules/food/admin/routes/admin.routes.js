@@ -277,6 +277,20 @@ router.get('/orders/:orderId', orderController.getOrderByIdAdminController);
 router.patch('/orders/:orderId/status', orderController.updateOrderStatusAdminController);
 router.delete('/orders/:orderId', orderController.deleteOrderAdminController);
 
+// ----- Order cancellation after the restaurant accepts -----
+router.get('/order-cancellation', async (_req, res, next) => {
+    try {
+        const { getCancelRules } = await import('../../orders/services/cancellationPolicy.js');
+        return res.status(200).json({ success: true, message: 'OK', data: await getCancelRules() });
+    } catch (err) { return next(err); }
+});
+router.put('/order-cancellation', async (req, res, next) => {
+    try {
+        const { setCancelRules } = await import('../../orders/services/cancellationPolicy.js');
+        return res.status(200).json({ success: true, message: 'Saved', data: await setCancelRules(req.body, req.user?.userId) });
+    } catch (err) { return next(err); }
+});
+
 // ----- Petpooja Settings & Sync Logs -----
 router.get('/petpooja/settings', businessSettingsController.getPetpoojaSettings);
 router.put('/petpooja/settings', businessSettingsController.updatePetpoojaSettings);

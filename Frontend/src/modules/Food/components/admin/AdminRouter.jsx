@@ -106,6 +106,7 @@ const EmployeeList = lazy(() => import("@food/pages/admin/employees/EmployeeList
 // Business Settings
 const BusinessSetup = lazy(() => import("@food/pages/admin/settings/BusinessSetup"));
 const PetpoojaSettings = lazy(() => import("@food/pages/admin/settings/PetpoojaSettings"));
+const OrderCancellation = lazy(() => import("@food/pages/admin/OrderCancellation"));
 const EmailTemplate = lazy(() => import("@food/pages/admin/settings/EmailTemplate"));
 const ThemeSettings = lazy(() => import("@food/pages/admin/settings/ThemeSettings"));
 const Gallery = lazy(() => import("@food/pages/admin/settings/Gallery"));
@@ -289,6 +290,7 @@ const verticalAdminRoutes = (
             {/* SYSTEM & BUSINESS SETTINGS */}
             <Route path="business-setup" element={<BusinessSetup />} />
             <Route path="petpooja-settings" element={<PetpoojaSettings />} />
+            <Route path="order-cancellation" element={<OrderCancellation />} />
             <Route path="email-template" element={<EmailTemplate />} />
             <Route path="theme-settings" element={<ThemeSettings />} />
             <Route path="gallery" element={<Gallery />} />

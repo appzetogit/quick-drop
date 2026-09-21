@@ -285,7 +285,7 @@ const STORE_ADMIN_RULES = [
   rule(/^\/pos(\/|$)/, 'pos'),
 
   rule(/^\/(pages-social-media|notifications\/broadcast|notifications|restaurant-app-banners|banners|hero-banners|promotional-banners|landing)(\/|$)/, 'cms'),
-  rule(/^\/(business-settings|map-settings|petpooja\/settings|feature-settings|power-scanning|service-radius\/settings)(\/|$)/, 'settings'),
+  rule(/^\/(business-settings|map-settings|petpooja\/settings|feature-settings|power-scanning|service-radius\/settings|order-cancellation)(\/|$)/, 'settings'),
 ];
 
 /* Taxi's admin API, relative to /v1/taxi. */
