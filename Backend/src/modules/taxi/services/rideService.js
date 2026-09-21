@@ -27,6 +27,8 @@ import { getBidRideSettings } from './transportSettingsService.js';
 import { computeRideFare } from '../common/rideFare.js';
 import { pickSurgeSlot, surgeFromPercent } from '../common/surgeSlot.js';
 import { SurgeSlot } from '../admin/models/SurgeSlot.js';
+import { RideInsurancePlan } from '../admin/models/RideInsurancePlan.js';
+import { availablePlans, insuranceSnapshot, planApplies } from '../common/rideInsurance.js';
 import { measureTrip, measureTripRoad } from '../common/tripMeasure.js';
 
 const clearUserActiveRideIfPresent = async (user) => {
@@ -992,6 +994,8 @@ export const quoteRideFares = async ({
   const dropPoint = normalizePoint(dropCoords, 'dropCoords');
   const surgeZone = await findSurgeZoneForPickup({ pickupPoint, serviceLocationId, transportType });
   const surgeSlots = await loadZoneSurgeSlots(surgeZone?._id);
+  // Parcels carry no ride insurance.
+  const insurancePlans = transportType === 'delivery' ? [] : await RideInsurancePlan.find({ active: true }).lean();
   // Measured exactly as createRideRecord measures it.
   const trip = await measureTripRoad({ pickup: pickupPoint, drop: dropPoint, stops });
   const distanceMeters = trip ? trip.distanceMeters : 0;
@@ -1025,6 +1029,11 @@ export const quoteRideFares = async ({
       vehicleTypeId,
       available: Boolean(fare),
       fare,
+      // Plans the rider may add; `premium` is for this fare. Send the chosen id
+      // as insurancePlanId when booking.
+      insuranceOptions: fare
+        ? availablePlans(insurancePlans, { vehicleTypeId, zoneId: surgeZone?._id, fare: fare.total })
+        : [],
       measuredDistanceMeters: distanceMeters,
       measuredDurationMinutes: durationMinutes,
       distanceSource: trip ? (trip.source || 'straight_line') : 'unknown',
@@ -1114,6 +1123,7 @@ export const createRideRecord = async ({
   bookingMode,
   userMaxBidFare,
   bidStepAmount,
+  insurancePlanId = null,
 }) => {
   const user = await User.findById(userId);
 
@@ -1268,6 +1278,25 @@ export const createRideRecord = async ({
     ? effectiveUserMaxBidFare
     : safeFare;
   const effectiveStartingFare = effectiveStartingFareWithoutSurge + rideSurgeAmount;
+  /*
+   * Ride insurance the rider chose. The premium is priced here from the fare
+   * (surge in, promo not taken off), never taken from the app, and charged
+   * only at completion -- see common/rideInsurance.js.
+   */
+  let rideInsurance = null;
+  if (insurancePlanId) {
+    const plan = mongoose.Types.ObjectId.isValid(String(insurancePlanId))
+      ? await RideInsurancePlan.findById(insurancePlanId).lean()
+      : null;
+    if (
+      !plan
+      || normalizedTransportType === 'delivery'
+      || !planApplies(plan, { vehicleTypeId: primaryVehicleTypeId, zoneId: surgeZone?._id })
+    ) {
+      throw new ApiError(400, 'This insurance plan is not available for this ride');
+    }
+    rideInsurance = insuranceSnapshot(plan, effectiveStartingFare);
+  }
   const effectiveBidFloorFareWithSurge = effectiveBidFloorFare + rideSurgeAmount;
   const effectiveUserMaxBidFareWithSurge = effectiveUserMaxBidFare + rideSurgeAmount;
   const effectiveBidCeilingMaxFareWithSurge = effectiveBidCeilingMaxFare + rideSurgeAmount;
@@ -1288,6 +1317,7 @@ export const createRideRecord = async ({
     ride_surge_enabled: rideSurgeAmount > 0,
     ride_surge_amount: rideSurgeAmount,
     surge_percent: rideSurge.percent,
+    insurance: rideInsurance,
     surge_slot_id: rideSurge.slotId,
     surge_slot_name: rideSurge.slotName,
     fare_before_surge: effectiveStartingFareWithoutSurge,
@@ -1550,6 +1580,24 @@ export const getRideDetails = async (rideId) => {
   return ride;
 };
 
+/*
+ * The insurance on a ride, for the apps. `charged` turns true at completion,
+ * when the premium is added to `fare`; until then show fare + premium as the
+ * amount payable.
+ */
+export const serializeRideInsurance = (ride) => {
+  const insurance = ride?.pricingSnapshot?.insurance;
+  if (!insurance?.plan_id) return null;
+  return {
+    plan_id: String(insurance.plan_id),
+    name: insurance.name || '',
+    provider: insurance.provider || '',
+    cover_amount: Number(insurance.cover_amount || 0),
+    premium: Number(insurance.premium || 0),
+    charged: Number(ride.insurance_fee || 0) > 0,
+  };
+};
+
 export const getRideRoom = (rideId) => `ride_${rideId}`;
 
 const activeRideStatuses = [RIDE_STATUS.SEARCHING, RIDE_STATUS.ACCEPTED, RIDE_STATUS.ONGOING];
@@ -1592,6 +1640,7 @@ export const serializeRideRealtime = (ride) => ({
     reason: ride.adminExtraCharge.reason || '',
   } : null,
   recovered_cancellation_due: Number(ride.recovered_cancellation_due || 0),
+  insurance: serializeRideInsurance(ride),
   bookingMode: ride.bookingMode || 'normal',
   pricingNegotiationMode: ride.pricingNegotiationMode || 'none',
   biddingStatus: ride.biddingStatus || 'none',
@@ -1715,6 +1764,7 @@ export const serializeRideRealtime = (ride) => ({
   recovered_at: ride.recovered_at || null,
   cancellation_time: ride.cancellation_time || null,
   recovered_cancellation_due: Number(ride.recovered_cancellation_due || 0),
+  insurance: serializeRideInsurance(ride),
   messages: (ride.messages || []).slice(-30).map((message) => ({
     id: String(message._id),
     senderRole: message.senderRole,
@@ -1857,6 +1907,7 @@ export const listRideHistoryForIdentity = async ({ role, entityId, limit = 50, p
       'recovered_at',
       'cancellation_time',
       'recovered_cancellation_due',
+      'insurance_fee',
     ].join(' '))
     .sort({ createdAt: -1 })
     .skip((safePage - 1) * safeLimit)
@@ -1932,6 +1983,7 @@ export const listRideHistoryForIdentity = async ({ role, entityId, limit = 50, p
       recovered_at: ride.recovered_at || null,
       cancellation_time: ride.cancellation_time || null,
       recovered_cancellation_due: Number(ride.recovered_cancellation_due || 0),
+      insurance: serializeRideInsurance(ride),
     })),
     pagination: {
       page: safePage,
@@ -2325,7 +2377,10 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
     ride.waitingChargeAmount = waitingCharge;
     ride.timeChargeAmount = 0;
     ride.distanceChargeAmount = 0;
-    ride.fare = roundRideMoney(agreedFare + waitingCharge + adminAdditionalCharge + recoveredDue);
+    // Ride insurance is charged now, on a ride that actually ran.
+    const insuranceFee = roundRideMoney(Math.max(0, Number(ride.pricingSnapshot?.insurance?.premium || 0)));
+    ride.insurance_fee = insuranceFee;
+    ride.fare = roundRideMoney(agreedFare + waitingCharge + adminAdditionalCharge + recoveredDue + insuranceFee);
   }
 
   /*

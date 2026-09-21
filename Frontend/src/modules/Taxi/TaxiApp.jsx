@@ -232,6 +232,7 @@ const AdminSetPackagePrices = lazy(() => import('./modules/admin/pages/price-man
 const AdminCreatePackagePrice = lazy(() => import('./modules/admin/pages/price-management/CreatePackagePrice'));
 const AdminDriverIncentive = lazy(() => import('./modules/admin/pages/price-management/DriverIncentive'));
 const AdminSurgePricing = lazy(() => import('./modules/admin/pages/price-management/SurgePricing'));
+const AdminRideInsurance = lazy(() => import('./modules/admin/pages/price-management/RideInsurance'));
 const AdminVehicleType = lazy(() => import('./modules/admin/pages/price-management/VehicleType'));
 // const AdminRentalVehicleTypes = lazy(() => import('./modules/admin/pages/price-management/RentalVehicleTypes'));
 // const AdminRentalTracking = lazy(() => import('./modules/admin/pages/price-management/RentalTracking'));
@@ -1526,6 +1527,7 @@ function TaxiApp() {
                   element={<AdminSurgePricing />}
                 />
                 <Route path="surge" element={<AdminSurgePricing />} />
+                <Route path="ride-insurance" element={<AdminRideInsurance />} />
                 <Route path="goods-types" element={<AdminGoodsTypes />} />
                 <Route
                   path="goods-types/create"

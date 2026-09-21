@@ -840,6 +840,7 @@ const AdminLayout = () => {
               },*/
               { label: 'Set Price', path: '/taxi/admin/pricing/set-price', permission: 'set_prices.view' },
               { label: 'Surge Time Slots', path: '/taxi/admin/pricing/surge', permission: 'set_prices.view' },
+              { label: 'Ride Insurance', path: '/taxi/admin/pricing/ride-insurance', permission: 'set_prices.view' },
               { label: 'Goods Types', path: '/taxi/admin/pricing/goods-types', permission: 'goods_types.view' },
             ],
           },

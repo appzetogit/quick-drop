@@ -53,6 +53,11 @@ import {
   deleteRentalVehicleType,
   deleteSetPrice,
   getSurgeSlots,
+  getInsurancePlans,
+  createInsurancePlan,
+  updateInsurancePlan,
+  deleteInsurancePlan,
+  getInsuredRides,
   createSurgeSlot,
   updateSurgeSlot,
   deleteSurgeSlot,
@@ -336,6 +341,11 @@ adminRouter.post('/admin/types/set-prices', createSetPrice);
 adminRouter.patch('/admin/types/set-prices/:id', updateSetPrice);
 adminRouter.delete('/admin/types/set-prices/:id', deleteSetPrice);
 adminRouter.get('/admin/types/surge-slots', getSurgeSlots);
+adminRouter.get('/admin/types/ride-insurance', getInsurancePlans);
+adminRouter.get('/admin/types/ride-insurance/rides', getInsuredRides);
+adminRouter.post('/admin/types/ride-insurance', createInsurancePlan);
+adminRouter.patch('/admin/types/ride-insurance/:id', updateInsurancePlan);
+adminRouter.delete('/admin/types/ride-insurance/:id', deleteInsurancePlan);
 adminRouter.post('/admin/types/surge-slots', createSurgeSlot);
 adminRouter.patch('/admin/types/surge-slots/:id', updateSurgeSlot);
 adminRouter.delete('/admin/types/surge-slots/:id', deleteSurgeSlot);

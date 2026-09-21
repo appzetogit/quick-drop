@@ -604,6 +604,19 @@ const rideSchema = new mongoose.Schema(
         default: '',
         trim: true,
       },
+      // Ride insurance the rider chose at booking, frozen (common/rideInsurance.js).
+      insurance: {
+        type: new mongoose.Schema({
+          plan_id: { type: mongoose.Schema.Types.ObjectId, ref: 'TaxiRideInsurancePlan' },
+          name: { type: String, default: '' },
+          provider: { type: String, default: '' },
+          cover_amount: { type: Number, default: 0, min: 0 },
+          premium_type: { type: String, default: 'flat' },
+          premium_value: { type: Number, default: 0, min: 0 },
+          premium: { type: Number, default: 0, min: 0 },
+        }, { _id: false }),
+        default: null,
+      },
       surge_zone_name: {
         type: String,
         default: '',
@@ -753,6 +766,12 @@ const rideSchema = new mongoose.Schema(
     recovered_cancellation_due: {
       type: Number,
       default: 0,
+    },
+    // The ride insurance premium charged at completion; 0 when uninsured or not completed.
+    insurance_fee: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
     promo: {
       code: {
