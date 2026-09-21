@@ -179,7 +179,16 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         0
     );
 
+    // Counted from the same set getRestaurantPayoutPosition sums, so the
+    // order count and the money it explains can never disagree.
+    const allUnsettledOrderCount = await FoodTransaction.countDocuments({
+        restaurantId: rid,
+        status: { $in: ['captured', 'authorized'] },
+        'settlement.isRestaurantSettled': { $ne: true },
+    });
+
     const {
+        earned: lifetimeEarnings,
         approved: totalApprovedWithdrawals,
         available: availableBalance,
     } = await getRestaurantPayoutPosition(rid);
@@ -190,10 +199,20 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         start: { ...nowWindow.startMeta },
         end: { ...nowWindow.endMeta },
         totalEarnings: currentCycleEstimatedPayout, // We still show current cycle earnings label
+        // Everything unsettled, ever -- which is what netAvailable below is
+        // derived from. Without it the app shows a balance with no earnings
+        // to account for it whenever the money was earned in an earlier
+        // cycle, and a seller cannot tell a stale figure from a real one.
+        lifetimeEarnings,
+        lifetimeOrdersCounted: allUnsettledOrderCount,
         // Money actually paid out, not money queued for payout -- those are
         // opposite things and this line is labelled "withdrawn".
         totalWithdrawn: totalApprovedWithdrawals,
         estimatedPayout: availableBalance,
+        // Same figure under the name quick-commerce uses, because the one
+        // seller app reads both and must not get 0 from whichever module
+        // happens to be serving it.
+        withdrawableBalance: availableBalance,
         netAvailable: availableBalance,
         minimumWithdrawalAmount,
         totalOrders: currentCycleOrders.length,
@@ -260,6 +279,11 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
             restaurantId: restaurant?._id ? `REST${restaurant._id.toString().slice(-6).padStart(6, '0')}` : 'N/A',
             address
         },
+        // `wallet` is what the seller app parses; `currentCycle` is what this
+        // module has always sent. One object, both names -- exactly the pairing
+        // the quick-commerce service already publishes, and without it a food
+        // seller was shown a zero balance they could not withdraw.
+        wallet: currentCycle,
         currentCycle,
         invoiceSummary,
         pastCycles: pastCyclesResult

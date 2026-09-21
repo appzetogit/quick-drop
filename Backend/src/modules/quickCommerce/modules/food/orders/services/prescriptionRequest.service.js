@@ -9,13 +9,17 @@ import { normalizeDeliveryAddress } from '../../shared/geo.utils.js';
 import { findZoneForPoint, readAddressPoint, ZONE_VERTICALS } from '../../shared/zoneServiceability.js';
 import { attachOutletTimingsToRestaurants } from '../../restaurant/services/outletTimings.service.js';
 import { getRestaurantAvailabilityStatus } from '../../restaurant/helpers/restaurantAvailability.helper.js';
-import { MEDICAL_STORE_TYPE } from '../../shared/storeType.js';
+import { MEDICAL_STORE_TYPE, isMedicalStore } from '../../shared/storeType.js';
 import {
     assertClaimable,
     effectiveStatus,
     hasDeclined,
     normalizeExpiryMinutes,
     normalizeRadiusKm,
+    // Measuring and placing a shop, so the browse list can sort by distance
+    // without duplicating either.
+    distanceKm,
+    sellerPoint,
     pharmaciesInRange,
     REQUEST_STATUS,
     wasInvited,
@@ -95,11 +99,41 @@ const isOpenNow = (at) => (seller) => {
 };
 
 /**
- * Pharmacies a customer at this point can order from, nearest first.
+ * Whether this pharmacy never closes.
  *
- * The same selection a broadcast uses, so the list a customer browses and the
- * shops a broadcast reaches cannot disagree. Used by the customer's Medical
- * section for both of its buttons.
+ * Decided here rather than in the app for the same reason isOpenNow is:
+ * the app would have to reimplement what "00:00 to 23:59" versus "08:00 to
+ * 23:00" means, and the two copies would drift.
+ *
+ * Round the clock means trading every day AND a window that leaves no gap.
+ * A shop open 00:00-23:59 is 24x7 in every sense a customer cares about;
+ * the missing minute is how a closing time is written, not a shutter.
+ */
+const isRoundTheClock = (seller) => {
+    const days = Array.isArray(seller?.openDays) ? seller.openDays : [];
+    if (days.length < 7) return false;
+
+    const open = String(seller?.openingTime || '').trim();
+    const close = String(seller?.closingTime || '').trim();
+    if (!open || !close) return false;
+
+    // Equal times are the other way a full day is expressed.
+    if (open === close) return true;
+    return open === '00:00' && ['23:59', '24:00', '00:00'].includes(close);
+};
+
+/**
+ * Every pharmacy in the customer's zone, nearest first.
+ *
+ * Deliberately WIDER than the set a broadcast reaches. Browsing and
+ * broadcasting are different questions: a shop shut at midnight, or past the
+ * admin's radius, is still a real shop the customer may want to see and come
+ * back to, but it is not somewhere a prescription can be sent right now.
+ *
+ * Each row says which it is -- `isWithinRequestRadius` -- and
+ * `broadcastCount` is the number that would actually be reached, so no
+ * caller has to infer
+ * eligibility from the length of this list.
  */
 export async function listNearbyPharmacies(userId, { lat, lng } = {}) {
     const point = { lat: Number(lat), lng: Number(lng) };
@@ -111,21 +145,57 @@ export async function listNearbyPharmacies(userId, { lat, lng } = {}) {
     const zone = await findZoneForPoint(point.lat, point.lng, ZONE_VERTICALS.MEDICAL);
     const sellers = await loadPharmaciesWithTimings(zone?._id);
     const now = new Date();
-    const inRange = pharmaciesInRange(sellers, point, settings.requestRadiusKm, {
-        isOpen: isOpenNow(now),
-    });
+    const openAt = isOpenNow(now);
 
-    const byId = new Map(sellers.map((s) => [String(s._id), s]));
+    /*
+     * Who a broadcast would actually reach. Unchanged, and still the
+     * authority on that question -- the browse list below is deliberately
+     * wider and must not be mistaken for it.
+     */
+    const inRange = pharmaciesInRange(sellers, point, settings.requestRadiusKm, {
+        isOpen: openAt,
+    });
+    const reachableIds = new Set(inRange.map((row) => String(row.pharmacyId)));
+
+    /*
+     * What the customer browses: every approved pharmacy in their zone,
+     * nearest first. A shop that is shut, or past the broadcast radius, is
+     * shown and labelled rather than hidden -- the customer can still read
+     * its hours and come back, and a zone that looks empty at 11pm reads as
+     * a broken app.
+     *
+     * Shops with no pinned location sort last: they are real shops, but
+     * "nearest first" cannot place them.
+     */
+    const browsable = sellers
+        .filter((seller) => isMedicalStore(seller?.storeType))
+        .filter((seller) => String(seller?.status || '').toLowerCase() === 'approved')
+        .map((seller) => ({ seller, km: distanceKm(point, sellerPoint(seller)) }))
+        .sort((a, b) => {
+            if (a.km === null && b.km === null) return 0;
+            if (a.km === null) return 1;
+            if (b.km === null) return -1;
+            return a.km - b.km;
+        });
     return {
         radiusKm: settings.requestRadiusKm,
         broadcastEnabled: settings.broadcastEnabled,
         servesThisAddress: Boolean(zone),
-        pharmacies: inRange.map((row) => {
-            const seller = byId.get(String(row.pharmacyId)) || {};
+        zoneName: zone?.name || '',
+        // How many a broadcast would reach. The app used to infer this from
+        // the list being non-empty, which stops being true now the list is
+        // the whole zone.
+        broadcastCount: inRange.length,
+        pharmacies: browsable.map(({ seller, km }) => {
+            const id = String(seller._id);
             return {
-                id: String(row.pharmacyId),
-                name: row.name,
-                distanceKm: row.distanceKm,
+                id,
+                name: String(seller.restaurantName || seller.name || 'Pharmacy'),
+                distanceKm: km,
+                // Whether a prescription could actually go here: inside the
+                // admin radius, open, and taking orders.
+                isWithinRequestRadius: reachableIds.has(id),
+                is24x7: isRoundTheClock(seller),
                 profileImage: seller.profileImage || seller.image || '',
                 area: seller.area || seller.location?.area || '',
                 city: seller.city || seller.location?.city || '',
@@ -146,7 +216,7 @@ export async function listNearbyPharmacies(userId, { lat, lng } = {}) {
                 openingTime: seller.openingTime || '',
                 closingTime: seller.closingTime || '',
                 openDays: Array.isArray(seller.openDays) ? seller.openDays : [],
-                isOpenNow: isOpenNow(now)(seller),
+                isOpenNow: openAt(seller),
                 address: seller.location?.formattedAddress
                     || seller.location?.address
                     || [seller.location?.area, seller.location?.city].filter(Boolean).join(', '),

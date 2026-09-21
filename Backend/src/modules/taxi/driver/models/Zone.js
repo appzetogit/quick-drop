@@ -78,6 +78,27 @@ const zoneSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    /**
+     * Landmarks the rider app offers as destinations inside this zone.
+     *
+     * Ordered as the admin arranged them -- the first few are what a
+     * phone has room for, so the order is the admin's editorial choice
+     * and is not re-sorted on write.
+     */
+    popular_places: [
+      {
+        name: { type: String, trim: true, default: '' },
+        /** Cloudinary URL from the admin panel's shared upload. */
+        image: { type: String, trim: true, default: '' },
+        address: { type: String, trim: true, default: '' },
+        location: {
+          lat: { type: Number, default: null },
+          lng: { type: Number, default: null },
+        },
+        /** Hidden without being deleted, for a place that closes. */
+        active: { type: Boolean, default: true },
+      },
+    ],
     geometry: {
       type: {
         type: String,

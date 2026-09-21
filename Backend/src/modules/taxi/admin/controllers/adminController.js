@@ -679,6 +679,21 @@ const resolveCatalogZoneId = async (query = {}) => {
   }
 };
 
+/**
+ * GET /taxi/users/popular-places?lat=&lng=
+ *
+ * Public, like the vehicle catalogue beside it.
+ */
+export const getPopularPlaces = asyncHandler(async (req, res) =>
+  ok(
+    res,
+    await adminService.listPopularPlacesNear({
+      lat: req.query?.lat,
+      lng: req.query?.lng,
+    }),
+  ),
+);
+
 export const getPublicVehicleTypeCatalog = asyncHandler(async (req, res) => {
   const zoneId = await resolveCatalogZoneId(req.query || {});
   return ok(

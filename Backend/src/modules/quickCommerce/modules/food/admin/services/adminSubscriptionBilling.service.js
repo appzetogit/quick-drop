@@ -352,7 +352,7 @@ export async function getSubscriptionBillingSummaryAdmin(query = {}) {
     ]);
 
     const walletVsManual = await FoodSubscriptionTransaction.aggregate([
-        { $match: { type: { $in: ['wallet_deduction', 'manual_payment'] } } },
+        { $match: { type: { $in: ['wallet_deduction', 'manual_payment', 'online_payment'] } } },
         { $group: { _id: '$type', total: { $sum: { $ifNull: ['$amount', 0] } }, count: { $sum: 1 } } },
     ]);
     const collectionByMethod = Object.fromEntries(

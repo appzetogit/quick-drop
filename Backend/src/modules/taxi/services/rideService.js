@@ -1156,7 +1156,7 @@ export const createRideRecord = async ({
 
   const primaryVehicleTypeId = dispatchVehicleTypeIds[0] || null;
   const primaryVehicle = primaryVehicleTypeId
-    ? await Vehicle.findById(primaryVehicleTypeId).select('icon map_icon image dispatch_type').lean()
+    ? await Vehicle.findById(primaryVehicleTypeId).select('icon map_icon image dispatch_type bid_step_amount bid_step_count bid_max_increase').lean()
     : null;
   const resolvedVehicleIconUrl = String(
     vehicleIconUrl || primaryVehicle?.map_icon || primaryVehicle?.icon || primaryVehicle?.image || '',
@@ -1221,18 +1221,34 @@ export const createRideRecord = async ({
     2,
   );
   const isOutstationBiddingFlow = normalizedServiceType === 'intercity';
-  const pricingNegotiationMode =
-    supportsBidding && requestedBookingMode === 'bidding'
+  // What this vehicle lets a waiting rider add. Zero on the ceiling means
+  // step x count, which is exactly what the buttons already add up to.
+  const boostStepAmount = normalizeBidStepAmount(primaryVehicle?.bid_step_amount);
+  const boostStepCount = Math.max(1, Math.round(Number(primaryVehicle?.bid_step_count || 4)));
+  const boostCeilingIncrease = Number(primaryVehicle?.bid_max_increase || 0) > 0
+    ? Math.round(Number(primaryVehicle.bid_max_increase))
+    : boostStepAmount * boostStepCount;
+
+  // A rider who asked to bid gets driver bidding. A rider on an ordinary
+  // booking, on a bidding-capable vehicle, gets the boost buttons instead:
+  // they raise their own fare and dispatch goes round again at the new one.
+  const pricingNegotiationMode = !supportsBidding
+    ? 'none'
+    : requestedBookingMode === 'bidding'
       ? 'driver_bid'
-      : 'none';
+      : 'user_increment_only';
   const effectiveBookingMode = pricingNegotiationMode === 'driver_bid' ? 'bidding' : 'normal';
-  const configuredBidStepAmount = pricingNegotiationMode !== 'none'
-    ? normalizeBidStepAmount(
-      isOutstationBiddingFlow
-        ? bidRideSettings.bidding_amount_increase_or_decrease
-        : bidRideSettings.user_bidding_amount_increase_or_decrease,
-    )
-    : normalizeBidStepAmount(bidStepAmount);
+  const configuredBidStepAmount = pricingNegotiationMode === 'user_increment_only'
+    // Per vehicle, because the sensible bump is not the same for a bike and
+    // a premium car: Rs 10 moves nobody on a Rs 900 fare.
+    ? boostStepAmount
+    : pricingNegotiationMode !== 'none'
+      ? normalizeBidStepAmount(
+        isOutstationBiddingFlow
+          ? bidRideSettings.bidding_amount_increase_or_decrease
+          : bidRideSettings.user_bidding_amount_increase_or_decrease,
+      )
+      : normalizeBidStepAmount(bidStepAmount);
   const effectiveBidStepAmount = configuredBidStepAmount || normalizeBidStepAmount(bidStepAmount);
   const bidRideRange = resolveBidRideRange({
     baseFare: safeFare,
@@ -1247,24 +1263,18 @@ export const createRideRecord = async ({
       baseFare: safeFare,
       bidStepAmount: effectiveBidStepAmount,
     })
-    : pricingNegotiationMode === 'user_increment_only'
-      ? clampBidAmountWithinRange({
-        amount: safeFare,
-        minFare: bidRideRange.userBidFloorFare,
-        maxFare: bidRideRange.userBidCeilingFare,
-        baseFare: safeFare,
-        bidStepAmount: effectiveBidStepAmount,
-      })
-      : safeFare;
+    // The rider agreed to the quote and may choose to add to it, so the
+    // boost flow opens AT the quote rather than at the percentage floor the
+    // outstation auction would have used.
+    : safeFare;
   const effectiveBidFloorFare = pricingNegotiationMode === 'driver_bid'
     ? bidRideRange.driverBidFloorFare
-    : pricingNegotiationMode === 'user_increment_only'
-      ? bidRideRange.userBidFloorFare
-      : safeFare;
+    : safeFare;
   const effectiveBidCeilingMaxFare = pricingNegotiationMode === 'driver_bid'
     ? Math.min(bidRideRange.userBidCeilingFare, bidRideRange.driverBidCeilingFare)
     : pricingNegotiationMode === 'user_increment_only'
-      ? bidRideRange.userBidCeilingFare
+      // "Up to Rs X for this trip" -- the vehicle's own cap, not a percentage.
+      ? safeFare + boostCeilingIncrease
       : safeFare;
   const rideSurge = resolveRideSurge({
     surgeZone,
@@ -1300,9 +1310,10 @@ export const createRideRecord = async ({
   const effectiveBidFloorFareWithSurge = effectiveBidFloorFare + rideSurgeAmount;
   const effectiveUserMaxBidFareWithSurge = effectiveUserMaxBidFare + rideSurgeAmount;
   const effectiveBidCeilingMaxFareWithSurge = effectiveBidCeilingMaxFare + rideSurgeAmount;
-  const nextFareIncreaseAt = pricingNegotiationMode === 'user_increment_only'
-    ? new Date(Date.now() + fareIncreaseWaitMinutes * 60 * 1000)
-    : null;
+  // Null, not now + wait: a rider watching "no captains yet" should be able
+  // to add straight away. fareIncreaseWaitMinutes still spaces out the
+  // increases after the first one, which is what the admin set it for.
+  const nextFareIncreaseAt = null;
   const pricingSnapshot = {
     setPriceId: pricingRule?._id || null,
     starting_fare: effectiveStartingFare,

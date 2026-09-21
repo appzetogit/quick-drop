@@ -4,6 +4,9 @@ export const SUBSCRIPTION_TRANSACTION_TYPES = [
   "invoice_generated",
   "wallet_deduction",
   "manual_payment",
+  // Paid by the SELLER through the payment gateway, as opposed to
+  // manual_payment, which means money that moved outside the platform.
+  "online_payment",
   "waiver",
   "adjustment",
   "legacy_carryforward",
@@ -40,7 +43,7 @@ const subscriptionTransactionSchema = new mongoose.Schema(
     invoiceStatusAfter: { type: String, required: true },
 
     processedBy: {
-      role: { type: String, enum: ["SYSTEM", "ADMIN"], default: "SYSTEM" },
+      role: { type: String, enum: ["SYSTEM", "ADMIN", "RESTAURANT"], default: "SYSTEM" },
       id: { type: mongoose.Schema.Types.ObjectId, default: null },
       name: { type: String, default: "" },
     },

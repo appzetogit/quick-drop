@@ -57,7 +57,7 @@ import {
   createPoolingBooking,
   getMyPoolingBookings
 } from '../controllers/poolingController.js';
-import { getAppModules, getGoodsTypes, getPublicRentalVehicleCatalog, getPublicSetPrices, getPublicVehicleTypeCatalog } from '../../admin/controllers/adminController.js';
+import { getAppModules, getGoodsTypes, getPopularPlaces, getPublicRentalVehicleCatalog, getPublicSetPrices, getPublicVehicleTypeCatalog } from '../../admin/controllers/adminController.js';
 import { triggerUserSosAlert } from '../../safety/controllers/safetyController.js';
 
 export const userRouter = Router();
@@ -66,6 +66,9 @@ userRouter.get('/app-modules', asyncHandler(getAppModules));
 userRouter.get('/intercity-packages', asyncHandler(getIntercityPackageCatalog));
 userRouter.get('/goods-types', asyncHandler(getGoodsTypes));
 userRouter.get('/vehicle-types', asyncHandler(getPublicVehicleTypeCatalog));
+// Landmarks the admin set on the zone the rider is standing in, nearest
+// first. Public: the destination screen renders before sign-in.
+userRouter.get('/popular-places', asyncHandler(getPopularPlaces));
 // Public tariffs. Present pre-merge as userRouter.get('/set-prices'); the
 // rider app has always read fares from here and shows blank prices without it.
 userRouter.get('/set-prices', asyncHandler(getPublicSetPrices));

@@ -315,6 +315,57 @@ export async function updateDispatchSettings(dispatchMode, adminId) {
   return getDispatchSettings();
 }
 
+/**
+ * The restaurant document an offer needs, not its id.
+ *
+ * buildDeliverySocketPayload reads restaurantName, location and phone off
+ * this. Handing it the ObjectId — which is what the call did — produced a
+ * payload with an empty name, an empty pickup address and no coordinates,
+ * so the rider was shown "Restaurant / Pickup Location" and asked to
+ * accept. Returns null on failure, which is the old behaviour.
+ */
+/**
+ * What the full-screen alert needs, in the push itself.
+ *
+ * A backgrounded rider has no socket, and the alert is built straight
+ * from this map — so anything missing here is a placeholder on their
+ * screen. Every value is a string because FCM data may not hold anything
+ * else.
+ */
+const offerPushData = (order, payload = {}) => {
+  const str = (value) => (value === null || value === undefined ? '' : String(value));
+  return {
+    type: 'new_order',
+    orderId: order._id.toString(),
+    restaurantName: str(payload.restaurantName),
+    restaurantAddress: str(payload.restaurantAddress),
+    pickupAddress: str(payload.restaurantAddress),
+    customerName: str(payload.customerName),
+    customerAddress: str(payload.customerAddress),
+    dropAddress: str(payload.customerAddress),
+    tripDistanceKm: str(payload.tripDistanceKm),
+    tripDurationMins: str(payload.tripDurationMins),
+    earningAmount: str(payload.earningAmount ?? payload.riderEarning),
+    total: str(payload.total),
+  };
+};
+
+const offerRestaurantDoc = async (order) => {
+  const id = order?.restaurantId?._id || order?.restaurantId;
+  if (!id) return null;
+  // Already populated by the caller: use it rather than fetching again.
+  if (typeof order.restaurantId === 'object' && order.restaurantId?.restaurantName) {
+    return order.restaurantId;
+  }
+  try {
+    return await FoodRestaurant.findById(id)
+      .select('restaurantName location addressLine1 area city state phone ownerPhone primaryContactNumber')
+      .lean();
+  } catch {
+    return null;
+  }
+};
+
 export async function tryAutoAssign(orderId, options = {}) {
   const attempt = options.attempt || 1;
   const lockTimeout = 55000; // 55 seconds lock interval
@@ -394,7 +445,7 @@ export async function tryAutoAssign(orderId, options = {}) {
       // If we ran out of new eligible partners, we might want to re-offer to everyone (Phase 2 style)
       const io = getIO();
       if (io && codEligiblePartners.length > 0) {
-        const payload = buildDeliverySocketPayload(order, order.restaurantId);
+        const payload = buildDeliverySocketPayload(order, await offerRestaurantDoc(order));
         for (const p of codEligiblePartners) {
           const roomName = rooms.delivery(p.partnerId);
           io.to(roomName).emit('new_order_available', { ...payload, pickupDistanceKm: p.distanceKm });
@@ -413,7 +464,7 @@ export async function tryAutoAssign(orderId, options = {}) {
     }
 
     const io = getIO();
-    const payload = buildDeliverySocketPayload(order, order.restaurantId);
+    const payload = buildDeliverySocketPayload(order, await offerRestaurantDoc(order));
 
     // BROADCAST: Notify all eligible riders
     logger.info(`Broadcasting order ${order._id} to ${eligible.length} riders.`);
@@ -435,7 +486,7 @@ export async function tryAutoAssign(orderId, options = {}) {
           {
             title: 'New order available!',
             body: `Order #${order.order_id || order._id} is available. You have 60 seconds to accept!`,
-            data: { type: 'new_order', orderId: order._id.toString() },
+            data: offerPushData(order, payload),
           }
         );
       } catch (err) {
