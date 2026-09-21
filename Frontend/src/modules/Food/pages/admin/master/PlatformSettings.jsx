@@ -1,210 +1,90 @@
 import { useState, useEffect, useCallback } from "react"
 import { platformSettingsAPI } from "@food/api"
 import { toast } from "sonner"
-import { Loader2, ChevronDown, RotateCcw } from "lucide-react"
+import { Loader2, Wallet, ChevronDown } from "lucide-react"
 
 /**
- * Platform settings: the rules every service shares.
+ * Platform settings: only the settings that change something on the live site.
  *
- * One value per setting, set once. Where a service genuinely needs its own
- * number it is set under "Different for a service", and the row says which
- * services differ. City- and partner-level overrides still exist on the
- * server and still apply; they are set where those records are managed, not
- * by typing ids here.
+ * Today that is the partner cash limit (core/finance/cashLimit.service.js).
+ * The other keys in core/config/registry.js feed only the eligibility shadow
+ * engine, which decides nothing and is off unless ELIGIBILITY_SHADOW_ENABLED
+ * is set, or are read nowhere (maintenance mode, max concurrent jobs). They
+ * stay registered on the server and are deliberately not shown here: a switch
+ * that does nothing tells an admin something is protected when it is not. Add
+ * a key to this screen when the code starts obeying it.
+ *
+ * How the limit applies:
+ *   - The shared value covers riders (one limit across Taxi, Food and Quick
+ *     Commerce) and service providers.
+ *   - Service providers may have their own value (vertical override); riders
+ *     may not -- a per-service rider value is ignored by the server.
+ *   - Empty = not managed here: each partner keeps the limit from its own
+ *     older screen. 0 = no limit.
+ *   - Per-partner overrides are set on the partner's own page, not here.
  */
 
-const SERVICES = [
-  { key: "food", label: "Food" },
-  { key: "quickCommerce", label: "Quick Commerce" },
-  { key: "taxi", label: "Taxi" },
-  { key: "serviceProvider", label: "Services" },
-]
+const LIMIT_KEY = "finance.cashLimit"
+const ENFORCE_KEY = "finance.enforceCashLimit"
 
-const AREA_LABELS = {
-  finance: "Rider & partner money",
-  assignment: "Order assignment",
-  partner: "Partner rules",
-  platform: "Platform",
+const savedValue = (setting, level) => {
+  const link = (setting?.chain || []).find((l) => l.level === level)
+  return link?.set ? link.value : null
 }
 
-const show = (v) => (v === null || v === undefined ? "Not set" : typeof v === "boolean" ? (v ? "On" : "Off") : String(v))
-const valueAt = (setting, level) => (setting?.chain || []).find((l) => l.level === level)
+const rupees = (n) => `₹${Number(n).toLocaleString("en-IN")}`
 
-function ValueInput({ type, value, onChange, disabled, placeholder, label }) {
-  if (type === "boolean") {
-    return (
-      <div role="radiogroup" aria-label={label} className="inline-flex rounded-lg bg-neutral-100 p-0.5 text-sm">
-        {[
-          [true, "On"],
-          [false, "Off"],
-        ].map(([v, text]) => (
-          <button
-            key={text}
-            type="button"
-            role="radio"
-            aria-checked={value === v}
-            disabled={disabled}
-            onClick={() => onChange(v)}
-            className={`rounded-md px-3 py-1 font-medium ${value === v ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}
-          >
-            {text}
-          </button>
-        ))}
-      </div>
-    )
-  }
+function LimitInput({ value, onChange, disabled, id }) {
   return (
-    <input
-      type="number"
-      aria-label={label}
-      value={value === null || value === undefined ? "" : value}
-      placeholder={placeholder}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-      className="w-36 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm tabular-nums focus:border-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
-    />
+    <div className="relative">
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500">₹</span>
+      <input
+        id={id}
+        type="number"
+        min="0"
+        step="100"
+        inputMode="numeric"
+        value={value === null || value === undefined ? "" : value}
+        placeholder="Not set"
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value === "" ? null : Math.max(0, Number(e.target.value)))}
+        className="w-40 rounded-lg border border-neutral-300 bg-white py-2 pl-7 pr-3 text-sm tabular-nums focus:border-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
+      />
+    </div>
   )
 }
 
-function SettingCard({ setting, perService, onSaved }) {
-  const globalLink = valueAt(setting, "global")
-  const [value, setValue] = useState(globalLink?.set ? globalLink.value : null)
-  const [overrides, setOverrides] = useState(() =>
-    Object.fromEntries(SERVICES.map((s) => {
-      const link = valueAt(perService[s.key], "vertical")
-      return [s.key, link?.set ? link.value : null]
-    })),
-  )
-  const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState("")
-
-  const canPerService = (setting.scopes || []).includes("vertical")
-  const differing = SERVICES.filter((s) => valueAt(perService[s.key], "vertical")?.set)
-  const dirty = (globalLink?.set ? globalLink.value : null) !== value
-
-  const save = async (level, scopeId, next, key) => {
-    setBusy(key)
-    try {
-      await platformSettingsAPI.set(setting.key, { level, scopeId, value: next })
-      toast.success(next === null ? "Now uses the platform value" : "Saved")
-      onSaved()
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Could not save that setting")
-    } finally {
-      setBusy("")
-    }
-  }
-
-  return (
-    <li className="px-5 py-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="font-medium text-neutral-900">{setting.label}</p>
-          {setting.help && <p className="mt-0.5 max-w-xl text-sm text-neutral-500">{setting.help}</p>}
-          {differing.length > 0 && (
-            <p className="mt-1 text-xs text-amber-700">
-              Different for {differing.map((s) => s.label).join(", ")}
-            </p>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <ValueInput type={setting.type} value={value} onChange={setValue} disabled={busy === "global"} placeholder="Not set" label={setting.label} />
-          <button
-            type="button"
-            disabled={!dirty || busy === "global"}
-            onClick={() => save("global", "*", value, "global")}
-            className="inline-flex items-center gap-1 rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
-          >
-            {busy === "global" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Save
-          </button>
-        </div>
-      </div>
-
-      {canPerService && (
-        <div className="mt-3">
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            aria-expanded={open}
-            className="inline-flex items-center gap-1 text-xs font-medium text-neutral-600 hover:text-neutral-900"
-          >
-            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
-            Different for a service
-          </button>
-          {open && (
-            <div className="mt-2 grid gap-2 rounded-xl bg-neutral-50 p-3 sm:grid-cols-2">
-              {SERVICES.map((s) => {
-                const saved = valueAt(perService[s.key], "vertical")
-                const current = overrides[s.key]
-                const changed = (saved?.set ? saved.value : null) !== current
-                return (
-                  <div key={s.key} className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-2 ring-1 ring-neutral-200">
-                    <span className="text-sm text-neutral-800">{s.label}</span>
-                    <div className="flex items-center gap-1.5">
-                      <ValueInput
-                        type={setting.type}
-                        value={current}
-                        label={`${setting.label} for ${s.label}`}
-                        placeholder={`Same (${show(value)})`}
-                        disabled={busy === s.key}
-                        onChange={(v) => setOverrides((o) => ({ ...o, [s.key]: v }))}
-                      />
-                      {changed && (
-                        <button
-                          type="button"
-                          onClick={() => save("vertical", s.key, current, s.key)}
-                          className="rounded-md bg-neutral-900 px-2 py-1 text-xs font-semibold text-white"
-                        >
-                          Save
-                        </button>
-                      )}
-                      {saved?.set && !changed && (
-                        <button
-                          type="button"
-                          onClick={() => save("vertical", s.key, null, s.key)}
-                          className="rounded-md px-2 py-1 text-xs text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-                          title="Use the platform value again"
-                        >
-                          Reset
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-    </li>
-  )
-}
+const describe = (value) =>
+  value === null
+    ? "Not set here: each partner keeps the limit from its own older screen."
+    : value === 0
+      ? "No limit: partners can hold any amount of cash."
+      : `Partners holding more than ${rupees(value)} in cash get no new cash orders until they deposit it.`
 
 export default function PlatformSettings() {
   const [loading, setLoading] = useState(true)
-  const [settings, setSettings] = useState([])
-  const [perService, setPerService] = useState({})
-  const [catalogue, setCatalogue] = useState([])
-  const [version, setVersion] = useState(0)
+  const [busy, setBusy] = useState("")
+  const [saved, setSaved] = useState({ limit: null, enforce: true, spLimit: null })
+  const [limit, setLimit] = useState(null)
+  const [spLimit, setSpLimit] = useState(null)
+  const [spOpen, setSpOpen] = useState(false)
 
   const load = useCallback(async () => {
     try {
-      const [cat, base, ...byService] = await Promise.all([
-        platformSettingsAPI.getCatalogue(),
+      const [base, sp] = await Promise.all([
         platformSettingsAPI.resolveAll({}),
-        ...SERVICES.map((s) => platformSettingsAPI.resolveAll({ vertical: s.key })),
+        platformSettingsAPI.resolveAll({ vertical: "serviceProvider" }),
       ])
-      setCatalogue(cat?.data?.data?.areas || [])
-      setSettings(base?.data?.data?.settings || [])
-      const map = {}
-      SERVICES.forEach((s, i) => {
-        for (const row of byService[i]?.data?.data?.settings || []) {
-          map[row.key] = { ...(map[row.key] || {}), [s.key]: row }
-        }
-      })
-      setPerService(map)
-      setVersion((v) => v + 1)
+      const find = (res, key) => (res?.data?.data?.settings || []).find((s) => s.key === key)
+      const next = {
+        limit: savedValue(find(base, LIMIT_KEY), "global"),
+        enforce: savedValue(find(base, ENFORCE_KEY), "global") !== false,
+        spLimit: savedValue(find(sp, LIMIT_KEY), "vertical"),
+      }
+      setSaved(next)
+      setLimit(next.limit)
+      setSpLimit(next.spLimit)
+      if (next.spLimit !== null) setSpOpen(true)
     } catch (err) {
       toast.error(err?.response?.data?.message || "Could not load platform settings")
     } finally {
@@ -216,68 +96,141 @@ export default function PlatformSettings() {
     load()
   }, [load])
 
-  const metaFor = (key) => {
-    for (const area of catalogue) {
-      const hit = (area.settings || []).find((s) => s.key === key)
-      if (hit) return { scopes: hit.scopes, type: hit.type, area: area.area }
+  const save = async (key, level, scopeId, value, busyKey, message) => {
+    setBusy(busyKey)
+    try {
+      await platformSettingsAPI.set(key, { level, scopeId, value })
+      // Other server processes cache settings for 30s; clear this one's now.
+      await platformSettingsAPI.invalidateCache().catch(() => {})
+      toast.success(message)
+      await load()
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Could not save")
+    } finally {
+      setBusy("")
     }
-    return { scopes: [], type: "number", area: "other" }
   }
-  const areas = [...new Set(settings.map((s) => metaFor(s.key).area))]
+
+  if (loading) {
+    return (
+      <div className="flex min-h-full items-center gap-2 bg-neutral-100 p-6 text-neutral-500">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading settings
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-full bg-neutral-100 p-4 lg:p-6">
-      <div className="mx-auto max-w-4xl space-y-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-neutral-900">Platform settings</h1>
-            <p className="mt-1 text-sm text-neutral-600">
-              Rules shared by Food, Quick Commerce, Taxi and Services. Set a value once; change it for one service only if that service really differs.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await platformSettingsAPI.invalidateCache()
-                toast.success("Settings reloaded")
-                load()
-              } catch {
-                toast.error("Could not reload settings")
-              }
-            }}
-            className="inline-flex items-center gap-1.5 self-start rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
-            title="Use this if a change does not seem to apply"
-          >
-            <RotateCcw className="h-4 w-4" /> Reload settings
-          </button>
+      <div className="mx-auto max-w-3xl space-y-5">
+        <div>
+          <h1 className="text-2xl font-semibold text-neutral-900">Platform settings</h1>
+          <p className="mt-1 text-sm text-neutral-600">Rules that apply across Food, Quick Commerce and Taxi.</p>
         </div>
 
-        {loading ? (
-          <div className="flex items-center gap-2 py-10 text-neutral-500">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading settings
+        <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+          <div className="flex items-start gap-3 border-b border-neutral-100 px-5 py-4">
+            <div className="rounded-lg bg-neutral-100 p-2 text-neutral-700">
+              <Wallet className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-neutral-900">Cash limit for partners</h2>
+              <p className="mt-0.5 text-sm text-neutral-500">
+                The most cash a rider or partner can hold from cash orders before they must deposit it. One limit covers a
+                rider across Taxi, Food and Quick Commerce combined.
+              </p>
+            </div>
           </div>
-        ) : (
-          areas.map((area) => (
-            <section key={area} className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-              <h2 className="border-b border-neutral-200 bg-neutral-50 px-5 py-2.5 text-sm font-semibold text-neutral-800">
-                {AREA_LABELS[area] || area}
-              </h2>
-              <ul className="divide-y divide-neutral-100">
-                {settings
-                  .filter((s) => metaFor(s.key).area === area)
-                  .map((s) => (
-                    <SettingCard
-                      key={`${s.key}-${version}`}
-                      setting={{ ...s, ...metaFor(s.key) }}
-                      perService={perService[s.key] || {}}
-                      onSaved={load}
-                    />
-                  ))}
-              </ul>
-            </section>
-          ))
-        )}
+
+          <div className="space-y-4 px-5 py-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <label htmlFor="cash-limit" className="text-sm font-medium text-neutral-800">
+                Cash limit
+                <span className="block text-xs font-normal text-neutral-500">0 = no limit</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <LimitInput id="cash-limit" value={limit} onChange={setLimit} disabled={busy === "limit"} />
+                <button
+                  type="button"
+                  disabled={limit === saved.limit || busy === "limit"}
+                  onClick={() => save(LIMIT_KEY, "global", "*", limit, "limit", limit === null ? "Cash limit cleared" : "Cash limit saved")}
+                  className="inline-flex items-center gap-1 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
+                >
+                  {busy === "limit" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Save
+                </button>
+              </div>
+            </div>
+            <p className="rounded-lg bg-neutral-50 px-3 py-2 text-sm text-neutral-600">
+              {saved.enforce ? describe(saved.limit) : "Not enforced right now: the limit is shown to partners but nobody is stopped."}
+            </p>
+
+            <div className="flex flex-col gap-3 border-t border-neutral-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-neutral-800">Stop new cash orders above the limit</p>
+                <p className="text-xs text-neutral-500">Turn off to keep the limit visible without blocking anyone.</p>
+              </div>
+              <div role="radiogroup" aria-label="Enforce the cash limit" className="inline-flex self-start rounded-lg bg-neutral-100 p-0.5 text-sm">
+                {[
+                  [true, "On"],
+                  [false, "Off"],
+                ].map(([v, text]) => (
+                  <button
+                    key={text}
+                    type="button"
+                    role="radio"
+                    aria-checked={saved.enforce === v}
+                    disabled={busy === "enforce"}
+                    onClick={() =>
+                      saved.enforce !== v &&
+                      save(ENFORCE_KEY, "global", "*", v, "enforce", v ? "Cash limit is now enforced" : "Cash limit is no longer enforced")
+                    }
+                    className={`rounded-md px-4 py-1.5 font-medium ${saved.enforce === v ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}
+                  >
+                    {text}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-neutral-100 pt-4">
+              <button
+                type="button"
+                onClick={() => setSpOpen((o) => !o)}
+                aria-expanded={spOpen}
+                className="inline-flex items-center gap-1 text-sm font-medium text-neutral-600 hover:text-neutral-900"
+              >
+                <ChevronDown className={`h-4 w-4 transition-transform ${spOpen ? "rotate-180" : ""}`} />
+                A different limit for service providers
+              </button>
+              {spOpen && (
+                <div className="mt-3 flex flex-col gap-3 rounded-lg bg-neutral-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-neutral-600">
+                    {spLimit === null && saved.spLimit === null
+                      ? "Leave empty to use the limit above."
+                      : "Service providers use this instead of the limit above."}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <LimitInput id="sp-cash-limit" value={spLimit} onChange={setSpLimit} disabled={busy === "sp"} />
+                    <button
+                      type="button"
+                      disabled={spLimit === saved.spLimit || busy === "sp"}
+                      onClick={() =>
+                        save(LIMIT_KEY, "vertical", "serviceProvider", spLimit, "sp", spLimit === null ? "Service providers now use the main limit" : "Saved")
+                      }
+                      className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <p className="text-xs text-neutral-500">
+          A limit for one particular rider or partner is set on that partner&apos;s own page.
+        </p>
       </div>
     </div>
   )
