@@ -110,6 +110,9 @@ const defaultFormData = {
   description: '',
   transport_type: 'taxi',
   dispatch_type: 'normal',
+  bid_step_amount: 10,
+  bid_step_count: 4,
+  bid_max_increase: 0,
   icon_types: 'car',
   image: '',
   map_icon: '',
@@ -328,6 +331,9 @@ const VehicleType = ({ mode: propMode }) => {
               description: selectedVehicle.description || '',
               transport_type: selectedVehicle.transport_type || 'taxi',
               dispatch_type: selectedVehicle.dispatch_type || selectedVehicle.trip_dispatch_type || 'normal',
+              bid_step_amount: Number(selectedVehicle.bid_step_amount ?? 10),
+              bid_step_count: Number(selectedVehicle.bid_step_count ?? 4),
+              bid_max_increase: Number(selectedVehicle.bid_max_increase ?? 0),
               icon_types: normalizeIconType(selectedVehicle.icon_types || selectedVehicle.icon_types_for),
               image: selectedVehicle.image || '',
               map_icon: selectedVehicle.map_icon || selectedVehicle.icon || selectedVehicle.image || '',
@@ -455,6 +461,9 @@ const VehicleType = ({ mode: propMode }) => {
         description: formData.description.trim(),
         transport_type: normalizeTransportType(formData.transport_type),
         dispatch_type: formData.dispatch_type,
+        bid_step_amount: Number(formData.bid_step_amount || 10),
+        bid_step_count: Number(formData.bid_step_count || 4),
+        bid_max_increase: Number(formData.bid_max_increase || 0),
         icon_types: normalizeIconType(formData.icon_types),
         image: formData.image || '',
         icon: formData.map_icon || '',
@@ -994,6 +1003,58 @@ const VehicleType = ({ mode: propMode }) => {
               <option value="both">Both</option>
             </select>
           </div>
+
+          {['bidding', 'both'].includes(formData.dispatch_type) && (
+            <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-700">Fare boost offered to riders</p>
+              <p className="mt-1 text-xs text-slate-500">
+                While a rider waits for a captain, the app offers these buttons to raise the fare
+                and search again. Set them per vehicle &mdash; &#8377;10 moves nobody on a &#8377;900 fare.
+              </p>
+              <div className="mt-3 grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className={labelClass}>Step amount (&#8377;)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={formData.bid_step_amount}
+                    onChange={(e) => updateForm('bid_step_amount', e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>How many buttons</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={formData.bid_step_count}
+                    onChange={(e) => updateForm('bid_step_count', e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Maximum extra (&#8377;)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formData.bid_max_increase}
+                    onChange={(e) => updateForm('bid_max_increase', e.target.value)}
+                    className={inputClass}
+                  />
+                  <p className="mt-1 text-xs text-slate-400">0 = the buttons&#39; own total</p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs font-medium text-slate-600">
+                Rider sees:{' '}
+                {Array.from(
+                  { length: Math.min(10, Math.max(1, Number(formData.bid_step_count || 4))) },
+                  (unused, index) =>
+                    `+\u20B9${(index + 1) * Math.max(1, Number(formData.bid_step_amount || 10))}`,
+                ).join('  ')}
+              </p>
+            </div>
+          )}
 
           <div>
             <label className={labelClass}>Size *</label>

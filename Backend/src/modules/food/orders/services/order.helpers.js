@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { buildOrderEta } from './orderEta.service.js';
 import { config } from '../../../../config/env.js';
 import { logger } from '../../../../utils/logger.js';
 import {
@@ -83,6 +84,12 @@ export function generateFourDigitDeliveryOtp() {
 export function sanitizeOrderForExternal(orderDoc) {
   const o = orderDoc?.toObject ? orderDoc.toObject() : { ...(orderDoc || {}) };
   delete o.deliveryOtp;
+
+  // How long until it arrives, measured from the rider when there is one
+  // and from the restaurant when there is not. Computed on every read
+  // rather than stored: the only input that moves is the rider, and a
+  // stored figure would be stale the moment they did.
+  o.eta = buildOrderEta(o);
   const dv = o.deliveryVerification;
   if (dv && dv.dropOtp != null) {
     const d = dv.dropOtp;
@@ -222,6 +229,13 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
     .map((v) => String(v || '').trim())
     .filter(Boolean);
 
+  // Restaurant to customer, so the rider sees the size of the job before
+  // they accept it.
+  const tripEta = buildOrderEta({
+    ...order,
+    restaurantId: restaurant,
+  });
+
   return {
     orderMongoId:
       orderDoc?._id?.toString?.() || order?._id?.toString?.() || order?._id,
@@ -268,6 +282,11 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
     note: order?.note || "",
     riderEarning: order?.riderEarning || 0,
     earnings: order?.riderEarning || order?.pricing?.deliveryFee || 0,
+    // The alert reads this key; without it the Km line on the offer was
+    // blank and the rider judged the job on nothing.
+    earningAmount: order?.riderEarning || order?.pricing?.deliveryFee || 0,
+    tripDistanceKm: tripEta?.tripDistanceKm ?? null,
+    tripDurationMins: tripEta?.minutes ?? null,
     deliveryFee: order?.pricing?.deliveryFee || 0,
     deliveryFleet: order?.deliveryFleet,
     dispatch: order?.dispatch,

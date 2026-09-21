@@ -61,6 +61,33 @@ const vehicleSchema = new mongoose.Schema(
       default: 'normal',
       trim: true,
     },
+    /**
+ * How much a rider may add to speed a booking up, on this vehicle.
+ *
+ * Only read when dispatch_type allows bidding. The rider is offered
+ * bid_step_count buttons of bid_step_amount each -- +10 +20 +30 +40 --
+ * and may not go past bid_max_increase in total.
+ *
+ * Per vehicle because the sensible bump is not the same for a bike and
+ * a premium car: Rs 10 moves nobody on a Rs 900 fare.
+ */
+    bid_step_amount: {
+      type: Number,
+      default: 10,
+      min: 1,
+    },
+    bid_step_count: {
+      type: Number,
+      default: 4,
+      min: 1,
+      max: 10,
+    },
+    /** 0 means step x count, which is what the buttons already add up to. */
+    bid_max_increase: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     icon_types: {
       type: String,
       enum: VEHICLE_ICON_TYPES,

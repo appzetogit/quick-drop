@@ -1610,6 +1610,50 @@ const normalizePointLocationPayload = (payload = {}, fallback = {}) => {
   };
 };
 
+/** Crow-flies kilometres, to one decimal -- the precision a card shows. */
+const haversineKm = (from, to) => {
+  const radians = (degrees) => (degrees * Math.PI) / 180;
+  const dLat = radians(to.lat - from.lat);
+  const dLng = radians(to.lng - from.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(radians(from.lat)) * Math.cos(radians(to.lat)) * Math.sin(dLng / 2) ** 2;
+  const km = 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
+  return Math.round(km * 10) / 10;
+};
+
+/**
+ * The landmarks an admin submitted, cleaned.
+ *
+ * A place with no name or no coordinates is dropped rather than stored:
+ * the app puts these straight into a booking, and a card that cannot be
+ * tapped is worse than one that was never drawn. Capped at 12 because the
+ * rider sees a single row of them.
+ */
+const normalizeZonePopularPlaces = (value) => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((raw) => {
+      const lat = Number(raw?.location?.lat ?? raw?.lat);
+      const lng = Number(raw?.location?.lng ?? raw?.lng);
+      const name = String(raw?.name || '').trim();
+      if (!name || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      // 0,0 is the Atlantic, and it is what an empty form field parses to.
+      if (lat === 0 && lng === 0) return null;
+
+      return {
+        name,
+        image: String(raw?.image || '').trim(),
+        address: String(raw?.address || '').trim(),
+        location: { lat, lng },
+        active: raw?.active !== false,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+};
+
 const serializeZone = (zone) => ({
   _id: zone._id,
   id: zone._id,
@@ -1640,6 +1684,7 @@ const serializeZone = (zone) => ({
   coordinates: Array.isArray(zone.geometry?.coordinates?.[0])
     ? zone.geometry.coordinates[0].map(([lng, lat]) => ({ lat: Number(lat), lng: Number(lng) }))
     : [],
+  popular_places: normalizeZonePopularPlaces(zone.popular_places),
   createdAt: zone.createdAt,
   updatedAt: zone.updatedAt,
 });
@@ -5958,7 +6003,7 @@ export const listPublicVehicleCatalog = async (appModuleId = null, { zoneId = nu
     : {};
 
   const items = await Vehicle.find(filter)
-    .select('name short_description description transport_type dispatch_type icon_types delivery_category delivery_distance_pricing capacity ride_surge_amount image icon map_icon status active app_modules')
+    .select('name short_description description transport_type dispatch_type icon_types delivery_category delivery_distance_pricing capacity ride_surge_amount image icon map_icon status active app_modules bid_step_amount bid_step_count bid_max_increase')
     .sort({ createdAt: -1 })
     .lean();
 
@@ -5980,6 +6025,16 @@ export const listPublicVehicleCatalog = async (appModuleId = null, { zoneId = nu
     delivery_distance_pricing: normalizeDeliveryDistancePricing(item.delivery_distance_pricing),
     capacity: Number(item.capacity || 0),
     ride_surge_amount: Number(item.ride_surge_amount || 0),
+    // What a waiting rider may add, and how far they may go. Sent on every
+    // vehicle so the app can build the buttons without a second request once
+    // the ride is already searching.
+    bidding_enabled: ['bidding', 'both'].includes(String(item.dispatch_type || 'normal')),
+    bidStepAmount: Number(item.bid_step_amount || 10),
+    bidStepCount: Number(item.bid_step_count || 4),
+    bidMaxIncrease:
+      Number(item.bid_max_increase || 0) > 0
+        ? Number(item.bid_max_increase)
+        : Number(item.bid_step_amount || 10) * Number(item.bid_step_count || 4),
     image: item.image || '',
     map_icon: item.map_icon || item.icon || item.image || '',
     status: item.status ?? 1,
@@ -6028,6 +6083,24 @@ export const listVehiclePreferences = async () => {
   return listPreferences();
 };
 
+/**
+ * The bidding numbers an admin typed, or the defaults.
+ *
+ * Zero on the ceiling is meaningful: it means "step x count", which is what
+ * the buttons already add up to, rather than "no boost allowed".
+ */
+const normalizeBidSettings = (payload = {}) => {
+  const num = (value, fallback) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+  };
+  return {
+    bid_step_amount: Math.max(1, num(payload.bid_step_amount, 10)),
+    bid_step_count: Math.min(10, Math.max(1, num(payload.bid_step_count, 4))),
+    bid_max_increase: num(payload.bid_max_increase, 0),
+  };
+};
+
 export const createVehicleType = async (payload) => {
   if (!payload.name?.trim()) {
     throw new ApiError(400, 'Vehicle name is required');
@@ -6063,6 +6136,7 @@ export const createVehicleType = async (payload) => {
     map_icon: mapIcon,
     status: Number(payload.status ?? 1) ? 1 : 0,
     active: Number(payload.status ?? 1) === 1,
+    ...normalizeBidSettings(payload),
     app_modules: Array.isArray(payload.app_modules)
       ? payload.app_modules.filter(Boolean).map(toObjectId)
       : [],
@@ -6140,6 +6214,15 @@ export const updateVehicleType = async (id, payload) => {
     vehicle.status = Number(payload.status) ? 1 : 0;
     vehicle.active = vehicle.status === 1;
   }
+  // Absent means "not sent, leave alone" -- the same rule the fields around
+  // this one follow.
+  for (const key of ['bid_step_amount', 'bid_step_count', 'bid_max_increase']) {
+    if (payload[key] !== undefined) {
+      const value = Number(payload[key]);
+      if (Number.isFinite(value) && value >= 0) vehicle[key] = value;
+    }
+  }
+
   // An empty array is a real choice here ("offer under every module"), so
   // only an absent key means leave it alone.
   if (payload.app_modules !== undefined) {
@@ -7793,7 +7876,51 @@ export const getDashboardData = async () => {
     return true;
   };
 
-  export const createZone = async (payload, currentAdmin = null) => {
+    /**
+   * The landmarks an admin set for whichever zone [lat],[lng] falls in.
+   *
+   * Nearest first, each with the distance from the rider. Returns an
+   * empty list -- never an error -- when the point is outside every zone
+   * or the zone has no landmarks: the destination screen shows its other
+   * shortcuts and the rider types as they always did.
+   */
+  export const listPopularPlacesNear = async ({ lat, lng }) => {
+    const originLat = Number(lat);
+    const originLng = Number(lng);
+    if (!Number.isFinite(originLat) || !Number.isFinite(originLng)) {
+      return { zoneId: null, zoneName: '', places: [] };
+    }
+
+    const zone = await Zone.findOne({
+      active: { $ne: false },
+      geometry: {
+        $geoIntersects: {
+          $geometry: { type: 'Point', coordinates: [originLng, originLat] },
+        },
+      },
+    })
+      .select('_id name popular_places')
+      .lean();
+
+    if (!zone) return { zoneId: null, zoneName: '', places: [] };
+
+    const places = normalizeZonePopularPlaces(zone.popular_places)
+      .filter((place) => place.active)
+      .map((place) => ({
+        ...place,
+        distanceKm: haversineKm(
+          { lat: originLat, lng: originLng },
+          place.location,
+        ),
+      }))
+      // Nearest first: a rider scanning one row of cards reads left to
+      // right, and the admin's order is not about where the rider is.
+      .sort((a, b) => a.distanceKm - b.distanceKm);
+
+    return { zoneId: String(zone._id), zoneName: zone.name || '', places };
+  };
+
+export const createZone = async (payload, currentAdmin = null) => {
     if (!payload.name?.trim()) {
       throw new ApiError(400, 'Zone name is required');
     }
@@ -7821,6 +7948,7 @@ export const getDashboardData = async () => {
       boundary_mode: normalizedGeometry.boundary_mode,
       circle_center: normalizedGeometry.circle_center,
       circle_radius_meters: normalizedGeometry.circle_radius_meters,
+      popular_places: normalizeZonePopularPlaces(payload.popular_places),
       geometry: normalizedGeometry.geometry,
     });
 
@@ -7878,6 +8006,11 @@ export const getDashboardData = async () => {
     if (payload.status !== undefined) {
       zone.status = payload.status || 'active';
       zone.active = zone.status === 'active';
+    }
+    // Absent means "not sent, leave alone"; an empty array is a real choice
+    // (the admin removed the last one) and clears them.
+    if (payload.popular_places !== undefined) {
+      zone.popular_places = normalizeZonePopularPlaces(payload.popular_places);
     }
     if (
       payload.coordinates !== undefined ||

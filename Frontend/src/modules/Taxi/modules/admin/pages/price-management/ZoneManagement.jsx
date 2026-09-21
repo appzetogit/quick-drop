@@ -60,6 +60,9 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
   const [mapCenter, setMapCenter] = useState({ lat: 21.1458, lng: 79.0882 }); 
   const [zoom, setZoom] = useState(12);
   const [autocomplete, setAutocomplete] = useState(null);
+  // Its own instance: this one adds a landmark rather than moving the map.
+  const [placeAutocomplete, setPlaceAutocomplete] = useState(null);
+  const [uploadingPlaceIndex, setUploadingPlaceIndex] = useState(null);
   const [countryBoundaryPaths, setCountryBoundaryPaths] = useState([]);
   const [boundaryLoading, setBoundaryLoading] = useState(false);
   const mapRef = useRef(null);
@@ -90,6 +93,7 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
     ride_surge_enabled: false,
     maximum_distance_for_regular_rides: '',
     maximum_distance_for_outstation_rides: '',
+    popular_places: [],
     status: 'active'
   });
 
@@ -521,6 +525,70 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
     circleRef.current = null;
   }, []);
 
+  /**
+   * Adds whatever the admin picked from the landmark search.
+   *
+   * Silently ignores a selection with no geometry -- that is what comes
+   * back when the admin presses Enter on their own text instead of
+   * choosing a suggestion, and it carries no coordinates to book to.
+   */
+  const onPopularPlaceChanged = () => {
+    if (!placeAutocomplete) return;
+    const place = placeAutocomplete.getPlace();
+    if (!place?.geometry?.location) return;
+
+    const entry = {
+      name: place.name || place.formatted_address || '',
+      address: place.formatted_address || '',
+      image: '',
+      location: {
+        lat: place.geometry.location.lat(),
+        lng: place.geometry.location.lng(),
+      },
+      active: true,
+    };
+
+    setFormData((prev) => ({
+      ...prev,
+      popular_places: [...(prev.popular_places || []), entry],
+    }));
+  };
+
+  const updatePopularPlace = (index, patch) => {
+    setFormData((prev) => ({
+      ...prev,
+      popular_places: (prev.popular_places || []).map((place, i) =>
+        i === index ? { ...place, ...patch } : place,
+      ),
+    }));
+  };
+
+  const removePopularPlace = (index) => {
+    setFormData((prev) => ({
+      ...prev,
+      popular_places: (prev.popular_places || []).filter((_, i) => i !== index),
+    }));
+  };
+
+  const uploadPopularPlaceImage = async (index, file) => {
+    if (!file) return;
+    setUploadingPlaceIndex(index);
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      try {
+        const res = await adminService.uploadImage(reader.result);
+        const url = res?.data?.url || res?.url;
+        if (url) updatePopularPlace(index, { image: url });
+        else alert('Upload failed. Please try again.');
+      } catch (err) {
+        alert(describeApiError(err, 'Could not upload the image.'));
+      } finally {
+        setUploadingPlaceIndex(null);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const onPlaceChanged = () => {
     if (autocomplete !== null) {
       const place = autocomplete.getPlace();
@@ -601,6 +669,7 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
       ride_surge_enabled: false,
       maximum_distance_for_regular_rides: '',
       maximum_distance_for_outstation_rides: '',
+      popular_places: [],
       status: 'active'
     });
     setBoundaryMode('polygon');
@@ -690,6 +759,7 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
       ride_surge_enabled: zone.ride_surge_enabled === true,
       maximum_distance_for_regular_rides: zone.maximum_distance_for_regular_rides || '',
       maximum_distance_for_outstation_rides: zone.maximum_distance_for_outstation_rides || '',
+      popular_places: Array.isArray(zone.popular_places) ? zone.popular_places : [],
       status: zone.active ? 'active' : 'inactive'
     });
     let parsedCoords = [];
@@ -1041,6 +1111,123 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
                             </button>
                           ))}
                         </div>
+                      </div>
+
+                      <div>
+                        <label className={labelClass}>Popular Places</label>
+                        <p className="mb-2 text-xs text-gray-400">
+                          Shown as destination shortcuts in the rider app for anyone inside this
+                          zone, nearest first. Search to add one &mdash; the address and
+                          coordinates come with it.
+                        </p>
+
+                        <div className="mb-3 flex h-11 w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-3">
+                          <Search className="text-gray-400" size={16} />
+                          {isLoaded ? (
+                            <Autocomplete
+                              onLoad={(a) => setPlaceAutocomplete(a)}
+                              onPlaceChanged={onPopularPlaceChanged}
+                              className="flex-1"
+                            >
+                              <input
+                                type="text"
+                                placeholder="Search a landmark to add"
+                                className="w-full bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
+                              />
+                            </Autocomplete>
+                          ) : (
+                            <input
+                              type="text"
+                              disabled
+                              placeholder="Loading map search..."
+                              className="w-full bg-transparent text-sm text-gray-400 outline-none"
+                            />
+                          )}
+                        </div>
+
+                        {(formData.popular_places || []).length === 0 ? (
+                          <p className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-xs text-gray-400">
+                            No places yet. The rider app simply shows its other shortcuts.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {(formData.popular_places || []).map((place, index) => (
+                              <div
+                                key={`${place.name}-${index}`}
+                                className="flex items-start gap-3 rounded-lg border border-gray-200 p-3"
+                              >
+                                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-gray-100">
+                                  {place.image ? (
+                                    <img
+                                      src={place.image}
+                                      alt={place.name}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center text-lg font-bold text-gray-300">
+                                      {(place.name || '?').charAt(0).toUpperCase()}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <input
+                                    type="text"
+                                    value={place.name || ''}
+                                    onChange={(e) =>
+                                      updatePopularPlace(index, { name: e.target.value })
+                                    }
+                                    className="w-full border-0 border-b border-transparent p-0 text-sm font-semibold text-gray-800 outline-none focus:border-indigo-400"
+                                  />
+                                  <p className="mt-0.5 truncate text-xs text-gray-400">
+                                    {place.address || '\u2014'}
+                                  </p>
+                                  <p className="mt-0.5 text-[11px] text-gray-300">
+                                    {Number(place.location?.lat).toFixed(5)},{' '}
+                                    {Number(place.location?.lng).toFixed(5)}
+                                  </p>
+
+                                  <div className="mt-2 flex items-center gap-3">
+                                    <label className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-indigo-600 hover:text-indigo-700">
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) =>
+                                          uploadPopularPlaceImage(index, e.target.files?.[0])
+                                        }
+                                      />
+                                      {uploadingPlaceIndex === index
+                                        ? 'Uploading...'
+                                        : place.image
+                                          ? 'Replace photo'
+                                          : 'Add photo'}
+                                    </label>
+
+                                    <label className="flex items-center gap-1.5 text-[11px] font-medium text-gray-500">
+                                      <input
+                                        type="checkbox"
+                                        checked={place.active !== false}
+                                        onChange={(e) =>
+                                          updatePopularPlace(index, { active: e.target.checked })
+                                        }
+                                      />
+                                      Visible
+                                    </label>
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => removePopularPlace(index)}
+                                  className="shrink-0 rounded-lg p-1.5 text-gray-300 transition hover:bg-red-50 hover:text-red-500"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       {boundaryMode === 'circle' ? (

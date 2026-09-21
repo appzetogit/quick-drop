@@ -11,7 +11,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodOrder } from '../../orders/models/order.model.js';
 import { FoodRestaurantOutletTimings } from '../models/outletTimings.model.js';
 import { attachOutletTimingsToRestaurants } from './outletTimings.service.js';
-import { getRestaurantOperationalStatus } from '../helpers/restaurantAvailability.helper.js';
+import { getRestaurantOperationalStatus, getRestaurantAvailabilityStatus } from '../helpers/restaurantAvailability.helper.js';
 import {
     calculateDistanceKm,
     normalizeRestaurantLocation,
@@ -546,6 +546,24 @@ const stripPendingLocationFromPublicRestaurant = (doc) => {
  * so user-home Haversine matches delivery (which already parses coordinates-first).
  * Optionally attach distanceInKm when the client sent lat/lng.
  */
+/**
+ * Open every day, round the clock.
+ *
+ * Same rule as the medical endpoint's copy: seven days, and a window that
+ * leaves no gap. A shop trading 00:00-23:59 is 24x7 in every sense a
+ * customer cares about -- the missing minute is how a closing time is
+ * written, not a shutter.
+ */
+const isRoundTheClockSeller = (doc) => {
+    const days = Array.isArray(doc?.openDays) ? doc.openDays : [];
+    if (days.length < 7) return false;
+    const open = String(doc?.openingTime || '').trim();
+    const close = String(doc?.closingTime || '').trim();
+    if (!open || !close) return false;
+    if (open === close) return true;
+    return open === '00:00' && ['23:59', '24:00', '00:00'].includes(close);
+};
+
 const normalizePublicRestaurantGeo = (doc, userLat = null, userLng = null) => {
     if (!doc || typeof doc !== 'object') return doc;
 
@@ -568,6 +586,27 @@ const normalizePublicRestaurantGeo = (doc, userLat = null, userLng = null) => {
             next.distanceInKm = Number(km.toFixed(2));
         }
     }
+
+    /*
+     * Whether it is trading right now. The listing already carried the
+     * timetable but no verdict, and the customer app defaults a missing
+     * `isOpenNow` to true -- so a shut seller read as open on every screen
+     * fed by this endpoint.
+     *
+     * Wrapped because a malformed timetable must not take down a listing:
+     * an unknown answer leaves the field off, which is what the client
+     * already handles.
+     */
+    try {
+        next.isOpenNow = getRestaurantAvailabilityStatus(next)?.isOpen === true;
+    } catch (err) {
+        // Left absent rather than guessed -- but said out loud. This catch
+        // silently ate a TypeError once and the field just never appeared.
+        console.warn(
+            `[sellers] open-state unavailable for ${next?._id}: ${err?.message || err}`,
+        );
+    }
+    next.is24x7 = isRoundTheClockSeller(next);
 
     return next;
 };

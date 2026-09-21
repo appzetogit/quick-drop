@@ -2666,7 +2666,7 @@ async function buildRestaurantSubscriptionSummary(restaurantId) {
             .lean(),
         FoodSubscriptionTransaction.findOne({
             restaurantId: rId,
-            type: { $in: ['wallet_deduction', 'manual_payment'] },
+            type: { $in: ['wallet_deduction', 'manual_payment', 'online_payment'] },
         })
             .sort({ createdAt: -1 })
             .lean(),

@@ -346,7 +346,12 @@ function resolveInvoiceStatus(invoice) {
   return invoice.paidAmount > 0 || invoice.waivedAmount > 0 ? "partially_settled" : "pending";
 }
 
-async function appendTransaction(invoice, type, amount, admin, remarks, metadata = {}) {
+/**
+ * [actor] names a non-admin author -- today, the seller paying their own
+ * due. Omitted by every existing caller, which keeps its ADMIN/SYSTEM
+ * behaviour exactly as it was.
+ */
+async function appendTransaction(invoice, type, amount, admin, remarks, metadata = {}, actor = null) {
   return FoodSubscriptionTransaction.create({
     restaurantId: invoice.restaurantId,
     invoiceId: invoice._id,
@@ -355,9 +360,11 @@ async function appendTransaction(invoice, type, amount, admin, remarks, metadata
     amount,
     outstandingAfter: invoice.outstandingAmount,
     invoiceStatusAfter: invoice.status,
-    processedBy: admin
-      ? { role: "ADMIN", id: admin.id || admin._id || null, name: admin.name || "" }
-      : { role: "SYSTEM" },
+    processedBy: actor
+      ? { role: actor.role, id: actor.id || null, name: actor.name || "" }
+      : admin
+        ? { role: "ADMIN", id: admin.id || admin._id || null, name: admin.name || "" }
+        : { role: "SYSTEM" },
     remarks: remarks || "",
     metadata,
   });
@@ -458,6 +465,70 @@ export async function applyManualPayment(invoiceId, amount, admin, remarks) {
   );
 
   return { invoice: updated, transaction: tx };
+}
+
+/**
+ * The seller pays their own due through the payment gateway.
+ *
+ * [amount] is what the GATEWAY says was captured, never what the client
+ * asked for -- the caller reads it back from Razorpay. It is clamped to
+ * the outstanding figure rather than refused, because a seller who pays
+ * the full due while a wallet deduction lands in the same minute has done
+ * nothing wrong and should not have their payment rejected.
+ *
+ * The invoice must belong to [restaurantId]: an invoice id is guessable
+ * and settling somebody else's due would release their locked payout.
+ */
+export async function applyOnlinePayment({ invoiceId, restaurantId, amount, metadata = {} }) {
+  const invoice = await loadInvoiceForSettlement(invoiceId);
+
+  if (String(invoice.restaurantId) !== String(restaurantId)) {
+    throw new NotFoundError("Subscription invoice not found");
+  }
+
+  const paid = round2(Number(amount));
+  if (!Number.isFinite(paid) || paid <= 0) {
+    throw new ValidationError("Payment amount must be greater than zero");
+  }
+  if (invoice.outstandingAmount <= 0) {
+    return { invoice, transaction: null, settledAmount: 0 };
+  }
+
+  const payAmount = Math.min(paid, invoice.outstandingAmount);
+
+  // The write is the claim: whoever loses a race against a concurrent
+  // settlement finds the guard unmet rather than overdrawing the invoice.
+  const updated = await FoodSubscriptionInvoice.findOneAndUpdate(
+    { _id: invoice._id, outstandingAmount: { $gte: payAmount } },
+    { $inc: { paidAmount: payAmount, outstandingAmount: -payAmount } },
+    { new: true },
+  );
+  if (!updated) {
+    throw new ValidationError("Invoice was settled concurrently — refresh and retry");
+  }
+
+  updated.status = resolveInvoiceStatus(updated);
+  await updated.save();
+
+  const tx = await appendTransaction(
+    updated,
+    "online_payment",
+    payAmount,
+    null,
+    "Paid by the seller from the app",
+    { method: "razorpay", ...metadata },
+    { role: "RESTAURANT", id: invoice.restaurantId, name: "" },
+  );
+
+  await notifyRestaurantBilling(
+    updated.restaurantId,
+    "",
+    "Subscription Payment Received",
+    `₹${payAmount} was received towards your ${billingMonthLabel(updated.billingMonth)} subscription due. Remaining due: ₹${updated.outstandingAmount}.`,
+    { billingMonth: updated.billingMonth, amount: String(payAmount) },
+  );
+
+  return { invoice: updated, transaction: tx, settledAmount: payAmount };
 }
 
 /**

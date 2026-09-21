@@ -38,7 +38,9 @@ import {
     getSubscriptionOverviewController,
     listSubscriptionInvoicesController,
     getSubscriptionInvoiceController,
-    listSubscriptionTransactionsController
+    listSubscriptionTransactionsController,
+    createSubscriptionPaymentLinkController,
+    getSubscriptionPaymentLinkStatusController,
 } from '../controllers/subscription.controller.js';
 import {
     listCategoriesController,
@@ -177,6 +179,9 @@ router.get('/subscription-history', authMiddleware, requireRestaurant, getRestau
 // New calendar-month postpaid subscription endpoints
 router.get('/subscription/overview', authMiddleware, requireRestaurant, getSubscriptionOverviewController);
 router.get('/subscription/invoices', authMiddleware, requireRestaurant, listSubscriptionInvoicesController);
+// The seller settles their own due, which releases the payout it locks.
+router.post('/subscription/invoices/:invoiceId/pay/link', authMiddleware, requireRestaurant, createSubscriptionPaymentLinkController);
+router.get('/subscription/invoices/:invoiceId/pay/link/:linkId', authMiddleware, requireRestaurant, getSubscriptionPaymentLinkStatusController);
 router.get('/subscription/invoices/:invoiceId', authMiddleware, requireRestaurant, getSubscriptionInvoiceController);
 router.get('/subscription/transactions', authMiddleware, requireRestaurant, listSubscriptionTransactionsController);
 router.post(
