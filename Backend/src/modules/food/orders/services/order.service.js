@@ -744,7 +744,7 @@ export async function getOrderById(
       "restaurantId",
       "restaurantName ownerPhone profileImage area city location rating totalRatings primaryContactNumber",
     )
-    .populate("dispatch.deliveryPartnerId", "name fullName phone phoneNumber rating totalRatings profileImage avatar")
+    .populate("dispatch.deliveryPartnerId", "name fullName phone phoneNumber rating totalRatings profileImage avatar vehicleType vehicleName vehicleNumber")
     .populate("userId", "name fullName phone email")
     .select("+deliveryOtp")
     .lean();
