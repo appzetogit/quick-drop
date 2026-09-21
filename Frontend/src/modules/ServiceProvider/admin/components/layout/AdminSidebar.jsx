@@ -510,35 +510,35 @@ const AdminSidebar = ({ isOpen, onClose }) => {
           <button
             type="button"
             onClick={() => navigate("/admin/food")}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
+            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
             <UtensilsCrossed className="w-3.5 h-3.5 text-neutral-500" />
             Food
           </button>
           <button
             type="button"
             onClick={() => navigate("/taxi/admin/dashboard")}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
+            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
             <Truck className="w-3.5 h-3.5 text-neutral-500" />
             Taxi
           </button>
           <button
             type="button"
             onClick={() => navigate("/admin/sp/dashboard")}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300 bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)] scale-[1.02]">
+            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 bg-white text-black shadow-[0_4px_12px_rgba(255,255,255,0.15)]">
             <Wrench className="w-3.5 h-3.5 text-black" />
             Services
           </button>
           <button
             type="button"
             onClick={() => navigate("/admin/quick-commerce")}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
+            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
             <ShoppingBasket className="w-3.5 h-3.5 text-neutral-500" />
             Quick
           </button>
           <button
             type="button"
             onClick={() => navigate("/admin/medical")}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
+            className="flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300 text-neutral-400 hover:text-neutral-200 hover:bg-white/5">
             <Pill className="w-3.5 h-3.5 text-neutral-500" />
             Medical
           </button>

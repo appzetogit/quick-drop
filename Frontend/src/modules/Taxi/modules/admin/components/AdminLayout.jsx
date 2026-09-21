@@ -1503,7 +1503,7 @@ const AdminLayout = () => {
                   type="button"
                   onClick={() => navigate("/admin/food")}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                   )}
                 >
@@ -1514,12 +1514,12 @@ const AdminLayout = () => {
                   type="button"
                   onClick={() => navigate("/taxi/admin/dashboard")}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     // Was bg-white/text-black, which marked the current module only
                     // because the strip behind it was dark. On a light strip that is
                     // the least distinguishable fill available, so the active tab
                     // inverts to the dark pill the rest of the rail uses for "current".
-                    "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)] scale-[1.02]"
+                    "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)]"
                   )}
                 >
                   <Truck className="w-3.5 h-3.5 text-[var(--sb-active-ink)]" />
@@ -1534,7 +1534,7 @@ const AdminLayout = () => {
                   type="button"
                   onClick={() => navigate("/admin/sp/dashboard")}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
                   )}
                 >
@@ -1545,7 +1545,7 @@ const AdminLayout = () => {
                   type="button"
                   onClick={() => navigate("/admin/quick-commerce")}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                   )}
                 >
@@ -1558,7 +1558,7 @@ const AdminLayout = () => {
                   type="button"
                   onClick={() => navigate("/admin/medical")}
                   className={cn(
-                    "flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all duration-300",
+                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
                   )}
                 >
