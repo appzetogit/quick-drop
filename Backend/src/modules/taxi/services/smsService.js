@@ -1,4 +1,6 @@
 import { env } from '../../../config/env.js';
+import { smsCredentials } from '../../../core/settings/platformProfile.service.js';
+import { managedBrand } from '../../../core/settings/platformProfile.service.js';
 import { ApiError } from '../../../utils/ApiError.js';
 import { AdminBusinessSetting } from '../admin/models/AdminBusinessSetting.js';
 
@@ -66,6 +68,18 @@ const getSmsIndiaHubConfig = () => {
     '1007801291964877107',
   );
 
+  // Master settings, once an API key is saved there, replace the .env values.
+  const platform = smsCredentials();
+  if (platform.source === 'master') {
+    return {
+      user,
+      password,
+      apiKey: platform.apiKey,
+      senderId: platform.senderId || senderId,
+      templateId: platform.templateId || templateId,
+    };
+  }
+
   return {
     user,
     password,
@@ -114,6 +128,8 @@ const parseProviderResponse = (responseText) => {
 
 const getConfiguredBrandName = async () => {
   try {
+    const { name } = await managedBrand();
+    if (name) return name;
     const settings = await AdminBusinessSetting.findOne({ scope: 'default' })
       .select('general.app_name')
       .lean();

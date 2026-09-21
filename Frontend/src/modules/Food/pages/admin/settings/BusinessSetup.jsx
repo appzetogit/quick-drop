@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ManagedInMasterNotice from "../../../../../components/shared/ManagedInMasterNotice"
 import { Info, Phone, Upload, X, Loader2, Globe, Settings, Car, UtensilsCrossed, Truck, Save, Trash2, Check, Layers, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { adminAPI } from "@food/api";
@@ -374,6 +375,7 @@ export default function BusinessSetup() {
 
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen">
+      <ManagedInMasterNotice what="The app name, logo and contact details" />
       {/* Page header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
         <div>

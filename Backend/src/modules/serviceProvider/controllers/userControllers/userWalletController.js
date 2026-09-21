@@ -1,3 +1,4 @@
+const { razorpayKeyId, razorpayKeySecret } = require('../../../../core/settings/platformCredentials.cjs');
 const User = require('../../models/User');
 const { validationResult } = require('express-validator');
 const { createOrder } = require('../../services/razorpayService');
@@ -85,7 +86,7 @@ const addMoneyToWallet = async (req, res) => {
         orderId: orderResult.orderId,
         amount: orderResult.amount / 100,
         currency: orderResult.currency,
-        key: process.env.RAZORPAY_KEY_ID
+        key: razorpayKeyId()
       }
     });
   } catch (error) {

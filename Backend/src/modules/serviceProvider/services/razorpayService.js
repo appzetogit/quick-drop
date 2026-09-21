@@ -1,34 +1,39 @@
+const { razorpayKeyId, razorpayKeySecret } = require('../../../core/settings/platformCredentials.cjs');
 const Razorpay = require('razorpay');
 
-// Initialize Razorpay with validation
-let razorpay;
-let isTestMode = true;
+// The client follows the platform's keys (Master settings, else .env) and is
+// rebuilt when they change, so saving new keys needs no restart.
+let client = null;
+let clientKeyId = '';
+let warnedMissing = false;
 
-try {
-  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-    console.error('⚠️  Razorpay credentials missing in .env file');
-  } else {
-    razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET
-    });
-
-    // Check if we are in test or live mode
-    isTestMode = process.env.RAZORPAY_KEY_ID.startsWith('rzp_test');
-    console.log(`✅ Razorpay initialized in ${isTestMode ? 'TEST' : 'LIVE'} mode`);
-
-    // MERCHANT_UPI_ID check removed as requested
+const getRazorpay = () => {
+  const keyId = razorpayKeyId();
+  const keySecret = razorpayKeySecret();
+  if (!keyId || !keySecret) {
+    if (!warnedMissing) console.error('⚠️  Razorpay credentials missing (Master settings or .env)');
+    warnedMissing = true;
+    return undefined;
   }
-} catch (error) {
-  console.error('❌ Failed to initialize Razorpay:', error.message);
-}
+  if (!client || clientKeyId !== keyId) {
+    try {
+      client = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      clientKeyId = keyId;
+      console.log(`✅ Razorpay initialized in ${keyId.startsWith('rzp_test') ? 'TEST' : 'LIVE'} mode`);
+    } catch (error) {
+      console.error('❌ Failed to initialize Razorpay:', error.message);
+      client = null;
+    }
+  }
+  return client || undefined;
+};
 
 /**
  * Create Razorpay order
  */
 const createOrder = async (amount, currency = 'INR', receipt = null, notes = {}) => {
   try {
-    if (!razorpay) {
+    if (!getRazorpay()) {
       console.warn('⚠️ Razorpay credentials missing/not initialized. Generating MOCK order for dev mode...');
       const mockOrderId = `order_mock_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       return {
@@ -54,7 +59,7 @@ const createOrder = async (amount, currency = 'INR', receipt = null, notes = {})
       receipt: options.receipt
     });
 
-    const order = await razorpay.orders.create(options);
+    const order = await getRazorpay().orders.create(options);
 
     console.log('✅ Razorpay order created successfully:', order.id);
 
@@ -75,7 +80,7 @@ const createOrder = async (amount, currency = 'INR', receipt = null, notes = {})
     });
 
     // In dev environment, fallback to mock order if Razorpay credentials fail
-    if (process.env.NODE_ENV !== 'production' || !process.env.RAZORPAY_KEY_ID || process.env.RAZORPAY_KEY_ID.includes('placeholder')) {
+    if (process.env.NODE_ENV !== 'production' || !razorpayKeyId() || razorpayKeyId().includes('placeholder')) {
       console.warn('⚠️ Razorpay API error in dev environment. Generating mock order fallback...');
       const mockOrderId = `order_mock_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       return {
@@ -109,7 +114,7 @@ const verifyPayment = (razorpay_order_id, razorpay_payment_id, razorpay_signatur
     return !isProd;
   }
 
-  const secret = process.env.RAZORPAY_KEY_SECRET;
+  const secret = razorpayKeySecret();
   // A missing secret used to return true — "cannot verify" was treated as "verified",
   // so an unset env var silently confirmed every payment. Now it fails closed.
   if (!secret) {
@@ -143,10 +148,10 @@ const verifyPayment = (razorpay_order_id, razorpay_payment_id, razorpay_signatur
  */
 const getOrderDetails = async (orderId) => {
   try {
-    if (!razorpay) {
+    if (!getRazorpay()) {
       return { success: false, error: 'Razorpay not initialized' };
     }
-    const order = await razorpay.orders.fetch(orderId);
+    const order = await getRazorpay().orders.fetch(orderId);
     return { success: true, order };
   } catch (error) {
     console.error('Razorpay get order error:', error);
@@ -156,7 +161,7 @@ const getOrderDetails = async (orderId) => {
 
 const getPaymentDetails = async (paymentId) => {
   try {
-    const payment = await razorpay.payments.fetch(paymentId);
+    const payment = await getRazorpay().payments.fetch(paymentId);
     return {
       success: true,
       payment
@@ -184,7 +189,7 @@ const refundPayment = async (paymentId, amount = null, notes = {}) => {
       refundOptions.amount = Math.round(amount * 100); // Convert to paise
     }
 
-    const refund = await razorpay.payments.refund(paymentId, refundOptions);
+    const refund = await getRazorpay().payments.refund(paymentId, refundOptions);
     return {
       success: true,
       refund
@@ -206,12 +211,12 @@ const createQRCode = async (amount, bookingNumber, notes = {}) => {
   try {
     // Manual UPI QR block removed as requested
     
-    if (!razorpay) {
+    if (!getRazorpay()) {
       return { success: false, error: 'Razorpay not initialized' };
     }
 
     const axios = require('axios');
-    const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64');
+    const auth = Buffer.from(`${razorpayKeyId()}:${razorpayKeySecret()}`).toString('base64');
 
     const payload = {
       type: 'upi_qr',
@@ -227,7 +232,7 @@ const createQRCode = async (amount, bookingNumber, notes = {}) => {
 
     // Razorpay SDK QR API
     try {
-      const qrCode = await razorpay.qrCode.create(payload);
+      const qrCode = await getRazorpay().qrCode.create(payload);
       console.log('✅ QR Code created via Razorpay SDK API');
       return {
         success: true,
@@ -299,14 +304,14 @@ const createQRCode = async (amount, bookingNumber, notes = {}) => {
  */
 const getQRCodePayments = async (id) => {
   try {
-    if (!razorpay) {
+    if (!getRazorpay()) {
       return { success: false, error: 'Razorpay not initialized' };
     }
 
     // Manual UPI check removed as requested
     if (id && (id.startsWith('plink_'))) {
       const axios = require('axios');
-      const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64');
+      const auth = Buffer.from(`${razorpayKeyId()}:${razorpayKeySecret()}`).toString('base64');
 
       try {
         const response = await axios.get(`https://api.razorpay.com/v1/payment_links/${id}`, {
@@ -335,7 +340,7 @@ const getQRCodePayments = async (id) => {
     }
 
     // Otherwise, standard QR Code check
-    const payments = await razorpay.qrCode.fetchAllPayments(id);
+    const payments = await getRazorpay().qrCode.fetchAllPayments(id);
     return {
       success: true,
       payments: payments.items || []
@@ -357,6 +362,6 @@ module.exports = {
   refundPayment,
   createQRCode,
   getQRCodePayments,
-  isTestMode: () => isTestMode
+  isTestMode: () => !razorpayKeyId() || razorpayKeyId().startsWith('rzp_test')
 };
 

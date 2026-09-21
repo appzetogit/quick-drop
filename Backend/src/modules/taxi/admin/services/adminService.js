@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { managedBrand } from '../../../../core/settings/platformProfile.service.js';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { createDefaultAdminState } from '../data/defaultAdminState.js';
 import { Admin } from '../models/Admin.js';
@@ -10117,7 +10118,16 @@ export const buildDriverDutyReport = async (query = {}) => {
       return created.general || {};
     }
 
-    return results[0]?.general || {};
+    // Master settings win where set (core/settings/platformProfile.service.js).
+    const general = { ...(results[0]?.general || {}) };
+    const b = await managedBrand();
+    if (b.name) general.app_name = b.name;
+    if (b.logoUrl) general.logo = b.logoUrl;
+    if (b.faviconUrl) general.favicon = b.faviconUrl;
+    if (b.phone) general.contact_booking_number = `${b.phoneCountryCode || ''}${b.phone}`;
+    if (b.currencySymbol) general.currency_symbol = b.currencySymbol;
+    if (b.currencyCode) general.default_currency_code_for_mobile_app = b.currencyCode;
+    return general;
   };
 
   const getProjectedSettingsSection = async (Model, defaultFactory, key) => {

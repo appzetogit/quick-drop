@@ -11,20 +11,20 @@ try {
 
 import { config } from '../../../../config/env.js';
 
-const KEY_ID = config.razorpayKeyId || process.env.RAZORPAY_KEY_ID || '';
-const KEY_SECRET = config.razorpayKeySecret || process.env.RAZORPAY_KEY_SECRET || '';
+// Master settings if saved there, else .env (core/settings/platformProfile.service.js).
+import { razorpayKeyId, razorpayKeySecret } from '../../../../../../core/settings/platformProfile.service.js';
 
 export function isRazorpayConfigured() {
-    return Boolean(KEY_ID && KEY_SECRET && Razorpay);
+    return Boolean(razorpayKeyId() && razorpayKeySecret() && Razorpay);
 }
 
 export function getRazorpayKeyId() {
-    return KEY_ID;
+    return razorpayKeyId();
 }
 
 export function getRazorpayInstance() {
     if (!isRazorpayConfigured()) return null;
-    return new Razorpay({ key_id: KEY_ID, key_secret: KEY_SECRET });
+    return new Razorpay({ key_id: razorpayKeyId(), key_secret: razorpayKeySecret() });
 }
 
 export function createRazorpayOrder(amountPaise, currency = 'INR', receipt = '') {
@@ -53,9 +53,9 @@ export function createPaymentLink({ amountPaise, currency = 'INR', description, 
 }
 
 export function verifyPaymentSignature(orderId, paymentId, signature) {
-    if (!KEY_SECRET) return false;
+    if (!razorpayKeySecret()) return false;
     const body = `${orderId}|${paymentId}`;
-    const expected = crypto.createHmac('sha256', KEY_SECRET).update(body).digest('hex');
+    const expected = crypto.createHmac('sha256', razorpayKeySecret()).update(body).digest('hex');
     return safeSignatureEqual(expected, String(signature || ""));
 }
 

@@ -1,3 +1,4 @@
+const { razorpayKeyId, razorpayKeySecret } = require('../../../../core/settings/platformCredentials.cjs');
 const express = require('express');
 const router = express.Router();
 const WorkerSubscriptionPlan = require('../../models/WorkerSubscriptionPlan');
@@ -71,7 +72,7 @@ router.get('/status', authenticate, isWorker, async (req, res) => {
 // confirms with the gateway, and takes planId from server-set order notes.
 const devActivationAllowed = () => {
   if (process.env.NODE_ENV === 'production') return false;
-  return !process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET;
+  return !razorpayKeyId() || !razorpayKeySecret();
 };
 
 router.post('/activate', authenticate, isWorker, async (req, res) => {

@@ -20,7 +20,7 @@ export const adminSidebarMenu = [
     items: [
       {
         type: "link",
-        label: "Platform Settings",
+        label: "Master Settings",
         path: "/admin/master/settings",
         icon: "SlidersHorizontal",
       },

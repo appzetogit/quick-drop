@@ -1,3 +1,4 @@
+const { razorpayKeyId, razorpayKeySecret } = require('../../../../core/settings/platformCredentials.cjs');
 const Booking = require('../../models/Booking');
 const User = require('../../models/User');
 const Settings = require('../../models/Settings');
@@ -80,7 +81,7 @@ const createPaymentOrder = async (req, res) => {
         orderId: orderResult.orderId,
         amount: orderResult.amount / 100, // Convert back to rupees
         currency: orderResult.currency,
-        key: process.env.RAZORPAY_KEY_ID,
+        key: razorpayKeyId(),
         bookingId: booking._id
       }
     });
@@ -1023,7 +1024,7 @@ const createPlanOrder = async (req, res) => {
       data: {
         orderId: orderResult.orderId,
         amount: orderResult.amount / 100,
-        key: process.env.RAZORPAY_KEY_ID
+        key: razorpayKeyId()
       }
     });
   } catch (error) {

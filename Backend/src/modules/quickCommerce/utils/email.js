@@ -1,25 +1,30 @@
 import nodemailer from 'nodemailer';
+import { emailCredentials } from '../../../core/settings/platformProfile.service.js';
 import { config } from '../config/env.js';
 import { logger } from './logger.js';
 
 let transporter = null;
+let transporterKey = '';
 
+// SMTP from Master settings if saved there, else .env; rebuilt when it changes.
 function getTransporter() {
-    if (transporter) return transporter;
-    const { emailHost, emailPort, emailUser, emailPass } = config;
-    if (!emailHost || !emailUser || !emailPass) {
-        logger.warn('Email not configured: EMAIL_HOST, EMAIL_USER, EMAIL_PASS required');
+    const mail = emailCredentials();
+    const key = `${mail.host}|${mail.port}|${mail.user}|${mail.pass}|${mail.secure}`;
+    if (transporter && key === transporterKey) return transporter;
+    if (!mail.host || !mail.user || !mail.pass) {
+        logger.warn('Email not configured: set it in Master settings, or EMAIL_HOST, EMAIL_USER, EMAIL_PASS');
         return null;
     }
     transporter = nodemailer.createTransport({
-        host: emailHost,
-        port: emailPort || 587,
-        secure: emailPort === 465,
+        host: mail.host,
+        port: mail.port || 587,
+        secure: mail.secure,
         auth: {
-            user: emailUser,
-            pass: emailPass
+            user: mail.user,
+            pass: mail.pass
         }
     });
+    transporterKey = key;
     return transporter;
 }
 
@@ -35,8 +40,8 @@ export async function sendAdminResetOtpEmail(to, otp) {
         logger.warn('Admin OTP email skipped: SMTP not configured');
         return false;
     }
-    const from = config.emailFrom || config.emailUser;
-    const subject = 'Your password reset code – Switcheats Admin';
+    const from = emailCredentials().from;
+    const subject = 'Your password reset code – Quick Drop Admin';
     const html = `
 <!DOCTYPE html>
 <html>
@@ -47,14 +52,14 @@ export async function sendAdminResetOtpEmail(to, otp) {
   <p style="font-size: 24px; font-weight: bold; letter-spacing: 4px; background: #f5f5f5; padding: 12px 16px; border-radius: 8px;">${otp}</p>
   <p style="color: #666; font-size: 14px;">If you did not request this, you can ignore this email.</p>
   <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-  <p style="color: #999; font-size: 12px;">Switcheats Admin</p>
+  <p style="color: #999; font-size: 12px;">Quick Drop Admin</p>
 </body>
 </html>`;
     const text = `Your password reset code is: ${otp}. It is valid for 10 minutes. If you did not request this, ignore this email.`;
 
     try {
         await trans.sendMail({
-            from: typeof from === 'string' && from.includes('<') ? from : `Switcheats <${from}>`,
+            from: typeof from === 'string' && from.includes('<') ? from : `Quick Drop <${from}>`,
             to,
             subject,
             text,

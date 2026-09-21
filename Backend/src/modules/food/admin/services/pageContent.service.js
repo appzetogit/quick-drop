@@ -1,4 +1,5 @@
 import { FoodPageContent } from '../models/pageContent.model.js';
+import { managedLegalPage, syncManagedLegalFromLegacy } from '../../../../core/settings/platformProfile.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 
 const normalizeKey = (key) => String(key || '').trim().toLowerCase();
@@ -37,6 +38,12 @@ const normalizeAboutForResponse = (about) => {
 
 export const getPublicPageByKey = async (key) => {
     const k = normalizeKey(key);
+    // The platform's own page, when Master settings has one.
+    const managed = await managedLegalPage(k);
+    if (managed) {
+        const doc = await FoodPageContent.findOne({ key: k }).select('legal.title').lean();
+        return { key: k, data: normalizeLegalForResponse({ title: doc?.legal?.title || '', content: managed }) };
+    }
     const doc = await FoodPageContent.findOne({ key: k }).lean();
     if (!doc) {
         if (k === 'about') return { key: k, data: { appName: 'Quick Drop', version: '1.0.0', description: '', logo: '', features: [], stats: [] } };
@@ -83,6 +90,7 @@ export const upsertLegalPage = async (key, payload, updatedBy) => {
         { upsert: true, new: true }
     ).lean();
 
+    await syncManagedLegalFromLegacy(k, content);
     return { key: k, data: normalizeLegalForResponse(doc?.legal || null) };
 };
 

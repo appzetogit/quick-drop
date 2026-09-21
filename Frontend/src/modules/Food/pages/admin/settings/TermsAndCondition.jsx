@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import ManagedInMasterNotice from "../../../../../components/shared/ManagedInMasterNotice"
 import { toast } from "sonner"
 import api from "@food/api"
 import { API_ENDPOINTS } from "@food/api/config"
@@ -98,6 +99,7 @@ export default function TermsAndCondition() {
 
   return (
     <div className="h-full overflow-y-auto bg-slate-50 p-4 lg:p-6">
+      <ManagedInMasterNotice what="The Terms & Conditions page" />
       <div className="max-w-6xl mx-auto">
         {/* Page Header */}
         <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">

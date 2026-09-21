@@ -1,4 +1,5 @@
 import { FoodPageContent } from '../models/pageContent.model.js';
+import { managedLegalPage, syncManagedLegalFromLegacy } from '../../../../../../core/settings/platformProfile.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 
 const normalizeKey = (key) => String(key || '').trim().toLowerCase();
@@ -49,6 +50,12 @@ export const getPublicPageByKey = async (key, module = 'ALL') => {
         doc = await FoodPageContent.findOne({ key: k, module: 'ALL' }).lean();
     }
     
+    // The platform's own page, when Master settings has one -- unless this
+    // module (e.g. MEDICAL) wrote a page of its own, which stays.
+    const managed = await managedLegalPage(k);
+    if (managed && !(doc && m !== 'ALL' && doc.module === m)) {
+        return { key: k, module: m, data: normalizeLegalForResponse({ title: doc?.legal?.title || '', content: managed }) };
+    }
     if (!doc) return { key: k, module: m, data: null };
     if (k === 'about') return { key: k, module: m, data: normalizeAboutForResponse(doc.about || null) };
     return { key: k, module: m, data: normalizeLegalForResponse(doc.legal || null) };
@@ -82,6 +89,7 @@ export const upsertLegalPage = async (key, payload, updatedBy, module = 'ALL') =
         { upsert: true, new: true }
     ).lean();
 
+    if (m === 'ALL') await syncManagedLegalFromLegacy(k, content);
     return { key: k, module: m, data: normalizeLegalForResponse(doc?.legal || null) };
 };
 

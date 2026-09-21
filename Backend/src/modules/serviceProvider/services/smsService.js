@@ -1,3 +1,4 @@
+const { smsCredentials } = require('../../../core/settings/platformCredentials.cjs');
 const axios = require('axios');
 
 /**
@@ -23,8 +24,9 @@ const sendSMS = async (phone, message) => {
       return { success: true, data: 'Mock Success' };
     }
 
-    // Check if SMS credentials are configured
-    if (!process.env.SMS_INDIA_HUB_API_KEY || !process.env.SMS_INDIA_HUB_SENDER_ID) {
+    // Check if SMS credentials are configured (Master settings, else .env)
+    const sms = smsCredentials();
+    if (!sms.apiKey || !sms.senderId) {
       console.warn('[SMS] SMS credentials missing in .env. SMS not sent.');
       console.log(`[SMS MOCK] To: ${phone}, Msg: ${message}`);
       return { success: false, message: 'SMS configuration missing' };
@@ -32,17 +34,17 @@ const sendSMS = async (phone, message) => {
 
     // Build parameters matching exactly what works in the browser
     const params = {
-      APIKey: process.env.SMS_INDIA_HUB_API_KEY,
+      APIKey: sms.apiKey,
       msisdn: phone,
-      sid: process.env.SMS_INDIA_HUB_SENDER_ID,
+      sid: sms.senderId,
       msg: message,
       fl: 0,
       gwid: 2,
     };
 
     // Add DLT Template ID if available
-    if (process.env.SMS_INDIA_HUB_DLT_TEMPLATE_ID) {
-      params.TemplateId = process.env.SMS_INDIA_HUB_DLT_TEMPLATE_ID;
+    if (sms.templateId) {
+      params.TemplateId = sms.templateId;
     }
 
     // Use HTTPS for secure transmission

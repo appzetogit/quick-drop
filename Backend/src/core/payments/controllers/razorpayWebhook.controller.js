@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { razorpayWebhookSecret } from '../../settings/platformProfile.service.js';
 import mongoose from 'mongoose';
 import { notifyRestaurantNewOrder } from '../../../modules/food/orders/services/order.helpers.js';
 import { countCouponUseOnPayment } from '../../../modules/food/orders/services/couponUsage.service.js';
@@ -62,7 +63,7 @@ const resolveOrderSource = async (filter) => {
 
 export const handleRazorpayWebhook = async (req, res) => {
     const signature = req.headers['x-razorpay-signature'];
-    const secret = config.razorpayWebhookSecret;
+    const secret = razorpayWebhookSecret();
 
     // 1. Verify Signature using raw body buffer
     if (!signature || !secret || !req.rawBody) {

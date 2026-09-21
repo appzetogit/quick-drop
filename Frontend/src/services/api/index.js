@@ -194,6 +194,13 @@ export const platformSettingsAPI = {
     ),
   invalidateCache: () =>
     apiClient.post("/platform/settings/cache/invalidate", {}, { contextModule: "admin" }),
+  /** Master settings: brand, contact, legal pages, integrations. Secrets come back masked. */
+  getProfile: () => apiClient.get("/platform/settings/profile", { contextModule: "admin" }),
+  /** Partial save. A masked or empty secret is left unchanged; `null` clears a field. */
+  updateProfile: (payload) => apiClient.patch("/platform/settings/profile", payload, { contextModule: "admin" }),
+  /** Connection checks; nothing is saved. `kind` is razorpay | email | sms. */
+  testIntegration: (kind, payload) =>
+    apiClient.post(`/platform/settings/profile/test/${kind}`, payload, { contextModule: "admin" }),
 };
 
 /**

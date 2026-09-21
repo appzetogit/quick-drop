@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ManagedInMasterNotice from "../../../../../../components/shared/ManagedInMasterNotice"
 import { 
   ChevronRight,
   Loader2,
@@ -83,6 +84,7 @@ const MailSettings = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 lg:p-8 font-sans">
+      <ManagedInMasterNotice what="The mail server" />
       
       {/* Header Block */}
       <div className="mb-8">

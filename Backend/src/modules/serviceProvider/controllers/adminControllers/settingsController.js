@@ -1,6 +1,38 @@
 const Settings = require('../../models/Settings');
 const Vendor = require('../../models/Vendor');
 
+/*
+ * Master settings (core/settings/platformProfile.service.js) win where set:
+ * one brand, contact and set of legal pages for the whole platform.
+ */
+const overlayMaster = async (settings) => {
+  try {
+    const { managedBrand, managedLegalPage } = await import('../../../../core/settings/platformProfile.service.js');
+    const b = await managedBrand();
+    const out = settings && typeof settings.toObject === 'function' ? settings.toObject() : { ...(settings || {}) };
+    const set = (field, value) => { if (value) out[field] = value; };
+    set('companyName', b.legalName || b.name);
+    set('companyEmail', b.email);
+    set('supportEmail', b.email);
+    set('companyPhone', b.phone);
+    set('supportPhone', b.phone);
+    set('supportWhatsapp', b.whatsapp);
+    set('companyAddress', b.address);
+    set('companyCity', b.city);
+    set('companyState', b.state);
+    set('companyPincode', b.pincode);
+    set('companyGSTIN', b.gstin);
+    set('companyPAN', b.pan);
+    set('currency', b.currencyCode);
+    set('termsAndConditions', await managedLegalPage('terms'));
+    set('privacyPolicy', await managedLegalPage('privacy'));
+    return out;
+  } catch (error) {
+    console.error('Master settings overlay skipped:', error.message);
+    return settings;
+  }
+};
+
 // Get Global Settings
 exports.getSettings = async (req, res, next) => {
   try {
@@ -13,7 +45,7 @@ exports.getSettings = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      settings
+      settings: await overlayMaster(settings)
     });
   } catch (error) {
     console.error('Error fetching settings:', error);
@@ -187,7 +219,7 @@ exports.getPublicSettings = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      settings
+      settings: await overlayMaster(settings)
     });
   } catch (error) {
     console.error('Error fetching public settings:', error);

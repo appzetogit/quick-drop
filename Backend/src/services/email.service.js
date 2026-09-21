@@ -2,25 +2,34 @@ import nodemailer from 'nodemailer';
 import mongoose from 'mongoose';
 import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
+import { emailCredentials } from '../core/settings/platformProfile.service.js';
 
 let transporter = null;
+let transporterKey = '';
 
+/*
+ * SMTP from Master settings if saved there, else .env
+ * (core/settings/platformProfile.service.js). Rebuilt when the settings
+ * change, so saving new mail settings needs no restart.
+ */
 function getTransporter() {
-  if (transporter) return transporter;
-  const { emailHost, emailPort, emailUser, emailPass } = config;
-  if (!emailHost || !emailUser || !emailPass) {
-    logger.warn('Email not configured: EMAIL_HOST, EMAIL_USER, EMAIL_PASS required');
+  const mail = emailCredentials();
+  const key = `${mail.host}|${mail.port}|${mail.user}|${mail.pass}|${mail.secure}`;
+  if (transporter && key === transporterKey) return transporter;
+  if (!mail.host || !mail.user || !mail.pass) {
+    logger.warn('Email not configured: set it in Master settings, or EMAIL_HOST, EMAIL_USER, EMAIL_PASS');
     return null;
   }
   transporter = nodemailer.createTransport({
-    host: emailHost,
-    port: emailPort || 587,
-    secure: emailPort === 465,
+    host: mail.host,
+    port: mail.port || 587,
+    secure: mail.secure,
     auth: {
-      user: emailUser,
-      pass: emailPass
+      user: mail.user,
+      pass: mail.pass
     }
   });
+  transporterKey = key;
   return transporter;
 }
 
@@ -102,7 +111,7 @@ export async function sendFoodInvoiceEmail(order, user) {
   `).join('');
 
   const subject = `Your Quick Drop Food Invoice [Order #${orderId}]`;
-  const from = config.emailFrom || config.emailUser;
+  const from = emailCredentials().from;
 
   const html = `
 <!DOCTYPE html>
@@ -373,7 +382,7 @@ export async function sendTaxiInvoiceEmail(ride, user) {
     : 'N/A';
 
   const subject = `Your Quick Drop Trip Invoice [Trip #${rideId}]`;
-  const from = config.emailFrom || config.emailUser;
+  const from = emailCredentials().from;
 
   const html = `
 <!DOCTYPE html>

@@ -7,6 +7,13 @@ import {
     setSettingController,
     invalidateCacheController,
 } from './config.controller.js';
+import {
+    getProfileController,
+    updateProfileController,
+    testRazorpayController,
+    testEmailController,
+    testSmsController,
+} from '../settings/platformProfile.controller.js';
 
 /**
  * Master / Global settings.
@@ -21,6 +28,14 @@ import {
  * every support conversation starts with has no answer.
  */
 const router = express.Router();
+
+// Master settings: brand, contact, legal pages, integrations
+// (core/settings/platformProfile.service.js). Declared before '/:key'.
+router.get('/profile', getProfileController);
+router.patch('/profile', requireFinancePermission('PLATFORM_SETTING_SET'), updateProfileController);
+router.post('/profile/test/razorpay', requireFinancePermission('PLATFORM_SETTING_SET'), testRazorpayController);
+router.post('/profile/test/email', requireFinancePermission('PLATFORM_SETTING_SET'), testEmailController);
+router.post('/profile/test/sms', requireFinancePermission('PLATFORM_SETTING_SET'), testSmsController);
 
 router.get('/catalogue', getCatalogueController);
 router.get('/resolve', resolveAllController);

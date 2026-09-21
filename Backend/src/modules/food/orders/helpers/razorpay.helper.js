@@ -11,8 +11,8 @@ try {
 import { config } from '../../../../config/env.js';
 import { logger } from '../../../../utils/logger.js';
 import { normalizePhoneToTenDigits } from '../../../../utils/phone.util.js';
-const KEY_ID = String(config.razorpayKeyId || process.env.RAZORPAY_KEY_ID || '').trim();
-const KEY_SECRET = String(config.razorpayKeySecret || process.env.RAZORPAY_KEY_SECRET || '').trim();
+// Master settings if saved there, else .env (core/settings/platformProfile.service.js).
+import { razorpayKeyId, razorpayKeySecret } from '../../../../core/settings/platformProfile.service.js';
 
 /**
  * Whether the gateway may be faked: mock orders, mock payment links, mock refunds.
@@ -43,16 +43,16 @@ function getRazorpayErrorMessage(error) {
 }
 
 export function isRazorpayConfigured() {
-    return Boolean(KEY_ID && KEY_SECRET && Razorpay);
+    return Boolean(razorpayKeyId() && razorpayKeySecret() && Razorpay);
 }
 
 export function getRazorpayKeyId() {
-    return KEY_ID;
+    return razorpayKeyId();
 }
 
 export function getRazorpayInstance() {
     if (!isRazorpayConfigured()) return null;
-    return new Razorpay({ key_id: KEY_ID, key_secret: KEY_SECRET });
+    return new Razorpay({ key_id: razorpayKeyId(), key_secret: razorpayKeySecret() });
 }
 
 export function createRazorpayOrder(amountPaise, currency = 'INR', receipt = '') {
@@ -158,9 +158,9 @@ export function verifyPaymentSignature(orderId, paymentId, signature) {
         && String(orderId || '').startsWith('mock_order_')) {
         return true;
     }
-    if (!KEY_SECRET) return false;
+    if (!razorpayKeySecret()) return false;
     const body = `${orderId}|${paymentId}`;
-    const expected = crypto.createHmac('sha256', KEY_SECRET).update(body).digest('hex');
+    const expected = crypto.createHmac('sha256', razorpayKeySecret()).update(body).digest('hex');
     // timingSafeEqual, not ===: a plain string compare returns as soon as two bytes
     // differ, so response time leaks how many leading hex characters were correct and
     // a signature can be recovered byte by byte. Lengths are checked first because

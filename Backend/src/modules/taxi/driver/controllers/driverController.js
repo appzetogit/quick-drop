@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { managedBrand } from '../../../../core/settings/platformProfile.service.js';
 import { safeSignatureEqual } from '../../../../utils/safeCompare.js';
 import mongoose from "mongoose";
 import QRCode from "qrcode";
@@ -822,6 +823,8 @@ const getIstMonthKey = (value = new Date()) => {
 
 const getConfiguredAppName = async () => {
   try {
+    const { name } = await managedBrand();
+    if (name) return name;
     const settings = await AdminBusinessSetting.findOne({ scope: "default" })
       .select("general.app_name")
       .lean();

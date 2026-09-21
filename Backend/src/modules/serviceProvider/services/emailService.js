@@ -1,3 +1,4 @@
+const { emailCredentials } = require('../../../core/settings/platformCredentials.cjs');
 const nodemailer = require('nodemailer');
 
 const COLORS = {
@@ -102,20 +103,23 @@ const emailWrapper = (content, title, preheader = '') => `
 // nodemailer transports are designed to be long-lived and reused.
 // Matches how master's src/services/email.service.js does it.
 let transporter = null;
+let transporterKey = '';
 
+// SMTP from Master settings if saved there, else .env; rebuilt when it changes.
 const createTransporter = () => {
-  if (transporter) return transporter;
-
-  const port = parseInt(process.env.EMAIL_PORT) || 587;
+  const mail = emailCredentials();
+  const key = `${mail.host}|${mail.port}|${mail.user}|${mail.pass}|${mail.secure}`;
+  if (transporter && key === transporterKey) return transporter;
   transporter = nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port,
-    secure: port === 465, // implicit TLS on 465; STARTTLS otherwise
+    host: mail.host,
+    port: mail.port,
+    secure: mail.secure,
     auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
+      user: mail.user,
+      pass: mail.pass
     }
   });
+  transporterKey = key;
   return transporter;
 };
 
@@ -124,7 +128,7 @@ const createTransporter = () => {
  */
 const sendOTPEmail = async (email, otp, purpose = 'verification') => {
   try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    if (!emailCredentials().user || !emailCredentials().pass) {
       console.log(`[EMAIL SERVICE] OTP for ${email}: ${otp}`);
       return { success: true };
     }
@@ -148,7 +152,7 @@ const sendOTPEmail = async (email, otp, purpose = 'verification') => {
     `;
 
     await transporter.sendMail({
-      from: process.env.EMAIL_FROM || 'Homster <noreply@homster.com>',
+      from: emailCredentials().from || 'Quick Drop <noreply@quickdropsindia.com>',
       to: email,
       subject: `${subjectPrefix} - Homster`,
       html: emailWrapper(content, subjectPrefix, `Your verification code is ${otp}`)
@@ -165,7 +169,7 @@ const sendOTPEmail = async (email, otp, purpose = 'verification') => {
  */
 const sendWelcomeEmail = async (email, name) => {
   try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return { success: true };
+    if (!emailCredentials().user || !emailCredentials().pass) return { success: true };
     const transporter = createTransporter();
 
     const content = `
@@ -196,7 +200,7 @@ const sendWelcomeEmail = async (email, name) => {
     `;
 
     await transporter.sendMail({
-      from: process.env.EMAIL_FROM || 'Homster <noreply@homster.com>',
+      from: emailCredentials().from || 'Quick Drop <noreply@quickdropsindia.com>',
       to: email,
       subject: 'Welcome to Homster!',
       html: emailWrapper(content, 'Welcome', 'Welcome to the future of home services')
@@ -213,7 +217,7 @@ const sendWelcomeEmail = async (email, name) => {
  */
 const sendBookingEmails = async (booking, user, vendor, service) => {
   try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return;
+    if (!emailCredentials().user || !emailCredentials().pass) return;
     const transporter = createTransporter();
     const bookingId = booking.bookingNumber || booking._id;
 
@@ -242,7 +246,7 @@ const sendBookingEmails = async (booking, user, vendor, service) => {
       `;
 
       await transporter.sendMail({
-        from: process.env.EMAIL_FROM || 'Homster <noreply@homster.com>',
+        from: emailCredentials().from || 'Quick Drop <noreply@quickdropsindia.com>',
         to: user.email,
         subject: `Booking Confirmed #${bookingId} - Homster`,
         html: emailWrapper(content, 'Confirmed', 'Your booking is scheduled successfully')
@@ -270,7 +274,7 @@ const sendBookingEmails = async (booking, user, vendor, service) => {
       `;
 
       await transporter.sendMail({
-        from: process.env.EMAIL_FROM || 'Homster <noreply@homster.com>',
+        from: emailCredentials().from || 'Quick Drop <noreply@quickdropsindia.com>',
         to: vendor.email,
         subject: `New Job Assigned #${bookingId} - Homster`,
         html: emailWrapper(vContent, 'New Job', 'Action Required: New job assigned')
@@ -284,7 +288,7 @@ const sendBookingEmails = async (booking, user, vendor, service) => {
  */
 const sendBookingCompletionEmails = async (booking) => {
   try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) return;
+    if (!emailCredentials().user || !emailCredentials().pass) return;
     const transporter = createTransporter();
     const user = booking.userId;
     const bookingId = booking.bookingNumber || booking._id;
@@ -321,7 +325,7 @@ const sendBookingCompletionEmails = async (booking) => {
       `;
 
       await transporter.sendMail({
-        from: process.env.EMAIL_FROM || 'Homster <noreply@homster.com>',
+        from: emailCredentials().from || 'Quick Drop <noreply@quickdropsindia.com>',
         to: user.email,
         subject: `Service Invoice #${bookingId} - Homster`,
         html: emailWrapper(content, 'Invoice', 'Your service is complete. Here is the receipt.')
@@ -335,7 +339,7 @@ const sendBookingCompletionEmails = async (booking) => {
  */
 const sendWithdrawalApprovedEmail = async (vendor, amount, transactionId) => {
   try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS || !vendor.email) return;
+    if (!emailCredentials().user || !emailCredentials().pass || !vendor.email) return;
     const transporter = createTransporter();
 
     const content = `
@@ -356,7 +360,7 @@ const sendWithdrawalApprovedEmail = async (vendor, amount, transactionId) => {
     `;
 
     await transporter.sendMail({
-      from: process.env.EMAIL_FROM || 'Homster <noreply@homster.com>',
+      from: emailCredentials().from || 'Quick Drop <noreply@quickdropsindia.com>',
       to: vendor.email,
       subject: 'Withdrawal Success - Homster',
       html: emailWrapper(content, 'Withdrawal', 'Your funds are on the way')
@@ -369,7 +373,7 @@ const sendWithdrawalApprovedEmail = async (vendor, amount, transactionId) => {
  */
 const sendDuesPaymentApprovedEmail = async (vendor, amount, balanceAfter) => {
   try {
-    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS || !vendor.email) return;
+    if (!emailCredentials().user || !emailCredentials().pass || !vendor.email) return;
     const transporter = createTransporter();
 
     const content = `
@@ -389,7 +393,7 @@ const sendDuesPaymentApprovedEmail = async (vendor, amount, balanceAfter) => {
     `;
 
     await transporter.sendMail({
-      from: process.env.EMAIL_FROM || 'Homster <noreply@homster.com>',
+      from: emailCredentials().from || 'Quick Drop <noreply@quickdropsindia.com>',
       to: vendor.email,
       subject: 'Dues Payment Verified - Homster',
       html: emailWrapper(content, 'Verified', 'We have received your payment')

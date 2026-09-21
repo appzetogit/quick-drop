@@ -1,3 +1,4 @@
+const { razorpayKeyId, razorpayKeySecret } = require('../../../core/settings/platformCredentials.cjs');
 const { getPaymentDetails, getOrderDetails } = require('../services/razorpayService');
 
 /**
@@ -25,7 +26,7 @@ const { getPaymentDetails, getOrderDetails } = require('../services/razorpayServ
  */
 const isDevMockOrder = (orderId) => {
   if (process.env.NODE_ENV === 'production') return false;
-  const noCredentials = !process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET;
+  const noCredentials = !razorpayKeyId() || !razorpayKeySecret();
   return noCredentials || String(orderId || '').startsWith('order_mock_');
 };
 

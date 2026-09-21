@@ -1,94 +1,442 @@
 import { useState, useEffect, useCallback } from "react"
-import { platformSettingsAPI } from "@food/api"
+import { platformSettingsAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
-import { Loader2, Wallet, ChevronDown } from "lucide-react"
+import { Loader2, Building2, FileText, PlugZap, Wallet, CheckCircle2, ExternalLink, ImagePlus } from "lucide-react"
+import { legalHtmlToPlainText, plainTextToLegalHtml } from "@food/utils/legalContentFormat"
+import CashLimitSettings from "./CashLimitSettings"
 
 /**
- * Platform settings: only the settings that change something on the live site.
+ * Master settings: what every service shares, set once for the whole platform
+ * (core/settings/platformProfile.service.js on the server).
  *
- * Today that is the partner cash limit (core/finance/cashLimit.service.js).
- * The other keys in core/config/registry.js feed only the eligibility shadow
- * engine, which decides nothing and is off unless ELIGIBILITY_SHADOW_ENABLED
- * is set, or are read nowhere (maintenance mode, max concurrent jobs). They
- * stay registered on the server and are deliberately not shown here: a switch
- * that does nothing tells an admin something is protected when it is not. Add
- * a key to this screen when the code starts obeying it.
- *
- * How the limit applies:
- *   - The shared value covers riders (one limit across Taxi, Food and Quick
- *     Commerce) and service providers.
- *   - Service providers may have their own value (vertical override); riders
- *     may not -- a per-service rider value is ignored by the server.
- *   - Empty = not managed here: each partner keeps the limit from its own
- *     older screen. 0 = no limit.
- *   - Per-partner overrides are set on the partner's own page, not here.
+ * Empty means "not managed here": each service keeps showing its own value
+ * until one is saved here, and payments, SMS and email keep using the server's
+ * .env. Saving a value makes every app use it.
  */
 
-const LIMIT_KEY = "finance.cashLimit"
-const ENFORCE_KEY = "finance.enforceCashLimit"
+const TABS = [
+  { key: "brand", label: "Brand & contact", icon: Building2 },
+  { key: "legal", label: "Legal pages", icon: FileText },
+  { key: "integrations", label: "Payments & messages", icon: PlugZap },
+  { key: "money", label: "Money rules", icon: Wallet },
+]
 
-const savedValue = (setting, level) => {
-  const link = (setting?.chain || []).find((l) => l.level === level)
-  return link?.set ? link.value : null
+const LEGAL = [
+  { key: "terms", label: "Terms & Conditions" },
+  { key: "privacy", label: "Privacy Policy" },
+  { key: "refund", label: "Refund Policy" },
+  { key: "cancellation", label: "Cancellation Policy" },
+  { key: "shipping", label: "Shipping Policy" },
+]
+
+const inputCls =
+  "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900/10 disabled:bg-neutral-50"
+const btnCls =
+  "inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
+const ghostCls =
+  "inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+
+const errText = (err, fallback) => err?.response?.data?.message || err?.message || fallback
+
+function Field({ label, hint, children, wide }) {
+  return (
+    <label className={`block ${wide ? "sm:col-span-2" : ""}`}>
+      <span className="text-sm font-medium text-neutral-800">{label}</span>
+      {hint && <span className="block text-xs text-neutral-500">{hint}</span>}
+      <div className="mt-1.5">{children}</div>
+    </label>
+  )
 }
 
-const rupees = (n) => `₹${Number(n).toLocaleString("en-IN")}`
-
-function LimitInput({ value, onChange, disabled, id }) {
+function Card({ title, description, children, footer }) {
   return (
-    <div className="relative">
-      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500">₹</span>
-      <input
-        id={id}
-        type="number"
-        min="0"
-        step="100"
-        inputMode="numeric"
-        value={value === null || value === undefined ? "" : value}
-        placeholder="Not set"
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value === "" ? null : Math.max(0, Number(e.target.value)))}
-        className="w-40 rounded-lg border border-neutral-300 bg-white py-2 pl-7 pr-3 text-sm tabular-nums focus:border-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
+    <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+      <div className="border-b border-neutral-100 px-5 py-4">
+        <h2 className="font-semibold text-neutral-900">{title}</h2>
+        {description && <p className="mt-0.5 text-sm text-neutral-500">{description}</p>}
+      </div>
+      <div className="px-5 py-4">{children}</div>
+      {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-5 py-3">{footer}</div>}
+    </section>
+  )
+}
+
+function ImageField({ label, hint, value, onChange, folder }) {
+  const [busy, setBusy] = useState(false)
+  const upload = async (file) => {
+    if (!file) return
+    setBusy(true)
+    try {
+      const res = await uploadAPI.uploadMedia(file, { folder })
+      const url = res?.data?.data?.url || res?.data?.url
+      if (!url) throw new Error("Upload returned no link")
+      onChange(url)
+    } catch (err) {
+      toast.error(errText(err, "Upload failed"))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Field label={label} hint={hint}>
+      <div className="flex items-center gap-3">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50">
+          {value ? <img src={value} alt="" className="h-full w-full object-contain" /> : <ImagePlus className="h-5 w-5 text-neutral-400" />}
+        </div>
+        <label className={`${ghostCls} cursor-pointer`}>
+          {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {value ? "Replace" : "Upload"}
+          <input type="file" accept="image/*" className="hidden" onChange={(e) => upload(e.target.files?.[0])} />
+        </label>
+        {value && (
+          <button type="button" className="text-xs text-neutral-500 hover:text-neutral-900" onClick={() => onChange("")}>
+            Remove
+          </button>
+        )}
+      </div>
+    </Field>
+  )
+}
+
+/* ---------------------------------------------------------------- Brand -- */
+
+function BrandTab({ profile, onSaved }) {
+  const [brand, setBrand] = useState(profile.brand)
+  const [contact, setContact] = useState(profile.contact)
+  const [business, setBusiness] = useState(profile.business)
+  const [busy, setBusy] = useState(false)
+  const setB = (k) => (v) => setBrand((o) => ({ ...o, [k]: v }))
+  const setC = (k) => (e) => setContact((o) => ({ ...o, [k]: e.target.value }))
+  const setBiz = (k) => (e) => setBusiness((o) => ({ ...o, [k]: e.target.value }))
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      await onSaved(await platformSettingsAPI.updateProfile({ brand, contact, business }), "Saved. Every app now shows these details.")
+    } catch (err) {
+      toast.error(errText(err, "Could not save"))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <Card title="Brand" description="One name and logo for Food, Quick Commerce, Medical and Taxi.">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="App name" hint="Shown in every app, email and SMS" wide>
+            <input className={inputCls} value={brand.name} placeholder="Quick Drop" onChange={(e) => setB("name")(e.target.value)} />
+          </Field>
+          <ImageField label="Logo" value={brand.logoUrl} onChange={setB("logoUrl")} folder="platform/brand" />
+          <ImageField label="Favicon" hint="The small icon in the browser tab" value={brand.faviconUrl} onChange={setB("faviconUrl")} folder="platform/brand" />
+        </div>
+        <a href="/admin/food/business-setup" className="mt-4 inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-900">
+          Separate logos for the driver, restaurant and delivery apps <ExternalLink className="h-3 w-3" />
+        </a>
+      </Card>
+
+      <Card title="Contact" description="Where customers and partners reach you.">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Support email">
+            <input type="email" className={inputCls} value={contact.email} placeholder="support@quickdropsindia.com" onChange={setC("email")} />
+          </Field>
+          <Field label="Support phone">
+            <div className="flex gap-2">
+              <input className={`${inputCls} w-20`} value={contact.phoneCountryCode} placeholder="+91" onChange={setC("phoneCountryCode")} />
+              <input className={inputCls} inputMode="numeric" value={contact.phone} placeholder="9876543210" onChange={setC("phone")} />
+            </div>
+          </Field>
+          <Field label="WhatsApp number">
+            <input className={inputCls} inputMode="numeric" value={contact.whatsapp} placeholder="9876543210" onChange={setC("whatsapp")} />
+          </Field>
+          <Field label="City">
+            <input className={inputCls} value={contact.city} onChange={setC("city")} />
+          </Field>
+          <Field label="Address" wide>
+            <input className={inputCls} value={contact.address} onChange={setC("address")} />
+          </Field>
+          <Field label="State">
+            <input className={inputCls} value={contact.state} onChange={setC("state")} />
+          </Field>
+          <Field label="Pincode">
+            <input className={inputCls} inputMode="numeric" value={contact.pincode} onChange={setC("pincode")} />
+          </Field>
+        </div>
+      </Card>
+
+      <Card
+        title="Business details"
+        description="Printed on invoices."
+        footer={
+          <button type="button" className={btnCls} disabled={busy} onClick={save}>
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Save brand & contact
+          </button>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Registered company name" wide>
+            <input className={inputCls} value={business.legalName} placeholder="Quick Drop India Pvt Ltd" onChange={setBiz("legalName")} />
+          </Field>
+          <Field label="GSTIN">
+            <input className={inputCls} value={business.gstin} onChange={setBiz("gstin")} />
+          </Field>
+          <Field label="PAN">
+            <input className={inputCls} value={business.pan} onChange={setBiz("pan")} />
+          </Field>
+          <Field label="Currency code">
+            <input className={inputCls} value={business.currencyCode} placeholder="INR" onChange={setBiz("currencyCode")} />
+          </Field>
+          <Field label="Currency symbol">
+            <input className={inputCls} value={business.currencySymbol} placeholder="₹" onChange={setBiz("currencySymbol")} />
+          </Field>
+        </div>
+      </Card>
+      <p className="text-xs text-neutral-500">Leave a field empty to let each service keep showing its own value.</p>
+    </div>
+  )
+}
+
+/* ---------------------------------------------------------------- Legal -- */
+
+function LegalTab({ profile, onSaved }) {
+  const [active, setActive] = useState("terms")
+  const [texts, setTexts] = useState(() =>
+    Object.fromEntries(LEGAL.map(({ key }) => [key, legalHtmlToPlainText(profile.legal?.[key] || "")])),
+  )
+  const [busy, setBusy] = useState(false)
+  const savedText = legalHtmlToPlainText(profile.legal?.[active] || "")
+  const dirty = texts[active] !== savedText
+
+  const save = async (value) => {
+    setBusy(true)
+    try {
+      const html = value ? plainTextToLegalHtml(value) : null
+      await onSaved(
+        await platformSettingsAPI.updateProfile({ legal: { [active]: html } }),
+        value ? "Saved. Every app now shows this page." : "Cleared. Each service shows its own page again.",
+      )
+      if (!value) setTexts((t) => ({ ...t, [active]: "" }))
+    } catch (err) {
+      toast.error(errText(err, "Could not save"))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const current = LEGAL.find((l) => l.key === active)
+  return (
+    <Card
+      title="Legal pages"
+      description="Written once, shown in every customer app. A page Medical has written for itself stays."
+      footer={
+        <>
+          {savedText && (
+            <button type="button" className={ghostCls} disabled={busy} onClick={() => save("")}>
+              Stop using this page
+            </button>
+          )}
+          <button type="button" className={btnCls} disabled={!dirty || busy || !texts[active].trim()} onClick={() => save(texts[active])}>
+            {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Save {current.label}
+          </button>
+        </>
+      }
+    >
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {LEGAL.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActive(key)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${active === key ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-600 hover:bg-neutral-200"}`}
+          >
+            {label}
+            {profile.legal?.[key] ? " ✓" : ""}
+          </button>
+        ))}
+      </div>
+      <p className="mb-2 text-xs text-neutral-500">
+        {savedText ? "Every app shows this page." : "Not set here: each service still shows its own page. Write it here to use one page everywhere."}
+      </p>
+      <textarea
+        rows={16}
+        className={`${inputCls} font-mono text-[13px] leading-relaxed`}
+        value={texts[active]}
+        placeholder={`Write the ${current.label} here…`}
+        onChange={(e) => setTexts((t) => ({ ...t, [active]: e.target.value }))}
+      />
+    </Card>
+  )
+}
+
+/* --------------------------------------------------------- Integrations -- */
+
+function InUse({ source, children }) {
+  return (
+    <p className={`mb-4 flex items-start gap-1.5 rounded-lg px-3 py-2 text-xs ${source === "master" ? "bg-emerald-50 text-emerald-800" : "bg-neutral-50 text-neutral-600"}`}>
+      <CheckCircle2 className="mt-px h-3.5 w-3.5 shrink-0" />
+      <span>
+        {source === "master" ? "Using the values saved here." : "Nothing saved here yet: using the server's configuration file."} {children}
+      </span>
+    </p>
+  )
+}
+
+function IntegrationCard({ kind, title, description, initial, fields, inUse, testExtra, onSaved, saveNote }) {
+  const [values, setValues] = useState(initial)
+  const [busy, setBusy] = useState("")
+  const [extra, setExtra] = useState("")
+  const set = (k) => (e) => setValues((o) => ({ ...o, [k]: e.target.value }))
+
+  const test = async () => {
+    setBusy("test")
+    try {
+      const res = await platformSettingsAPI.testIntegration(kind, { ...values, ...(testExtra ? { [testExtra.key]: extra } : {}) })
+      toast.success(res?.data?.message || "Works")
+    } catch (err) {
+      toast.error(errText(err, "Test failed"))
+    } finally {
+      setBusy("")
+    }
+  }
+  const save = async () => {
+    if (saveNote && !window.confirm(saveNote)) return
+    setBusy("save")
+    try {
+      await onSaved(await platformSettingsAPI.updateProfile({ integrations: { [kind]: values } }), `${title} saved. It is used from now on.`)
+    } catch (err) {
+      toast.error(errText(err, "Could not save"))
+    } finally {
+      setBusy("")
+    }
+  }
+
+  return (
+    <Card
+      title={title}
+      description={description}
+      footer={
+        <>
+          {testExtra && (
+            <input className={`${inputCls} w-56`} placeholder={testExtra.placeholder} value={extra} onChange={(e) => setExtra(e.target.value)} />
+          )}
+          <button type="button" className={ghostCls} disabled={!!busy} onClick={test}>
+            {busy === "test" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Test
+          </button>
+          <button type="button" className={btnCls} disabled={!!busy} onClick={save}>
+            {busy === "save" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Save
+          </button>
+        </>
+      }
+    >
+      {inUse}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {fields.map((f) => (
+          <Field key={f.key} label={f.label} hint={f.hint} wide={f.wide}>
+            {f.textarea ? (
+              <textarea rows={3} className={inputCls} value={values[f.key] ?? ""} placeholder={f.placeholder} onChange={set(f.key)} />
+            ) : (
+              <input
+                type={f.secret ? "password" : f.type || "text"}
+                autoComplete="off"
+                className={inputCls}
+                value={values[f.key] ?? ""}
+                placeholder={f.placeholder}
+                onFocus={(e) => f.secret && String(e.target.value).startsWith("•") && setValues((o) => ({ ...o, [f.key]: "" }))}
+                onChange={set(f.key)}
+              />
+            )}
+          </Field>
+        ))}
+      </div>
+    </Card>
+  )
+}
+
+function IntegrationsTab({ profile, onSaved }) {
+  const { razorpay, sms, email } = profile.integrations
+  return (
+    <div className="space-y-5">
+      <IntegrationCard
+        kind="razorpay"
+        title="Razorpay (online payments)"
+        description="The account every online payment goes to, in every service."
+        initial={{ keyId: razorpay.keyId, keySecret: razorpay.keySecret, webhookSecret: razorpay.webhookSecret }}
+        inUse={
+          <InUse source={razorpay.inUse.source}>
+            Current key: <b>{razorpay.inUse.keyId || "none"}</b>
+            {razorpay.inUse.mode === "test" && <span className="ml-1 font-semibold text-amber-700">(TEST mode: no real money is collected)</span>}
+          </InUse>
+        }
+        fields={[
+          { key: "keyId", label: "Key id", placeholder: "rzp_live_…", wide: true },
+          { key: "keySecret", label: "Key secret", secret: true, placeholder: "Leave as is to keep the saved one" },
+          { key: "webhookSecret", label: "Webhook secret", secret: true, hint: "From Razorpay > Webhooks", placeholder: "Leave as is to keep the saved one" },
+        ]}
+        saveNote="New Razorpay keys are used for every payment from now on. Payments already started with the old keys may fail to confirm. Test first. Continue?"
+        onSaved={onSaved}
+      />
+      <IntegrationCard
+        kind="sms"
+        title="SMS (OTP codes)"
+        description="SMS India Hub account used to send login codes in every app."
+        initial={{ apiKey: sms.apiKey, senderId: sms.senderId, templateId: sms.templateId, templateText: sms.templateText }}
+        inUse={
+          <InUse source={sms.inUse.source}>
+            {sms.inUse.configured ? <>Sender id: <b>{sms.inUse.senderId || "—"}</b></> : <b>No SMS account is set up.</b>}
+          </InUse>
+        }
+        fields={[
+          { key: "apiKey", label: "API key", secret: true, placeholder: "Leave as is to keep the saved one" },
+          { key: "senderId", label: "Sender id", placeholder: "QKDROP" },
+          { key: "templateId", label: "DLT template id", placeholder: "1007…" },
+          { key: "templateText", label: "Message", hint: "Must match the DLT template exactly. Put {{OTP}} where the code goes.", textarea: true, wide: true, placeholder: "Your Quick Drop code is {{OTP}}. Valid for {{MINUTES}} minutes." },
+        ]}
+        testExtra={{ key: "phone", placeholder: "Mobile number to send a test" }}
+        saveNote="Login codes in every app will be sent with this account from now on. Send a test first. Continue?"
+        onSaved={onSaved}
+      />
+      <IntegrationCard
+        kind="email"
+        title="Email"
+        description="Mail server for invoices, password resets and notifications."
+        initial={{ host: email.host, port: email.port ?? "", user: email.user, pass: email.pass, from: email.from }}
+        inUse={
+          <InUse source={email.inUse.source}>
+            {email.inUse.configured ? <>Sending as <b>{email.inUse.from}</b> via {email.inUse.host}</> : <b>No mail server is set up.</b>}
+          </InUse>
+        }
+        fields={[
+          { key: "host", label: "Mail server", placeholder: "smtp.gmail.com" },
+          { key: "port", label: "Port", type: "number", placeholder: "587" },
+          { key: "user", label: "Username", placeholder: "you@yourdomain.com" },
+          { key: "pass", label: "Password", secret: true, placeholder: "Leave as is to keep the saved one" },
+          { key: "from", label: "Send as", placeholder: "Quick Drop <noreply@quickdropsindia.com>", wide: true },
+        ]}
+        testExtra={{ key: "sendTo", placeholder: "Email to send a test (optional)" }}
+        onSaved={onSaved}
       />
     </div>
   )
 }
 
-const describe = (value) =>
-  value === null
-    ? "Not set here: each partner keeps the limit from its own older screen."
-    : value === 0
-      ? "No limit: partners can hold any amount of cash."
-      : `Partners holding more than ${rupees(value)} in cash get no new cash orders until they deposit it.`
+/* ----------------------------------------------------------------- Page -- */
 
 export default function PlatformSettings() {
-  const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState("")
-  const [saved, setSaved] = useState({ limit: null, enforce: true, spLimit: null })
-  const [limit, setLimit] = useState(null)
-  const [spLimit, setSpLimit] = useState(null)
-  const [spOpen, setSpOpen] = useState(false)
+  const [tab, setTab] = useState("brand")
+  const [profile, setProfile] = useState(null)
+  const [version, setVersion] = useState(0)
 
   const load = useCallback(async () => {
     try {
-      const [base, sp] = await Promise.all([
-        platformSettingsAPI.resolveAll({}),
-        platformSettingsAPI.resolveAll({ vertical: "serviceProvider" }),
-      ])
-      const find = (res, key) => (res?.data?.data?.settings || []).find((s) => s.key === key)
-      const next = {
-        limit: savedValue(find(base, LIMIT_KEY), "global"),
-        enforce: savedValue(find(base, ENFORCE_KEY), "global") !== false,
-        spLimit: savedValue(find(sp, LIMIT_KEY), "vertical"),
-      }
-      setSaved(next)
-      setLimit(next.limit)
-      setSpLimit(next.spLimit)
-      if (next.spLimit !== null) setSpOpen(true)
+      const res = await platformSettingsAPI.getProfile()
+      setProfile(res?.data?.data)
+      setVersion((v) => v + 1)
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Could not load platform settings")
-    } finally {
-      setLoading(false)
+      toast.error(errText(err, "Could not load master settings"))
     }
   }, [])
 
@@ -96,141 +444,47 @@ export default function PlatformSettings() {
     load()
   }, [load])
 
-  const save = async (key, level, scopeId, value, busyKey, message) => {
-    setBusy(busyKey)
-    try {
-      await platformSettingsAPI.set(key, { level, scopeId, value })
-      // Other server processes cache settings for 30s; clear this one's now.
-      await platformSettingsAPI.invalidateCache().catch(() => {})
-      toast.success(message)
-      await load()
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Could not save")
-    } finally {
-      setBusy("")
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex min-h-full items-center gap-2 bg-neutral-100 p-6 text-neutral-500">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading settings
-      </div>
-    )
+  const onSaved = async (res, message) => {
+    setProfile(res?.data?.data)
+    setVersion((v) => v + 1)
+    toast.success(message)
   }
 
   return (
     <div className="min-h-full bg-neutral-100 p-4 lg:p-6">
       <div className="mx-auto max-w-3xl space-y-5">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Platform settings</h1>
-          <p className="mt-1 text-sm text-neutral-600">Rules that apply across Food, Quick Commerce and Taxi.</p>
+          <h1 className="text-2xl font-semibold text-neutral-900">Master settings</h1>
+          <p className="mt-1 text-sm text-neutral-600">Set once here for Food, Quick Commerce, Medical and Taxi.</p>
         </div>
 
-        <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-          <div className="flex items-start gap-3 border-b border-neutral-100 px-5 py-4">
-            <div className="rounded-lg bg-neutral-100 p-2 text-neutral-700">
-              <Wallet className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-neutral-900">Cash limit for partners</h2>
-              <p className="mt-0.5 text-sm text-neutral-500">
-                The most cash a rider or partner can hold from cash orders before they must deposit it. One limit covers a
-                rider across Taxi, Food and Quick Commerce combined.
-              </p>
-            </div>
+        <div className="flex gap-1 overflow-x-auto rounded-xl border border-neutral-200 bg-white p-1">
+          {TABS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium ${tab === key ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"}`}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "money" ? (
+          <CashLimitSettings />
+        ) : !profile ? (
+          <div className="flex items-center gap-2 py-10 text-neutral-500">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading settings
           </div>
-
-          <div className="space-y-4 px-5 py-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <label htmlFor="cash-limit" className="text-sm font-medium text-neutral-800">
-                Cash limit
-                <span className="block text-xs font-normal text-neutral-500">0 = no limit</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <LimitInput id="cash-limit" value={limit} onChange={setLimit} disabled={busy === "limit"} />
-                <button
-                  type="button"
-                  disabled={limit === saved.limit || busy === "limit"}
-                  onClick={() => save(LIMIT_KEY, "global", "*", limit, "limit", limit === null ? "Cash limit cleared" : "Cash limit saved")}
-                  className="inline-flex items-center gap-1 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
-                >
-                  {busy === "limit" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  Save
-                </button>
-              </div>
-            </div>
-            <p className="rounded-lg bg-neutral-50 px-3 py-2 text-sm text-neutral-600">
-              {saved.enforce ? describe(saved.limit) : "Not enforced right now: the limit is shown to partners but nobody is stopped."}
-            </p>
-
-            <div className="flex flex-col gap-3 border-t border-neutral-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-neutral-800">Stop new cash orders above the limit</p>
-                <p className="text-xs text-neutral-500">Turn off to keep the limit visible without blocking anyone.</p>
-              </div>
-              <div role="radiogroup" aria-label="Enforce the cash limit" className="inline-flex self-start rounded-lg bg-neutral-100 p-0.5 text-sm">
-                {[
-                  [true, "On"],
-                  [false, "Off"],
-                ].map(([v, text]) => (
-                  <button
-                    key={text}
-                    type="button"
-                    role="radio"
-                    aria-checked={saved.enforce === v}
-                    disabled={busy === "enforce"}
-                    onClick={() =>
-                      saved.enforce !== v &&
-                      save(ENFORCE_KEY, "global", "*", v, "enforce", v ? "Cash limit is now enforced" : "Cash limit is no longer enforced")
-                    }
-                    className={`rounded-md px-4 py-1.5 font-medium ${saved.enforce === v ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-800"}`}
-                  >
-                    {text}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="border-t border-neutral-100 pt-4">
-              <button
-                type="button"
-                onClick={() => setSpOpen((o) => !o)}
-                aria-expanded={spOpen}
-                className="inline-flex items-center gap-1 text-sm font-medium text-neutral-600 hover:text-neutral-900"
-              >
-                <ChevronDown className={`h-4 w-4 transition-transform ${spOpen ? "rotate-180" : ""}`} />
-                A different limit for service providers
-              </button>
-              {spOpen && (
-                <div className="mt-3 flex flex-col gap-3 rounded-lg bg-neutral-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-neutral-600">
-                    {spLimit === null && saved.spLimit === null
-                      ? "Leave empty to use the limit above."
-                      : "Service providers use this instead of the limit above."}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <LimitInput id="sp-cash-limit" value={spLimit} onChange={setSpLimit} disabled={busy === "sp"} />
-                    <button
-                      type="button"
-                      disabled={spLimit === saved.spLimit || busy === "sp"}
-                      onClick={() =>
-                        save(LIMIT_KEY, "vertical", "serviceProvider", spLimit, "sp", spLimit === null ? "Service providers now use the main limit" : "Saved")
-                      }
-                      className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <p className="text-xs text-neutral-500">
-          A limit for one particular rider or partner is set on that partner&apos;s own page.
-        </p>
+        ) : tab === "brand" ? (
+          <BrandTab key={version} profile={profile} onSaved={onSaved} />
+        ) : tab === "legal" ? (
+          <LegalTab key={version} profile={profile} onSaved={onSaved} />
+        ) : (
+          <IntegrationsTab key={version} profile={profile} onSaved={onSaved} />
+        )}
       </div>
     </div>
   )

@@ -1,26 +1,35 @@
 import nodemailer from 'nodemailer';
+import { emailCredentials } from '../../../core/settings/platformProfile.service.js';
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: parseInt(process.env.EMAIL_PORT || '587'),
-  secure: process.env.EMAIL_PORT === '465',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// SMTP from Master settings if saved there, else .env; rebuilt when it changes.
+let transporter = null;
+let transporterKey = '';
+const getTransporter = () => {
+  const mail = emailCredentials();
+  const key = `${mail.host}|${mail.port}|${mail.user}|${mail.pass}|${mail.secure}`;
+  if (!transporter || key !== transporterKey) {
+    transporter = nodemailer.createTransport({
+      host: mail.host,
+      port: mail.port,
+      secure: mail.secure,
+      auth: { user: mail.user, pass: mail.pass },
+    });
+    transporterKey = key;
+  }
+  return transporter;
+};
 
 export const sendEmail = async ({ to, subject, text, html }) => {
   try {
     const mailOptions = {
-      from: process.env.EMAIL_FROM || '"Quick Drop" <noreply@example.com>',
+      from: emailCredentials().from || '"Quick Drop" <noreply@example.com>',
       to,
       subject,
       text,
       html,
     };
 
-    const info = await transporter.sendMail(mailOptions);
+    const info = await getTransporter().sendMail(mailOptions);
     console.log(`Email sent: ${info.messageId}`);
     return info;
   } catch (error) {

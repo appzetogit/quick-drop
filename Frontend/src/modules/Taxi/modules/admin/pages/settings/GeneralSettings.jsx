@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ManagedInMasterNotice from "../../../../../../components/shared/ManagedInMasterNotice"
 import {
   ChevronRight,
   Save,
@@ -353,6 +354,7 @@ const GeneralSettings = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 lg:p-10 font-sans">
+      <ManagedInMasterNotice what="The app name, logo, contact number and currency" />
 
       {/* Header */}
       <div className="mb-10 flex items-center justify-between">

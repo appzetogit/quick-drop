@@ -1,3 +1,4 @@
+const { razorpayKeyId, razorpayKeySecret } = require('../../../../core/settings/platformCredentials.cjs');
 const { createOrder, verifyPayment } = require('../../services/razorpayService');
 const Worker = require('../../models/Worker');
 const WorkerSubscriptionPlan = require('../../models/WorkerSubscriptionPlan');
@@ -59,7 +60,7 @@ exports.createSubscriptionOrder = async (req, res) => {
         orderId: orderResult.orderId,
         amount: orderResult.amount,
         currency: orderResult.currency,
-        keyId: process.env.RAZORPAY_KEY_ID,
+        keyId: razorpayKeyId(),
         planTitle: plan.title,
         durationDays: plan.durationDays,
         workerName: worker.name,

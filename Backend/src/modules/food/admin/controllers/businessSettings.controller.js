@@ -1,4 +1,5 @@
 import { FoodBusinessSettings } from '../models/businessSettings.model.js';
+import { overlayBusinessSettings, syncManagedFromLegacy } from '../../../../core/settings/platformProfile.service.js';
 import { FoodPetpoojaSettings } from '../models/petpoojaSettings.model.js';
 import { sendResponse } from '../../../../utils/response.js';
 import { uploadImageBufferDetailed } from '../../../../services/cloudinary.service.js';
@@ -86,7 +87,8 @@ export async function getBusinessSettings(req, res, next) {
                 email: 'admin@Quick Drop.com'
             });
         }
-        return sendResponse(res, 200, 'Business settings fetched successfully', settings);
+        // Master settings win where set (core/settings/platformProfile.service.js).
+        return sendResponse(res, 200, 'Business settings fetched successfully', await overlayBusinessSettings(settings));
     } catch (error) {
         next(error);
     }
@@ -168,7 +170,8 @@ export async function updateBusinessSettings(req, res, next) {
         }
 
         await settings.save();
-        return sendResponse(res, 200, 'Business settings updated successfully', settings);
+        await syncManagedFromLegacy({ name: companyName, email, phone: phoneNumber, address, state, pincode, logoUrl: settings.logo?.url, faviconUrl: settings.favicon?.url });
+        return sendResponse(res, 200, 'Business settings updated successfully', await overlayBusinessSettings(settings.toObject()));
     } catch (error) {
         next(error);
     }

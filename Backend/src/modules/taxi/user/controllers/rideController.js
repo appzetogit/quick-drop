@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { razorpayKeyId, razorpayKeySecret } from '../../../../core/settings/platformProfile.service.js';
 import { safeSignatureEqual } from '../../../../utils/safeCompare.js';
 import mongoose from 'mongoose';
 import { ApiError } from '../../../../utils/ApiError.js';
@@ -371,8 +372,8 @@ const razorpayRequest = async ({ method, path, body, keyId, keySecret }) => {
   let response = await makeRequest(keyId, keySecret);
   
   if (response.status === 401) {
-    const envKeyId = String(process.env.RAZORPAY_KEY_ID || '').trim();
-    const envKeySecret = String(process.env.RAZORPAY_KEY_SECRET || '').trim();
+    const envKeyId = razorpayKeyId();
+    const envKeySecret = razorpayKeySecret();
     if (envKeyId && envKeySecret && envKeyId !== keyId) {
       console.warn(`Razorpay 401 with DB key. Retrying with env key: ${envKeyId.substring(0, 12)}...`);
       response = await makeRequest(envKeyId, envKeySecret);

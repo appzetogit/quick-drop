@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { smsCredentials } from '../settings/platformProfile.service.js';
 import ms from 'ms';
 import { FoodOtp } from './otp.model.js';
 import { config } from '../../config/env.js';
@@ -68,10 +69,12 @@ const sendSmsViaIndiaHub = async (phone, otp) => {
                     : (config.otpExpiryMinutes || 5) * 60) / 60,
             ),
         );
+        // Master settings if saved there, else .env.
+        const sms = smsCredentials();
         const message = buildOtpSmsMessage({
             otp,
             expiryMinutes,
-            template: config.smsIndiaHubTemplateText,
+            template: sms.templateText,
         });
         if (!message) {
             logger.error(
@@ -86,8 +89,8 @@ const sendSmsViaIndiaHub = async (phone, otp) => {
             String(config.smsIndiaHubUrl || '').trim()
                 || 'http://cloud.smsindiahub.in/vendorsms/pushsms.aspx',
         );
-        url.searchParams.append('APIKey', config.smsApiKey);
-        url.searchParams.append('sid', config.smsSenderId);
+        url.searchParams.append('APIKey', sms.apiKey);
+        url.searchParams.append('sid', sms.senderId);
         url.searchParams.append('msisdn', msisdn);
         url.searchParams.append('msg', message);
         url.searchParams.append('gwid', String(config.smsIndiaHubGwid || '2').trim() || '2');
@@ -95,8 +98,8 @@ const sendSmsViaIndiaHub = async (phone, otp) => {
         if (config.smsIndiaHubUsername) {
             url.searchParams.append('uname', config.smsIndiaHubUsername);
         }
-        if (config.smsDltTemplateId) {
-            url.searchParams.append('DLT_TE_ID', config.smsDltTemplateId);
+        if (sms.templateId) {
+            url.searchParams.append('DLT_TE_ID', sms.templateId);
         }
 
         logger.info(`[SMS] Sending OTP to ${msisdn} via SMS India Hub...`);

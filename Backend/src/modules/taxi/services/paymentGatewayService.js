@@ -1,4 +1,5 @@
 import { ApiError } from '../../../utils/ApiError.js';
+import { razorpayCredentials, razorpayKeyId, razorpayKeySecret } from '../../../core/settings/platformProfile.service.js';
 import { ensureThirdPartySettings } from '../admin/services/adminService.js';
 import { env } from '../../../config/env.js';
 
@@ -156,10 +157,11 @@ export const resolveConfiguredGatewayCredentials = async (gatewayKey) => {
   }
 
   // Direct environment fallback for development testing
-  if (gatewayKey === 'razor_pay' && env.razorpayKeyId && env.razorpayKeySecret) {
+  const platformRazorpay = razorpayCredentials();
+  if (gatewayKey === 'razor_pay' && platformRazorpay.keyId && platformRazorpay.keySecret) {
     return {
-      keyId: env.razorpayKeyId,
-      keySecret: env.razorpayKeySecret,
+      keyId: platformRazorpay.keyId,
+      keySecret: platformRazorpay.keySecret,
       environment: 'test'
     };
   }
@@ -186,8 +188,8 @@ export const resolveConfiguredGatewayCredentials = async (gatewayKey) => {
       isDemoLikeValue(keySecret);
 
     if (hasInvalidConfiguredKeys) {
-      const envKeyId = normalizeString(env.razorpayKeyId);
-      const envKeySecret = normalizeString(env.razorpayKeySecret);
+      const envKeyId = normalizeString(razorpayKeyId());
+      const envKeySecret = normalizeString(razorpayKeySecret());
       if (envKeyId && envKeySecret) {
         keyId = envKeyId;
         keySecret = envKeySecret;

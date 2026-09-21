@@ -1,4 +1,5 @@
 import { FoodBusinessSettings } from '../models/businessSettings.model.js';
+import { overlayBusinessSettings, syncManagedFromLegacy } from '../../../../../../core/settings/platformProfile.service.js';
 import { sendResponse } from '../../../../utils/response.js';
 import { uploadImageBufferDetailed } from '../../../../services/cloudinary.service.js';
 
@@ -141,7 +142,8 @@ export async function getBusinessSettings(req, res, next) {
             payload.firebaseServiceAccount = describeServiceAccount(withSecret?.firebaseServiceAccount);
         }
 
-        return sendResponse(res, 200, 'Business settings fetched successfully', payload);
+        // Master settings win where set (core/settings/platformProfile.service.js).
+        return sendResponse(res, 200, 'Business settings fetched successfully', await overlayBusinessSettings(payload));
     } catch (error) {
         next(error);
     }
@@ -389,7 +391,8 @@ export async function updateBusinessSettings(req, res, next) {
         const payload = settings.toObject();
         payload.firebaseServiceAccount = describeServiceAccount(settings.firebaseServiceAccount);
 
-        return sendResponse(res, 200, 'Business settings updated successfully', payload);
+        await syncManagedFromLegacy({ name: companyName, email, phone: phoneNumber, address, state, pincode, logoUrl: settings.logo?.url, faviconUrl: settings.favicon?.url });
+        return sendResponse(res, 200, 'Business settings updated successfully', await overlayBusinessSettings(payload));
     } catch (error) {
         next(error);
     }

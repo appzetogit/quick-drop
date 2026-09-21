@@ -1013,11 +1013,10 @@ const AdminLayout = () => {
             label: 'Third-party Settings',
             permission: 'settings.view',
             subItems: [
-              { label: 'Payment Gateway Settings', path: '/taxi/admin/settings/third-party/payment', permission: 'settings.view' },
-              { label: 'SMS Gateway Settings', path: '/taxi/admin/settings/third-party/sms', permission: 'settings.view' },
+              // Payments, SMS and email are set once for every service in Master Settings.
+              { label: 'Payments, SMS & Email (Master)', path: '/admin/master/settings', permission: 'settings.view' },
               { label: 'Firebase Settings', path: '/taxi/admin/settings/third-party/firebase', permission: 'settings.view' },
               { label: 'Map and Map APIs Settings', path: '/taxi/admin/settings/third-party/map-apis', permission: 'settings.view' },
-              { label: 'Mail Configuration', path: '/taxi/admin/settings/third-party/mail', permission: 'settings.view' },
               // { label: 'Notification Channel', path: '/taxi/admin/settings/third-party/notification-channel' },
             ],
           },
