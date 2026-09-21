@@ -272,7 +272,7 @@ const STORE_ADMIN_RULES = [
   rule(/^\/prescriptions(\/|$)/, 'orders'),
 
   rule(/^\/categories(\/|$)/, 'categories'),
-  rule(/^\/(foods|addons|item-extras|price-adjustments)(\/|$)/, 'foods'),
+  rule(/^\/(foods|addons|item-extras|price-adjustments|stock)(\/|$)/, 'foods'),
   rule(/^\/(orders|order-detect-delivery|petpooja\/sync-logs|returns)(\/|$)/, 'orders'),
   rule(/^\/(offers|cashback-settings|store-99|ninety-nine-store|99-store)(\/|$)/, 'promotions'),
   rule(/^\/referral-settings(\/|$)/, 'referrals'),

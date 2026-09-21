@@ -797,7 +797,7 @@ export async function createOrder(userId, dto) {
     // awaiting online payment: the units have to be held while the customer is
     // on the payment sheet, or two people pay for the same last unit. The
     // pending-payment cleanup gives them back.
-    const reservation = await reserveStockForItems(resolvedItems);
+    const reservation = await reserveStockForItems(resolvedItems, { orderId: order._id });
     if (reservation.length > 0) order.stockReservedAt = new Date();
 
     try {

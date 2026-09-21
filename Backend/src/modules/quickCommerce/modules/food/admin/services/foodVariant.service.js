@@ -9,6 +9,35 @@ const toNonNegativeNumber = (value, fallback = 0) => {
     return n;
 };
 
+/**
+ * Stock fields on a variant. `undefined` means "the caller did not send it",
+ * which is every existing edit form: those keep the saved value (see
+ * carryVariantStock). `null` means untracked, a number is units on hand.
+ */
+const stockInput = (value) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    const n = Math.floor(Number(value));
+    if (!Number.isFinite(n) || n < 0) throw new ValidationError('Stock must be 0 or more');
+    return n;
+};
+
+/**
+ * Keep the stock of variants the form did not mention. Matched by id, then by
+ * name, so a form that re-creates variants without ids does not reset stock.
+ */
+const carryVariantStock = (variant, existing = []) => {
+    const match = (existing || []).find((e) => e?._id && variant._id && String(e._id) === String(variant._id))
+        || (existing || []).find((e) => toTrimmedString(e?.name).toLowerCase() === variant.name.toLowerCase());
+    if (!match) return variant;
+    if (variant._id === undefined && match._id) variant._id = match._id;
+    for (const key of ['stockQty', 'lowStockThreshold']) {
+        if (variant[key] === undefined && match[key] !== undefined) variant[key] = match[key];
+    }
+    if (variant.sku === undefined && match.sku) variant.sku = match.sku;
+    return variant;
+};
+
 export const extractRawFoodVariants = (value = {}) => {
     if (Array.isArray(value?.variants)) return value.variants;
     if (Array.isArray(value?.variations)) return value.variations;
@@ -18,7 +47,8 @@ export const extractRawFoodVariants = (value = {}) => {
 export const normalizeFoodVariantsInput = (value = [], options = {}) => {
     const {
         allowEmpty = true,
-        priceLabel = 'Variant price'
+        priceLabel = 'Variant price',
+        existing = []
     } = options;
 
     if (value == null || value === '') {
@@ -53,7 +83,13 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
                 variant._id = new mongoose.Types.ObjectId(String(variantId));
             }
 
-            return variant;
+            const stockQty = stockInput(entry?.stockQty);
+            if (stockQty !== undefined) variant.stockQty = stockQty;
+            const low = stockInput(entry?.lowStockThreshold);
+            if (low !== undefined) variant.lowStockThreshold = low;
+            if (entry?.sku !== undefined) variant.sku = toTrimmedString(entry.sku);
+
+            return carryVariantStock(variant, existing);
         })
         .filter(Boolean);
 
@@ -77,7 +113,12 @@ export const serializeFoodVariants = (value = []) =>
                 _id: variantId ? String(variantId) : '',
                 name,
                 price,
-                otherPrice: toNonNegativeNumber(entry?.otherPrice, 0)
+                otherPrice: toNonNegativeNumber(entry?.otherPrice, 0),
+                // Stock per variant. null = not tracked (always sellable).
+                stockQty: entry?.stockQty ?? null,
+                lowStockThreshold: entry?.lowStockThreshold ?? null,
+                sku: toTrimmedString(entry?.sku),
+                inStock: entry?.stockQty == null || Number(entry.stockQty) > 0
             };
         })
         .filter(Boolean);

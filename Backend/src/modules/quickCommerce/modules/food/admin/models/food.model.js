@@ -4,7 +4,12 @@ const foodVariantSchema = new mongoose.Schema(
     {
         name: { type: String, required: true, trim: true },
         price: { type: Number, required: true, min: 0 },
-        otherPrice: { type: Number, min: 0, default: 0 }
+        otherPrice: { type: Number, min: 0, default: 0 },
+        /** Units on hand for this variant. null = not tracked (always sellable). */
+        stockQty: { type: Number, default: null, min: 0 },
+        /** Flag to the seller below this. null = no flag. */
+        lowStockThreshold: { type: Number, default: null, min: 0 },
+        sku: { type: String, trim: true, default: '' }
     },
     { _id: true }
 );

@@ -3959,7 +3959,7 @@ const getAdminFoodUpdatedPricing = (existing = {}, body = {}) => {
     const update = {};
 
     if (variantsTouched) {
-        const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
+        const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body), { existing: existing.variants });
         update.variants = variants;
 
         if (variants.length > 0) {

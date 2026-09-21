@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodOrder } from '../models/order.model.js';
+import { QCStockMovement } from '../../admin/models/stockMovement.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { logger } from '../../../../utils/logger.js';
 
@@ -12,107 +13,214 @@ import { logger } from '../../../../utils/logger.js';
  * to claim units at creation or two customers can both buy the last one and the
  * second finds out only after paying.
  *
- * Items with `stockQty === null` are untracked and pass straight through, which
- * is every document that existed before this file.
+ * Stock lives on the variant when the variant tracks it (500 g and 1 kg run out
+ * separately), else on the item. `null` at either level means untracked, which
+ * is every document that existed before stock did: it sells as it always has.
  */
 
-/** Same item can appear on several lines (different variants); the shelf sees the sum. */
+const isId = (v) => mongoose.Types.ObjectId.isValid(String(v || ''));
+const STOCK_FIELDS = 'name restaurantId stockQty variants isAvailable stockOffMode';
+
+/** Same item can appear on several lines; the shelf sees the sum. Kept for callers. */
 export function totalQuantityByItem(items = []) {
   const totals = new Map();
   for (const item of items) {
     const id = String(item?.itemId || '');
-    if (!id || !mongoose.Types.ObjectId.isValid(id)) continue;
+    if (!id || !isId(id)) continue;
     const qty = Math.max(1, Number(item?.quantity) || 1);
     totals.set(id, (totals.get(id) || 0) + qty);
   }
   return totals;
 }
 
+/** Lines grouped by item + variant. */
+function totalsByLine(items = []) {
+  const totals = new Map();
+  for (const item of items) {
+    const itemId = String(item?.itemId || '');
+    if (!itemId || !isId(itemId)) continue;
+    const variantId = isId(item?.variantId) ? String(item.variantId) : '';
+    const key = `${itemId}|${variantId}`;
+    const qty = Math.max(1, Number(item?.quantity) || 1);
+    const prev = totals.get(key);
+    totals.set(key, { itemId, variantId, qty: (prev?.qty || 0) + qty });
+  }
+  return [...totals.values()];
+}
+
+const variantOf = (doc, variantId) =>
+  variantId ? (doc?.variants || []).find((v) => String(v._id) === String(variantId)) : null;
+
 /**
- * Decrements stock for every tracked item on the order.
+ * Out of stock = nothing left that can be sold: every variant tracked and at
+ * zero, or (no variants) the item's own count at zero. Hides the item so the
+ * listing and search filters, which key off isAvailable, keep working.
+ * `revive` brings back an item that went dark by running out; a seller who
+ * switched it off by hand set stockOffMode, and that outranks a restock.
+ */
+export async function syncAvailability(doc, { revive = false } = {}) {
+  if (!doc?._id) return;
+  const variants = doc.variants || [];
+  const out = variants.length > 0
+    ? variants.every((v) => v.stockQty !== null && v.stockQty !== undefined && Number(v.stockQty) <= 0)
+      || (doc.stockQty !== null && doc.stockQty !== undefined && Number(doc.stockQty) <= 0)
+    : doc.stockQty !== null && doc.stockQty !== undefined && Number(doc.stockQty) <= 0;
+
+  if (out && doc.isAvailable !== false) {
+    await FoodItem.updateOne({ _id: doc._id }, { $set: { isAvailable: false } });
+  } else if (!out && revive && doc.isAvailable === false && !doc.stockOffMode) {
+    await FoodItem.updateOne({ _id: doc._id, stockOffMode: { $in: [null, undefined] } }, { $set: { isAvailable: true } });
+  }
+}
+
+/** One line in the stock record. Never throws. */
+export async function recordMovement(doc, { variantId = '', delta, after, reason, orderId = null, actor = null, note = '' }) {
+  try {
+    const variant = variantOf(doc, variantId);
+    await QCStockMovement.create({
+      restaurantId: doc?.restaurantId || null,
+      itemId: doc._id,
+      variantId: variantId || '',
+      itemName: doc?.name || '',
+      variantName: variant?.name || '',
+      delta,
+      after: after ?? null,
+      reason,
+      orderId: orderId && isId(orderId) ? orderId : null,
+      note,
+      actor: actor || { role: 'system', id: '', name: '' },
+    });
+  } catch (err) {
+    logger.warn(`[stock] movement not recorded for ${doc?._id}: ${err?.message || err}`);
+  }
+}
+
+/**
+ * Decrements stock for every tracked line on the order.
  *
  * Each decrement is a conditional update, so the check and the write are one
  * atomic operation and concurrent orders cannot both pass a "do we have enough"
- * read. If any item comes up short, the ones already taken are put back before
+ * read. If any line comes up short, the ones already taken are put back before
  * throwing — a rejected order must leave the shelf exactly as it found it.
  */
-export async function reserveStockForItems(items = []) {
-  const totals = totalQuantityByItem(items);
-  if (totals.size === 0) return [];
+export async function reserveStockForItems(items = [], { orderId = null } = {}) {
+  const lines = totalsByLine(items);
+  if (lines.length === 0) return [];
+
+  const docs = new Map(
+    (await FoodItem.find({ _id: { $in: [...new Set(lines.map((l) => l.itemId))] } }).select(STOCK_FIELDS).lean())
+      .map((d) => [String(d._id), d]),
+  );
 
   const taken = [];
+  const itemLevel = new Map();
 
-  for (const [itemId, qty] of totals) {
-    const id = new mongoose.Types.ObjectId(itemId);
+  const fail = async (message) => {
+    await releaseReservations(taken, { orderId });
+    throw new ValidationError(message);
+  };
 
-    // `$gte` never matches null, so untracked items fall through to the check
-    // below rather than being silently decremented into negatives.
-    const res = await FoodItem.updateOne(
-      { _id: id, stockQty: { $gte: qty } },
+  for (const line of lines) {
+    const doc = docs.get(line.itemId);
+    if (!doc) return fail('One or more items are no longer available');
+    const variant = variantOf(doc, line.variantId);
+
+    if (variant && variant.stockQty !== null && variant.stockQty !== undefined) {
+      const res = await FoodItem.findOneAndUpdate(
+        { _id: doc._id, variants: { $elemMatch: { _id: variant._id, stockQty: { $gte: line.qty } } } },
+        { $inc: { 'variants.$.stockQty': -line.qty } },
+        { new: true, projection: STOCK_FIELDS },
+      ).lean();
+      if (res) {
+        taken.push({ itemId: line.itemId, variantId: line.variantId, qty: line.qty });
+        const after = variantOf(res, line.variantId)?.stockQty;
+        await recordMovement(res, { variantId: line.variantId, delta: -line.qty, after, reason: 'sale', orderId });
+        await syncAvailability(res);
+        continue;
+      }
+      const fresh = await FoodItem.findById(doc._id).select(STOCK_FIELDS).lean();
+      const left = Number(variantOf(fresh, line.variantId)?.stockQty) || 0;
+      const label = `${doc.name} (${variant.name})`;
+      return fail(left > 0 ? `Only ${left} left of ${label}. Please reduce the quantity.` : `${label} just went out of stock`);
+    }
+
+    itemLevel.set(line.itemId, (itemLevel.get(line.itemId) || 0) + line.qty);
+  }
+
+  for (const [itemId, qty] of itemLevel) {
+    const doc = docs.get(itemId);
+    if (doc.stockQty === null || doc.stockQty === undefined) continue; // untracked
+
+    // `$gte` never matches null, so an untracked item is never decremented into negatives.
+    const res = await FoodItem.findOneAndUpdate(
+      { _id: doc._id, stockQty: { $gte: qty } },
       { $inc: { stockQty: -qty } },
-    );
+      { new: true, projection: STOCK_FIELDS },
+    ).lean();
 
-    if (res.modifiedCount === 1) {
-      taken.push({ itemId, qty });
-      // Hide it once empty so the existing listing/search filters, which all key
-      // off isAvailable, keep working without knowing inventory exists.
-      await FoodItem.updateOne(
-        { _id: id, stockQty: 0 },
-        { $set: { isAvailable: false } },
-      );
+    if (res) {
+      taken.push({ itemId, variantId: '', qty });
+      await recordMovement(res, { delta: -qty, after: res.stockQty, reason: 'sale', orderId });
+      await syncAvailability(res);
       continue;
     }
 
-    const doc = await FoodItem.findById(id).select('name stockQty').lean();
-    if (!doc) {
-      await releaseReservations(taken);
-      throw new ValidationError('One or more items are no longer available');
-    }
-    if (doc.stockQty === null || doc.stockQty === undefined) continue; // untracked
-
-    await releaseReservations(taken);
-    const left = Number(doc.stockQty) || 0;
-    throw new ValidationError(
-      left > 0
-        ? `Only ${left} left of ${doc.name}. Please reduce the quantity.`
-        : `${doc.name} just went out of stock`,
-    );
+    const fresh = await FoodItem.findById(doc._id).select('name stockQty').lean();
+    if (!fresh) return fail('One or more items are no longer available');
+    if (fresh.stockQty === null || fresh.stockQty === undefined) continue;
+    const left = Number(fresh.stockQty) || 0;
+    return fail(left > 0 ? `Only ${left} left of ${fresh.name}. Please reduce the quantity.` : `${fresh.name} just went out of stock`);
   }
 
   return taken;
 }
 
 /** Puts back a partial reservation after a failed line. Never throws. */
-export async function releaseReservations(taken = []) {
+export async function releaseReservations(taken = [], { orderId = null } = {}) {
   for (const entry of taken) {
     try {
-      await incrementStock(entry.itemId, entry.qty);
+      await incrementStock(entry.itemId, entry.qty, entry.variantId || '', { reason: 'cancel', orderId, note: 'Order not placed' });
     } catch (err) {
       logger.error(
-        `[CRITICAL] stock rollback failed for item ${entry.itemId} (+${entry.qty}): ${err?.message || err}`,
+        `[CRITICAL] stock rollback failed for item ${entry.itemId}/${entry.variantId || '-'} (+${entry.qty}): ${err?.message || err}`,
       );
     }
   }
 }
 
 /**
- * Put `qty` back on the shelf for one item.
- *
- * Exported for the returns flow, which restocks individual lines as they pass
- * inspection rather than a whole order at once — restoreOrderStock() below is
- * all-or-nothing and latched by stockRestoredAt, so it cannot serve that case.
- * Both paths go through here so the "only revive an item that went dark by running
- * out" rule has exactly one implementation.
+ * Put `qty` back on the shelf. On the variant when that variant tracks stock,
+ * else on the item. Used by cancels, rollbacks and the returns flow, so the
+ * "only revive an item that went dark by running out" rule lives in one place.
  */
-export async function incrementStock(itemId, qty) {
+export async function incrementStock(itemId, qty, variantId = '', meta = {}) {
   const id = new mongoose.Types.ObjectId(String(itemId));
-  await FoodItem.updateOne({ _id: id, stockQty: { $ne: null } }, { $inc: { stockQty: qty } });
-  // Bring it back only if it went dark by running out. A seller who switched the
-  // item off by hand set stockOffMode, and that decision outranks a restock.
-  await FoodItem.updateOne(
-    { _id: id, stockQty: { $gt: 0 }, isAvailable: false, stockOffMode: { $in: [null, undefined] } },
-    { $set: { isAvailable: true } },
-  );
+  const n = Math.max(0, Number(qty) || 0);
+  if (!n) return;
+
+  let res = null;
+  if (isId(variantId)) {
+    res = await FoodItem.findOneAndUpdate(
+      { _id: id, variants: { $elemMatch: { _id: new mongoose.Types.ObjectId(String(variantId)), stockQty: { $ne: null } } } },
+      { $inc: { 'variants.$.stockQty': n } },
+      { new: true, projection: STOCK_FIELDS },
+    ).lean();
+    if (res) {
+      await recordMovement(res, { variantId: String(variantId), delta: n, after: variantOf(res, variantId)?.stockQty, reason: meta.reason || 'cancel', orderId: meta.orderId, actor: meta.actor, note: meta.note });
+      await syncAvailability(res, { revive: true });
+      return;
+    }
+  }
+
+  res = await FoodItem.findOneAndUpdate(
+    { _id: id, stockQty: { $ne: null } },
+    { $inc: { stockQty: n } },
+    { new: true, projection: STOCK_FIELDS },
+  ).lean();
+  if (res) {
+    await recordMovement(res, { delta: n, after: res.stockQty, reason: meta.reason || 'cancel', orderId: meta.orderId, actor: meta.actor, note: meta.note });
+    await syncAvailability(res, { revive: true });
+  }
 }
 
 /**
@@ -121,8 +229,7 @@ export async function incrementStock(itemId, qty) {
  * Safe to call from anywhere an order dies — cancellation by user, seller,
  * admin or the acceptance timeout, and the two delete paths. The claim on
  * `stockRestoredAt` is what makes that safe: several of those paths can fire
- * for the same order (the timeout sweep runs from both a queue job and four
- * read paths), and a double restock would quietly invent inventory.
+ * for the same order, and a double restock would quietly invent inventory.
  */
 export async function restoreOrderStock(orderLike) {
   const orderId = orderLike?._id;
@@ -137,12 +244,12 @@ export async function restoreOrderStock(orderLike) {
 
   if (!claimed) return false; // already restored, or nothing to restore
 
-  for (const [itemId, qty] of totalQuantityByItem(claimed.items)) {
+  for (const line of totalsByLine(claimed.items)) {
     try {
-      await incrementStock(itemId, qty);
+      await incrementStock(line.itemId, line.qty, line.variantId, { reason: 'cancel', orderId });
     } catch (err) {
       logger.error(
-        `[CRITICAL] restock failed for order ${orderId} item ${itemId} (+${qty}): ${err?.message || err}`,
+        `[CRITICAL] restock failed for order ${orderId} item ${line.itemId} (+${line.qty}): ${err?.message || err}`,
       );
     }
   }

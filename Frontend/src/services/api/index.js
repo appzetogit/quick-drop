@@ -230,6 +230,20 @@ export const appServicesAPI = {
  * level, so the same list and the same permissions whichever panel it is opened
  * from.
  */
+/**
+ * Stock per product variant, per store (quick commerce and medical). `scope`
+ * picks the admin API (any store) or the store's own. Both are written with
+ * /food/ and rewritten to /qc/ by the axios layer for these panels.
+ */
+const stockBase = (scope) => (scope === "restaurant" ? "/food/restaurant/stock" : "/food/admin/stock")
+const stockCtx = (scope) => ({ contextModule: scope === "restaurant" ? "restaurant" : "admin" })
+export const stockAPI = {
+  list: (scope, params) => apiClient.get(stockBase(scope), { params, ...stockCtx(scope) }),
+  adjust: (scope, data) => apiClient.patch(stockBase(scope), data, stockCtx(scope)),
+  bulk: (scope, data) => apiClient.post(`${stockBase(scope)}/bulk`, data, stockCtx(scope)),
+  history: (scope, params) => apiClient.get(`${stockBase(scope)}/history`, { params, ...stockCtx(scope) }),
+};
+
 export const adminAccountsAPI = {
   me: () => apiClient.get("/platform/admins/me", { contextModule: "admin" }),
   meta: () => apiClient.get("/platform/admins/meta", { contextModule: "admin" }),

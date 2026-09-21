@@ -115,6 +115,7 @@ export const panelOfPath = (pathname = "") =>
  */
 const PAGE_RULES = [
   ["/management/admins", "subadmins"],
+  ["/stock", "foods"],
   ["/point-of-sale", "pos"],
   ["/status-monitor", "dashboard"],
   ["/food-approval", "foods"],

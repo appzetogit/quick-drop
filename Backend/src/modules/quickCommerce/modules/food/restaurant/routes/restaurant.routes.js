@@ -83,6 +83,7 @@ import {
     listPharmacyRequestsController,
 } from '../../orders/controllers/prescriptionRequest.controller.js';
 import { authMiddleware, optionalAuth } from '../../../../core/auth/auth.middleware.js';
+import { stockRouter } from '../../admin/routes/stock.routes.js';
 import { sendError } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
 import {
@@ -352,5 +353,8 @@ router.get('/my-offers', authMiddleware, requireRestaurant, listRestaurantOffers
 router.post('/my-offers', authMiddleware, requireRestaurant, createRestaurantOfferController);
 router.patch('/my-offers/:id/status', authMiddleware, requireRestaurant, updateRestaurantOfferStatusController);
 router.delete('/my-offers/:id', authMiddleware, requireRestaurant, deleteRestaurantOfferController);
+
+// The store's own stock page: its products only (admin/services/stock.service.js).
+router.use('/stock', authMiddleware, requireRestaurant, stockRouter({ scope: 'restaurant' }));
 
 export default router;

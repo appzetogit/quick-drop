@@ -204,6 +204,14 @@ const VERTICAL_BRANDING = {
     // that can only fail.
     hiddenPaths: ['/admin/food/delivery-radius'],
     hiddenSections: [],
+    // Stock is counted per product size in quick commerce; food dishes are not.
+    extraSections: [
+      {
+        type: "section",
+        label: "INVENTORY",
+        items: [{ type: "link", label: "Stock", path: "/admin/quick-commerce/stock", icon: "Package" }],
+      },
+    ],
   },
   /*
    * Medical is quick-commerce narrowed to pharmacies (the API scope lives in
@@ -281,6 +289,12 @@ const VERTICAL_BRANDING = {
             label: "Prescription Requests",
             path: "/admin/medical/requests",
             icon: "Send",
+          },
+          {
+            type: "link",
+            label: "Stock",
+            path: "/admin/medical/stock",
+            icon: "Package",
           },
         ],
       },

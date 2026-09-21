@@ -144,6 +144,8 @@ const AdminForgotPassword = lazy(() => import("@food/pages/admin/auth/AdminForgo
 // Hidden with the /admin/sp route below; uncomment both together.
 // const SPAdminRoutes = lazy(() => import("@sp/admin/routes"));
 // One admin-accounts screen for every panel (food, quick commerce, medical, taxi).
+// Stock per product size, per store (quick commerce and medical only).
+const StockManager = lazy(() => import("@food/pages/shared/StockManager"));
 const AdminAccounts = lazy(() => import("@food/pages/admin/management/AdminAccounts"));
 const MedicalPrescriptionOrders = lazy(() => import("@food/pages/admin/medical/PrescriptionOrders"));
 const MedicalDrugLicences = lazy(() => import("@food/pages/admin/medical/DrugLicences"));
@@ -401,6 +403,7 @@ export default function AdminRouter() {
             }
           >
             {verticalAdminRoutes}
+            <Route path="stock" element={<StockManager scope="admin" />} />
           </Route>
 
           {/* MEDICAL ADMIN - the same screens again, on the same quick-commerce
@@ -422,6 +425,7 @@ export default function AdminRouter() {
             }
           >
             {verticalAdminRoutes}
+            <Route path="stock" element={<StockManager scope="admin" />} />
             {/* Only here: a prescription queue and a drug-licence register have
                 no meaning in food or in general quick-commerce, so they are not
                 in the shared route table. */}

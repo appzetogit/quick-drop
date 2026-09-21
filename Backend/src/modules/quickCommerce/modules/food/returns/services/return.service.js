@@ -262,7 +262,7 @@ export const inspectReturn = async ({ returnId, conditions = [], notes = '', ins
             condition: line.condition,
         })) continue;
         try {
-            await incrementStock(line.itemId, line.quantity);
+            await incrementStock(line.itemId, line.quantity, line.variantId, { reason: 'return', note: doc.returnCode });
             line.restocked = true;
         } catch (err) {
             // Never fail an inspection over a restock: the goods are physically back

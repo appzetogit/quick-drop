@@ -58,7 +58,8 @@ const getUpdatedFoodPricing = (existing = {}, body = {}) => {
     const update = {};
 
     if (variantsTouched) {
-        const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
+        // Stock the form did not send is kept (foodVariant.service carryVariantStock).
+        const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body), { existing: existing.variants });
         update.variants = variants;
 
         if (variants.length > 0) {
