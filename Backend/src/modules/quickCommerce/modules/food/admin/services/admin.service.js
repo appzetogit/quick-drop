@@ -3875,6 +3875,9 @@ export async function getFoods(query) {
         // it has to come back or the field renders blank and the next save clears
         // what the seller set.
         mrp: f.mrp ?? null,
+        // Stock, for the admin form (per size is inside each variant).
+        stockQty: f.stockQty ?? null,
+        lowStockThreshold: f.lowStockThreshold ?? null,
         variants: serializeFoodVariants(f.variants),
         variations: serializeFoodVariants(f.variants),
         image: f.image || '',
@@ -4127,6 +4130,14 @@ export async function updateFood(id, body) {
         doc.categoryName = categoryName;
     }
     await doc.save();
+    // A count set here to 0 hides the product; a restock brings it back
+    // (unless a seller switched it off by hand), as on the Stock page.
+    if (body.stockQty !== undefined || body.variants !== undefined || body.variations !== undefined) {
+        try {
+            const { syncAvailability } = await import('../../orders/services/inventory.service.js');
+            await syncAvailability(doc.toObject(), { revive: body.isAvailable !== false });
+        } catch { /* availability is re-derived on the next stock change */ }
+    }
     return doc.toObject();
 }
 

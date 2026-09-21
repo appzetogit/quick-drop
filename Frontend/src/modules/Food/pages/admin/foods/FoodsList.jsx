@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useLocation, useSearchParams } from "react-router-dom"
 import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { adminAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
@@ -34,6 +34,8 @@ const createFoodForm = () => ({
   showIn99Store: false,
   freeDelivery: false,
   preparationTime: "",
+  stockQty: "",
+  lowStockThreshold: "",
   availabilitySchedule: buildScheduleState(null),
   suggestedItemIds: [],
 })
@@ -80,6 +82,12 @@ const createVariantDraft = (variant = {}) => ({
   // same as zero -- the dish's own limit then applies.
   minOrderQuantity: variant?.minOrderQuantity != null ? String(variant.minOrderQuantity) : "",
   maxOrderQuantity: variant?.maxOrderQuantity != null ? String(variant.maxOrderQuantity) : "",
+  // Stock per size (quick commerce and medical). Blank = not counted. The
+  // *AtLoad copies let the save send only a count the admin changed.
+  stockQty: variant?.stockQty != null ? String(variant.stockQty) : "",
+  lowStockThreshold: variant?.lowStockThreshold != null ? String(variant.lowStockThreshold) : "",
+  stockQtyAtLoad: variant?.stockQty != null ? String(variant.stockQty) : "",
+  lowStockAtLoad: variant?.lowStockThreshold != null ? String(variant.lowStockThreshold) : "",
   // Per-variant add-on pairings. Dropped here would mean an admin editing any
   // variant silently wipes what the restaurant paired -- the payload replaces
   // the whole variants array on save.
@@ -104,6 +112,22 @@ export default function FoodsList() {
   const [foodFormMode, setFoodFormMode] = useState("add")
   const [foodForm, setFoodForm] = useState(createFoodForm())
   const [editingFood, setEditingFood] = useState(null)
+  // Stock is counted in quick commerce and medical, not food (dishes aren't).
+  const { pathname } = useLocation()
+  const isStockPanel = /^\/admin\/(quick-commerce|medical)(\/|$)/.test(pathname)
+  /** Product-level stock for the save: only what changed since the form opened. */
+  const productStockPayload = () => {
+    const was = (v) => (v === null || v === undefined ? "" : String(v))
+    const out = {}
+    const isEdit = foodFormMode === "edit"
+    if (!isEdit ? foodForm.stockQty !== "" : foodForm.stockQty !== was(editingFood?.stockQty)) {
+      out.stockQty = foodForm.stockQty === "" ? null : Number(foodForm.stockQty)
+    }
+    if (!isEdit ? foodForm.lowStockThreshold !== "" : foodForm.lowStockThreshold !== was(editingFood?.lowStockThreshold)) {
+      out.lowStockThreshold = foodForm.lowStockThreshold === "" ? null : Number(foodForm.lowStockThreshold)
+    }
+    return out
+  }
   /*
    * The shelf box follows the price until the admin touches it. The shelf price
    * and the store's name come from 99 Store settings, so neither is written
@@ -215,6 +239,8 @@ export default function FoodsList() {
               showIn99Store: f.showIn99Store === true,
               ninetyNineStoreExcluded: f.ninetyNineStoreExcluded === true,
               freeDelivery: f.freeDelivery === true,
+              stockQty: f.stockQty ?? null,
+              lowStockThreshold: f.lowStockThreshold ?? null,
               variants: getStoredFoodVariants(f),
               foodType: f.foodType || "Non-Veg",
               approvalStatus: f.approvalStatus || "approved",
@@ -412,6 +438,8 @@ export default function FoodsList() {
       foodType: String(food.foodType || "Non-Veg"),
       isAvailable: food.isAvailable !== false,
       preparationTime: String(food.preparationTime || ""),
+      stockQty: food.stockQty != null ? String(food.stockQty) : "",
+      lowStockThreshold: food.lowStockThreshold != null ? String(food.lowStockThreshold) : "",
       availabilitySchedule: buildScheduleState(food.availabilitySchedule),
       suggestedItemIds: food.suggestedItemIds ?? null,
     })
@@ -517,6 +545,10 @@ export default function FoodsList() {
         maxOrderQuantity: variant?.maxOrderQuantity ?? "",
         addonIds: Array.isArray(variant?.addonIds) ? variant.addonIds : [],
         addonPrices: variant?.addonPrices || {},
+        stockQty: variant?.stockQty ?? "",
+        lowStockThreshold: variant?.lowStockThreshold ?? "",
+        stockChanged: (variant?.stockQty ?? "") !== (variant?.stockQtyAtLoad ?? ""),
+        lowChanged: (variant?.lowStockThreshold ?? "") !== (variant?.lowStockAtLoad ?? ""),
       }))
       .filter((variant) => variant.id || variant.name || variant.price)
 
@@ -619,7 +651,16 @@ export default function FoodsList() {
             const price = raw === undefined || raw === "" ? null : Number(raw)
             return { addonId, price: Number.isFinite(price) ? price : null }
           }),
+          // Only a count the admin changed, so an open form does not put back
+          // units that orders took meanwhile. Blank = stop counting.
+          ...(isStockPanel && variant.stockChanged
+            ? { stockQty: variant.stockQty === "" ? null : Number(variant.stockQty) }
+            : {}),
+          ...(isStockPanel && variant.lowChanged
+            ? { lowStockThreshold: variant.lowStockThreshold === "" ? null : Number(variant.lowStockThreshold) }
+            : {}),
         })),
+        ...(isStockPanel && !foodForm.variantsEnabled ? productStockPayload() : {}),
         description: foodForm.description.trim(),
         image: imageUrl,
         foodType: foodForm.foodType === "Veg" ? "Veg" : "Non-Veg",
@@ -1295,6 +1336,44 @@ export default function FoodsList() {
                 </div>
               )}
               <div>
+                {isStockPanel && (
+                  <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-medium text-slate-800">Stock</p>
+                    {foodForm.variantsEnabled ? (
+                      <p className="mt-1 text-xs text-slate-500">Sold by size: each size has its own count in the variants below, or on the Stock page.</p>
+                    ) : (
+                      <>
+                        <p className="mt-1 text-xs text-slate-500">Orders reduce it automatically. Leave empty to sell without a limit.</p>
+                        <div className="mt-2 grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">In stock</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={foodForm.stockQty}
+                              onChange={(e) => setFoodForm((prev) => ({ ...prev, stockQty: e.target.value.replace(/[^0-9]/g, "") }))}
+                              placeholder="No limit"
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">Warn at <span className="text-slate-400">(optional)</span></label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={foodForm.lowStockThreshold}
+                              onChange={(e) => setFoodForm((prev) => ({ ...prev, lowStockThreshold: e.target.value.replace(/[^0-9]/g, "") }))}
+                              placeholder="No warning"
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
                 <label className="block text-sm font-medium text-slate-700 mb-1">Timing</label>
                 <div className="relative">
                   <select
@@ -1489,6 +1568,36 @@ export default function FoodsList() {
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                           />
                         </div>
+                        {isStockPanel && (
+                          <>
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600 mb-1">In stock</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={variant.stockQty ?? ""}
+                                onChange={(e) => handleVariantChange(variant.id, "stockQty", e.target.value.replace(/[^0-9]/g, ""))}
+                                placeholder="No limit"
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600 mb-1">
+                                Warn at <span className="text-slate-400">(optional)</span>
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={variant.lowStockThreshold ?? ""}
+                                onChange={(e) => handleVariantChange(variant.id, "lowStockThreshold", e.target.value.replace(/[^0-9]/g, ""))}
+                                placeholder="No warning"
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                              />
+                            </div>
+                          </>
+                        )}
 
                         {/* Add-ons paired to this size, each with its own price --
                             cheese on a large is more cheese than on a small.
