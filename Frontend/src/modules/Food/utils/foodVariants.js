@@ -43,6 +43,12 @@ export const normalizeFoodVariants = (value) =>
             price: pair?.price ?? null,
           }))
           .filter((pair) => pair.addonId),
+        // Stock per size (stores). Kept through here for the same reason as the
+        // base price: the editor loads through this, and a dropped field is
+        // written back blank -- which would switch the size's counting off.
+        stockQty: entry?.stockQty ?? null,
+        lowStockThreshold: entry?.lowStockThreshold ?? null,
+        sku: entry?.sku || "",
       }
     })
     .filter(Boolean)
