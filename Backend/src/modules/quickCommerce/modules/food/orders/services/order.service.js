@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { zoneMatchFrom } from '../../../../../../core/admin/adminZoneScope.js';
 import { FoodOrder, FoodSettings } from '../models/order.model.js';
 // import { paymentSnapshotFromOrder } from './foodOrderPayment.service.js';
 import { logger } from '../../../../utils/logger.js';
@@ -2592,9 +2593,11 @@ export async function listOrdersAdmin(query) {
     filter.restaurantId = new mongoose.Types.ObjectId(restaurantIdRaw);
   }
 
-  if (zoneIdRaw && mongoose.Types.ObjectId.isValid(zoneIdRaw)) {
+  // A zone asked for, or a zone-limited sub-admin's zones.
+  const zoneMatch = zoneMatchFrom(query);
+  if (zoneMatch) {
     const zoneRestaurantIds = await FoodRestaurant.find({
-      zoneId: new mongoose.Types.ObjectId(zoneIdRaw),
+      zoneId: zoneMatch,
     }).distinct("_id");
     if (filter.restaurantId instanceof mongoose.Types.ObjectId) {
       filter.restaurantId = {

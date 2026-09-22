@@ -99,6 +99,14 @@ export const hasAdminPermission = (adminInfo = {}, permission) => {
     if (resource && (perms.includes(`${resource}.read`) || perms.includes(`${resource}.write`))) return true;
     return perms.includes(permission);
   }
+  // Signed in but the access record has not arrived (or failed): show nothing
+  // rather than guessing "superadmin" from the login profile, which is how a
+  // taxi-only sub-admin ended up seeing every menu.
+  try {
+    if (localStorage.getItem('admin_accessToken')) return false;
+  } catch {
+    /* fall through to the profile */
+  }
 
   const type = String(adminInfo?.admin_type || adminInfo?.role || '').toLowerCase();
   

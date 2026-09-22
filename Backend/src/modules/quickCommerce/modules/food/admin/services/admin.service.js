@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 // NotFoundError was already used further down this file (deleteDeliveryPartner)
 // without ever being imported — that path threw a ReferenceError instead of a 404
 // whenever the partner was missing.
+import { zoneMatchFrom } from '../../../../../../core/admin/adminZoneScope.js';
 import { NotFoundError, ValidationError } from '../../../../core/auth/errors.js';
 import { normalizeFoodImages } from './foodImages.util.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
@@ -388,6 +389,8 @@ export async function getRestaurants(query) {
     const includeStats = query.includeStats === 'true' || query.includeStats === true;
 
     const filter = {};
+    const zoneMatch = zoneMatchFrom(query);
+    if (zoneMatch) filter.zoneId = zoneMatch;
     // The Medical panel is this same list scoped to pharmacies. An unknown type
     // is refused rather than ignored, so a bad value can never widen the list
     // back to every seller.
@@ -521,9 +524,8 @@ const formatMonthShort = (year, monthIndex) =>
 
 export async function getDashboardStats(query = {}) {
     const periodRange = getDateRangeByPeriod(query.period);
-    const zoneId = query.zoneId && mongoose.Types.ObjectId.isValid(query.zoneId)
-        ? new mongoose.Types.ObjectId(query.zoneId)
-        : null;
+    // The asked zone, or a zone-limited sub-admin's zones ($in), or none.
+    const zoneId = zoneMatchFrom(query);
 
     const orderMatch = {
         $or: [

@@ -40,6 +40,7 @@ import platformSettingRoutes from '../core/config/config.routes.js';
 import appServicesRoutes from '../core/appServices/appServices.routes.js';
 import platformAdminRoutes from '../core/admin/platformAdmins.routes.js';
 import { getPublicAppLegal } from '../core/settings/appLegal.js';
+import { adminZoneScope } from '../core/admin/adminZoneScope.js';
 import { refuseRestrictedAdminWrites } from '../core/admin/enforceAdminAccess.middleware.js';
 import { requireModuleEnabled } from '../middleware/moduleEnabled.js';
 import { MODULES } from '../core/modules/moduleRegistry.js';
@@ -140,7 +141,7 @@ router.get('/v1/food/admin/business-settings/public', businessSettingsController
 router.get('/v1/food/admin/fee-settings/public', getPublicFeeSettingsController);
 router.get('/v1/food/admin/cashback-settings/public', getCashbackSettingsPublicController);
 
-router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN'), requireServiceAccess('food'), restaurantAdminRoutes);
+router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN'), requireServiceAccess('food'), adminZoneScope('food'), restaurantAdminRoutes);
 router.use('/v1/food/user', authMiddleware, requireRoles('USER'), userRoutes);
 // router.use('/v1/food/user', userRoutes);
 

@@ -16,6 +16,7 @@ import landingRoutes from '../modules/food/landing/routes/landing.routes.js';
 import { getPublicDiningCategories, getPublicDiningRestaurants } from '../modules/food/dining/controllers/diningPublic.controller.js';
 import uploadRoutes from '../modules/uploads/routes/upload.routes.js';
 import restaurantAdminRoutes from '../modules/food/admin/routes/admin.routes.js';
+import { adminZoneScope } from '../../../core/admin/adminZoneScope.js';
 import userRoutes from '../modules/food/user/routes/user.routes.js';
 import orderUserRoutes from '../modules/food/orders/routes/order.routes.user.js';
 import medicalUserRoutes from '../modules/food/orders/routes/medical.routes.user.js';
@@ -73,7 +74,7 @@ router.get('/admin/feature-settings/public', adminController.getFeatureSettings)
 router.get('/admin/fee-settings/public', adminController.getFeeSettings);
 router.get('/admin/cashback-settings/public', getCashbackSettingsPublicController);
 
-router.use('/admin', authMiddleware, requireRoles('ADMIN'), requireServiceAccess('quickCommerce'), restaurantAdminRoutes);
+router.use('/admin', authMiddleware, requireRoles('ADMIN'), requireServiceAccess('quickCommerce'), adminZoneScope('quickCommerce'), restaurantAdminRoutes);
 router.use('/user', authMiddleware, requireRoles('USER'), userRoutes);
 router.use('/notifications', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER'), notificationRoutes);
 router.use('/chat', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER', 'ADMIN'), chatRoutes);

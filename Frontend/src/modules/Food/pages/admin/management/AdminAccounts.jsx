@@ -158,6 +158,49 @@ const levelsFrom = (permissions = []) => {
 const permissionsFrom = (levels) =>
   Object.entries(levels).flatMap(([r, lvl]) => (lvl === "write" ? [`${r}.write`, `${r}.read`] : lvl === "read" ? [`${r}.read`] : []))
 
+/** Zones an admin is limited to. None ticked = every zone. */
+function ZonePicker({ title, zones, value, onChange, note }) {
+  const all = value.length === 0
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500">{title}</h3>
+        {!all && (
+          <button type="button" className="text-xs font-medium text-neutral-600 underline" onClick={() => onChange([])}>
+            All zones
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          aria-pressed={all}
+          onClick={() => onChange([])}
+          className={`rounded-full border px-3 py-1 text-sm transition-colors ${all ? "border-emerald-500 bg-emerald-50 text-emerald-900" : "border-neutral-300 text-neutral-700 hover:border-neutral-500"}`}
+        >
+          All zones
+        </button>
+        {zones.map((z) => {
+          const on = value.includes(z.id)
+          return (
+            <button
+              key={z.id}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onChange(on ? value.filter((x) => x !== z.id) : [...value, z.id])}
+              className={`rounded-full border px-3 py-1 text-sm transition-colors ${on ? "border-amber-500 bg-amber-50 text-amber-900" : "border-neutral-300 text-neutral-700 hover:border-neutral-500"}`}
+            >
+              {z.name}
+              {z.isActive === false ? " (off)" : ""}
+            </button>
+          )
+        })}
+      </div>
+      <p className="text-xs text-neutral-500">{all ? "Every zone. " : ""}{note}</p>
+    </section>
+  )
+}
+
 function AdminForm({ meta, editing, onClose, onSaved }) {
   const isEdit = Boolean(editing)
   const panelLabels = Object.fromEntries(meta.services.map((s) => [s.key, s.label]))
@@ -171,6 +214,8 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
     servicesAccess: editing?.servicesAccess?.filter((s) => panelLabels[s]) || (meta.services[0] ? [meta.services[0].key] : []),
     levels: levelsFrom(editing?.permissions || []),
     serviceLocationIds: editing?.serviceLocationIds || [],
+    foodZoneIds: editing?.foodZoneIds || [],
+    qcZoneIds: editing?.qcZoneIds || [],
     isActive: editing ? editing.isActive : true,
   }))
   const [showPassword, setShowPassword] = useState(false)
@@ -224,6 +269,11 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
     })
 
   const needsLocations = form.role !== "owner" && form.servicesAccess.includes("taxi")
+  const showFoodZones = form.role !== "owner" && form.servicesAccess.includes("food") && (meta.foodZones || []).length > 0
+  const showQcZones =
+    form.role !== "owner" &&
+    (form.servicesAccess.includes("quickCommerce") || form.servicesAccess.includes("medical")) &&
+    (meta.qcZones || []).length > 0
 
   const submit = async (e) => {
     e.preventDefault()
@@ -247,6 +297,8 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
       servicesAccess: form.servicesAccess,
       permissions,
       serviceLocationIds: needsLocations ? form.serviceLocationIds : [],
+      foodZoneIds: showFoodZones ? form.foodZoneIds : [],
+      qcZoneIds: showQcZones ? form.qcZoneIds : [],
       isActive: form.isActive,
       ...(form.password ? { password: form.password, password_confirmation: form.confirm } : {}),
     }
@@ -414,6 +466,25 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
               )}
               <p className="text-xs text-neutral-500">Taxi shows this admin only rides, drivers and zones in these locations.</p>
             </section>
+          )}
+
+          {showFoodZones && (
+            <ZonePicker
+              title="Food zones"
+              zones={meta.foodZones}
+              value={form.foodZoneIds}
+              onChange={(foodZoneIds) => set({ foodZoneIds })}
+              note="Food shows this admin only the restaurants, orders and dashboard of these zones."
+            />
+          )}
+          {showQcZones && (
+            <ZonePicker
+              title="Quick commerce & medical zones"
+              zones={meta.qcZones}
+              value={form.qcZoneIds}
+              onChange={(qcZoneIds) => set({ qcZoneIds })}
+              note="Quick Commerce and Medical show this admin only the stores, orders and dashboard of these zones."
+            />
           )}
 
           {form.role === "custom" && (

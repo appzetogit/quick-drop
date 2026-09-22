@@ -36,6 +36,13 @@ export default function AdminPageGate({ children }) {
   const navigate = useNavigate()
 
   if (!isRestricted(access) || canOpenPath(access, location.pathname)) return children
+  if (!access) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center text-sm text-neutral-500">
+        Loading your access…
+      </div>
+    )
+  }
 
   const here = panelOfPath(location.pathname)
   const panels = PANELS.filter((p) => hasPanel(access, p.service))

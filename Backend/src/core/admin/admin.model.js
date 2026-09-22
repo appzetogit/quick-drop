@@ -75,6 +75,11 @@ const adminSchema = new mongoose.Schema(
             ],
             default: []
         },
+        // Quick commerce and medical zones (qc_zones) a sub-admin is limited to; empty = all.
+        qc_zone_ids: {
+            type: [mongoose.Schema.Types.ObjectId],
+            default: []
+        },
         // taxi compatibility fields
         service_location_ids: {
             type: [mongoose.Schema.Types.ObjectId],

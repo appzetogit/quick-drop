@@ -1,4 +1,5 @@
-import mongoose from 'mongoose';
+import mongoose from 'mongoose';
+import { zoneMatchFrom } from '../../../../core/admin/adminZoneScope.js';
 import { shouldAutoMark99, crossedInto99Cap } from '../../shared/ninetyNineStore.js';
 import { resolveSeedOtherPriceForRestaurant } from '../../shared/otherPlatformSeed.service.js';
 import { getNinetyNineCap } from '../../shared/ninetyNineStoreCap.js';
@@ -297,6 +298,8 @@ export async function getRestaurants(query) {
     if (status && ['pending', 'approved', 'rejected'].includes(status)) {
         filter.status = status;
     }
+    const zoneMatch = zoneMatchFrom(query);
+    if (zoneMatch) filter.zoneId = zoneMatch;
     const [restaurants, total] = await Promise.all([
         FoodRestaurant.find(filter)
             .sort({ createdAt: -1 })
@@ -359,9 +362,8 @@ const formatMonthShort = (year, monthIndex) =>
 
 export async function getDashboardStats(query = {}) {
     const periodRange = getDateRangeByPeriod(query.period);
-    const zoneId = query.zoneId && mongoose.Types.ObjectId.isValid(query.zoneId)
-        ? new mongoose.Types.ObjectId(query.zoneId)
-        : null;
+    // The asked zone, or a zone-limited sub-admin's zones ($in), or none.
+    const zoneId = zoneMatchFrom(query);
 
     const orderMatch = {
         $or: [

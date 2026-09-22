@@ -48,6 +48,8 @@ export function describeCaller(admin) {
     canManageAdmins: wildcard || permissions.includes('subadmins.write'),
     canViewAdmins: wildcard || permissions.includes('subadmins.read'),
     serviceLocationIds: (admin.service_location_ids || []).map(String),
+    foodZoneIds: (admin.food_zone_ids || []).map(String),
+    qcZoneIds: (admin.qc_zone_ids || []).map(String),
   };
 }
 
@@ -95,6 +97,8 @@ function serialize(doc, names = {}) {
     servicesAccess: role === ROLE.OWNER ? ADMIN_SERVICES.map((s) => s.key) : effectiveServices(doc),
     permissions: role === ROLE.CUSTOM ? sanitizePermissions(doc.permissions) : ['*'],
     serviceLocationIds: (doc.service_location_ids || []).map(String),
+    foodZoneIds: (doc.food_zone_ids || []).map(String),
+    qcZoneIds: (doc.qc_zone_ids || []).map(String),
     isActive: active,
     createdBy: doc.parentAdminId ? (names[String(doc.parentAdminId)] || 'Another admin') : null,
     createdAt: doc.createdAt || null,
@@ -132,11 +136,31 @@ export async function getMeta(admin) {
     }
   }
 
+  // Zones for food and for quick commerce / medical, limited to the caller's own.
+  const zonesOf = async (load, own) => {
+    try {
+      const Model = await load();
+      const filter = caller.isSuperAdmin || !own.length ? {} : { _id: { $in: own.filter(isId) } };
+      const rows = await Model.find(filter).select('name zoneName isActive').sort({ name: 1 }).lean();
+      return rows.map((r) => ({ id: String(r._id), name: r.name || r.zoneName || 'Unnamed', isActive: r.isActive !== false }));
+    } catch {
+      return [];
+    }
+  };
+  const foodZones = caller.servicesAccess.includes('food')
+    ? await zonesOf(async () => (await import('../../modules/food/admin/models/zone.model.js')).FoodZone, caller.foodZoneIds)
+    : [];
+  const qcZones = caller.servicesAccess.some((s) => s === 'quickCommerce' || s === 'medical')
+    ? await zonesOf(async () => (await import('../../modules/quickCommerce/modules/food/admin/models/zone.model.js')).QCZone, caller.qcZoneIds)
+    : [];
+
   return {
     me: caller,
     services,
     catalog,
     serviceLocations,
+    foodZones,
+    qcZones,
     roles: [
       ...(caller.isOwner ? [{ key: ROLE.OWNER, label: 'Owner', hint: 'Everything, in every panel, including platform settings' }] : []),
       ...(caller.permissions.includes('*') ? [{ key: ROLE.FULL, label: 'Full access', hint: 'Everything inside the panels you pick' }] : []),
@@ -258,6 +282,21 @@ async function validatePayload(admin, caller, body, { creating }) {
   } else {
     out.serviceLocationIds = [];
   }
+
+  // Food and quick commerce zones: empty means every zone. A limited caller can
+  // only hand out zones they have, and cannot give "every zone".
+  const zonesFor = (ids, own, enabled, label) => {
+    if (!enabled) return [];
+    const list = idList(ids);
+    if (!caller.isSuperAdmin && own.length) {
+      if (!list.length) throw new ApiError(403, `Pick the ${label} zones this admin may see`);
+      const mine = new Set(own);
+      if (list.some((z) => !mine.has(z))) throw new ApiError(403, `You cannot give ${label} zones you do not have`);
+    }
+    return list;
+  };
+  out.foodZoneIds = zonesFor(body.foodZoneIds, caller.foodZoneIds, services.includes('food'), 'food');
+  out.qcZoneIds = zonesFor(body.qcZoneIds, caller.qcZoneIds, services.includes('quickCommerce') || services.includes('medical'), 'quick commerce');
   return out;
 }
 
@@ -282,6 +321,8 @@ function applyTo(doc, data, admin) {
     doc.permissions = data.permissions;
     doc.servicesAccess = data.servicesAccess;
     doc.service_location_ids = data.serviceLocationIds;
+    doc.food_zone_ids = data.foodZoneIds || [];
+    doc.qc_zone_ids = data.qcZoneIds || [];
     // A sub-admin without a parent reads as a legacy owner (resolveAdminLevel),
     // so every restricted account records who manages it.
     if (!doc.parentAdminId) doc.parentAdminId = admin._id;

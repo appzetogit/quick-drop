@@ -36,19 +36,32 @@ function setState(next) {
   listeners.forEach((fn) => fn())
 }
 
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Fetches the access record, retrying a few times: until it arrives the panels
+ * show nothing (see hasAdminSession), so a busy server (429) or a blip must not
+ * leave a sub-admin on an empty or, worse, unfiltered panel.
+ */
 export function refreshAdminAccess() {
   if (inflight) return inflight
-  inflight = adminAccountsAPI
-    .me()
-    .then((res) => {
-      const data = res?.data?.data || null
-      if (data) setState(data)
-      return data
-    })
-    .catch(() => state)
-    .finally(() => {
-      inflight = null
-    })
+  inflight = (async () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        const res = await adminAccountsAPI.me()
+        const data = res?.data?.data || null
+        if (data) setState(data)
+        return data
+      } catch (err) {
+        const status = err?.response?.status
+        if (status === 401 || status === 403) return state
+        await wait(800 * 2 ** attempt)
+      }
+    }
+    return state
+  })().finally(() => {
+    inflight = null
+  })
   return inflight
 }
 
@@ -59,11 +72,38 @@ const subscribe = (fn) => {
   return () => listeners.delete(fn)
 }
 
+/** The signed-in admin's id, read from the admin token. */
+function tokenAdminId() {
+  try {
+    const token = localStorage.getItem("admin_accessToken")
+    if (!token) return null
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")))
+    return String(payload.userId || payload.sub || payload.id || "") || null
+  } catch {
+    return null
+  }
+}
+
+/** Is an admin signed in at all? (Then access unknown means "still loading", not "everything".) */
+export const hasAdminSession = () => {
+  try {
+    return Boolean(localStorage.getItem("admin_accessToken"))
+  } catch {
+    return false
+  }
+}
+
 // Signing out (or in as someone else) removes the stored copy; drop the
-// in-memory one with it so the next admin never sees the last one's menu.
+// in-memory one with it so the next admin never sees the last one's menu. A
+// copy that belongs to a different account than the token is dropped too.
 const snapshot = () => {
   try {
     if (state && !localStorage.getItem(STORAGE_KEY)) state = null
+    const who = tokenAdminId()
+    if (state && who && state.id && String(state.id) !== who) {
+      state = null
+      localStorage.removeItem(STORAGE_KEY)
+    }
   } catch {
     /* keep the in-memory copy */
   }
@@ -81,10 +121,12 @@ export function useAdminAccess() {
 
 /* ------------------------------------------------------------ permissions */
 
-export const isRestricted = (access) => Boolean(access) && access.isSuperAdmin === false
+export const isRestricted = (access) =>
+  access ? access.isSuperAdmin === false : hasAdminSession()
 
 export function can(access, resource, action = "read") {
-  if (!access || !isRestricted(access)) return true
+  if (!isRestricted(access)) return true
+  if (!access) return false
   const perms = access.permissions || []
   if (perms.includes("*")) return true
   if (!resource) return true
@@ -92,7 +134,8 @@ export function can(access, resource, action = "read") {
 }
 
 export function hasPanel(access, service) {
-  if (!access || !isRestricted(access)) return true
+  if (!isRestricted(access)) return true
+  if (!access) return false
   return (access.servicesAccess || []).includes(service)
 }
 

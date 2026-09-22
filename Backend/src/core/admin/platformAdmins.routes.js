@@ -18,6 +18,11 @@ import * as service from './platformAdmins.service.js';
  *   DELETE /:id
  */
 const router = express.Router();
+// Per account: a shared browser must never be handed the previous admin's copy.
+router.use((req, res, next) => {
+  res.set('Cache-Control', 'private, no-store');
+  next();
+});
 router.use(authMiddleware, requireRoles('ADMIN'));
 
 router.use(async (req, res, next) => {
