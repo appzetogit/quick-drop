@@ -63,7 +63,7 @@ const orderItemSchema = new mongoose.Schema(
 
 const deliveryAddressSchema = new mongoose.Schema(
     {
-        label: { type: String, enum: ['Home', 'Office', 'Other'], default: 'Home' },
+        label: { type: String, enum: ['Home', 'Office', 'Other'], default: 'Home', set: (v) => (v == null || v === '' ? v : ({ home: 'Home', office: 'Office', work: 'Office' }[String(v).trim().toLowerCase()] || 'Other')) },
         name: { type: String, default: '', trim: true },
         fullName: { type: String, default: '', trim: true },
         street: { type: String, required: true, trim: true },

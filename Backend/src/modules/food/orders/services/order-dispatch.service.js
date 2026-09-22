@@ -15,7 +15,7 @@ import { getIO, rooms } from '../../../../config/socket.js';
  * fallback at the end handed him every order on the platform -- an Indore rider
  * being offered Palampur orders 700km away.
  */
-import { loadActiveZones, filterCandidatesToZone } from '../../shared/zoneMatching.js';
+import { loadActiveZones, filterCandidatesToZone, resolveZoneIdForPoint } from '../../shared/zoneMatching.js';
 import { compareInBackground } from '../../../../core/finance/eligibilityShadow.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
 import {
@@ -66,10 +66,18 @@ async function listNearbyOnlineDeliveryPartners(
 
   // Resolved once and applied to every path below, including the fallbacks.
   const zones = await loadActiveZones();
-  const orderZoneId = restaurant?.zoneId ? String(restaurant.zoneId) : null;
+  const [rLngRaw, rLatRaw] = restaurant?.location?.coordinates || [];
+  // A restaurant saved without a zone is placed by its own location, so the
+  // zone rule still holds (it was skipped entirely before).
+  const orderZoneId = restaurant?.zoneId
+    ? String(restaurant.zoneId)
+    : resolveZoneIdForPoint(rLatRaw, rLngRaw, zones);
   const zoneScope = (rows) => filterCandidatesToZone(rows, orderZoneId, zones);
 
   if (!restaurant?.location?.coordinates?.length) {
+    // Neither a location nor a zone: nothing to match riders against, so no one
+    // is offered it (the same as quick commerce) rather than everyone online.
+    if (!orderZoneId) return { restaurant: null, partners: [] };
     const partners = await FoodDeliveryPartner.find({
       status: "approved",
       availabilityStatus: "online",
@@ -104,24 +112,22 @@ async function listNearbyOnlineDeliveryPartners(
 
   const scored = [];
   const allowedStatuses = process.env.NODE_ENV === 'production' ? ['approved'] : ['approved', 'pending'];
-  const STALE_GPS_MS = 10 * 60 * 1000;
+  // Same window as quick commerce (DISPATCH_STALE_GPS_MS, 45 min): a phone in
+  // Doze stops uploading, and last-known coordinates that old are still usable.
+  const STALE_GPS_MS = Number(process.env.DISPATCH_STALE_GPS_MS) || 45 * 60 * 1000;
+  const isFresh = (p) => p.lastLat != null && p.lastLng != null && p.lastLocationAt
+    && Date.now() - new Date(p.lastLocationAt).getTime() <= STALE_GPS_MS;
 
   for (const p of eligible) {
     if (!allowedStatuses.includes(p.status)) continue;
 
-    const isStale = !p.lastLocationAt || (Date.now() - new Date(p.lastLocationAt).getTime()) > STALE_GPS_MS;
-    if (p.lastLat == null || p.lastLng == null || isStale) {
-      /*
-       * Position unknown, so the zone cannot be confirmed. Kept only where no
-       * zone is being enforced -- under enforcement this rider is exactly the
-       * one that must not be offered another city's order, since "we don't know
-       * where they are" is not a reason to assume they are nearby.
-       */
-      if (!orderZoneId || zones.length === 0) {
-        scored.push({ partnerId: p._id, distanceKm: 999, status: p.status, lat: null, lng: null });
-      }
-      continue;
-    }
+    /*
+     * Position unknown or too old: the rider cannot be placed, so they are not
+     * offered the order. This used to score them as 999km and keep them when
+     * the restaurant had no zone -- which is how a rider in Indore was offered
+     * a Palampur order.
+     */
+    if (!isFresh(p)) continue;
 
     const d = haversineKm(rLat, rLng, p.lastLat, p.lastLng);
     if (Number.isFinite(d) && d <= maxKm) {
@@ -149,21 +155,27 @@ async function listNearbyOnlineDeliveryPartners(
      * reasonable last resort; ignoring the zone is not, and a rider 700km away
      * cannot deliver the order however few candidates there are.
      */
+    const FALLBACK_MAX_KM = Math.max(60, Number(maxKm) || 0);
     const anyOnline = await FoodDeliveryPartner.find({
       status: { $in: allowedStatuses },
       availabilityStatus: "online",
     })
-      .select("_id status name lastLat lastLng")
+      .select("_id status name lastLat lastLng lastLocationAt")
       .lean();
 
-    const { kept, enforced, dropped } = zoneScope(
-      anyOnline.map((p) => ({
+    // Only riders placed recently and within reach of the restaurant; then the zone.
+    const reachable = anyOnline
+      .filter((p) => isFresh(p))
+      .map((p) => ({
         partnerId: p._id,
         status: p.status,
         lat: p.lastLat,
         lng: p.lastLng,
-      })),
-    );
+        distanceKm: haversineKm(rLat, rLng, p.lastLat, p.lastLng),
+      }))
+      .filter((p) => Number.isFinite(p.distanceKm) && p.distanceKm <= FALLBACK_MAX_KM);
+
+    const { kept, enforced, dropped } = zoneScope(reachable);
 
     if (enforced && dropped.length) {
       logger.info(
@@ -171,10 +183,11 @@ async function listNearbyOnlineDeliveryPartners(
       );
     }
 
+    kept.sort((a, b) => a.distanceKm - b.distanceKm);
     return {
       partners: kept.slice(0, Math.max(1, limit)).map((p) => ({
         partnerId: p.partnerId,
-        distanceKm: null,
+        distanceKm: p.distanceKm,
         status: p.status,
       })),
     };
@@ -532,3 +545,6 @@ export async function resendDeliveryNotificationRestaurant(orderId, restaurantId
   await tryAutoAssign(order._id);
   return { success: true };
 }
+
+/** For tests only: which riders an order at this restaurant would be offered to. */
+export const __testables = { listNearbyOnlineDeliveryPartners };

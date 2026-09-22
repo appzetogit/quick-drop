@@ -21,7 +21,7 @@ import { getIO, rooms } from '../../../../config/socket.js';
  * zone test itself: distance alone lets an order cross into a neighbouring zone
  * whenever the two sit within the search radius.
  */
-import { loadActiveZones, filterCandidatesToZone } from '../../../../../food/shared/zoneMatching.js';
+import { loadActiveZones, filterCandidatesToZone, resolveZoneIdForPoint } from '../../../../../food/shared/zoneMatching.js';
 import { FoodZone as QCZone } from '../../admin/models/zone.model.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
 import {
@@ -331,7 +331,10 @@ async function listNearbyOnlineDeliveryPartners(
   }
 
   const zones = await loadActiveZones({ model: QCZone });
-  const orderZoneId = restaurant?.zoneId ? String(restaurant.zoneId) : null;
+  // A store saved without a zone is placed by its own location.
+  const orderZoneId = restaurant?.zoneId
+    ? String(restaurant.zoneId)
+    : resolveZoneIdForPoint(restaurant.location.coordinates[1], restaurant.location.coordinates[0], zones);
 
   const [rLng, rLat] = restaurant.location.coordinates;
   const allOnline = await FoodDeliveryPartner.find({

@@ -305,11 +305,17 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
     const MAX_OFFER_KM = 20; // slightly wider than dispatch radius (15km)
     const partnerLat = partner?.lastLat;
     const partnerLng = partner?.lastLng;
+    // A position older than dispatch's window (45 min) no longer says where the
+    // rider is: a rider who drove to another city would otherwise still be
+    // shown the old city's orders. Then only their own offers are listed.
+    const STALE_GPS_MS = Number(process.env.DISPATCH_STALE_GPS_MS) || 45 * 60 * 1000;
     const hasPartnerGps =
       partnerLat != null &&
       partnerLng != null &&
       Number.isFinite(Number(partnerLat)) &&
-      Number.isFinite(Number(partnerLng));
+      Number.isFinite(Number(partnerLng)) &&
+      Boolean(partner?.lastLocationAt) &&
+      Date.now() - new Date(partner.lastLocationAt).getTime() <= STALE_GPS_MS;
 
     const withMeta = enriched.map((order) => {
       const assignedToMe = Boolean(
@@ -500,6 +506,35 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
     note: 'Delivery partner accepted order',
     at: now,
   };
+
+  /*
+   * Only an order this rider could see: one offered to them, one assigned to
+   * them, or one whose store is within the list's 20km of where they were in
+   * the last 45 minutes. Accept used to take any unassigned order on the
+   * platform, whatever city it was in.
+   */
+  {
+    const target = await FoodOrder.findOne(identity)
+      .select('dispatch restaurantId')
+      .populate({ path: 'restaurantId', select: 'location' })
+      .lean();
+    if (target && target.dispatch?.status === 'unassigned') {
+      const offered = (target.dispatch.offeredTo || []).some((o) => String(o?.partnerId) === String(partnerId));
+      if (!offered) {
+        const me = await FoodDeliveryPartner.findById(partnerId).select('lastLat lastLng lastLocationAt').lean();
+        const STALE_GPS_MS = Number(process.env.DISPATCH_STALE_GPS_MS) || 45 * 60 * 1000;
+        const fresh = me?.lastLat != null && me?.lastLng != null && me?.lastLocationAt
+          && Date.now() - new Date(me.lastLocationAt).getTime() <= STALE_GPS_MS;
+        const coords = target.restaurantId?.location?.coordinates;
+        const d = fresh && Array.isArray(coords) && coords.length >= 2
+          ? haversineKm(Number(me.lastLat), Number(me.lastLng), Number(coords[1]), Number(coords[0]))
+          : Infinity;
+        if (!(Number.isFinite(d) && d <= 20)) {
+          throw new ValidationError('This order is not near you. Accept orders sent to you or close by.');
+        }
+      }
+    }
+  }
 
   // Refuse before claiming the order, not after: a rider who is already at their
   // cash ceiling must not end up holding a cash trip they cannot be given.
