@@ -815,6 +815,28 @@ export default function HubFinance() {
       <div className="max-w-6xl mx-auto w-full flex-1 px-4 sm:px-6 pt-4 pb-12">
         {activeTab === "payouts" && (
           <div className="space-y-6">
+            {/* Platform commission on new orders (admin: Commission). Only when
+                the server sends one: quick commerce and medical stores. */}
+            {financeData?.commission && (() => {
+              const c = financeData.commission
+              const n = Number(c.value) || 0
+              const set = c.source !== "none" && n > 0
+              const text = !set ? "No commission" : c.type === "amount" ? `₹${n.toLocaleString("en-IN")} per order` : `${n}% of item total`
+              return (
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <p className="text-xs text-gray-500">Platform commission</p>
+                  <p className="mt-0.5 text-lg font-bold text-gray-900">{text}</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {!set
+                      ? "The platform takes no commission from your orders right now."
+                      : c.source === "own"
+                        ? "Your shop's rate, taken from each new order before payout."
+                        : "The standard rate, taken from each new order before payout."}
+                  </p>
+                </div>
+              )
+            })()}
+
             {/* Current cycle */}
             <div>
               <h2 className="text-base font-bold text-gray-900 mb-3">Current cycle</h2>
