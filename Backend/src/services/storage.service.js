@@ -8,7 +8,8 @@
  *
  * It mirrors modules/quickCommerce/services/storage.service.js rather than
  * importing it: master is the base and quickCommerce is a fork of it, so a
- * master -> fork import would invert that dependency. Leaf utilities are
+ * master -> fork import
+ * import would invert that dependency. Leaf utilities are
  * already duplicated across that boundary throughout this repo.
  *
  * Images are normalized to WebP on the way in (GIF passes through so animation
@@ -21,6 +22,7 @@ import axios from 'axios';
 import sharp from 'sharp';
 import { config } from '../config/env.js';
 import { ValidationError } from '../core/auth/errors.js';
+import { isPrivatePath, privateRoot, privateUrl } from '../core/files/privateFiles.js';
 
 const ALLOWED_MIME_TYPES = new Set([
     'image/jpeg',
@@ -106,6 +108,9 @@ export const fixMediaUrlProtocol = (url) => String(url || '')
  */
 export const buildPublicUrl = (relativePath) => {
     const cleanPath = String(relativePath || '').replace(/^\/+/, '');
+    // Identity documents are not public: their link goes through the signed
+    // file route (core/files/privateFiles.js), which also re-signs it per response.
+    if (isPrivatePath(cleanPath)) return privateUrl(cleanPath);
     const base = fixMediaUrlProtocol(String(config.uploadBaseUrl || '').replace(/\/+$/, ''));
 
     if (
@@ -144,7 +149,8 @@ export const normalizeMediaUrlForStorage = (url) => {
 };
 
 const getAbsolutePath = (relativePath) => {
-    const root = path.resolve(config.uploadStorageRoot);
+    // Identity documents live under a root that nothing serves directly.
+    const root = isPrivatePath(relativePath) ? privateRoot() : path.resolve(config.uploadStorageRoot);
     const absolute = path.resolve(root, relativePath);
     if (!absolute.startsWith(`${root}${path.sep}`) && absolute !== root) {
         throw new ValidationError('Invalid file path');

@@ -1,3 +1,4 @@
+import { blockPrivateStatic, privateFileLinks, servePrivateFile } from './core/files/privateFiles.js';
 import { config, isOriginAllowed } from './config/env.js';
 import path from 'path';
 import express from 'express';
@@ -83,6 +84,8 @@ app.get('/ready', (_req, res) => {
  */
 app.use(
     '/uploads',
+    // Identity documents are never served from here (see core/files/privateFiles.js).
+    blockPrivateStatic,
     (_req, res, next) => {
         res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
         res.setHeader('Access-Control-Allow-Origin', '*');
@@ -158,6 +161,10 @@ app.use('/api', apiRateLimiter);
 app.use('/api', responseTimeLogger);
 
 // API Routes
+// Identity documents: signed links in every API response, and the one route
+// that opens them (core/files/privateFiles.js).
+app.get('/api/v1/files/p/*', servePrivateFile);
+app.use('/api', privateFileLinks);
 app.use('/api', routes);
 
 // Error Handling
