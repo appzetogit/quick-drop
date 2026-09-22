@@ -67,19 +67,23 @@ export const configureTaxiSocketServer = (io) => {
       });
     }
 
-    socket.on('chat:join', ({ conversationKey }) => {
-      if (conversationKey) {
-        const parsed = parseSupportConversationKey(conversationKey);
+    // Only the conversation's own peer, or an admin, may listen in. The key was
+    // joined as sent, so anyone signed in who could build a key (admin id + a
+    // peer id) read that person's live support chat.
+    socket.on('chat:join', ({ conversationKey } = {}) => {
+      if (!conversationKey) return;
+      const isAdmin = /admin/i.test(String(identity.role || ''));
+      const parsed = parseSupportConversationKey(conversationKey);
 
-        if (parsed) {
-          for (const key of parsed.keys) {
-            socket.join(getSupportRoom(key));
-          }
-          return;
+      if (parsed) {
+        if (!isAdmin && String(parsed.peerId) !== String(identity.sub)) return;
+        for (const key of parsed.keys) {
+          socket.join(getSupportRoom(key));
         }
-
-        socket.join(getSupportRoom(conversationKey));
+        return;
       }
+
+      if (isAdmin) socket.join(getSupportRoom(conversationKey));
     });
 
     socket.on(

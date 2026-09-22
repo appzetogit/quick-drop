@@ -259,6 +259,44 @@ const createBooking = async (req, res) => {
       }
     }
 
+    /*
+     * Server price floor. The amount, base, tax, discount and promo above all
+     * came from the app, so a request could book a Rs 1000 service for Rs 1 --
+     * and the Razorpay order was then created for that figure, so payment
+     * verification passed. Promo codes are not checked on the server at all.
+     * Whatever the app sends, a paid booking is never charged less than the
+     * catalogue price of what is booked plus its GST (visiting charges and any
+     * penalty on top), and no component may be negative.
+     */
+    if (!usePlanBenefits) {
+      const nonNegative = (v) => Math.max(0, Number(v) || 0);
+      visitingCharges = nonNegative(visitingCharges);
+      discount = nonNegative(discount);
+      tax = nonNegative(tax);
+      const lines = Array.isArray(bookedItems) && bookedItems.length
+        ? bookedItems.map((it) => ({
+            id: String(it?.serviceId?._id || it?.serviceId || it?.card?.serviceId || service._id),
+            qty: Math.max(1, Math.floor(Number(it?.quantity) || 1)),
+          }))
+        : [{ id: String(service._id), qty: 1 }];
+      const ids = [...new Set(lines.map((l) => l.id))].filter((id) => /^[a-f0-9]{24}$/i.test(id));
+      const catalogue = ids.length
+        ? await Service.find({ _id: { $in: ids } }).select('basePrice gstPercentage').lean()
+        : [];
+      const priceOf = new Map(catalogue.map((c) => [String(c._id), c]));
+      const floor = lines.reduce((sum, l) => {
+        const c = priceOf.get(l.id) || service;
+        const base = nonNegative(c.basePrice);
+        const gst = nonNegative(c.gstPercentage ?? 0);
+        return sum + base * l.qty * (1 + gst / 100);
+      }, 0);
+      const minimum = Math.round((floor + visitingCharges + pendingPenalty) * 100) / 100;
+      if (!(finalAmount >= minimum)) {
+        console.warn(`[CreateBooking] Client total ${finalAmount} below catalogue minimum ${minimum} for user ${userId}; charging the minimum.`);
+        finalAmount = minimum;
+      }
+    }
+
     // NOTE: vendor earnings are NOT calculated at booking creation.
     // They are computed ONLY at bill generation (completeSelfJob) and stored in VendorBill.
     // This prevents inconsistency between Booking and VendorBill.

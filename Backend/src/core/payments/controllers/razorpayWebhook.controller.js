@@ -122,6 +122,48 @@ export const handleRazorpayWebhook = async (req, res) => {
             const existingOrder = await OrderModel.findOne({ "payment.razorpay.orderId": rzOrderId })
                 .select('pricing payment orderStatus orderId')
                 .lean();
+
+            /*
+             * A capture must never bring a dead order back. Razorpay re-sends
+             * webhooks, and a late payment can land on an order that was
+             * cancelled (or cancelled and refunded) while the customer sat on
+             * the payment sheet. This used to set it paid and back to 'created',
+             * so a refunded customer got the food anyway.
+             *   - the capture this order already recorded: a repeat, ignore it;
+             *   - a new capture on a cancelled/refunded order: refund it.
+             */
+            if (existingOrder) {
+                const status = String(existingOrder.orderStatus || '');
+                const payStatus = String(existingOrder.payment?.status || '').toLowerCase();
+                const recorded = String(existingOrder.payment?.razorpay?.paymentId || '');
+                const dead = status.startsWith('cancelled') || payStatus === 'refunded';
+                if (recorded === rzPaymentId && (payStatus === 'paid' || payStatus === 'refunded')) {
+                    return res.status(200).json({ status: 'ok' });
+                }
+                if (dead) {
+                    try {
+                        const helper = vertical === 'quickCommerce'
+                            ? await import('../../../modules/quickCommerce/modules/food/orders/helpers/razorpay.helper.js')
+                            : await import('../../../modules/food/orders/helpers/razorpay.helper.js');
+                        const amount = Number(paymentObj.amount || 0) / 100;
+                        const refund = await helper.initiateRazorpayRefund(rzPaymentId, amount);
+                        logger.warn(`Webhook [payment.captured]: late capture ${rzPaymentId} on ${status} order ${existingOrder._id} -- refunded (${refund?.refundId || 'no id'})`);
+                        if (payStatus !== 'refunded') {
+                            await OrderModel.updateOne(
+                                { _id: existingOrder._id, "payment.status": { $ne: 'paid' } },
+                                { $set: {
+                                    "payment.status": 'refunded',
+                                    "payment.razorpay.paymentId": rzPaymentId,
+                                    "payment.refund": { status: refund?.success ? 'processed' : 'failed', amount, refundId: refund?.refundId || '', processedAt: new Date() },
+                                } },
+                            );
+                        }
+                    } catch (refundErr) {
+                        logger.error(`Webhook [payment.captured]: LATE CAPTURE NOT REFUNDED ${rzPaymentId} on order ${existingOrder._id}: ${refundErr.message}. Refund manually.`);
+                    }
+                    return res.status(200).json({ status: 'ok' });
+                }
+            }
             if (existingOrder) {
                 const verdict = capturedAmountMatches(paymentObj.amount, existingOrder.pricing?.total);
                 if (!verdict.matches) {
@@ -145,7 +187,9 @@ export const handleRazorpayWebhook = async (req, res) => {
             const order = await OrderModel.findOneAndUpdate(
                 {
                     "payment.razorpay.orderId": rzOrderId,
-                    "payment.status": { $ne: 'paid' }
+                    "payment.status": { $nin: ['paid', 'refunded'] },
+                    // Only an order still waiting for its money is advanced.
+                    orderStatus: 'pending_payment',
                 },
                 {
                     $set: {

@@ -1261,6 +1261,11 @@ export async function updateOrderStatusRestaurant(
   actor = { role: "RESTAURANT", id: null },
 ) {
   const isAdmin = String(actor?.role || "").toUpperCase() === "ADMIN";
+  // Pickup and delivery are the rider's steps (handover code, cash, ledger);
+  // a restaurant could mark its own order delivered. Admin keeps the override.
+  if (!isAdmin && ["picked_up", "reached_pickup", "reached_drop", "delivered"].includes(String(orderStatus))) {
+    throw new ForbiddenError("Pickup and delivery are marked by the delivery partner");
+  }
   const identity = buildOrderIdentityFilter(orderId);
   // An admin acts across restaurants, so the order is not scoped to one restaurantId.
   let order = await FoodOrder.findOne(

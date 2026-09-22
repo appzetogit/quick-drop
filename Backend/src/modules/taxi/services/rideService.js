@@ -50,6 +50,17 @@ const clearUserActiveRideIfPresent = async (user) => {
     return;
   }
 
+  // Only a ride still looking for a driver is replaced by a new booking. A ride
+  // a driver has accepted or started used to be cancelled here too -- so a
+  // rider could book again mid-trip and end the trip with no fare and no fee.
+  // (A ride untouched for 6 hours is abandoned -- nothing times rides out yet --
+  // and must not block the rider forever.)
+  const STALE_MS = 6 * 60 * 60 * 1000;
+  const stale = activeRide.updatedAt && Date.now() - new Date(activeRide.updatedAt).getTime() > STALE_MS;
+  if (activeRide.status !== RIDE_STATUS.SEARCHING && !stale) {
+    throw new ApiError(409, 'You already have a ride in progress. Finish or cancel it before booking another.');
+  }
+
   activeRide.status = RIDE_STATUS.CANCELLED;
   activeRide.liveStatus = RIDE_LIVE_STATUS.CANCELLED;
   await activeRide.save();

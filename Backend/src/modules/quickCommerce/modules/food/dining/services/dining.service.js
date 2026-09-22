@@ -371,7 +371,7 @@ export async function listDiningRestaurantsPublic(query = {}) {
 
     // 4. Fetch restaurants
     const restaurants = await FoodRestaurant.find(restaurantFilter)
-        .select('restaurantName restaurantNameNormalized ownerName ownerPhone profileImage coverImages menuImages cuisines location area city status rating diningSettings estimatedDeliveryTime estimatedDeliveryTimeMinutes featuredDish featuredPrice offer openingTime closingTime openDays isAcceptingOrders costForTwo pureVegRestaurant')
+        .select('restaurantName restaurantNameNormalized profileImage coverImages menuImages cuisines location area city status rating diningSettings estimatedDeliveryTime estimatedDeliveryTimeMinutes featuredDish featuredPrice offer openingTime closingTime openDays isAcceptingOrders costForTwo pureVegRestaurant')
         .lean();
 
     if (restaurants.length === 0) {

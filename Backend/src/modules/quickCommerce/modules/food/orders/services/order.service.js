@@ -162,19 +162,25 @@ async function deletePendingPaymentOrder(orderLike) {
   // delete, since the order rows are what say how much to give back.
   await restoreOrderStock(orderLike);
 
-  await Promise.all([
-    FoodSupportTicket.updateMany(
-      { orderId: orderLike._id },
-      { $set: { orderId: null } },
-    ),
-    FoodTransaction.deleteOne({
-      $or: [
-        { orderId: orderLike._id },
-        { orderReadableId: String(orderLike._id.toString()) },
-      ],
-    }),
-    FoodOrder.deleteOne({ _id: orderLike._id }),
-  ]);
+  // Kept, cancelled -- not deleted. A deleted order could still be paid on the
+  // payment sheet the customer left open, and that capture then matched
+  // nothing: charged, no order, no refund. The webhook refunds a capture on a
+  // cancelled order (core/payments/controllers/razorpayWebhook.controller.js).
+  await FoodOrder.updateOne(
+    { _id: orderLike._id, orderStatus: "pending_payment", "payment.status": { $nin: ["paid", "refunded"] } },
+    {
+      $set: { orderStatus: "cancelled_by_user", "payment.status": "failed" },
+      $push: {
+        statusHistory: {
+          at: new Date(),
+          byRole: "SYSTEM",
+          from: "pending_payment",
+          to: "cancelled_by_user",
+          note: "Payment not completed in time",
+        },
+      },
+    },
+  );
   return true;
 }
 
@@ -1895,6 +1901,13 @@ export async function updateOrderStatusRestaurant(
   orderStatus,
   note = "",
 ) {
+  // Pickup and delivery are the rider's steps (handover code, cash, ledger). A
+  // store could mark its own order delivered -- which also recorded a cash
+  // order as paid -- and a pharmacy could do it with a prescription still
+  // pending or rejected, dispensing without a pharmacist's approval.
+  if (["picked_up", "reached_pickup", "reached_drop", "delivered"].includes(String(orderStatus))) {
+    throw new ForbiddenError("Pickup and delivery are marked by the delivery partner");
+  }
   await expireUnacceptedOrders({
     restaurantId: new mongoose.Types.ObjectId(restaurantId),
   });

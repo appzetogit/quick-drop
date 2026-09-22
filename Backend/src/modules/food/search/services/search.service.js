@@ -1,4 +1,6 @@
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
+// Public search returns restaurants to anyone: never bank, KYC or owner contact fields.
+import { PUBLIC_RESTAURANT_EXCLUDE } from '../../restaurant/services/restaurant.service.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
 import mongoose from 'mongoose';
@@ -91,7 +93,7 @@ export const searchUnified = async (query = {}, options = {}) => {
                 { restaurantName: { $regex: regex } },
                 { cuisines: { $regex: regex } }
             ]
-        }).limit(limit * 2).lean();
+        }, PUBLIC_RESTAURANT_EXCLUDE).limit(limit * 2).lean();
 
         matchedRestaurants.forEach(r => {
             restaurantIds.add(r._id.toString());
@@ -119,7 +121,7 @@ export const searchUnified = async (query = {}, options = {}) => {
                 const rsForFoods = await FoodRestaurant.find({
                     ...restaurantFilter,
                     _id: { $in: unmatchedIds.map(id => new mongoose.Types.ObjectId(id)) }
-                }).lean();
+                }, PUBLIC_RESTAURANT_EXCLUDE).lean();
 
                 rsForFoods.forEach(r => {
                     restaurantIds.add(r._id.toString());
@@ -135,7 +137,7 @@ export const searchUnified = async (query = {}, options = {}) => {
         }
     } else {
         // No search text -> List all restaurants matching filters (category/zone)
-        const allMatching = await FoodRestaurant.find(restaurantFilter)
+        const allMatching = await FoodRestaurant.find(restaurantFilter, PUBLIC_RESTAURANT_EXCLUDE)
             .sort({ rating: -1, createdAt: -1 })
             .limit(limit * 2)
             .lean();

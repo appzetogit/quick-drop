@@ -1340,41 +1340,13 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
     const requiresReview = Object.keys(update).some((field) => reviewRequiredFields.has(field));
     if (requiresReview) {
         update.status = 'pending';
-    } else {
-        // Backfill for restaurants that were incorrectly moved to pending by earlier
-        // location/zone/timing edits. Restore approved when only operational fields change.
-        const approvalRestoreSafeFields = new Set([
-            'location',
-            'zoneId',
-            'addressLine1',
-            'addressLine2',
-            'area',
-            'city',
-            'state',
-            'pincode',
-            'landmark',
-            'openingTime',
-            'closingTime',
-            'openDays',
-            'estimatedDeliveryTime',
-            'estimatedDeliveryTimeMinutes',
-            'isAcceptingOrders',
-            'diningSettings',
-            'pureVegRestaurant',
-            'priceIncludesGst',
-            'cuisines',
-            'petpoojaEnabled',
-            'petpoojaOutletId'
-        ]);
-
-        const onlyOperationalUpdate = Object.keys(update).every((field) =>
-            approvalRestoreSafeFields.has(field)
-        );
-
-        if (currentRestaurant.status === 'pending' && onlyOperationalUpdate) {
-            update.status = 'approved';
-        }
     }
+    // There used to be an else-branch here that set a PENDING store back to
+    // 'approved' whenever an edit touched only operational fields -- a one-off
+    // repair for stores an old bug had sent to review. It also let any store
+    // clear its own review: change the bank account (-> pending), then edit a
+    // cuisine (-> approved), and payouts went to an account nobody checked.
+    // A pending store now waits for an admin.
 
     const updateOps = requiresReview
         ? {
@@ -1868,7 +1840,7 @@ export const listApprovedRestaurants = async (query = {}) => {
  * page. None of these are read by the customer restaurant, cart or menu screens.
  * fssaiNumber stays -- a licence number food apps display.
  */
-const PUBLIC_RESTAURANT_EXCLUDE = Object.freeze({
+export const PUBLIC_RESTAURANT_EXCLUDE = Object.freeze({
     panNumber: 0, nameOnPan: 0, panImage: 0,
     gstNumber: 0, gstLegalName: 0, gstAddress: 0, gstImage: 0,
     fssaiImage: 0, fssaiExpiry: 0,
