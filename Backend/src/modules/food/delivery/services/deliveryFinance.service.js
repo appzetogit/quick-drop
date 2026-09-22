@@ -248,6 +248,24 @@ export const requestDeliveryWithdrawal = async (deliveryPartnerId, payload) => {
 
     if (!Number.isFinite(amount) || amount < 1) throw new ValidationError('Invalid amount');
 
+    // 24 hours after payout details change, and only to the details on file.
+    {
+        const { FoodDeliveryPartner } = await import('../models/deliveryPartner.model.js');
+        const p = await FoodDeliveryPartner.findById(deliveryPartnerId)
+            .select('bankDetailsChangedAt bankAccountNumber upiId')
+            .lean();
+        const changedAt = p?.bankDetailsChangedAt ? new Date(p.bankDetailsChangedAt).getTime() : 0;
+        const waitMs = changedAt + 24 * 60 * 60 * 1000 - Date.now();
+        if (waitMs > 0) {
+            const hours = Math.ceil(waitMs / 3600000);
+            throw new ValidationError(`Your payout details changed recently. For your safety, withdrawals open again in about ${hours} hour${hours === 1 ? '' : 's'}.`);
+        }
+        const inlineAccount = String(bankDetails?.accountNumber || '').trim();
+        if (inlineAccount && p?.bankAccountNumber && inlineAccount !== String(p.bankAccountNumber).trim()) {
+            throw new ValidationError('Withdrawals go to the bank account in your profile. Update it there first.');
+        }
+    }
+
     /*
      * The balance check and the insert run under one per-rider lock.
      *

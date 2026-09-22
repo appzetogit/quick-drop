@@ -67,8 +67,32 @@ const appliedCouponCode = (order) => {
  * that has already been paid at the discounted price (see countCouponUseOnPayment).
  */
 export async function takeCouponUse(code, userId, { enforceLimit = true } = {}) {
-    const offer = await FoodOffer.findOne({ couponCode: code }).select('_id usageLimit').lean();
+    const offer = await FoodOffer.findOne({ couponCode: code }).select('_id usageLimit perUserLimit').lean();
     if (!offer) return { taken: false, exhausted: false, overLimit: false };
+
+    /*
+     * The customer's own limit, claimed atomically first. It was only checked
+     * by reading the count while pricing, so several orders placed at the same
+     * moment each saw "not used yet" and all kept a one-per-customer coupon.
+     * The unique (offerId, userId) index turns a claim at the limit into a
+     * duplicate-key error on the upsert, which is the refusal.
+     */
+    const perUser = Number(offer.perUserLimit) || 0;
+    const claimUserId = toObjectId(userId);
+    let perUserClaimed = false;
+    if (enforceLimit && perUser > 0 && claimUserId) {
+        try {
+            const r = await FoodOfferUsage.updateOne(
+                { offerId: offer._id, userId: claimUserId, count: { $lt: perUser } },
+                { $inc: { count: 1 }, $set: { lastUsedAt: new Date() } },
+                { upsert: true },
+            );
+            perUserClaimed = r.matchedCount === 1 || r.upsertedCount === 1;
+        } catch (err) {
+            if (err?.code !== 11000) throw err;
+        }
+        if (!perUserClaimed) return { taken: false, exhausted: true, overLimit: false, perUser: true };
+    }
 
     const limit = Number(offer.usageLimit) || 0;
     const capped = await FoodOffer.updateOne(
@@ -78,13 +102,18 @@ export async function takeCouponUse(code, userId, { enforceLimit = true } = {}) 
 
     let overLimit = false;
     if (capped.matchedCount === 0) {
-        if (enforceLimit) return { taken: false, exhausted: true, overLimit: false };
+        if (enforceLimit) {
+            if (perUserClaimed) {
+                await FoodOfferUsage.updateOne({ offerId: offer._id, userId: claimUserId, count: { $gt: 0 } }, { $inc: { count: -1 } });
+            }
+            return { taken: false, exhausted: true, overLimit: false };
+        }
         overLimit = true;
         await FoodOffer.updateOne({ _id: offer._id }, { $inc: { usedCount: 1 } });
     }
 
     const userObjectId = toObjectId(userId);
-    if (userObjectId) {
+    if (userObjectId && !perUserClaimed) {
         await FoodOfferUsage.updateOne(
             { offerId: offer._id, userId: userObjectId },
             { $inc: { count: 1 }, $set: { lastUsedAt: new Date() } },

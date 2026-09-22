@@ -346,7 +346,27 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
 
   // Claim the cross-service busy-lock BEFORE assigning, so a driver already on a taxi ride
   // cannot also take this order. No-op while the unified flag is off.
-  const lockOrderId = await FoodOrder.findOne(identity).select('_id').lean();
+  const lockOrderId = await FoodOrder.findOne(identity).select('_id payment pricing dispatch').lean();
+  const offeredToMe = Boolean(lockOrderId) && (
+    (lockOrderId.dispatch?.offeredTo || []).some((o) => String(o?.partnerId) === String(partnerId))
+    || String(lockOrderId.dispatch?.deliveryPartnerId || '') === String(partnerId)
+  );
+
+  // A cash order is refused to a rider already at their cash limit (all
+  // verticals, per-rider limit). Only dispatch checked it, so a rider over the
+  // limit could still take cash orders from the list. Quick commerce already
+  // checks at accept.
+  if (offeredToMe && String(lockOrderId.payment?.method || '').toLowerCase() === 'cash') {
+    const { getRiderFinance } = await import('../../../../core/finance/riderFinance.service.js');
+    const f = await getRiderFinance(partnerId).catch(() => null);
+    const limit = Number(f?.cashLimit) || 0;
+    const orderCash = Math.max(0, Number(lockOrderId.pricing?.total) || 0);
+    // (Not f.isBlocked -- that is the taxi wallet rule, which blocks every
+    // food-only rider; only the cash ceiling applies to a food order.)
+    if (limit > 0 && (Number(f?.cashInHand) || 0) + orderCash > limit) {
+      throw new ValidationError('You are holding too much cash to take a cash order. Deposit your cash first.');
+    }
+  }
   if (lockOrderId && !(await acquireDeliveryLock(partnerId, lockOrderId._id))) {
     throw new ValidationError('You are already on another job');
   }

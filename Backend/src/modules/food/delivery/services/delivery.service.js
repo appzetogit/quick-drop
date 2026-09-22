@@ -300,11 +300,17 @@ export const updateDeliveryPartnerBankDetails = async (userId, payload, files) =
 
     if (bankDetails) {
         const b = bankDetails;
+        const before = [partner.bankAccountNumber, partner.bankIfscCode, partner.upiId].map((v) => String(v || ''));
         if (b.accountHolderName !== undefined) partner.bankAccountHolderName = b.accountHolderName ? String(b.accountHolderName).trim() : '';
         if (b.accountNumber !== undefined) partner.bankAccountNumber = b.accountNumber ? String(b.accountNumber).trim() : '';
         if (b.ifscCode !== undefined) partner.bankIfscCode = b.ifscCode ? String(b.ifscCode).trim().toUpperCase() : '';
         if (b.bankName !== undefined) partner.bankName = b.bankName ? String(b.bankName).trim() : '';
         if (b.upiId !== undefined) partner.upiId = b.upiId ? String(b.upiId).trim() : '';
+        // Where payouts go changed: withdrawals pause for 24 hours. A stolen
+        // rider login could otherwise redirect the balance in one sitting --
+        // these changes need no re-review, so the pause is the brake.
+        const after = [partner.bankAccountNumber, partner.bankIfscCode, partner.upiId].map((v) => String(v || ''));
+        if (before.some((v, i) => v && v !== after[i])) partner.bankDetailsChangedAt = new Date();
     }
 
     if (panDetails?.number !== undefined) {

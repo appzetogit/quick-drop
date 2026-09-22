@@ -42,7 +42,7 @@ router.post('/:orderId/prescription-bill/approve', sensitiveActionRateLimiter, i
 router.post('/:orderId/prescription-bill/decline', sensitiveActionRateLimiter, declinePrescriptionBillController);
 
 router.post('/calculate', sensitiveActionRateLimiter, calculateOrderController);
-router.post('/', sensitiveActionRateLimiter, idempotency(), createOrderController);
+router.post('/', sensitiveActionRateLimiter, idempotency({ implicitWindowMs: 10_000 }), createOrderController);
 router.post('/verify-payment', sensitiveActionRateLimiter, idempotency(), verifyPaymentController);
 router.delete('/:orderId/pending-payment', abandonOnlinePaymentController);
 router.get('/', listOrdersUserController);

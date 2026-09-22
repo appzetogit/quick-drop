@@ -195,76 +195,31 @@ async function filterPartnersByCodCashLimit(partners = [], order = null) {
     return partners;
   }
 
-  const cashLimitSettings = await getDeliveryCashLimitSettings();
-  const totalCashLimit = Number(cashLimitSettings?.deliveryCashLimit) || 0;
-  if (totalCashLimit <= 0) {
-    return partners;
-  }
-
   const orderCashImpact = Math.max(0, Number(order?.pricing?.total) || 0);
 
-  const partnerIds = partners
-    .map((partner) => partner?.partnerId)
-    .filter((partnerId) => mongoose.Types.ObjectId.isValid(partnerId))
-    .map((partnerId) => new mongoose.Types.ObjectId(partnerId));
-
-  if (partnerIds.length === 0) {
-    return partners;
-  }
-
-  const [cashCollectedAgg, cashDepositsAgg] = await Promise.all([
-    FoodOrder.aggregate([
-      {
-        $match: {
-          'dispatch.deliveryPartnerId': { $in: partnerIds },
-          orderStatus: 'delivered',
-          'payment.method': 'cash',
-        },
-      },
-      {
-        $group: {
-          _id: '$dispatch.deliveryPartnerId',
-          cashCollected: { $sum: { $ifNull: ['$pricing.total', 0] } },
-        },
-      },
-    ]),
-    FoodDeliveryCashDeposit.aggregate([
-      {
-        $match: {
-          deliveryPartnerId: { $in: partnerIds },
-          status: 'Completed',
-        },
-      },
-      {
-        $group: {
-          _id: '$deliveryPartnerId',
-          depositedCash: { $sum: { $ifNull: ['$amount', 0] } },
-        },
-      },
-    ]),
-  ]);
-
-  const cashCollectedMap = new Map(
-    (cashCollectedAgg || []).map((entry) => [
-      String(entry?._id || ''),
-      Number(entry?.cashCollected) || 0,
-    ]),
-  );
-  const cashDepositsMap = new Map(
-    (cashDepositsAgg || []).map((entry) => [
-      String(entry?._id || ''),
-      Number(entry?.depositedCash) || 0,
-    ]),
-  );
-
-  const eligiblePartners = partners.filter((partner) => {
-    const partnerId = String(partner?.partnerId || '');
-    const cashCollected = cashCollectedMap.get(partnerId) || 0;
-    const depositedCash = cashDepositsMap.get(partnerId) || 0;
-    const cashInHand = Math.max(0, cashCollected - depositedCash);
-    const projectedCashInHand = cashInHand + orderCashImpact;
-    return projectedCashInHand <= totalCashLimit;
-  });
+  /*
+   * The rider's cash, as the rider app and the withdrawal check see it:
+   * riderFinance sums food, quick commerce and taxi, and resolves the limit the
+   * admin set for this rider or zone. This counted only DELIVERED FOOD orders
+   * against the old global setting, so cash from picked-up orders, grocery
+   * runs and taxi fares was invisible and per-rider limits never applied.
+   * A limit of 0 means "no limit", as everywhere else in riderFinance.
+   */
+  const { getRiderFinance } = await import('../../../../core/finance/riderFinance.service.js');
+  const verdicts = await Promise.all(partners.map(async (partner) => {
+    try {
+      const f = await getRiderFinance(partner?.partnerId);
+      // Not f.isBlocked: that is the TAXI wallet rule (a food-only rider with
+      // no taxi balance reads as blocked). Only the cash ceiling applies here.
+      const limit = Number(f?.cashLimit) || 0;
+      if (limit <= 0) return true;
+      return (Number(f?.cashInHand) || 0) + orderCashImpact <= limit;
+    } catch (err) {
+      logger.warn(`COD cash-limit check failed for partner ${partner?.partnerId}: ${err?.message || err}`);
+      return false;
+    }
+  }));
+  const eligiblePartners = partners.filter((_, i) => verdicts[i]);
 
   const skippedCount = partners.length - eligiblePartners.length;
   if (skippedCount > 0) {

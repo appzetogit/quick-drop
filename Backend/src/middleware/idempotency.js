@@ -43,9 +43,21 @@ const fingerprintOf = (body) => {
  * Mount on the money paths: order creation, payment verification, refunds, wallet
  * movements, withdrawals, coupon redemption.
  */
-export function idempotency() {
+/*
+ * `implicitWindowMs`: for routes where a double tap is expensive (placing an
+ * order), a client that sends no key still gets protection -- the same owner
+ * sending the same body within the window is the same request. The apps do not
+ * send Idempotency-Key today, so without this a double tap placed two orders
+ * (and could debit the wallet twice). The window is short on purpose: the same
+ * cart ordered again a minute later is a real second order.
+ */
+export function idempotency({ implicitWindowMs = 0 } = {}) {
     return async function idempotencyMiddleware(req, res, next) {
-        const key = readKey(req);
+        let key = readKey(req);
+        if (!key && implicitWindowMs > 0 && req.user && req.body && typeof req.body === 'object') {
+            const fp = fingerprintOf(req.body);
+            if (fp) key = `implicit:${fp}:${Math.floor(Date.now() / implicitWindowMs)}`;
+        }
         if (!key) return next();
 
         // The owner is part of the scope so one account can never replay another's

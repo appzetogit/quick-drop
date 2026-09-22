@@ -50,6 +50,16 @@ const startMaintenanceWorker = async () => {
         }
     );
 
+    // 3. Stale sweep (every 10 minutes): unpaid QC orders, abandoned taxi rides.
+    await maintenanceQueue.add(
+        'STALE_SWEEP',
+        { type: 'STALE_SWEEP' },
+        {
+            repeat: { pattern: '*/10 * * * *' },
+            jobId: 'stale_sweep_job'
+        }
+    );
+
     worker.on('completed', (job) => logger.info(`Maintenance job ${job.id} completed`));
     worker.on('failed', (job, err) => logger.error(`Maintenance job ${job?.id} failed: ${err.message}`));
     worker.on('error', (err) => logger.error(`Maintenance worker error: ${err.message}`));

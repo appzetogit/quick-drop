@@ -450,6 +450,17 @@ export const refundReturn = async ({ returnId, adminId, refundTo }) => {
         // correction, not a reason to report the refund as failed.
         logger.error(`[QC returns] ledger not updated for ${doc.returnCode}: ${err?.message || err}`);
     }
+    // The cashback paid on this order goes back with the refund, pro rata.
+    try {
+        const { reverseOrderCashback } = await import('../../user/services/cashback.service.js');
+        await reverseOrderCashback(order._id, {
+            refundedAmount: grantedPaise / 100,
+            orderTotal: order.pricing?.total,
+            key: doc.returnCode,
+        });
+    } catch (err) {
+        logger.warn(`[QC returns] cashback not reversed for ${doc.returnCode}: ${err?.message || err}`);
+    }
     return doc;
 };
 

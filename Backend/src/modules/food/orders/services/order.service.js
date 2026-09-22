@@ -484,12 +484,31 @@ export async function createOrder(userId, dto) {
     let couponUseTaken = false;
     if (appliedCouponCode) {
       if (paymentMethod === "razorpay") {
+        // Online orders count the coupon on payment, so two unpaid online orders
+        // with the same coupon could both be paid and both keep the discount.
+        // A new one supersedes the customer's earlier unpaid one (an abandoned
+        // payment sheet, most often); if that one is paid late after all, the
+        // webhook refunds it because it is cancelled.
+        await FoodOrder.updateMany(
+          {
+            userId: new mongoose.Types.ObjectId(userId),
+            orderStatus: "pending_payment",
+            "payment.status": { $nin: ["paid", "refunded"] },
+            "pricing.appliedCoupon.code": { $in: [appliedCouponCode, String(normalizedPricing.appliedCoupon.code)] },
+          },
+          {
+            $set: { orderStatus: "cancelled_by_user", "payment.status": "failed" },
+            $push: { statusHistory: { at: new Date(), byRole: "SYSTEM", from: "pending_payment", to: "cancelled_by_user", note: "Replaced by a newer order with the same coupon" } },
+          },
+        );
         order.couponUsage = COUPON_USAGE.PENDING;
       } else {
         const use = await takeCouponUse(appliedCouponCode, userId, { enforceLimit: true });
         if (use.exhausted) {
           throw new ValidationError(
-            `Coupon ${appliedCouponCode} has just reached its usage limit. Please remove it and check your total before ordering again.`
+            use.perUser
+              ? `You have already used coupon ${appliedCouponCode} as many times as it allows.`
+              : `Coupon ${appliedCouponCode} has just reached its usage limit. Please remove it and check your total before ordering again.`
           );
         }
         couponUseTaken = use.taken;

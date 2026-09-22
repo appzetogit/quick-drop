@@ -24,7 +24,7 @@ router.post('/calculate', sensitiveActionRateLimiter, calculateOrderController);
 // The two money paths. `idempotency()` is a no-op for any client that does not send
 // an Idempotency-Key header, so every shipped Flutter and APK build keeps working
 // unchanged and gains double-submit protection only once it starts sending one.
-router.post('/', sensitiveActionRateLimiter, idempotency(), createOrderController);
+router.post('/', sensitiveActionRateLimiter, idempotency({ implicitWindowMs: 10_000 }), createOrderController);
 router.post('/verify-payment', sensitiveActionRateLimiter, idempotency(), verifyPaymentController);
 router.get('/', listOrdersUserController);
 router.get('/:orderId/payments', getOrderPaymentsUserController);

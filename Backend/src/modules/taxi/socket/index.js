@@ -1,4 +1,6 @@
 import { Server } from 'socket.io';
+import mongoose from 'mongoose';
+import { Ride } from '../user/models/Ride.js';
 import { env } from '../../../config/env.js';
 import { normalizePoint, toPoint } from '../../../utils/geo.js';
 import { Driver } from '../driver/models/Driver.js';
@@ -149,6 +151,32 @@ export const configureTaxiSocketServer = (io) => {
 
         // Drivers push fresh GPS coordinates every few seconds so matching stays accurate.
         const normalizedCoords = normalizePoint(coordinates, 'coordinates');
+
+        /*
+         * A position is taken as sent, and the zone (which decides whose rides
+         * a driver is offered) is computed from it. A jump no vehicle could make
+         * -- faster than ~250 km/h over more than a kilometre -- is ignored, so a
+         * driver cannot teleport into a busier zone.
+         */
+        const meters = (a, b) => {
+          const toRad = (d) => (Number(d) * Math.PI) / 180;
+          const s = Math.sin(toRad(b[1] - a[1]) / 2) ** 2
+            + Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(toRad(b[0] - a[0]) / 2) ** 2;
+          return 2 * 6371000 * Math.asin(Math.sqrt(s));
+        };
+        const prev = await Driver.collection.findOne(
+          { _id: new mongoose.Types.ObjectId(String(identity.sub)) },
+          { projection: { location: 1, locationUpdatedAt: 1 } },
+        );
+        const prevCoords = prev?.location?.coordinates;
+        if (Array.isArray(prevCoords) && prev?.locationUpdatedAt) {
+          const dist = meters(prevCoords, normalizedCoords);
+          const secs = Math.max(1, (Date.now() - new Date(prev.locationUpdatedAt).getTime()) / 1000);
+          if (dist > 1000 && dist / secs > 70) {
+            return;
+          }
+        }
+
         const zone = await findZoneByPickup(normalizedCoords);
 
         await Driver.findByIdAndUpdate(identity.sub, {
@@ -156,6 +184,20 @@ export const configureTaxiSocketServer = (io) => {
           location: toPoint(normalizedCoords, 'coordinates'),
           zoneId: zone?._id || null,
         });
+        await Driver.collection.updateOne(
+          { _id: new mongoose.Types.ObjectId(String(identity.sub)) },
+          { $set: { locationUpdatedAt: new Date() } },
+        );
+
+        // Start the waiting clock once the driver is actually at the pickup
+        // (see updateRideLifecycle: "arriving" no longer stamps it from afar).
+        const waiting = await Ride.findOne({ driverId: identity.sub, liveStatus: 'arriving', arrivedAt: null })
+          .select('pickupLocation')
+          .lean();
+        const pickup = waiting?.pickupLocation?.coordinates;
+        if (Array.isArray(pickup) && meters(pickup, normalizedCoords) <= 500) {
+          await Ride.updateOne({ _id: waiting._id, arrivedAt: null }, { $set: { arrivedAt: new Date() } });
+        }
         notifyLateAvailableDriver(identity.sub).catch((error) => {
           console.error('Failed to notify late-available driver on location update', error);
         });

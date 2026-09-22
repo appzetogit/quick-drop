@@ -2325,7 +2325,30 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
   }
 
   if (nextStatus === RIDE_LIVE_STATUS.ARRIVING && !ride.arrivedAt) {
-    ride.arrivedAt = new Date();
+    /*
+     * The waiting clock (billed to the rider) and "driver reached pickup" (which
+     * turns a rider's cancel into a fee) both run from arrivedAt. It was stamped
+     * on this tap with no location check, so a driver who never moved could run
+     * up waiting charges or force the rider to cancel and pay. It is stamped
+     * only when the driver's last known position is near the pickup; the status
+     * itself still moves, so the trip flow is unchanged.
+     */
+    const ARRIVAL_RADIUS_M = 500;
+    const pickup = ride.pickupLocation?.coordinates;
+    const driverDoc = await Driver.findById(driverId).select('location').lean();
+    const here = driverDoc?.location?.coordinates;
+    let nearPickup = false;
+    if (Array.isArray(pickup) && Array.isArray(here) && pickup.length === 2 && here.length === 2) {
+      const toRad = (d) => (Number(d) * Math.PI) / 180;
+      const [lng1, lat1] = pickup;
+      const [lng2, lat2] = here;
+      const a = Math.sin(toRad(lat2 - lat1) / 2) ** 2
+        + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(toRad(lng2 - lng1) / 2) ** 2;
+      nearPickup = 2 * 6371000 * Math.asin(Math.sqrt(a)) <= ARRIVAL_RADIUS_M;
+    }
+    if (nearPickup) {
+      ride.arrivedAt = new Date();
+    }
   }
 
   if (nextStatus === RIDE_LIVE_STATUS.STARTED && !ride.startedAt) {
@@ -2708,6 +2731,10 @@ export const increaseRideBidCeiling = async ({ rideId, userId, incrementSteps = 
       $set: {
         fare: nextFare,
         userMaxBidFare: nextFare,
+        // Billing reads the snapshot first (resolveAgreedFare), so a raise that
+        // left it behind charged the rider the old fare and underpaid the driver
+        // who accepted at the new one.
+        'pricingSnapshot.agreed_fare': nextFare,
         nextFareIncreaseAt: waitMinutes > 0 ? new Date(Date.now() + waitMinutes * 60 * 1000) : null,
       },
     },

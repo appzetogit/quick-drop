@@ -110,6 +110,54 @@ function isAwaitingOnlinePaymentMethod(paymentMethod) {
   return method === "razorpay" || method === "card";
 }
 
+/**
+ * Claim the customer's own use of a coupon before the order exists.
+ *
+ * The per-customer limit was only checked by reading the count while pricing,
+ * and counted after the order was placed, so orders placed at the same moment
+ * each passed and all kept a one-per-customer coupon. The unique (offerId,
+ * userId) index makes a claim at the limit fail. Returns whether it claimed.
+ * Online orders count on payment, so there the check is that no other unpaid
+ * order of this customer holds the same coupon.
+ */
+async function claimCouponForCustomer(order, userId, awaitingOnline) {
+  const couponCode = order?.pricing?.couponCode ? String(order.pricing.couponCode).trim().toUpperCase() : "";
+  if (!couponCode || !(Number(order?.pricing?.discount) > 0)) return false;
+  const offer = await FoodOffer.findOne({ couponCode }).select("_id perUserLimit").lean();
+  const perUser = Number(offer?.perUserLimit) || 0;
+  if (!offer || perUser <= 0) return false;
+  const uid = toObjectId(userId, "User ID");
+
+  if (awaitingOnline) {
+    // A new unpaid order supersedes the customer's earlier one with the same
+    // coupon (expired through the normal path, so its stock comes back).
+    const older = await FoodOrder.find({
+      userId: uid,
+      orderStatus: "pending_payment",
+      "payment.status": { $nin: ["paid", "refunded"] },
+      "pricing.couponCode": { $in: [couponCode, order.pricing.couponCode] },
+    }).select("_id orderStatus payment stockReservedAt stockRestoredAt prescriptionOnly").lean();
+    for (const doc of older) {
+      try { await expirePendingPaymentOrder(doc); } catch (err) { logger.warn(`superseding ${doc._id} failed: ${err?.message || err}`); }
+    }
+    return false;
+  }
+
+  let claimed = false;
+  try {
+    const r = await FoodOfferUsage.updateOne(
+      { offerId: offer._id, userId: uid, count: { $lt: perUser } },
+      { $inc: { count: 1 }, $set: { lastUsedAt: new Date() } },
+      { upsert: true },
+    );
+    claimed = r.matchedCount === 1 || r.upsertedCount === 1;
+  } catch (err) {
+    if (err?.code !== 11000) throw err;
+  }
+  if (!claimed) throw new ValidationError(`You have already used coupon ${couponCode} as many times as it allows.`);
+  return true;
+}
+
 async function incrementCouponUsageForOrder(order, userId) {
   const couponCode = order?.pricing?.couponCode
     ? String(order.pricing.couponCode).trim().toUpperCase()
@@ -140,11 +188,15 @@ async function incrementCouponUsageForOrder(order, userId) {
           `Coupon ${couponCode} reached usage limit before increment for order ${order?._id}; discount honored.`,
         );
       }
-      await FoodOfferUsage.updateOne(
-        { offerId: offer._id, userId: toObjectId(userId, "User ID") },
-        { $inc: { count: 1 }, $set: { lastUsedAt: new Date() } },
-        { upsert: true },
-      );
+      // Already claimed at placement (claimCouponForCustomer) for cash and
+      // wallet orders with a per-customer limit; counted here otherwise.
+      if (!order?.$locals?.couponUserClaimed) {
+        await FoodOfferUsage.updateOne(
+          { offerId: offer._id, userId: toObjectId(userId, "User ID") },
+          { $inc: { count: 1 }, $set: { lastUsedAt: new Date() } },
+          { upsert: true },
+        );
+      }
     }
   } catch (err) {
     logger.error(`Coupon usage update failed: ${err.message}`);
@@ -276,7 +328,8 @@ async function resolveServiceableZone(restaurant, deliveryAddress) {
   return zone;
 }
 
-async function expireStalePendingPaymentOrders() {
+/** Exported for the maintenance worker: this used to run only when somebody listed orders. */
+export async function expireStalePendingPaymentOrders() {
   const now = Date.now();
   if (now - lastExpiredCleanupAt < EXPIRE_CLEANUP_INTERVAL_MS) return;
   lastExpiredCleanupAt = now;
@@ -803,13 +856,30 @@ export async function createOrder(userId, dto) {
     // awaiting online payment: the units have to be held while the customer is
     // on the payment sheet, or two people pay for the same last unit. The
     // pending-payment cleanup gives them back.
-    const reservation = await reserveStockForItems(resolvedItems, { orderId: order._id });
+    const couponUserClaimed = await claimCouponForCustomer(order, userId, isAwaitingOnlinePayment);
+    if (order.$locals) order.$locals.couponUserClaimed = couponUserClaimed;
+    const giveBackCoupon = async () => {
+      if (!couponUserClaimed) return;
+      try {
+        const offer = await FoodOffer.findOne({ couponCode: String(order.pricing.couponCode).trim().toUpperCase() }).select("_id").lean();
+        if (offer) await FoodOfferUsage.updateOne({ offerId: offer._id, userId: toObjectId(userId, "User ID"), count: { $gt: 0 } }, { $inc: { count: -1 } });
+      } catch { /* best effort */ }
+    };
+
+    let reservation;
+    try {
+      reservation = await reserveStockForItems(resolvedItems, { orderId: order._id });
+    } catch (err) {
+      await giveBackCoupon();
+      throw err;
+    }
     if (reservation.length > 0) order.stockReservedAt = new Date();
 
     try {
       await order.save();
     } catch (err) {
       await releaseReservations(reservation);
+      await giveBackCoupon();
       throw err;
     }
 

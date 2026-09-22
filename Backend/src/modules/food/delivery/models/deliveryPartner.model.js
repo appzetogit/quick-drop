@@ -111,6 +111,8 @@ const deliveryPartnerSchema = new mongoose.Schema(
         drivingLicensePhoto: {
             type: String
         },
+        /** When payout details last changed: withdrawals pause for 24h after. */
+        bankDetailsChangedAt: { type: Date, default: null },
         status: {
             type: String,
             enum: ['pending', 'approved', 'rejected'],
