@@ -55,7 +55,7 @@ import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import quickSpicyLogo from "@food/assets/k9-logo.jpg";
 import { getCachedSettings, loadBusinessSettings, normalizeCompanyName } from "@food/utils/businessSettings";
-import { refreshAdminAccess } from "@food/utils/adminAccess";
+import { refreshAdminAccess, useAdminAccess, hasPanel, isRestricted } from "@food/utils/adminAccess";
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
@@ -667,6 +667,12 @@ const AdminLayout = () => {
     window.addEventListener('businessSettingsUpdated', syncName);
     return () => window.removeEventListener('businessSettingsUpdated', syncName);
   }, []);
+
+  // Which panels this admin may switch to: a sub-admin only sees theirs.
+  const panelAccess = useAdminAccess();
+  const showPanel = (service) => hasPanel(panelAccess, service);
+  const restrictedAdmin = isRestricted(panelAccess);
+  const otherPanels = ["food", "quickCommerce", "medical"].filter(showPanel).length;
 
   const taxiTitle = businessCompanyName.toLowerCase().endsWith('taxi')
     ? businessCompanyName
@@ -1457,7 +1463,7 @@ const AdminLayout = () => {
                           reads as a smudge rather than a light source. */}
                       <div className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
                       <span className="text-[11px] font-bold uppercase tracking-widest text-[var(--sb-ink-faint)]">
-                        System Admin
+                        {restrictedAdmin ? "Sub-admin" : "System Admin"}
                       </span>
                     </div>
                   </div>
@@ -1496,9 +1502,9 @@ const AdminLayout = () => {
             )}
 
             {/* Module Switcher Tabs */}
-            {!isCollapsed && (
+            {!isCollapsed && otherPanels > 0 && (
               <div className="flex p-1 bg-[var(--sb-surface-raised)] backdrop-blur-sm rounded-xl mb-1 border border-[var(--sb-border)] shadow-inner">
-                <button
+                {showPanel("food") && <button
                   type="button"
                   onClick={() => navigate("/admin/food")}
                   className={cn(
@@ -1508,7 +1514,7 @@ const AdminLayout = () => {
                 >
                   <UtensilsCrossed className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
                   Food
-                </button>
+                </button>}
                 <button
                   type="button"
                   onClick={() => navigate("/taxi/admin/dashboard")}
@@ -1540,7 +1546,7 @@ const AdminLayout = () => {
                   <Wrench className="w-3.5 h-3.5 text-neutral-500" />
                   Services
                 </button>*/}
-                <button
+                {showPanel("quickCommerce") && <button
                   type="button"
                   onClick={() => navigate("/admin/quick-commerce")}
                   className={cn(
@@ -1550,10 +1556,10 @@ const AdminLayout = () => {
                 >
                   <ShoppingBasket className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
                   Quick
-                </button>
+                </button>}
                 {/* Medical sits beside Quick in every panel's switcher; it was only
                     added to the food one, so it vanished on the way here. */}
-                <button
+                {showPanel("medical") && <button
                   type="button"
                   onClick={() => navigate("/admin/medical")}
                   className={cn(
@@ -1563,7 +1569,7 @@ const AdminLayout = () => {
                 >
                   <Pill className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
                   Medical
-                </button>
+                </button>}
               </div>
             )}
           </div>

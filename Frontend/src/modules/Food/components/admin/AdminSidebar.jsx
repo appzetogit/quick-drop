@@ -1035,7 +1035,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                         smudge rather than a light source. */}
                     <div className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
                     <span className="text-[11px] font-bold uppercase tracking-widest text-[var(--sb-ink-faint)]">
-                      System Admin
+                      {isRestricted(access) ? "Sub-admin" : "System Admin"}
                     </span>
                   </div>
                 </div>
