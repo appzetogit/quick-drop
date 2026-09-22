@@ -672,7 +672,6 @@ const AdminLayout = () => {
   const panelAccess = useAdminAccess();
   const showPanel = (service) => hasPanel(panelAccess, service);
   const restrictedAdmin = isRestricted(panelAccess);
-  const otherPanels = ["food", "quickCommerce", "medical"].filter(showPanel).length;
 
   const taxiTitle = businessCompanyName.toLowerCase().endsWith('taxi')
     ? businessCompanyName
@@ -1502,7 +1501,7 @@ const AdminLayout = () => {
             )}
 
             {/* Module Switcher Tabs */}
-            {!isCollapsed && otherPanels > 0 && (
+            {!isCollapsed && (
               <div className="flex p-1 bg-[var(--sb-surface-raised)] backdrop-blur-sm rounded-xl mb-1 border border-[var(--sb-border)] shadow-inner">
                 {showPanel("food") && <button
                   type="button"
