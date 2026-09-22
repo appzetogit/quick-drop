@@ -5,7 +5,7 @@ const Vendor = require('../../models/Vendor');
  * Master settings (core/settings/platformProfile.service.js) win where set:
  * one brand, contact and set of legal pages for the whole platform.
  */
-const overlayMaster = async (settings) => {
+const overlayMaster = async (settings, app = null) => {
   try {
     const { managedBrand, managedLegalPage } = await import('../../../../core/settings/platformProfile.service.js');
     const b = await managedBrand();
@@ -26,6 +26,12 @@ const overlayMaster = async (settings) => {
     set('currency', b.currencyCode);
     set('termsAndConditions', await managedLegalPage('terms'));
     set('privacyPolicy', await managedLegalPage('privacy'));
+    // The services app's own pages (Master settings, App terms) win over both.
+    if (app) {
+      const { appLegalPage } = await import('../../../../core/settings/appLegal.js');
+      set('termsAndConditions', (await appLegalPage(app, 'terms'))?.content);
+      set('privacyPolicy', (await appLegalPage(app, 'privacy'))?.content);
+    }
     return out;
   } catch (error) {
     console.error('Master settings overlay skipped:', error.message);
@@ -219,7 +225,8 @@ exports.getPublicSettings = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      settings: await overlayMaster(settings)
+      // ?app=provider for the provider/worker app; the customer app by default.
+      settings: await overlayMaster(settings, ['provider', 'vendor', 'worker'].includes(String(req.query?.app || '').toLowerCase()) ? 'services_provider' : 'services_user')
     });
   } catch (error) {
     console.error('Error fetching public settings:', error);

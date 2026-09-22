@@ -2,6 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, FileText, IndianRupee, ReceiptText, Scale, ScrollText, ShieldCheck } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import api from '../../../shared/api/axiosInstance';
+import { API_BASE_URL } from '../../../shared/api/runtimeConfig';
+
+// Terms and privacy written for the taxi rider or driver app (admin: Master settings, App terms).
+const fetchAppLegal = async (app, kind) => {
+  try {
+    const base = String(API_BASE_URL).replace(/\/taxi\/?$/, '');
+    const res = await fetch(`${base}/platform/legal/${app}/${kind}`);
+    const body = await res.json();
+    return body?.data?.content || '';
+  } catch {
+    return '';
+  }
+};
 
 const vehiclePricing = [
   { type: 'Bike', capacity: 'Up to 2 riders', price: 'Starts at Rs 49', cancellationCut: 'Admin cut up to Rs 10', note: 'Best for quick solo rides and short-distance travel.' },
@@ -245,6 +258,15 @@ const LegalPage = () => {
   useEffect(() => {
     const fetchContent = async () => {
       try {
+        if (docType === 'terms' || docType === 'privacy') {
+          const role = String(location.state?.role || '').toLowerCase();
+          const isDriver = ['driver', 'owner'].includes(role) || location.pathname.includes('/driver');
+          const own = await fetchAppLegal(isDriver ? 'taxi_driver' : 'taxi_user', docType);
+          if (own) {
+            setDynamicContent(own);
+            return;
+          }
+        }
         const res = await api.get('/common/landing-page/settings');
         if (res?.success && res?.data) {
           let pageKey = 'terms_conditions';
@@ -270,7 +292,8 @@ const LegalPage = () => {
       }
     };
     fetchContent();
-  }, [docType]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docType, location.pathname]);
 
   return (
     <div className="min-h-screen bg-stone-50 text-slate-900">

@@ -113,7 +113,7 @@ const DriverSupport = () => {
                         { label: 'Privacy Policy', icon: <FileText size={16} />, path: '/privacy' },
                         { label: 'Terms of Service', icon: <Globe size={16} />, path: '/terms' }
                     ].map((item, idx) => (
-                        <div key={idx} className="flex items-center justify-between text-slate-400 px-2 py-1 active:text-slate-900 transition-colors cursor-pointer">
+                        <div key={idx} onClick={() => navigate(item.path, { state: { role: 'driver', returnTo: location.pathname } })} className="flex items-center justify-between text-slate-400 px-2 py-1 active:text-slate-900 transition-colors cursor-pointer">
                              <div className="flex items-center gap-3">
                                  {item.icon}
                                  <span className="text-[11px] font-black uppercase tracking-widest">{item.label}</span>
