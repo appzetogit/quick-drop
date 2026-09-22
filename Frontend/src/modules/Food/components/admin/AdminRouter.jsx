@@ -1,5 +1,11 @@
 import { Suspense, lazy } from "react";
-import { Routes, Route, Navigate, Outlet } from "react-router-dom";
+import { Routes, Route, Navigate, Outlet, useParams } from "react-router-dom";
+
+/** Old per-panel edit links land on the one Master screen. */
+function RedirectAdminEdit() {
+  const { id } = useParams();
+  return <Navigate to={`/admin/master/admins/edit/${id}`} replace />;
+}
 import VerticalVocabulary from "./VerticalVocabulary";
 import { VERTICAL } from "@food/utils/verticalVocabulary";
 import ProtectedRoute from "./ProtectedRoute";
@@ -284,9 +290,10 @@ const verticalAdminRoutes = (
              <Route path="employees/add" element={<Navigate to="../management/admins/create" replace />} />
 
             {/* SUBADMIN MANAGEMENT */}
-            <Route path="management/admins" element={<AdminAccounts />} />
-            <Route path="management/admins/create" element={<AdminAccounts />} />
-            <Route path="management/admins/edit/:id" element={<AdminAccounts />} />
+            {/* One admin-accounts screen for every panel, under Master. */}
+            <Route path="management/admins" element={<Navigate to="/admin/master/admins" replace />} />
+            <Route path="management/admins/create" element={<Navigate to="/admin/master/admins/create" replace />} />
+            <Route path="management/admins/edit/:id" element={<RedirectAdminEdit />} />
 
             {/* SYSTEM & BUSINESS SETTINGS */}
             <Route path="business-setup" element={<BusinessSetup />} />
@@ -384,6 +391,9 @@ export default function AdminRouter() {
           */}
           <Route path="master/settings" element={<PlatformSettings />} />
           <Route path="master/app-services" element={<AppServices />} />
+          <Route path="master/admins" element={<AdminAccounts />} />
+          <Route path="master/admins/create" element={<AdminAccounts />} />
+          <Route path="master/admins/edit/:id" element={<AdminAccounts />} />
 
           {/* FOOD ADMIN - All food related routes nested here */}
           {/* FOOD ADMIN */}

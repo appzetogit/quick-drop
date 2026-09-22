@@ -30,20 +30,18 @@ export const adminSidebarMenu = [
         path: "/admin/master/app-services",
         icon: "LayoutGrid",
       },
+      {
+        type: "link",
+        label: "Admin Accounts",
+        path: "/admin/master/admins",
+        icon: "UserCog",
+      },
     ],
   },
   {
     type: "section",
     label: "HOME",
     items: [
-      {
-        type: "expandable",
-        label: "Admin Management",
-        icon: "UserCog",
-        subItems: [
-          { label: "Admins", path: "/admin/food/management/admins" },
-        ],
-      },
       {
         type: "link",
         label: "Dashboard",

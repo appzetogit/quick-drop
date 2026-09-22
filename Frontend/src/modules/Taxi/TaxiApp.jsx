@@ -1291,15 +1291,8 @@ function TaxiApp() {
               />
 
               {/* Admin Management */}
-              <Route path="management/admins" element={<AdminAdmins />} />
-              <Route
-                path="management/admins/create"
-                element={<AdminAdminCreate />}
-              />
-              <Route
-                path="management/admins/edit/:id"
-                element={<AdminAdminCreate />}
-              />
+              {/* One admin-accounts screen for every panel, under Master. */}
+              <Route path="management/admins/*" element={<Navigate to="/admin/master/admins" replace />} />
 
               {/* Owner Management */}
               <Route
@@ -1589,7 +1582,7 @@ function TaxiApp() {
               />
               <Route
                 path="masters/roles"
-                element={<Navigate to="/admin/management/admins" replace />}
+                element={<Navigate to="/admin/master/admins" replace />}
               />
 
               <Route

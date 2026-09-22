@@ -800,7 +800,7 @@ const AdminLayout = () => {
             icon: UserCog,
             label: 'Admin Management',
             subItems: [
-              { label: 'Admins', path: '/taxi/admin/management/admins', permission: 'subadmins.manage' },
+              { label: 'Admins', path: '/admin/master/admins', permission: 'subadmins.manage' },
             ],
           },
           { icon: Home, label: 'Dashboard', path: '/taxi/admin/dashboard', permission: 'dashboard.view' },
