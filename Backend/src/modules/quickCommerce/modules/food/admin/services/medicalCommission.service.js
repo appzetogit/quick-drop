@@ -138,3 +138,18 @@ export async function clearShopCommission(restaurantId) {
     await FoodRestaurantCommission.deleteOne({ restaurantId });
     return { id: String(restaurantId), rate: await getMedicalDefaultCommission(), source: 'default' };
 }
+
+/**
+ * The rate this seller pays on new orders, for its own finance screen:
+ * { type, value, source: 'own' | 'default' | 'none' }.
+ */
+export async function currentCommissionFor(restaurantId) {
+    if (!mongoose.Types.ObjectId.isValid(String(restaurantId || ''))) return { type: 'percentage', value: 0, source: 'none' };
+    const rule = await FoodRestaurantCommission.findOne({ restaurantId, status: { $ne: false } }).lean();
+    if (rule) {
+        return { type: rule.defaultCommission?.type || 'percentage', value: Number(rule.defaultCommission?.value) || 0, source: 'own' };
+    }
+    const fallback = await medicalFallbackRule(restaurantId);
+    if (fallback) return { ...fallback.defaultCommission, source: 'default' };
+    return { type: 'percentage', value: 0, source: 'none' };
+}
