@@ -203,6 +203,22 @@ const updateJobStatus = async (req, res) => {
           message: `Invalid status transition from ${booking.status} to ${status}`
         });
       }
+      // Completed means paid. A worker or vendor could jump straight to
+      // COMPLETED without the customer's payment code or any collection, and a
+      // completed booking cannot be cancelled -- so a prepaid customer lost any
+      // way to a refund. Completion needs the money settled first.
+      if (status === BOOKING_STATUS.COMPLETED) {
+        const pay = String(booking.paymentStatus || '').toLowerCase();
+        const settled = booking.cashCollected === true
+          || ['success', 'collected_by_vendor', 'plan_covered'].includes(pay);
+        if (!settled) {
+          return res.status(400).json({
+            success: false,
+            message: 'Collect the payment (or verify the customer\'s payment code) before completing the job.'
+          });
+        }
+      }
+
 
       // Update booking status
       booking.status = status;
@@ -247,15 +263,11 @@ const updateJobStatus = async (req, res) => {
 
     }
 
-    // Update additional fields
-    if (finalSettlementStatus) booking.finalSettlementStatus = finalSettlementStatus;
-    if (workerPaymentStatus) {
-      booking.workerPaymentStatus = workerPaymentStatus;
-      if (workerPaymentStatus === 'PAID' || workerPaymentStatus === 'SUCCESS') {
-        booking.isWorkerPaid = true;
-        booking.workerPaidAt = booking.workerPaidAt || new Date();
-      }
-    }
+    // A worker's own payout and the platform settlement are not the worker's
+    // to set: these came straight from the request, so a worker could mark
+    // themselves paid. They are set by the vendor and the admin payout flows.
+    void finalSettlementStatus;
+    void workerPaymentStatus;
 
     await booking.save();
 

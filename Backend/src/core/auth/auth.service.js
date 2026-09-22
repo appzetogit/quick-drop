@@ -178,11 +178,25 @@ export const verifyUserOtpAndLogin = async (
               Number(settingsDoc.referralLimitUser) || 0,
             );
 
-            if (
-              reward > 0 &&
-              limit > 0 &&
-              Number(referrer.referralCount || 0) < limit
-            ) {
+            /*
+             * One reward per phone number, ever. Deleting a profile removes the
+             * user and its wallet, so signing up again with the same phone and
+             * the same ref paid the referrer again, up to the limit. And the cap
+             * is claimed atomically: it was read, then incremented in a separate
+             * write, so parallel signups ran past it.
+             */
+            const refereePhone = String(userDoc.phone || "").replace(/\D/g, "").slice(-10);
+            const phoneAlreadyRewarded = refereePhone
+              ? await FoodReferralLog.exists({ refereePhone, role: "USER", status: "credited" })
+              : false;
+            const claimed = reward > 0 && limit > 0 && !phoneAlreadyRewarded
+              ? await FoodUser.updateOne(
+                  { _id: referrerId, $or: [{ referralCount: { $lt: limit } }, { referralCount: { $exists: false } }] },
+                  { $inc: { referralCount: 1 } },
+                )
+              : null;
+
+            if (claimed?.modifiedCount === 1) {
               userDoc.referredBy = referrerId;
               await userDoc.save();
 
@@ -192,13 +206,10 @@ export const verifyUserOtpAndLogin = async (
                 role: "USER",
                 rewardAmount: reward,
                 status: "credited",
+                refereePhone,
               });
 
               await Promise.all([
-                FoodUser.updateOne(
-                  { _id: referrerId },
-                  { $inc: { referralCount: 1 } },
-                ),
                 creditReferralReward(referrerId, reward, {
                   role: "USER",
                   refereeId: String(userDoc._id),
@@ -212,8 +223,11 @@ export const verifyUserOtpAndLogin = async (
                 role: "USER",
                 rewardAmount: reward,
                 status: "rejected",
+                refereePhone,
                 reason:
-                  reward <= 0
+                  phoneAlreadyRewarded
+                    ? "phone_already_rewarded"
+                    : reward <= 0
                     ? "reward_disabled"
                     : limit <= 0
                       ? "limit_disabled"

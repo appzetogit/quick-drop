@@ -147,6 +147,20 @@ export const verifyWalletTopupPayment = async (userId, payload) => {
         creditedAmount = Math.round(capturedPaise) / 100;
     }
 
+    // One payment credits one wallet. The replay check above only looked inside
+    // THIS user's wallet, so the same Razorpay payment could be verified again
+    // from every other account and credited once per account.
+    const usedElsewhere = await FoodUserWallet.exists({
+        _id: { $ne: wallet._id },
+        $or: [
+            { 'transactions.razorpayPaymentId': paymentId },
+            { 'transactions.razorpayOrderId': orderId },
+        ],
+    });
+    if (usedElsewhere) {
+        throw new ValidationError('This payment has already been added to another wallet');
+    }
+
     // Store ONLY after payment is verified.
     wallet.transactions.unshift({
         type: 'addition',

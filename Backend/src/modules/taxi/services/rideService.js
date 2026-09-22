@@ -2048,6 +2048,9 @@ export const acceptRideAssignment = async ({ rideId, driverId }) => {
         _id: driverId,
         isOnline: true,
         'wallet.isBlocked': { $ne: true },
+        // Suspended drivers accepted rides over the socket, which checks no approval.
+        approve: { $ne: false },
+        deletedAt: null,
         ...driverVehicleFilter,
       };
 

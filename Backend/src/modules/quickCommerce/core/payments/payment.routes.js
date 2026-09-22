@@ -16,6 +16,8 @@ import {
 } from './payment.controller.js';
 import { requireRoles } from '../../../../core/roles/role.middleware.js';
 import { requireFinancePermission } from '../../../../core/admin/requireFinancePermission.middleware.js';
+import { requireServiceAccess } from '../../../../core/roles/serviceAccess.middleware.js';
+import { enforceAdminAccess } from '../../../../core/admin/enforceAdminAccess.middleware.js';
 
 const router = express.Router();
 
@@ -42,9 +44,9 @@ const selfOrAdmin = (role, param) => (req, res, next) => {
 
 // ─── Payment history for an order (user sees their payment trail) ───
 // Admin only: nothing here checks the order belongs to the caller.
-router.get('/orders/:orderId/payments', requireRoles('ADMIN'), getPaymentHistoryController);
-router.get('/orders/:orderId/transactions', requireRoles('ADMIN'), getOrderTransactionsController);
-router.get('/orders/:orderId/refunds', requireRoles('ADMIN'), getRefundsByOrderController);
+router.get('/orders/:orderId/payments', requireRoles('ADMIN'), requireServiceAccess('quickCommerce'), getPaymentHistoryController);
+router.get('/orders/:orderId/transactions', requireRoles('ADMIN'), requireServiceAccess('quickCommerce'), getOrderTransactionsController);
+router.get('/orders/:orderId/refunds', requireRoles('ADMIN'), requireServiceAccess('quickCommerce'), getRefundsByOrderController);
 
 // ─── User wallet (new transaction-based endpoints) ───
 router.get('/wallet/balance', getUserWalletBalanceController);
@@ -57,7 +59,9 @@ router.get('/restaurant/:restaurantId/wallet', selfOrAdmin('RESTAURANT', 'restau
 router.get('/delivery/:deliveryPartnerId/wallet', selfOrAdmin('DELIVERY_PARTNER', 'deliveryPartnerId'), getDeliveryWalletController);
 
 // ─── Admin / Finance ───
-router.use('/admin', requireRoles('ADMIN'));
+// Quick-commerce finance: its own admins, with Wallets & payouts. Any admin token
+// from any module used to read and settle here.
+router.use('/admin', requireRoles('ADMIN'), requireServiceAccess('quickCommerce'), enforceAdminAccess('quickCommerce', () => 'wallet'));
 router.get('/admin/wallet', getAdminWalletController);
 router.get('/admin/finance/summary', getAdminFinanceSummaryController);
 router.get('/admin/settlements', listSettlementsController);

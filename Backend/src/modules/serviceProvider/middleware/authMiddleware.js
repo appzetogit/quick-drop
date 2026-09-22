@@ -107,6 +107,17 @@ const authenticate = async (req, res, next) => {
       });
     }
 
+    // Blocked, rejected or suspended accounts are refused on every request.
+    // Nothing here checked it, and blocking did not rotate the session, so a
+    // blocked customer or suspended worker kept full access for the token's
+    // 7-day life. (Pending workers still get in: they finish onboarding here.)
+    if (user.isActive === false) {
+      return res.status(403).json({ success: false, message: 'This account has been blocked. Please contact support.' });
+    }
+    if (decoded.role === USER_ROLES.WORKER && ['rejected', 'suspended'].includes(String(user.approvalStatus || ''))) {
+      return res.status(403).json({ success: false, message: `Your worker account is ${user.approvalStatus}. Please contact support.` });
+    }
+
     // SESSION INVALIDATION: logout sets loginSessionId to null and a new login
     // rotates it, so any token carrying a stale session id is dead. Tokens minted
     // before this shipped have no loginSessionId and are skipped until they expire.

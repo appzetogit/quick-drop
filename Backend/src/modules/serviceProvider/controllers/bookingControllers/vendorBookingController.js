@@ -687,6 +687,21 @@ const updateBookingStatus = async (req, res) => {
         // Work done timestamp? Maybe reuse/add field? For now leave it.
       }
 
+      // Completed means paid. A worker or vendor could jump straight to
+      // COMPLETED without the customer's payment code or any collection, and a
+      // completed booking cannot be cancelled -- so a prepaid customer lost any
+      // way to a refund. Completion needs the money settled first.
+      if (status === BOOKING_STATUS.COMPLETED) {
+        const pay = String(booking.paymentStatus || '').toLowerCase();
+        const settled = booking.cashCollected === true
+          || ['success', 'collected_by_vendor', 'plan_covered'].includes(pay);
+        if (!settled) {
+          return res.status(400).json({
+            success: false,
+            message: 'Collect the payment (or verify the customer\'s payment code) before completing the job.'
+          });
+        }
+      }
       if (status === BOOKING_STATUS.COMPLETED) {
         booking.completedAt = new Date();
       }
@@ -700,7 +715,8 @@ const updateBookingStatus = async (req, res) => {
         booking.workerPaidAt = booking.workerPaidAt || new Date();
       }
     }
-    if (finalSettlementStatus) booking.finalSettlementStatus = finalSettlementStatus;
+    // The platform's settlement with the vendor is the admin's to record, not the vendor's.
+    void finalSettlementStatus;
 
     await booking.save();
 

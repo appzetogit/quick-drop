@@ -3,7 +3,7 @@
 // Before this middleware, servicesAccess gated only the sidebar: any admin token
 // reached every vertical's admin API. These checks pin the SP rule now applied
 // platform-wide: non-empty servicesAccess must name the vertical; absent/empty
-// means unrestricted; vertical-native admins (not in the platform collection) pass.
+// means unrestricted; quick-commerce-native admins (qc_admins) pass; unknown ids do not.
 //
 // Run: node tests/serviceaccess.smoke.mjs
 
@@ -76,8 +76,17 @@ console.log('\n[2] edges');
     const a = await run('food', reqFor(inactive._id));
     check('inactive platform admin is 403 everywhere', () => assert.equal(a.status, 403));
 
-    const b = await run('quickCommerce', reqFor(new mongoose.Types.ObjectId()));
-    check('vertical-native admin (not in platform collection) passes', () => assert.equal(b.passed, true));
+    // A quick-commerce-native admin (in qc_admins, not the platform collection)
+    // passes; an id found in neither is refused -- it used to pass, so a
+    // deleted admin's token kept working until it expired.
+    const { FoodAdmin: QCAdmin } = await import('../src/modules/quickCommerce/core/admin/admin.model.js');
+    const qcNative = await QCAdmin.collection.insertOne({ email: 'qc@x.in', isActive: true, isDeleted: false });
+    const b = await run('quickCommerce', reqFor(qcNative.insertedId));
+    check('vertical-native admin (in qc_admins) passes', () => assert.equal(b.passed, true));
+    const b2 = await run('quickCommerce', reqFor(new mongoose.Types.ObjectId()));
+    check('an admin id found nowhere is refused', () => assert.equal(b2.status, 403));
+    const b3 = await run('food', reqFor(new mongoose.Types.ObjectId()));
+    check('... on food too', () => assert.equal(b3.status, 403));
 
     const c = await run('food', { user: {} });
     check('no subject -> 401', () => assert.equal(c.status, 401));

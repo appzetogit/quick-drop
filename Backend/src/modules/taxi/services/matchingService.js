@@ -79,6 +79,10 @@ export const buildDriverMatchFilters = ({ zoneId, vehicleTypeId, vehicleTypeIds,
   const baseFilters = {
     isOnline: true,
     'wallet.isBlocked': { $ne: true },
+    // Only approved, live accounts. A driver an admin suspended stayed online
+    // and kept receiving rides (the REST routes refused them; this did not).
+    approve: { $ne: false },
+    deletedAt: null,
     ...(zoneId ? { zoneId } : {}),
   };
 

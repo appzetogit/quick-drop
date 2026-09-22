@@ -11,6 +11,8 @@ const referralLogSchema = new mongoose.Schema(
             index: true
         },
         rewardAmount: { type: Number, required: true, min: 0, default: 0 },
+        /** Last 10 digits of the referee's phone: one reward per phone, ever. */
+        refereePhone: { type: String, default: '', index: true },
         status: {
             type: String,
             enum: ['pending', 'credited', 'rejected'],

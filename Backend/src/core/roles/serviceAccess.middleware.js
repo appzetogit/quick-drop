@@ -31,7 +31,18 @@ export const requireServiceAccess = (vertical) => async (req, res, next) => {
         // Not in the platform admins collection: a vertical-native admin (e.g. one
         // that lives in qc_admins). Those are scoped to their own vertical by
         // construction -- their credentials only exist inside it.
-        if (!admin) return next();
+        // Not in the platform admins collection. Quick commerce still has its own
+        // qc_admins, so an id found there passes; anything else is refused. This
+        // used to pass every unknown id, so a deleted admin's token (or another
+        // module's admin) kept working until it expired.
+        if (!admin) {
+            if (vertical === 'quickCommerce') {
+                const { FoodAdmin: QCAdmin } = await import('../../modules/quickCommerce/core/admin/admin.model.js');
+                const qcAdmin = await QCAdmin.findById(userId).select('isActive isDeleted').lean();
+                if (qcAdmin && !qcAdmin.isDeleted && qcAdmin.isActive !== false) return next();
+            }
+            return sendError(res, 403, 'Admin account not found');
+        }
 
         if (admin.isDeleted || admin.isActive === false) {
             return sendError(res, 403, 'Admin account is inactive');

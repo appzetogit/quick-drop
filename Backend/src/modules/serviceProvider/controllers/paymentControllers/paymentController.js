@@ -909,6 +909,18 @@ const confirmPayAtHome = async (req, res) => {
       });
     }
 
+    // Only a booking still waiting on its payment choice. This set CONFIRMED
+    // whatever the status, so it reopened cancelled or refunded bookings and
+    // rolled an in-progress job back to confirmed.
+    const choosable = [BOOKING_STATUS.PENDING, BOOKING_STATUS.AWAITING_PAYMENT, BOOKING_STATUS.REQUESTED, BOOKING_STATUS.SEARCHING, BOOKING_STATUS.ACCEPTED, BOOKING_STATUS.CONFIRMED]
+      .filter(Boolean);
+    if (!choosable.includes(booking.status) || booking.paymentStatus === PAYMENT_STATUS.REFUNDED) {
+      return res.status(400).json({
+        success: false,
+        message: 'This booking can no longer change its payment method'
+      });
+    }
+
     // Update booking status — NO earnings set (VendorBill handles that later)
     booking.paymentMethod = 'pay_at_home';
     booking.paymentStatus = PAYMENT_STATUS.PENDING;
