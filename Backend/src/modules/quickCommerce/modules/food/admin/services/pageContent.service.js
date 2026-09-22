@@ -1,5 +1,9 @@
 import { FoodPageContent } from '../models/pageContent.model.js';
 import { managedLegalPage, syncManagedLegalFromLegacy } from '../../../../../../core/settings/platformProfile.service.js';
+import { appLegalPage } from '../../../../../../core/settings/appLegal.js';
+
+// Module -> the per-app page (Master settings) it reads first.
+const APP_OF_MODULE = { USER: 'qc_user', ALL: 'qc_user', RESTAURANT: 'qc_seller', DELIVERY: 'qc_rider', MEDICAL: 'medical_user' };
 import { ValidationError } from '../../../../core/auth/errors.js';
 
 const normalizeKey = (key) => String(key || '').trim().toLowerCase();
@@ -41,6 +45,10 @@ const normalizeAboutForResponse = (about) => {
 export const getPublicPageByKey = async (key, module = 'ALL') => {
     const k = normalizeKey(key);
     const m = String(module || 'ALL').toUpperCase();
+    if ((k === 'terms' || k === 'privacy') && APP_OF_MODULE[m]) {
+        const own = await appLegalPage(APP_OF_MODULE[m], k);
+        if (own) return { key: k, module: m, data: normalizeLegalForResponse(own) };
+    }
     
     // Try to find the module-specific document first
     let doc = await FoodPageContent.findOne({ key: k, module: m }).lean();

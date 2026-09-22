@@ -1,6 +1,14 @@
 import { FoodPageContent } from '../models/pageContent.model.js';
 import { managedLegalPage, syncManagedLegalFromLegacy } from '../../../../core/settings/platformProfile.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
+import { appLegalPage } from '../../../../core/settings/appLegal.js';
+
+// The food apps' page keys, and the per-app page (Master settings) each one reads first.
+const APP_LEGAL = {
+    terms: ['food_user', 'terms'], privacy: ['food_user', 'privacy'],
+    terms_restaurant: ['food_restaurant', 'terms'], privacy_restaurant: ['food_restaurant', 'privacy'],
+    terms_delivery: ['food_delivery', 'terms'], privacy_delivery: ['food_delivery', 'privacy'],
+};
 
 const normalizeKey = (key) => String(key || '').trim().toLowerCase();
 
@@ -38,6 +46,10 @@ const normalizeAboutForResponse = (about) => {
 
 export const getPublicPageByKey = async (key) => {
     const k = normalizeKey(key);
+    if (APP_LEGAL[k]) {
+        const own = await appLegalPage(...APP_LEGAL[k]);
+        if (own) return { key: k, data: normalizeLegalForResponse(own) };
+    }
     // The platform's own page, when Master settings has one.
     const managed = await managedLegalPage(k);
     if (managed) {

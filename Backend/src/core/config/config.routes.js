@@ -14,6 +14,7 @@ import {
     testEmailController,
     testSmsController,
 } from '../settings/platformProfile.controller.js';
+import { listAppLegal, saveAppLegal } from '../settings/appLegal.js';
 
 /**
  * Master / Global settings.
@@ -36,6 +37,10 @@ router.patch('/profile', requireFinancePermission('PLATFORM_SETTING_SET'), updat
 router.post('/profile/test/razorpay', requireFinancePermission('PLATFORM_SETTING_SET'), testRazorpayController);
 router.post('/profile/test/email', requireFinancePermission('PLATFORM_SETTING_SET'), testEmailController);
 router.post('/profile/test/sms', requireFinancePermission('PLATFORM_SETTING_SET'), testSmsController);
+
+// Terms and privacy per app (core/settings/appLegal.js).
+router.get('/app-legal', listAppLegal);
+router.put('/app-legal/:app/:kind', requireFinancePermission('PLATFORM_SETTING_SET'), saveAppLegal);
 
 router.get('/catalogue', getCatalogueController);
 router.get('/resolve', resolveAllController);

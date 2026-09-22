@@ -39,6 +39,7 @@ import platformModuleRoutes from '../core/modules/module.routes.js';
 import platformSettingRoutes from '../core/config/config.routes.js';
 import appServicesRoutes from '../core/appServices/appServices.routes.js';
 import platformAdminRoutes from '../core/admin/platformAdmins.routes.js';
+import { getPublicAppLegal } from '../core/settings/appLegal.js';
 import { refuseRestrictedAdminWrites } from '../core/admin/enforceAdminAccess.middleware.js';
 import { requireModuleEnabled } from '../middleware/moduleEnabled.js';
 import { MODULES } from '../core/modules/moduleRegistry.js';
@@ -110,6 +111,8 @@ router.use('/v1/platform/settings', authMiddleware, requireRoles('ADMIN'), refus
 router.use('/v1/platform/app-services', appServicesRoutes);
 // Admin accounts for every panel (food, quick commerce, medical, taxi).
 router.use('/v1/platform/admins', platformAdminRoutes);
+// Terms and privacy for one app, public (shown before sign-in).
+router.get('/v1/platform/legal/:app/:kind', getPublicAppLegal);
 
 router.get('/v1/health', (req, res) => {
     res.status(200).json({ status: 'UP', message: 'Server is healthy' });

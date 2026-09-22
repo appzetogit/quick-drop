@@ -194,6 +194,11 @@ export const platformSettingsAPI = {
     ),
   invalidateCache: () =>
     apiClient.post("/platform/settings/cache/invalidate", {}, { contextModule: "admin" }),
+  /** Terms and privacy per app. */
+  getAppLegal: () => apiClient.get("/platform/settings/app-legal", { contextModule: "admin" }),
+  /** Empty `content` clears the app's page. */
+  saveAppLegal: (app, kind, { title, content }) =>
+    apiClient.put(`/platform/settings/app-legal/${app}/${kind}`, { title, content }, { contextModule: "admin" }),
   /** Master settings: brand, contact, legal pages, integrations. Secrets come back masked. */
   getProfile: () => apiClient.get("/platform/settings/profile", { contextModule: "admin" }),
   /** Partial save. A masked or empty secret is left unchanged; `null` clears a field. */
