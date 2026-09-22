@@ -713,6 +713,15 @@ export const adminAPI = {
     apiClient.get("/food/admin/medical/settings", { contextModule: "admin" }),
   updateMedicalSettings: (payload) =>
     apiClient.put("/food/admin/medical/settings", payload, { contextModule: "admin" }),
+  /** Pharmacy commission: the default and each shop's own rate. */
+  getMedicalCommissions: (params = {}) =>
+    apiClient.get("/food/admin/medical/commission", { params, contextModule: "admin" }),
+  setMedicalDefaultCommission: (rate) =>
+    apiClient.put("/food/admin/medical/commission/default", rate, { contextModule: "admin" }),
+  setMedicalShopCommission: (id, rate) =>
+    apiClient.put(`/food/admin/medical/commission/shops/${encodeURIComponent(id)}`, rate, { contextModule: "admin" }),
+  clearMedicalShopCommission: (id) =>
+    apiClient.delete(`/food/admin/medical/commission/shops/${encodeURIComponent(id)}`, { contextModule: "admin" }),
   getMedicalRequests: (params = {}) =>
     apiClient.get("/food/admin/medical/requests", { params, contextModule: "admin" }),
   /** Pharmacy applications with their documents and checklist, and the decision. */

@@ -52,6 +52,7 @@ import {
   Lock,
   ShoppingBasket,
   Pill,
+  Percent,
   ShieldCheck,
 } from "lucide-react"
 import { cn } from "@food/utils/utils"
@@ -104,6 +105,7 @@ const iconMap = {
   SlidersHorizontal,
   LayoutGrid,
   LayoutDashboard,
+  Percent,
   ShieldCheck,
   Pill,
   UtensilsCrossed,
@@ -281,6 +283,12 @@ const VERTICAL_BRANDING = {
             label: "Pharmacy Verification",
             path: "/admin/medical/verification",
             icon: "ShieldCheck",
+          },
+          {
+            type: "link",
+            label: "Commission",
+            path: "/admin/medical/commission",
+            icon: "Percent",
           },
           {
             type: "link",

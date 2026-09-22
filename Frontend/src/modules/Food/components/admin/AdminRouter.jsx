@@ -152,6 +152,7 @@ const MedicalPrescriptionOrders = lazy(() => import("@food/pages/admin/medical/P
 const MedicalDrugLicences = lazy(() => import("@food/pages/admin/medical/DrugLicences"));
 const MedicalRequests = lazy(() => import("@food/pages/admin/medical/MedicalRequests"));
 const PharmacyVerification = lazy(() => import("@food/pages/admin/medical/PharmacyVerification"));
+const MedicalCommission = lazy(() => import("@food/pages/admin/medical/MedicalCommission"));
 
 /**
  * The admin pages for one vertical.
@@ -435,6 +436,7 @@ export default function AdminRouter() {
             <Route path="drug-licences" element={<MedicalDrugLicences />} />
             <Route path="requests" element={<MedicalRequests />} />
             <Route path="verification" element={<PharmacyVerification />} />
+            <Route path="commission" element={<MedicalCommission />} />
           </Route>
         </Route>
 

@@ -6,6 +6,7 @@ import {
     updateMedicalSettingsController,
 } from '../controllers/medicalAdmin.controller.js';
 import * as partner from '../../partner/partner.service.js';
+import * as commission from '../services/medicalCommission.service.js';
 import { sendResponse, sendError } from '../../../../../../utils/response.js';
 
 /**
@@ -54,5 +55,19 @@ router.get('/verification', canViewSettings, wrap((req) => partner.listApplicati
 }).then((applications) => ({ applications }))));
 router.post('/verification/:id/approve', canEditSettings, wrap((req) => partner.approveApplication(req.params.id)));
 router.post('/verification/:id/reject', canEditSettings, wrap((req) => partner.rejectApplication(req.params.id, req.body?.reason)));
+
+/*
+ * Commission: one default for every pharmacy, and a shop's own rate where
+ * set. Pricing reads both (orders/services/foodTransaction.service.js).
+ */
+const canEditMoney = requireAnyAdminPermission([
+    { section: 'restaurant_management', action: 'edit' },
+    { section: 'finance_management', action: 'edit' },
+]);
+const adminIdOf = (req) => req.user?.userId || req.user?.id || '';
+router.get('/commission', canViewSettings, wrap((req) => commission.listMedicalCommissions({ search: req.query.search, status: req.query.status })));
+router.put('/commission/default', canEditMoney, wrap((req) => commission.setMedicalDefaultCommission(req.body, adminIdOf(req))));
+router.put('/commission/shops/:id', canEditMoney, wrap((req) => commission.setShopCommission(req.params.id, req.body)));
+router.delete('/commission/shops/:id', canEditMoney, wrap((req) => commission.clearShopCommission(req.params.id)));
 
 export default router;
