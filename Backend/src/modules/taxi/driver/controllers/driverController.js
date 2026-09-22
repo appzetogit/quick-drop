@@ -2195,8 +2195,12 @@ export const registerDriver = async (req, res) => {
     phone,
     password: await hashPassword(password),
     vehicleType,
-    approve: true,
-    status: "approved",
+    // Pending until an admin reviews the documents. This public route used to
+    // create the driver as approved -- no OTP, no documents, no review -- and
+    // ensureAllDriverCapabilities then made them an approved food and quick
+    // commerce rider too. Onboarding (OTP + documents) is the real signup path.
+    approve: false,
+    status: "pending",
     zoneId: zone?._id || null,
     location: toPoint(coordinates, "location"),
   });

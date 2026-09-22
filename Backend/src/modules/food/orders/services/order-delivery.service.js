@@ -180,9 +180,13 @@ export async function getCurrentTripDelivery(deliveryPartnerId) {
 export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
   const { page, limit, skip } = buildPaginationOptions(query);
 
+  // Only orders dispatch actually offered to this rider. This listed every
+  // unassigned order on the platform, in every zone, and any rider could
+  // accept any of them (see acceptOrderDelivery).
   const unassignedOffers = {
     'dispatch.status': 'unassigned',
     orderStatus: { $in: ['confirmed', 'preparing', 'ready_for_pickup'] },
+    'dispatch.offeredTo.partnerId': new mongoose.Types.ObjectId(deliveryPartnerId),
   };
   const ownOrders = {
     'dispatch.deliveryPartnerId': new mongoose.Types.ObjectId(deliveryPartnerId),
@@ -352,7 +356,12 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
       ...identity,
       orderStatus: { $in: acceptedStatuses },
       $or: [
-        { 'dispatch.status': 'unassigned' },
+        // Offered to this rider by dispatch.
+        {
+          'dispatch.status': 'unassigned',
+          // (dispatch re-broadcasts to earlier recipients, so any past offer counts)
+          'dispatch.offeredTo.partnerId': partnerId,
+        },
         {
           'dispatch.status': 'assigned',
           'dispatch.deliveryPartnerId': partnerId,
@@ -405,6 +414,9 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
       String(existing.dispatch?.deliveryPartnerId || '') !== String(deliveryPartnerId)
     ) {
       throw new ForbiddenError('Order already accepted by another partner');
+    }
+    if (existing.dispatch?.status === 'unassigned') {
+      throw new ForbiddenError('This order was not offered to you');
     }
 
     throw new ValidationError('Order is no longer available to accept');
@@ -582,7 +594,7 @@ export async function rejectOrderDelivery(orderId, deliveryPartnerId) {
       logger.error(`SmartDispatch: Auto-assign after reject failed: ${error.message}`),
     );
 
-  return order.toObject();
+  return sanitizeOrderForExternal(order);
 }
 
 export async function confirmReachedPickupDelivery(orderId, deliveryPartnerId) {
@@ -603,7 +615,7 @@ export async function confirmReachedPickupDelivery(orderId, deliveryPartnerId) {
   const currentPhase = order.deliveryState?.currentPhase || '';
   const currentStatus = order.deliveryState?.status || '';
   if (currentPhase === 'at_pickup' || currentStatus === 'reached_pickup') {
-    return order.toObject();
+    return sanitizeOrderForExternal(order);
   }
 
   const from = currentStatus || currentPhase || order.orderStatus;
@@ -663,7 +675,7 @@ export async function confirmReachedPickupDelivery(orderId, deliveryPartnerId) {
     deliveryPhase: order.deliveryState?.currentPhase,
     deliveryStatus: order.deliveryState?.status,
   });
-  return order.toObject();
+  return sanitizeOrderForExternal(order);
 }
 
 export async function confirmPickupDelivery(orderId, deliveryPartnerId, billImageUrl) {
@@ -720,7 +732,7 @@ export async function confirmPickupDelivery(orderId, deliveryPartnerId, billImag
     deliveryPartnerId,
     billImageUrl: billImageUrl || null,
   });
-  return order.toObject();
+  return sanitizeOrderForExternal(order);
 }
 
 export async function confirmReachedDropDelivery(orderId, deliveryPartnerId) {
@@ -845,6 +857,21 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     throw new ForbiddenError('Not your order');
   }
 
+  // The rider must have the food, and the customer's handover code must be
+  // checked. Completion used to work straight from confirmed/preparing: accept,
+  // then complete, and the order was delivered (and a cash order recorded as
+  // paid) with no pickup and no code. The code is only created at "reached
+  // drop", so that step is required first.
+  const riderHasFood =
+    ['picked_up', 'reached_drop'].includes(order.orderStatus) ||
+    ['en_route_to_delivery', 'at_drop'].includes(order.deliveryState?.currentPhase);
+  if (!riderHasFood) {
+    throw new ValidationError('Pick up the order before completing the delivery.');
+  }
+  if (!order.deliveryVerification?.dropOtp?.required) {
+    throw new ValidationError('Tap "Reached drop" first. The customer gets a handover code to share with you.');
+  }
+
   const { otp, ratings } = body;
   logger.info(`[DeliveryComplete] Attempting to complete order ${order._id} for partner ${deliveryPartnerId}. Status: ${order.orderStatus}`);
 
@@ -961,6 +988,16 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
 }
 
 export async function updateOrderStatusDelivery(orderId, deliveryPartnerId, orderStatus) {
+  // Riders move an order through pickup here. Two moves are not theirs:
+  // 'delivered' goes through completeDelivery (handover code, payment check,
+  // ledger), and a rider can never cancel as the restaurant -- that skipped
+  // the refund and released nothing.
+  if (orderStatus === 'cancelled_by_restaurant' || String(orderStatus).startsWith('cancelled')) {
+    throw new ForbiddenError('Riders cannot cancel orders. Contact support if the order cannot be delivered.');
+  }
+  if (orderStatus === 'delivered') {
+    return completeDelivery(orderId, deliveryPartnerId, {});
+  }
   const identity = buildOrderIdentityFilter(orderId);
   if (!identity) throw new ValidationError('Order id required');
 
@@ -990,5 +1027,5 @@ export async function updateOrderStatusDelivery(orderId, deliveryPartnerId, orde
     from,
     to: orderStatus,
   });
-  return order.toObject();
+  return sanitizeOrderForExternal(order);
 }

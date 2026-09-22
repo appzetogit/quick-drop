@@ -1407,32 +1407,18 @@ export const loginUser = async (req, res) => {
   });
 };
 
+/*
+ * This used to sign anyone in with only a phone number: it looked the user up
+ * and returned a session, no OTP. The platform shares one token secret, so that
+ * session also worked on food customer routes (orders, addresses, wallet). No
+ * app calls it; it now needs the OTP, exactly like /auth/verify-otp.
+ */
 export const verifyUserPhoneForOtpLogin = async (req, res) => {
-  const phone = normalizePhone(req.body.phone);
-  validatePhone(phone);
-
-  const user = await User.findOne({ phone }).lean();
-
-  if (!user || user.deletedAt) {
-    res.json({
-      success: true,
-      data: {
-        exists: false,
-        user: null,
-      },
-    });
-    return;
+  if (!String(req.body?.otp || '').trim()) {
+    throw new ApiError(400, 'Enter the OTP sent to your phone');
   }
-
-  ensureUserCanLogin(user);
-
-  res.json({
-    success: true,
-    data: {
-      exists: true,
-      ...createUserSession(user),
-    },
-  });
+  const result = await verifyUserOtp(req.body);
+  res.json({ success: true, data: result });
 };
 
 export const getCurrentUser = async (req, res) => {

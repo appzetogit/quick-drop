@@ -3865,6 +3865,17 @@ export async function approveRestaurant(id) {
     return updated;
 }
 
+/** Revoke an account's refresh tokens and drop its cached status. Never throws. */
+async function signOutAccount(role, id) {
+    try {
+        await FoodRefreshToken.deleteMany({ userId: id });
+        const { invalidateAccountCache } = await import('../../../../core/auth/auth.middleware.js');
+        invalidateAccountCache(role, String(id));
+    } catch (err) {
+        console.error(`signOutAccount(${role}) failed:`, err?.message || err);
+    }
+}
+
 export async function rejectRestaurant(id, reason) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
     const updated = await FoodRestaurant.findByIdAndUpdate(
@@ -3881,6 +3892,7 @@ export async function rejectRestaurant(id, reason) {
     ).lean();
 
     if (updated) {
+        await signOutAccount('RESTAURANT', updated._id);
         try {
             const { notifyOwnersSafely } = await import('../../../../core/notifications/firebase.service.js');
             await notifyOwnersSafely(
@@ -5095,6 +5107,9 @@ export async function rejectDeliveryPartner(id, reason) {
     ).lean();
 
     if (updated) {
+        // Out at once: no new tokens from the refresh token, and the per-request
+        // check (core/auth/auth.middleware.js) stops using its cached "approved".
+        await signOutAccount('DELIVERY_PARTNER', updated._id);
         try {
             const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
             await notifyOwnerSafely(

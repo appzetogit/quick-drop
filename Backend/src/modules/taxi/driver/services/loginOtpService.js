@@ -8,6 +8,7 @@ import { Driver } from '../models/Driver.js';
 import { BusDriver } from '../models/BusDriver.js';
 import { DriverLoginSession } from '../models/DriverLoginSession.js';
 import { signAccessToken } from './authService.js';
+import { rejectWrongOtp, resetOtpAttempts } from '../../services/otpAttempts.js';
 import { sendOtpSms } from '../../services/smsService.js';
 import { consumeOtpQuota, otpRateLimitMessage, OTP_SERVICES } from '../../../../core/otp/otpRateLimit.service.js';
 
@@ -89,18 +90,25 @@ const resolveDriverLoginOtpForPhone = (phone) => {
   const staticOtpConfig = getStaticDriverOtpConfig();
   const defaultOtpEnabled = isTruthy(env.sms?.useDefaultOtp);
 
-  if (defaultOtpEnabled && staticOtpConfig.otp) {
-    return {
-      otp: staticOtpConfig.otp,
-      isStatic: true,
-    };
-  }
+  // Both shortcuts hand out a KNOWN code, so each is a sign-in bypass for
+  // whoever knows it. The fallback test phone ('6268423925' / '0000') applied
+  // on the live system whenever STATIC_OTP_PHONE was unset, which is the
+  // default, and USE_DEFAULT_OTP gave every driver the static code. Production
+  // always gets a random OTP now -- the same rule the customer flow follows.
+  if (process.env.NODE_ENV !== 'production') {
+    if (defaultOtpEnabled && staticOtpConfig.otp) {
+      return {
+        otp: staticOtpConfig.otp,
+        isStatic: true,
+      };
+    }
 
-  if (staticOtpConfig.phone && staticOtpConfig.otp && normalizedPhone === staticOtpConfig.phone) {
-    return {
-      otp: staticOtpConfig.otp,
-      isStatic: true,
-    };
+    if (staticOtpConfig.phone && staticOtpConfig.otp && normalizedPhone === staticOtpConfig.phone) {
+      return {
+        otp: staticOtpConfig.otp,
+        isStatic: true,
+      };
+    }
   }
 
   return {
@@ -307,6 +315,7 @@ export const startDriverLoginOtp = async ({ phone, role = 'driver' }) => {
     },
     { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
   );
+  await resetOtpAttempts(session);
 
   const smsDispatch = isStatic
     ? {
@@ -343,7 +352,7 @@ export const verifyDriverLoginOtp = async ({ phone, otp }) => {
   }
 
   if (session.otpHash !== hashOtp(otp)) {
-    throw new ApiError(401, 'Invalid OTP');
+    await rejectWrongOtp(session);
   }
 
   const account =

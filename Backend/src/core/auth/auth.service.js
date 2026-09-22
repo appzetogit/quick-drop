@@ -976,6 +976,22 @@ export const refreshAccessToken = async (token) => {
       throw new AuthError("User account is deactivated");
     }
   }
+  // Riders and stores likewise: a rejected rider or store used to keep minting
+  // access tokens for the refresh token's whole life.
+  if (payload?.role === "DELIVERY_PARTNER") {
+    const p = await FoodDeliveryPartner.findById(payload.userId).select("status").lean();
+    if (!p || p.status !== "approved") {
+      await FoodRefreshToken.deleteOne({ token });
+      throw new AuthError("Your delivery account is not active");
+    }
+  }
+  if (payload?.role === "RESTAURANT") {
+    const r = await FoodRestaurant.findById(payload.userId).select("status").lean();
+    if (!r || r.status === "rejected") {
+      await FoodRefreshToken.deleteOne({ token });
+      throw new AuthError("This account is not active");
+    }
+  }
 
   const newAccessToken = signAccessToken({
     userId: payload.userId,

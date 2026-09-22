@@ -22,10 +22,13 @@ export const resolveUnifiedDriverIdentity = async (payload) => {
   if (!partnerId) return payload;
 
   const partner = await FoodDeliveryPartner.findById(partnerId)
-    .select('driverId')
+    .select('driverId status')
     .lean();
 
   if (!partner?.driverId) return payload;
+  // A rider the food admin rejected must not ride on as a taxi driver through
+  // this bridge: the taxi Driver record keeps approve=true on its own.
+  if (partner.status !== 'approved') return payload;
 
   return { ...payload, sub: String(partner.driverId), role: 'driver' };
 };

@@ -79,9 +79,16 @@ const sendOTP = async (req, res) => {
       console.log(`[DEV] OTP for ${phone}: ${otp}`);
     }
 
-    // 5. Optional: Send email notification if email provided
+    // 5. Email copy -- only to the address already on this phone's account.
+    // The request's email used to be trusted as-is, so anyone could have the
+    // code for a victim's phone mailed to themselves and sign in as them (the
+    // OTP store is keyed by phone and shared by user, vendor and worker login).
     if (email) {
-      await sendOTPEmail(email, otp, 'verification');
+      const owner = await User.findOne({ phone }).select('email').lean();
+      const onFile = String(owner?.email || '').trim().toLowerCase();
+      if (onFile && onFile === String(email).trim().toLowerCase()) {
+        await sendOTPEmail(onFile, otp, 'verification');
+      }
     }
 
     // Check if SMS failed

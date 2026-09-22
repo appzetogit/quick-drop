@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { rejectWrongOtp, resetOtpAttempts } from '../../services/otpAttempts.js';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { env } from '../../../../config/env.js';
 import { normalizePoint, toPoint } from '../../../../utils/geo.js';
@@ -559,6 +560,7 @@ export const startDriverOnboarding = async ({ phone, role = 'driver' }) => {
     },
     { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
   );
+  await resetOtpAttempts(session);
 
   const smsDispatch = isStatic
     ? {
@@ -595,7 +597,7 @@ export const verifyDriverOtp = async ({ registrationId, phone, otp }) => {
   }
 
   if (session.otpHash !== hashOtp(otp)) {
-    throw new ApiError(401, 'Invalid OTP');
+    await rejectWrongOtp(session, { onLimit: 'expire' });
   }
 
   session.status = 'otp_verified';

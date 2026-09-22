@@ -7,6 +7,7 @@ import { signAccessToken } from './authService.js';
 import { sendOtpSms } from '../../services/smsService.js';
 import { consumeOtpQuota, otpRateLimitMessage, OTP_SERVICES } from '../../../../core/otp/otpRateLimit.service.js';
 import { assignPushTokenToEntity } from '../../services/pushTokenService.js';
+import { rejectWrongOtp, resetOtpAttempts } from '../../services/otpAttempts.js';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const VERIFIED_SESSION_TTL_MS = 10 * 60 * 1000;
@@ -139,6 +140,7 @@ export const startUserOtp = async ({ phone }) => {
     },
     { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
   );
+  await resetOtpAttempts(session);
 
   const smsDispatch = isStatic
     ? {
@@ -177,7 +179,7 @@ export const verifyUserOtp = async ({ phone, otp, token, fcmToken, platform }) =
   }
 
   if (session.otpHash !== hashOtp(normalizedOtp)) {
-    throw new ApiError(401, 'Invalid OTP');
+    await rejectWrongOtp(session);
   }
 
   const user = await User.findOne({ phone: session.phone });

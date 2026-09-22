@@ -1,6 +1,6 @@
 import express from 'express';
 import { upload } from '../../../../middleware/upload.js';
-import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
+import { authMiddleware, requireFoodDeliveryPartner } from '../../../../core/auth/auth.middleware.js';
 import { requireRoles } from '../../../../core/roles/role.middleware.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
 import {
@@ -77,66 +77,66 @@ router.get('/check-vehicle/:number', async (req, res) => {
     }
 });
 
-router.patch('/profile', authMiddleware, requireRoles('DELIVERY_PARTNER'), uploadFields, updateDeliveryPartnerProfileController);
+router.patch('/profile', authMiddleware, requireFoodDeliveryPartner, uploadFields, updateDeliveryPartnerProfileController);
 
 // JSON-only profile updates (no files) – safe for web updates like vehicle number.
-router.patch('/profile/details', authMiddleware, requireRoles('DELIVERY_PARTNER'), updateDeliveryPartnerDetailsController);
+router.patch('/profile/details', authMiddleware, requireFoodDeliveryPartner, updateDeliveryPartnerDetailsController);
 
 // Base64 profile photo update – designed for Flutter in-app WebView camera handler.
-router.post('/profile/photo-base64', authMiddleware, requireRoles('DELIVERY_PARTNER'), updateDeliveryPartnerProfilePhotoBase64Controller);
+router.post('/profile/photo-base64', authMiddleware, requireFoodDeliveryPartner, updateDeliveryPartnerProfilePhotoBase64Controller);
 
-router.patch('/profile/bank-details', authMiddleware, requireRoles('DELIVERY_PARTNER'), uploadFields, updateDeliveryPartnerBankDetailsController);
-router.delete('/profile/account', authMiddleware, requireRoles('DELIVERY_PARTNER'), deleteDeliveryPartnerAccountController);
+router.patch('/profile/bank-details', authMiddleware, requireFoodDeliveryPartner, uploadFields, updateDeliveryPartnerBankDetailsController);
+router.delete('/profile/account', authMiddleware, requireFoodDeliveryPartner, deleteDeliveryPartnerAccountController);
 
-router.patch('/availability', authMiddleware, requireRoles('DELIVERY_PARTNER'), updateAvailabilityController);
+router.patch('/availability', authMiddleware, requireFoodDeliveryPartner, updateAvailabilityController);
 
-router.get('/support-tickets', authMiddleware, requireRoles('DELIVERY_PARTNER'), listSupportTicketsController);
-router.post('/support-tickets', authMiddleware, requireRoles('DELIVERY_PARTNER'), createSupportTicketController);
-router.get('/support-tickets/:id', authMiddleware, requireRoles('DELIVERY_PARTNER'), getSupportTicketByIdController);
+router.get('/support-tickets', authMiddleware, requireFoodDeliveryPartner, listSupportTicketsController);
+router.post('/support-tickets', authMiddleware, requireFoodDeliveryPartner, createSupportTicketController);
+router.get('/support-tickets/:id', authMiddleware, requireFoodDeliveryPartner, getSupportTicketByIdController);
 
 // ----- Emergency reassignment -----
 // A rider who cannot finish an accepted job asks for it to be handed to someone
 // else. A rider only ever sees their own requests; acting on one is an admin job.
-router.get('/order-emergency-requests', authMiddleware, requireRoles('DELIVERY_PARTNER'), listOrderEmergencyRequestsController);
-router.post('/order-emergency-requests', authMiddleware, requireRoles('DELIVERY_PARTNER'), createOrderEmergencyRequestController);
-router.get('/order-emergency-requests/:id', authMiddleware, requireRoles('DELIVERY_PARTNER'), getOrderEmergencyRequestController);
+router.get('/order-emergency-requests', authMiddleware, requireFoodDeliveryPartner, listOrderEmergencyRequestsController);
+router.post('/order-emergency-requests', authMiddleware, requireFoodDeliveryPartner, createOrderEmergencyRequestController);
+router.get('/order-emergency-requests/:id', authMiddleware, requireFoodDeliveryPartner, getOrderEmergencyRequestController);
 
 // ----- Orders -----
-router.get('/orders/current', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.getCurrentTripDeliveryController);
-router.get('/orders/available', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.listOrdersAvailableDeliveryController);
-router.get('/orders/:orderId', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.getOrderByIdDeliveryController);
-router.patch('/orders/:orderId/accept', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.acceptOrderDeliveryController);
-router.patch('/orders/:orderId/reject', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.rejectOrderDeliveryController);
-router.patch('/orders/:orderId/reached-pickup', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.confirmReachedPickupDeliveryController);
-router.patch('/orders/:orderId/confirm-pickup', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.confirmPickupDeliveryController);
-router.patch('/orders/:orderId/reached-drop', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.confirmReachedDropDeliveryController);
-router.get('/orders/:orderId/route', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.getOrderRouteDeliveryController);
-router.post('/orders/:orderId/verify-drop-otp', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.verifyDropOtpDeliveryController);
-router.patch('/orders/:orderId/complete', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.completeDeliveryController);
+router.get('/orders/current', authMiddleware, requireFoodDeliveryPartner, orderController.getCurrentTripDeliveryController);
+router.get('/orders/available', authMiddleware, requireFoodDeliveryPartner, orderController.listOrdersAvailableDeliveryController);
+router.get('/orders/:orderId', authMiddleware, requireFoodDeliveryPartner, orderController.getOrderByIdDeliveryController);
+router.patch('/orders/:orderId/accept', authMiddleware, requireFoodDeliveryPartner, orderController.acceptOrderDeliveryController);
+router.patch('/orders/:orderId/reject', authMiddleware, requireFoodDeliveryPartner, orderController.rejectOrderDeliveryController);
+router.patch('/orders/:orderId/reached-pickup', authMiddleware, requireFoodDeliveryPartner, orderController.confirmReachedPickupDeliveryController);
+router.patch('/orders/:orderId/confirm-pickup', authMiddleware, requireFoodDeliveryPartner, orderController.confirmPickupDeliveryController);
+router.patch('/orders/:orderId/reached-drop', authMiddleware, requireFoodDeliveryPartner, orderController.confirmReachedDropDeliveryController);
+router.get('/orders/:orderId/route', authMiddleware, requireFoodDeliveryPartner, orderController.getOrderRouteDeliveryController);
+router.post('/orders/:orderId/verify-drop-otp', authMiddleware, requireFoodDeliveryPartner, orderController.verifyDropOtpDeliveryController);
+router.patch('/orders/:orderId/complete', authMiddleware, requireFoodDeliveryPartner, orderController.completeDeliveryController);
 // The mirror of the customer's own rating: once per order, delivered orders only.
-router.patch('/orders/:orderId/rate-customer', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.rateCustomerDeliveryController);
-router.patch('/orders/:orderId/status', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.updateOrderStatusDeliveryController);
-router.post('/orders/:orderId/collect/qr', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.createCollectQrController);
+router.patch('/orders/:orderId/rate-customer', authMiddleware, requireFoodDeliveryPartner, orderController.rateCustomerDeliveryController);
+router.patch('/orders/:orderId/status', authMiddleware, requireFoodDeliveryPartner, orderController.updateOrderStatusDeliveryController);
+router.post('/orders/:orderId/collect/qr', authMiddleware, requireFoodDeliveryPartner, orderController.createCollectQrController);
 
-router.get('/orders/:orderId/payment-status', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.getPaymentStatusController);
-router.post('/orders/:orderId/collect/cash', authMiddleware, requireRoles('DELIVERY_PARTNER'), orderController.switchToCashController);
+router.get('/orders/:orderId/payment-status', authMiddleware, requireFoodDeliveryPartner, orderController.getPaymentStatusController);
+router.post('/orders/:orderId/collect/cash', authMiddleware, requireFoodDeliveryPartner, orderController.switchToCashController);
 
 
 // ----- Earnings / Settings -----
-router.get('/earning-addons/active', authMiddleware, requireRoles('DELIVERY_PARTNER'), getActiveEarningAddonsController);
-router.post('/reverify', authMiddleware, requireRoles('DELIVERY_PARTNER'), (req, res) => res.json({ success: true, message: 'Submitted' })); // Stub
+router.get('/earning-addons/active', authMiddleware, requireFoodDeliveryPartner, getActiveEarningAddonsController);
+router.post('/reverify', authMiddleware, requireFoodDeliveryPartner, (req, res) => res.json({ success: true, message: 'Submitted' })); // Stub
 
 // Pocket / requests page – wallet, earnings, and admin-set delivery settings
-router.get('/wallet', authMiddleware, requireRoles('DELIVERY_PARTNER'), getWalletController);
-router.post('/wallet/withdraw', authMiddleware, requireRoles('DELIVERY_PARTNER'), createWithdrawalRequestController);
-router.post('/wallet/deposit/order', authMiddleware, requireRoles('DELIVERY_PARTNER'), createCashDepositOrderController);
-router.post('/wallet/deposit/verify', authMiddleware, requireRoles('DELIVERY_PARTNER'), verifyCashDepositPaymentController);
-router.get('/earnings', authMiddleware, requireRoles('DELIVERY_PARTNER'), getEarningsController);
-router.get('/trip-history', authMiddleware, requireRoles('DELIVERY_PARTNER'), getTripHistoryController);
-router.get('/pocket-details', authMiddleware, requireRoles('DELIVERY_PARTNER'), getPocketDetailsController);
-router.get('/emergency-help', authMiddleware, requireRoles('DELIVERY_PARTNER'), getEmergencyHelpController);
-router.get('/cash-limit', authMiddleware, requireRoles('DELIVERY_PARTNER'), getCashLimitController);
-router.get('/referrals/stats', authMiddleware, requireRoles('DELIVERY_PARTNER'), getDeliveryReferralStatsController);
+router.get('/wallet', authMiddleware, requireFoodDeliveryPartner, getWalletController);
+router.post('/wallet/withdraw', authMiddleware, requireFoodDeliveryPartner, createWithdrawalRequestController);
+router.post('/wallet/deposit/order', authMiddleware, requireFoodDeliveryPartner, createCashDepositOrderController);
+router.post('/wallet/deposit/verify', authMiddleware, requireFoodDeliveryPartner, verifyCashDepositPaymentController);
+router.get('/earnings', authMiddleware, requireFoodDeliveryPartner, getEarningsController);
+router.get('/trip-history', authMiddleware, requireFoodDeliveryPartner, getTripHistoryController);
+router.get('/pocket-details', authMiddleware, requireFoodDeliveryPartner, getPocketDetailsController);
+router.get('/emergency-help', authMiddleware, requireFoodDeliveryPartner, getEmergencyHelpController);
+router.get('/cash-limit', authMiddleware, requireFoodDeliveryPartner, getCashLimitController);
+router.get('/referrals/stats', authMiddleware, requireFoodDeliveryPartner, getDeliveryReferralStatsController);
 
 export default router;
 
