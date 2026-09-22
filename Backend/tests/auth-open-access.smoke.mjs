@@ -137,7 +137,15 @@ const main = async () => {
         const restaurant = { id: String(new mongoose.Types.ObjectId()), role: 'RESTAURANT' };
         const customer = { id: String(new mongoose.Types.ObjectId()), role: 'USER' };
         const rider = { id: String(new mongoose.Types.ObjectId()), role: 'DELIVERY_PARTNER' };
-        const admin = { id: String(new mongoose.Types.ObjectId()), role: 'ADMIN' };
+        // A real platform admin with this vertical: an admin id that exists in no
+        // admin collection is now refused (a deleted admin's token used to pass).
+        const adminId = new mongoose.Types.ObjectId();
+        await mongoose.connection.collection('admins').updateOne(
+            { _id: adminId },
+            { $setOnInsert: { email: `admin-${adminId}@t.test`, role: 'ADMIN', adminLevel: 'platform_superadmin', admin_type: 'superadmin', permissions: ['*'], servicesAccess: ['food', 'quickCommerce', 'taxi'], isActive: true } },
+            { upsert: true },
+        );
+        const admin = { id: String(adminId), role: 'ADMIN' };
 
         await check(`${label}: a customer cannot create or process a payout`, async () => {
             assert.equal(await call('POST', '/admin/settlements', customer, { entityType: 'restaurant', entityId: restaurant.id, amount: 99999 }), 403);

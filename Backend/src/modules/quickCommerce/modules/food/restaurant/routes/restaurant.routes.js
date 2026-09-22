@@ -1,3 +1,4 @@
+import { uploadAttachmentRateLimiter as uploadAttachmentLimiter } from '../../../../../../middleware/rateLimit.js';
 import express from 'express';
 import { upload } from '../../../../middleware/upload.js';
 import {
@@ -131,7 +132,9 @@ const uploadFields = upload.fields([
 router.post('/register', uploadFields, registerRestaurantController);
 router.post('/onboarding-fee/order', createOnboardingFeeOrderController);
 router.post('/unregistered', registerUnregisteredRestaurantController);
-router.post('/upload-attachment', upload.single('file'), uploadRestaurantAttachmentController);
+// Open to not-yet-registered restaurants (the signup form uploads here), so it
+// is rate-limited: anonymous callers could fill storage without a bound.
+router.post('/upload-attachment', uploadAttachmentLimiter, upload.single('file'), uploadRestaurantAttachmentController);
 
 // Public: approved restaurants list (for user app)
 router.get('/restaurants', cacheResponse(300, 'restaurants'), listApprovedRestaurantsController);

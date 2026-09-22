@@ -1261,8 +1261,8 @@ export async function updateOrderStatusRestaurant(
   actor = { role: "RESTAURANT", id: null },
 ) {
   const isAdmin = String(actor?.role || "").toUpperCase() === "ADMIN";
-  // Pickup and delivery are the rider's steps (handover code, cash, ledger);
-  // a restaurant could mark its own order delivered. Admin keeps the override.
+  // Pickup and delivery are the rider's steps (handover code, cash, ledger).
+  // (RESTAURANT_ALLOWED_STATUSES below enforces the same for admins too.)
   if (!isAdmin && ["picked_up", "reached_pickup", "reached_drop", "delivered"].includes(String(orderStatus))) {
     throw new ForbiddenError("Pickup and delivery are marked by the delivery partner");
   }
@@ -1295,6 +1295,12 @@ export async function updateOrderStatusRestaurant(
   }
 
   const from = order.orderStatus;
+
+  // Not before the money: an online order still waiting for its payment could
+  // be confirmed, which also started dispatch for an order nobody had paid.
+  if (from === "pending_payment" && !String(orderStatus).startsWith("cancelled")) {
+    throw new ValidationError("This order is still waiting for the customer's payment.");
+  }
 
   /*
    * No cancelling once the rider has the food.

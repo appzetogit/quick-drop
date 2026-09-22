@@ -241,6 +241,22 @@ export const registrationRateLimiter = rateLimit({
     message: { success: false, message: 'Too many registration attempts. Please try again later.' },
 });
 
+/**
+ * The restaurant signup upload, open to people who have no account yet. A
+ * signup sends a dozen or so documents and photos, so the bound is generous
+ * but it exists: anonymous callers could otherwise fill storage.
+ */
+export const uploadAttachmentRateLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: config.nodeEnv === 'development' ? 500 : 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    passOnStoreError: true,
+    store: new LazyRedisStore('rl:upload-attachment:'),
+    keyGenerator: (req) => normaliseIp(req.ip),
+    message: { success: false, message: 'Too many uploads. Please try again later.' },
+});
+
 /** Which backing store the limiters are on. For the dev-only health endpoint. */
 export const getRateLimitSummary = () => ({
     redisEnabled: config.redisEnabled,

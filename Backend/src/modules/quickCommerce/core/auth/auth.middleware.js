@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { verifyAccessToken } from './token.util.js';
 import { sendError } from '../../utils/response.js';
 import { FoodUser } from '../users/user.model.js';
@@ -40,16 +41,22 @@ const SESSION_SCOPED_MODELS = {
  */
 const resolveSessionAccount = async (model, decoded) => {
     const select = 'isActive tokenVersion';
+    // The id under whichever name the issuer used (taxi signs `sub`). With no
+    // id at all, `findOne({ platformUserId: undefined })` became `findOne({})`
+    // -- mongoose drops undefined keys -- and returned the FIRST customer, so a
+    // taxi token signed in as someone else entirely.
+    const id = decoded?.userId || decoded?.sub;
+    if (!id || !mongoose.Types.ObjectId.isValid(String(id))) return null;
 
     // 1. A token minted by this module: the id IS the satellite id.
-    const direct = await model.findById(decoded.userId).select(select).lean();
+    const direct = await model.findById(id).select(select).lean();
     if (direct) return direct;
 
     if (decoded.role !== 'USER') return null;
 
     // 2. A shared-login token whose satellite is already linked.
     const linked = await model
-        .findOne({ platformUserId: decoded.userId })
+        .findOne({ platformUserId: id })
         .select(select)
         .lean();
     if (linked) return linked;
@@ -57,7 +64,7 @@ const resolveSessionAccount = async (model, decoded) => {
     // 3. No satellite yet. The customer is signed in and real -- they are in
     //    the shared users collection -- so one is made for them rather than
     //    refusing the order.
-    const platform = await PlatformUser.findById(decoded.userId)
+    const platform = await PlatformUser.findById(id)
         .select('phone name email isActive')
         .lean();
     if (!platform || platform.isActive === false) return null;
@@ -79,7 +86,7 @@ const resolveSessionAccount = async (model, decoded) => {
     if (orphan) {
         await model.updateOne(
             { _id: orphan._id },
-            { $set: { platformUserId: decoded.userId } }
+            { $set: { platformUserId: id } }
         );
         return orphan;
     }
@@ -87,7 +94,7 @@ const resolveSessionAccount = async (model, decoded) => {
     try {
         const created = await model.create({
             phone: suffix,
-            platformUserId: decoded.userId,
+            platformUserId: id,
             ...(platform.name ? { name: platform.name } : {}),
             ...(platform.email ? { email: platform.email } : {})
         });

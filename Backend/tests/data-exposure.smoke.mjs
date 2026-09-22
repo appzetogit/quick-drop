@@ -148,7 +148,7 @@ const main = async () => {
     const mine = oid();
     await FoodOrder.collection.insertMany([
         { _id: offer, orderId: 'FOD-0000002', userId: offerCustomer, restaurantId, orderStatus: 'preparing', customerPhone: '9812345678',
-          dispatch: { status: 'unassigned' }, deliveryAddress: { street: '1 Lane', city: 'Pune', state: 'MH', phone: '9812345678' }, createdAt: new Date() },
+          dispatch: { status: 'unassigned', offeredTo: [{ partnerId: browsingRider, action: 'offered' }] }, deliveryAddress: { street: '1 Lane', city: 'Pune', state: 'MH', phone: '9812345678' }, createdAt: new Date() },
         { _id: mine, orderId: 'FOD-0000003', userId: offerCustomer, restaurantId, orderStatus: 'picked_up', customerPhone: '9812345678',
           dispatch: { status: 'accepted', deliveryPartnerId: browsingRider }, deliveryAddress: { street: '1 Lane', city: 'Pune', state: 'MH', phone: '9812345678' }, createdAt: new Date() },
     ]);

@@ -63,7 +63,8 @@ export async function syncRazorpayQrPayment(orderDoc) {
   }
 
   // Razorpay Payment Link statuses: created, partially_paid, paid, expired, cancelled
-  const isPaid = ['paid', 'partially_paid', 'captured', 'authorized'].includes(linkStatus);
+  // Not 'partially_paid': Rs 1 against a Rs 900 order completed the delivery.
+  const isPaid = ['paid', 'captured', 'authorized'].includes(linkStatus);
   const isFailed = ['expired', 'cancelled', 'canceled', 'failed'].includes(linkStatus);
   const newPaymentStatus = isPaid ? 'paid' : isFailed ? 'failed' : (payment.status || 'pending_qr');
 
