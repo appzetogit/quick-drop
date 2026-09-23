@@ -1,4 +1,5 @@
 import rateLimit, { MemoryStore } from 'express-rate-limit';
+import { verifyAccessToken } from '../core/auth/token.util.js';
 import { RedisStore } from 'rate-limit-redis';
 import { config } from '../config/env.js';
 import { getRedisClient } from '../config/redis.js';
@@ -126,20 +127,70 @@ export const identityKey = (req) => {
  */
 const isWebhookPath = (req) => (req.originalUrl || req.url || '').includes('/payments/webhook');
 
+/**
+ * The admin this request is VERIFIABLY from, or null.
+ *
+ * The global limiter runs before authMiddleware, and the warning on identityKey
+ * above is the reason this verifies the signature rather than decoding the
+ * token: an attacker who could get a fresh bucket by inventing a token would
+ * have no limit at all. An unverifiable token simply falls through to the IP
+ * bucket, so a forged one is never better than sending none.
+ *
+ * The cost is one HMAC check per request, which authMiddleware performs again
+ * moments later -- cheap next to the Redis round trip already happening here.
+ */
+const verifiedAdminId = (req) => {
+    const header = req.headers?.authorization || '';
+    if (!header.startsWith('Bearer ')) return null;
+    try {
+        const claims = verifyAccessToken(header.slice(7).trim());
+        if (String(claims?.role || '').toUpperCase() !== 'ADMIN') return null;
+        return claims.userId || claims.id || claims.sub || null;
+    } catch {
+        return null;
+    }
+};
+
+/*
+ * An admin panel screen is dozens of calls -- badges, counters, lists, the
+ * dashboard's several cards -- and a whole office shares one public IP. On the
+ * shared IP bucket that lands on "Too many requests" during ordinary work, and
+ * one busy admin locks out everyone beside them.
+ *
+ * A verified admin therefore gets their OWN bucket, and a larger one. It is not
+ * a hole: the identity is signature-checked, so the only way to obtain this
+ * bucket is to genuinely be an admin, and each admin is still bounded.
+ */
+const ADMIN_MAX = Number(process.env.RATE_LIMIT_ADMIN_MAX) || 5000;
+
+export const __testables = { verifiedAdminId, ADMIN_MAX };
+
 const windowMs = config.rateLimitWindowMinutes * 60 * 1000;
 
 export const apiRateLimiter = rateLimit({
     windowMs,
     // Dev UX: local UI can generate lots of background API calls (location, polling, etc).
     // Keep production strict, but avoid blocking local development.
-    max: config.nodeEnv === 'development' ? Math.max(config.rateLimitMaxRequests, 2000) : config.rateLimitMaxRequests,
+    max: (req) => {
+        if (config.nodeEnv === 'development') return Math.max(config.rateLimitMaxRequests, 2000);
+        return req.__rlAdminId ? ADMIN_MAX : config.rateLimitMaxRequests;
+    },
     standardHeaders: true,
     legacyHeaders: false,
     // If the store errors, fail OPEN rather than 500-ing all API traffic.
     passOnStoreError: true,
     store: new LazyRedisStore('rl:api:'),
-    // Runs before authMiddleware, so IP-keyed on purpose (see identityKey).
-    keyGenerator: (req) => normaliseIp(req.ip),
+    /*
+     * Keyed per admin once the token checks out, per IP otherwise. Resolved
+     * here and stashed, because `max` above needs the same answer and the two
+     * disagreeing would put an admin in one bucket and count them against
+     * another's ceiling.
+     */
+    keyGenerator: (req) => {
+        const adminId = verifiedAdminId(req);
+        req.__rlAdminId = adminId;
+        return adminId ? `admin:${adminId}` : normaliseIp(req.ip);
+    },
     skip: isWebhookPath,
     message: {
         success: false,
