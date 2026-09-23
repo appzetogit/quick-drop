@@ -95,11 +95,13 @@ export const SETTINGS = Object.freeze({
                 const perKm = Number(r?.commissionPerKm);
                 const base = Number(r?.basePayout);
                 const userFee = Number(r?.userDeliveryFee ?? 0);
+                const extraPerKm = Number(r?.extraPerKm ?? 0);
                 if (!Number.isFinite(min) || min < 0) throw new Error(`${at}: "from" must be 0 or more`);
                 if (max !== null && (!Number.isFinite(max) || max <= min)) throw new Error(`${at}: "to" must be greater than "from"`);
                 if (!Number.isFinite(perKm) || perKm < 0) throw new Error(`${at}: per-km rate must be 0 or more`);
                 if (!Number.isFinite(base) || base < 0) throw new Error(`${at}: base payout must be 0 or more`);
                 if (!Number.isFinite(userFee) || userFee < 0) throw new Error(`${at}: customer delivery fee must be 0 or more`);
+                if (!Number.isFinite(extraPerKm) || extraPerKm < 0) throw new Error(`${at}: extra per-km must be 0 or more`);
                 return {
                     /*
                      * The id of the module band this row came from, kept so the
@@ -116,6 +118,15 @@ export const SETTINGS = Object.freeze({
                     userDeliveryFee: userFee,
                     commissionPerKm: perKm,
                     basePayout: base,
+                    /*
+                     * Charged on the distance ABOVE this band's start, on top of
+                     * the band's own fee. It is what makes an open-ended last
+                     * band ("6 km and beyond") chargeable: without it every trip
+                     * past the final band costs the same as one at its edge, so
+                     * a 45km delivery billed the same as a 5.5km one and paid
+                     * the rider the same for it. 0 leaves the band flat.
+                     */
+                    extraPerKm,
                 };
             }).sort((a, b) => a.minDistance - b.minDistance);
         },

@@ -56,7 +56,7 @@ import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import quickSpicyLogo from "@food/assets/k9-logo.jpg";
 import { getCachedSettings, loadBusinessSettings, normalizeCompanyName } from "@food/utils/businessSettings";
-import { refreshAdminAccess, useAdminAccess, hasPanel, isRestricted } from "@food/utils/adminAccess";
+import { refreshAdminAccess, useAdminAccess, hasPanel, isRestricted, canOpenPath } from "@food/utils/adminAccess";
 
 function cn(...inputs) {
   return twMerge(clsx(inputs));
@@ -673,6 +673,13 @@ const AdminLayout = () => {
   const panelAccess = useAdminAccess();
   const showPanel = (service) => hasPanel(panelAccess, service);
   const restrictedAdmin = isRestricted(panelAccess);
+  /*
+   * Where Master opens from here. Not gated on owner: /admin/master/admins maps
+   * to the `subadmins` permission, so a sub-admin given it may open Admin
+   * Accounts even though the other Master screens are owner-only.
+   */
+  const masterEntry = ["/admin/master/settings", "/admin/master/admins"]
+    .find((path) => canOpenPath(panelAccess, path)) || null;
 
   const taxiTitle = businessCompanyName.toLowerCase().endsWith('taxi')
     ? businessCompanyName
@@ -1504,11 +1511,12 @@ const AdminLayout = () => {
             {/* Module Switcher Tabs */}
             {!isCollapsed && (
               <div className="flex p-1 bg-[var(--sb-surface-raised)] backdrop-blur-sm rounded-xl mb-1 border border-[var(--sb-border)] shadow-inner">
-                {/* Master: the cross-module engine, same screen from every panel.
-                    Owner-only, matching the __owner__ rule /admin/master maps to. */}
-                {!restrictedAdmin && <button
+                {/* Master: the cross-module engine, same screens from every panel.
+                    Shown when this admin can open at least one of them, and it
+                    opens on the first one they may. */}
+                {masterEntry && <button
                   type="button"
-                  onClick={() => navigate("/admin/master/settings")}
+                  onClick={() => navigate(masterEntry)}
                   className={cn(
                     "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                     "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"

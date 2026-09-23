@@ -71,6 +71,42 @@ export function pickSlab(slabs, distanceKm) {
 }
 
 /**
+ * What a band charges for a trip of this length.
+ *
+ * The band's own fee -- a flat customer fee where one is set, otherwise the
+ * per-km rate over the whole trip -- plus `extraPerKm` for every kilometre
+ * ABOVE the band's start.
+ *
+ * The extra is what makes an open-ended final band work. Band matching falls
+ * back to the widest band for anything past the last one, so without it a 45km
+ * delivery is charged the 5-6km band's flat fee, identical to a 5.5km trip, and
+ * the rider is paid from that same figure. `extraPerKm` of 0 leaves the band
+ * exactly as flat as it was, which is why this is safe to apply everywhere.
+ *
+ * @returns {{fee: number, base: number, extraKm: number, extra: number}}
+ */
+export function bandFee(band, distanceKm) {
+    const d = Number(distanceKm);
+    const km = Number.isFinite(d) && d > 0 ? d : 0;
+    if (!band) return { fee: 0, base: 0, extraKm: 0, extra: 0 };
+
+    const flat = num(band.userDeliveryFee, 0);
+    const perKm = num(band.commissionPerKm, 0);
+    const base = flat > 0 ? flat : Math.max(0, perKm * km);
+
+    const extraRate = num(band.extraPerKm, 0);
+    const extraKm = extraRate > 0 ? Math.max(0, km - num(band.minDistance, 0)) : 0;
+    const extra = Math.round(extraRate * extraKm * 100) / 100;
+
+    return {
+        fee: Math.round((base + extra) * 100) / 100,
+        base: Math.round(base * 100) / 100,
+        extraKm: Math.round(extraKm * 100) / 100,
+        extra,
+    };
+}
+
+/**
  * The earning table for a vertical.
  *
  * @param {object} args

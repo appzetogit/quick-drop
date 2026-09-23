@@ -387,15 +387,31 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
    * orders, restaurants, riders -- rendered underneath the three Master links.
    * An operator who switched to Master was still looking at Food.
    *
-   * While inside Master the menu is the MASTER section and nothing else. The
-   * switcher is how you leave, exactly as it is for every other panel.
+   * While inside Master the menu is the MASTER section and nothing else, and
+   * everywhere else that section is gone: it was repeated at the top of Food,
+   * Quick and Medical, so the same five screens appeared in four places. The
+   * switcher tab is how you reach Master now, exactly as for every other panel.
    */
   const inMaster = location.pathname.startsWith("/admin/master")
-  const verticalMenu = useMemo(() => {
-    const full = filterMenuForAccess(rebaseAdminMenu(adminSidebarMenu, adminBase), access)
-    if (!inMaster) return full
-    return (full || []).filter((node) => node.label === "MASTER")
-  }, [adminBase, access, inMaster])
+  const allowedMenu = useMemo(
+    () => filterMenuForAccess(rebaseAdminMenu(adminSidebarMenu, adminBase), access) || [],
+    [adminBase, access],
+  )
+  /*
+   * The Master screens this admin may actually open, already filtered by their
+   * permissions. Derived rather than gated on "is an owner": /admin/master/admins
+   * resolves to the `subadmins` permission, not __owner__, so a sub-admin who
+   * was given it can open Admin Accounts. Taking the section out of Food while
+   * hiding the Master tab from them would strand that screen with no way in.
+   */
+  const masterItems = useMemo(
+    () => allowedMenu.find((node) => node.label === "MASTER")?.items || [],
+    [allowedMenu],
+  )
+  const verticalMenu = useMemo(
+    () => allowedMenu.filter((node) => (inMaster ? node.label === "MASTER" : node.label !== "MASTER")),
+    [allowedMenu, inMaster],
+  )
   const navigate = useNavigate()
   const storedAccess = useServiceAccess()
   const serviceAccess = isRestricted(access)
@@ -1106,14 +1122,16 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
           {/* Module Switcher Tabs */}
           {!isCollapsed && (
             <div className="flex p-1 bg-[var(--sb-surface-raised)] backdrop-blur-sm rounded-xl mb-4 border border-[var(--sb-border)] shadow-inner animate-[slideIn_0.4s_ease-out_0.15s_both]">
-              {/* Master: the cross-module engine (earnings, incentives, cash
-                  limits, brand, legal). Gated on the owner level, matching the
-                  __owner__ rule /admin/master resolves to in adminAccess.js --
-                  a tab a sub-admin cannot open would only look like a fault. */}
-              {!isRestricted(access) && (
+              {/* Master: the cross-module engine (earnings, incentives, promo
+                  limits, brand, legal). Shown when the admin can open at least
+                  one of its screens, and it opens on the first one they may --
+                  an owner lands on Master Settings, a sub-admin with only the
+                  subadmins permission lands on Admin Accounts instead of a
+                  screen that would refuse them. */}
+              {masterItems.length > 0 && (
               <button
                 type="button"
-                onClick={() => navigate("/admin/master/settings")}
+                onClick={() => navigate(masterItems[0].path)}
                 className={cn(
                   "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
                   location.pathname.startsWith("/admin/master")

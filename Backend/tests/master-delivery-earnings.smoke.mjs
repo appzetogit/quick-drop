@@ -67,6 +67,47 @@ await check('the old band-matching fallbacks are unchanged', async () => {
   assert.equal(pickSlab([], 5), null);
 });
 
+await check('with no extra rate, a band charges exactly what it did before', async () => {
+  const { bandFee } = await import('../src/core/finance/deliveryEarnings.service.js');
+  // A flat customer fee wins and stays flat.
+  assert.equal(bandFee({ minDistance: 5, maxDistance: 6, userDeliveryFee: 59, commissionPerKm: 59 }, 5.5).fee, 59);
+  assert.equal(bandFee({ minDistance: 5, maxDistance: 6, userDeliveryFee: 59, commissionPerKm: 59 }, 45).fee, 59);
+  // No customer fee: the per-km rate over the whole trip, as before.
+  assert.equal(bandFee({ minDistance: 3, maxDistance: 8, userDeliveryFee: 0, commissionPerKm: 7 }, 4).fee, 28);
+  assert.equal(bandFee(null, 5).fee, 0);
+});
+
+await check('an open-ended band charges for the distance past it', async () => {
+  const { bandFee } = await import('../src/core/finance/deliveryEarnings.service.js');
+  // "6 km and beyond: Rs 59, then Rs 12 per extra km"
+  const open = { minDistance: 6, maxDistance: null, userDeliveryFee: 59, commissionPerKm: 0, extraPerKm: 12 };
+  assert.equal(bandFee(open, 6).fee, 59, 'at the band start, nothing extra');
+  assert.equal(bandFee(open, 10).fee, 59 + 48, '4km over at Rs 12');
+  const long = bandFee(open, 45);
+  assert.equal(long.extraKm, 39);
+  assert.equal(long.extra, 468);
+  assert.equal(long.fee, 527, 'a 45km trip is no longer billed as a 6km one');
+  // The parts are reported so a bill can be explained.
+  assert.equal(long.base, 59);
+});
+
+await check('the extra rides on top of a per-km band too', async () => {
+  const { bandFee } = await import('../src/core/finance/deliveryEarnings.service.js');
+  const b = { minDistance: 10, maxDistance: null, userDeliveryFee: 0, commissionPerKm: 5, extraPerKm: 3 };
+  // 5/km over the whole 14km, plus 3/km for the 4km past the band start.
+  assert.equal(bandFee(b, 14).fee, 70 + 12);
+});
+
+await check('an extra rate is validated like every other figure', () => {
+  assert.throws(() => coerce('earnings.distanceSlabs', [{ ...band(0, null, 10, 1), extraPerKm: -5 }]), /extra per-km/);
+  const ok = coerce('earnings.distanceSlabs', [{ ...band(6, null, 59, 0), extraPerKm: 12 }]);
+  assert.equal(ok[0].extraPerKm, 12);
+  assert.equal(ok[0].maxDistance, null, 'an open-ended band is allowed');
+  // Bands that do not set one are stored flat, not undefined.
+  const flat = coerce('earnings.distanceSlabs', [band(0, 5, 20, 2)]);
+  assert.equal(flat[0].extraPerKm, 0);
+});
+
 await check('a global table wins for every module', async () => {
   await set('earnings.distanceSlabs', { level: 'global', value: [band(0, null, 99, 5)] });
   invalidateCache();

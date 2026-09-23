@@ -8,7 +8,7 @@ import { FoodOffer } from '../../admin/models/offer.model.js';
 import { ORDER_STATUSES_NOT_COUNTED_FOR_COUPONS } from './couponUsage.service.js';
 import { FoodDeliverySurgeZone } from '../../admin/models/deliverySurgeZone.model.js';
 import { FoodDeliveryCommissionRule } from '../../admin/models/deliveryCommissionRule.model.js';
-import { resolveEarningSlabs, resolveIncentive, pickSlab } from '../../../../core/finance/deliveryEarnings.service.js';
+import { resolveEarningSlabs, resolveIncentive, pickSlab, bandFee } from '../../../../core/finance/deliveryEarnings.service.js';
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
@@ -489,12 +489,14 @@ export async function calculateOrderPricing(userId, dto) {
         const perKmRate = Number(distanceRule.commissionPerKm || 0);
         const fixedPayout = Math.round((Number(distanceRule.basePayout || 0) * 100)) / 100;
 
-        if (userDeliveryFee > 0) {
-          deliveryFee = userDeliveryFee;
-        } else {
-          const chargeableDistanceKm = Number(distanceKm || 0);
-          deliveryFee = Math.round(Math.max(0, perKmRate * chargeableDistanceKm) * 100) / 100;
-        }
+        /*
+         * The band's fee plus its per-km charge for distance beyond the band's
+         * start (core/finance/deliveryEarnings.service.js). With no extra rate
+         * set this is exactly what it was: the flat customer fee where one
+         * exists, otherwise the per-km rate over the whole trip.
+         */
+        const charged = bandFee(distanceRule, distanceKm);
+        deliveryFee = charged.fee;
 
         adminDeliveryCommissionEnabled = adminCommissionRow?.isEnabled === true;
         adminDeliveryCommissionPercent = adminDeliveryCommissionEnabled
@@ -518,6 +520,11 @@ export async function calculateOrderPricing(userId, dto) {
           userDeliveryFee,
           basePayout: fixedPayout,
           commissionPerKm: perKmRate,
+          // Recorded so a long trip's bill can be read back: what the band
+          // charges, and what the distance past it added.
+          extraPerKm: Number(distanceRule.extraPerKm || 0),
+          extraDistanceKm: charged.extraKm,
+          extraDistanceAmount: charged.extra,
           adminDeliveryCommissionPercent,
           adminDeliveryCommissionAmount,
           riderDeliveryEarningAfterAdminCommission,

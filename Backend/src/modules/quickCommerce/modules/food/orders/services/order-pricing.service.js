@@ -150,6 +150,21 @@ function resolveBaseDeliveryFee(feeSettings = {}) {
   return Number.isFinite(flat) && flat >= 0 ? flat : 0;
 }
 
+/**
+ * What a band adds for distance beyond its own start.
+ *
+ * Band matching sends anything past the final band to the widest one, so
+ * without this a 45km order is charged the last band's flat fee -- identical to
+ * a trip at its edge -- and the rider is paid from that same figure. 0 leaves
+ * the band flat, which is every band that does not set it.
+ */
+const extraOf = (range, distanceKm) => {
+  const rate = Number(range?.extraPerKm || 0);
+  if (!(rate > 0)) return 0;
+  const over = Math.max(0, Number(distanceKm || 0) - Number(range?.min || 0));
+  return Math.round(rate * over * 100) / 100;
+};
+
 function matchFeeRange(ranges, distanceKm, pickValue) {
   if (!Array.isArray(ranges) || ranges.length === 0 || !Number.isFinite(distanceKm)) {
     return null;
@@ -195,6 +210,7 @@ const asQcRanges = (slabs) =>
     fee: Number(b.userDeliveryFee || 0),
     deliveryBoyPerKm: Number(b.commissionPerKm || 0),
     deliveryBoyBasePay: Number(b.basePayout || 0),
+    extraPerKm: Number(b.extraPerKm || 0),
   }));
 
 /**
@@ -289,7 +305,7 @@ export function resolveUserDeliveryFee(feeSettings = {}, { subtotal = 0, distanc
     : [];
 
   if (ranges.length > 0 && Number.isFinite(distanceKm)) {
-    const matchedFee = matchFeeRange(ranges, distanceKm, (range) => Number(range.fee));
+    const matchedFee = matchFeeRange(ranges, distanceKm, (range) => Number(range.fee) + extraOf(range, distanceKm));
     if (Number.isFinite(matchedFee)) {
       return {
         deliveryFee: matchedFee,
@@ -321,10 +337,11 @@ export function calculateRiderEarning(feeSettings = {}, distanceKm) {
   const payFor = (range) => {
     const basePay = Number(range?.deliveryBoyBasePay || 0);
     const perKm = Number(range?.deliveryBoyPerKm || 0);
+    const extra = extraOf(range, distance);
 
-    if (basePay > 0) return basePay;
-    if (perKm > 0) return distance * perKm;
-    return 0;
+    if (basePay > 0) return basePay + extra;
+    if (perKm > 0) return distance * perKm + extra;
+    return extra;
   };
 
   const matched = matchFeeRange(ranges, distance, payFor);

@@ -54,6 +54,7 @@ const emptyBand = () => ({
   userDeliveryFee: 0,
   commissionPerKm: 0,
   basePayout: 0,
+  extraPerKm: 0,
 })
 
 function Card({ title, description, icon: Icon, children, footer }) {
@@ -119,6 +120,9 @@ function BandRow({ band, onChange, onRemove, disabled }) {
       </td>
       <td className="py-2 pr-2">
         <input type="number" min="0" step="1" className={inputCls} value={num(band.commissionPerKm)} onChange={set("commissionPerKm")} disabled={disabled} />
+      </td>
+      <td className="py-2 pr-2">
+        <input type="number" min="0" step="1" className={inputCls} value={num(band.extraPerKm)} onChange={set("extraPerKm")} disabled={disabled} />
       </td>
       <td className="py-2 text-right">
         <button type="button" onClick={onRemove} disabled={disabled} className="rounded-lg p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40" aria-label="Remove band">
@@ -254,7 +258,7 @@ export default function DeliveryEarnings() {
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[520px] text-sm">
+                <table className="w-full min-w-[640px] text-sm">
                   <thead>
                     <tr className="border-b border-neutral-200 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
                       <th className="pb-2 pr-2">From (km)</th>
@@ -262,6 +266,7 @@ export default function DeliveryEarnings() {
                       <th className="pb-2 pr-2">Customer fee</th>
                       <th className="pb-2 pr-2">Base payout</th>
                       <th className="pb-2 pr-2">Per km</th>
+                      <th className="pb-2 pr-2">Extra per km</th>
                       <th className="pb-2" />
                     </tr>
                   </thead>
@@ -280,10 +285,19 @@ export default function DeliveryEarnings() {
               </div>
             )}
 
-            <button type="button" className={`${ghostCls} mt-3`} disabled={saving} onClick={() => setBands([...bands, emptyBand()])}>
-              <Plus className="h-4 w-4" />
-              Add band
-            </button>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button type="button" className={ghostCls} disabled={saving} onClick={() => setBands([...bands, emptyBand()])}>
+                <Plus className="h-4 w-4" />
+                Add band
+              </button>
+            </div>
+
+            <p className="mt-3 text-xs text-neutral-500">
+              Leave <span className="font-medium">To (km)</span> empty on the last band to make it open ended, and
+              give it an <span className="font-medium">Extra per km</span> so longer trips cost more. Without that,
+              every trip past the final band is charged the same as one at its edge &mdash; and the rider is paid the
+              same for it.
+            </p>
           </Card>
 
           <Card
