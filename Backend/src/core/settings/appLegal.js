@@ -57,7 +57,23 @@ export const appLegalPage = async (app, kind) => {
   }
 };
 
-/** What the app shows: its own page, else the platform-wide one. */
+/**
+ * THE precedence for every legal page on the platform, in one place.
+ *
+ *     this app's own page  >  the platform-wide page  >  the vertical's own
+ *
+ * Four screens used to write legal text -- Master's per-app pages, Master's
+ * platform-wide pages, food's PAGES & SOCIAL MEDIA, and taxi's landing CMS --
+ * and nothing said which one an app would actually show. An admin could edit
+ * one, see no change, and have no way to find out why.
+ *
+ * Returning `source` is the other half of the fix: a screen that cannot say
+ * WHICH level is in force leaves the operator guessing all over again.
+ *
+ * The vertical's own page is not read here -- each vertical still owns that
+ * fallback and its own shape (food stores an `about` block, taxi stores HTML) --
+ * so callers apply it after this returns null.
+ */
 export const resolveAppLegalPage = async (app, kind) => {
   const own = await appLegalPage(app, kind);
   if (own) return { ...own, source: 'app' };
@@ -89,7 +105,22 @@ export const listAppLegal = async (_req, res) => {
     const docs = await AppLegalPage.find({}).lean();
     const pages = {};
     for (const d of docs) pages[`${d.app}:${d.kind}`] = { title: d.title, content: d.content, updatedAt: d.updatedAt };
-    return sendResponse(res, 200, 'App legal pages', { apps: LEGAL_APPS, kinds: LEGAL_KINDS, pages });
+
+    /*
+     * Which platform-wide pages exist, so the screen can tell an admin what an
+     * app falls back to when it has no page of its own. Without this the editor
+     * shows an empty box for an app that is, in fact, already serving the
+     * platform's text -- and "empty" reads as "nothing is published".
+     */
+    const platform = {};
+    for (const { key } of LEGAL_KINDS) {
+      // eslint-disable-next-line no-await-in-loop
+      platform[key] = Boolean(await managedLegalPage(key));
+    }
+
+    return sendResponse(res, 200, 'App legal pages', {
+      apps: LEGAL_APPS, kinds: LEGAL_KINDS, pages, platform,
+    });
   } catch (err) {
     return sendError(res, 500, err.message || 'Could not load pages');
   }

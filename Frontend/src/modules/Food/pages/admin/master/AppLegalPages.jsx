@@ -72,6 +72,17 @@ export default function AppLegalPages() {
   const groups = [...new Set(meta.apps.map((a) => a.group))]
   const appLabel = meta.apps.find((a) => a.key === app)?.label
   const kindLabel = meta.kinds.find((k) => k.key === kind)?.label
+
+  /*
+   *     this app's own page  >  the platform-wide page  >  the vertical's own
+   *
+   * The same order the server resolves in (core/settings/appLegal.js).
+   */
+  const inForce = saved
+    ? { text: "shows the page below.", tone: "border-emerald-200 bg-emerald-50 text-emerald-800" }
+    : meta.platform?.[kind]
+      ? { text: "nothing written here, so it shows the platform-wide page from Master Settings › Legal pages.", tone: "border-blue-200 bg-blue-50 text-blue-900" }
+      : { text: "nothing written here and no platform-wide page, so it falls back to this vertical's own Pages screen.", tone: "border-amber-200 bg-amber-50 text-amber-900" }
   const dirty = text !== savedText || (saved && title !== (saved.title || ""))
 
   return (
@@ -79,7 +90,8 @@ export default function AppLegalPages() {
       <div className="border-b border-neutral-100 px-5 py-4">
         <h2 className="text-base font-semibold text-neutral-900">Terms for each app</h2>
         <p className="mt-0.5 text-sm text-neutral-500">
-          Separate terms and privacy for customers, restaurants, sellers, riders and drivers. An app with nothing here shows the platform-wide page.
+          Separate terms and privacy for customers, restaurants, sellers, riders and drivers.
+          An app shows its own page first, then the platform-wide one, then its vertical&apos;s own screen.
         </p>
       </div>
 
@@ -121,10 +133,17 @@ export default function AppLegalPages() {
               </button>
             ))}
           </div>
-          <p className="mb-3 text-xs text-neutral-500">
-            <span className="font-semibold text-neutral-700">{appLabel}</span> ·{" "}
-            {saved ? "shows this page." : "nothing written yet: shows the platform-wide page."}
-          </p>
+          {/*
+            * Which of the three levels this app is ACTUALLY showing.
+            *
+            * It used to say "shows the platform-wide page" whenever nothing was
+            * written here -- true only when such a page exists. With none, the
+            * app falls through to its vertical's own screen, and an admin told
+            * otherwise goes looking in the wrong place.
+            */}
+          <div className={`mb-3 rounded-lg border px-3 py-2 text-xs ${inForce.tone}`}>
+            <span className="font-semibold">{appLabel}</span> · {inForce.text}
+          </div>
           <label className="mb-1 block text-xs font-medium text-neutral-600">Title</label>
           <input className={`${inputCls} mb-3`} value={title} placeholder={kindLabel} onChange={(e) => setTitle(e.target.value)} />
           <label className="mb-1 block text-xs font-medium text-neutral-600">Page</label>

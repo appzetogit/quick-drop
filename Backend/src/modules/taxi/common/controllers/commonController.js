@@ -189,5 +189,40 @@ export const getLandingPageSettings = asyncHandler(async (_req, res) => {
         await newSettings.save();
         settings = newSettings.toObject();
     }
+
+    settings.pages = await overlayManagedLegal(settings.pages);
     return res.json({ success: true, data: settings });
 });
+
+/*
+ * Taxi's legal text, from Master when Master has it.
+ *
+ * This was the fourth place legal was written and the only one outside the
+ * platform chain: editing Terms in Master left the taxi site and app showing
+ * whatever the landing CMS held, with nothing on either screen saying so.
+ *
+ * Now the same precedence as everywhere else -- the taxi app's own page, then
+ * the platform-wide one, then this CMS. The CMS keeps working and stays the
+ * fallback, so nothing changes until a page is set in Master.
+ */
+const MANAGED_LEGAL = Object.freeze([
+    ['terms_conditions', 'terms'],
+    ['privacy_policy', 'privacy'],
+    ['refund_policy', 'refund'],
+    ['cancellation_policy', 'cancellation'],
+]);
+
+async function overlayManagedLegal(pages) {
+    const out = { ...(pages || {}) };
+    try {
+        const { resolveAppLegalPage } = await import('../../../../core/settings/appLegal.js');
+        await Promise.all(MANAGED_LEGAL.map(async ([cmsKey, kind]) => {
+            const managed = await resolveAppLegalPage('taxi_user', kind);
+            if (managed?.content?.trim()) out[cmsKey] = managed.content;
+        }));
+    } catch (err) {
+        // The landing page must still render if settings cannot be read.
+        console.warn(`[taxi landing] managed legal unavailable: ${err.message}`);
+    }
+    return out;
+}
