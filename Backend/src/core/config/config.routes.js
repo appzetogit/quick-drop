@@ -16,6 +16,7 @@ import {
 } from '../settings/platformProfile.controller.js';
 import { listAppLegal, saveAppLegal } from '../settings/appLegal.js';
 import { getEarningsController } from '../finance/earnings.controller.js';
+import { listGlobalUsersController, exportGlobalUsersController } from '../users/globalUsers.controller.js';
 
 /**
  * Master / Global settings.
@@ -46,6 +47,17 @@ router.put('/app-legal/:app/:kind', requireFinancePermission('PLATFORM_SETTING_S
 // What a module pays its riders today, and its own bands to start an edit from
 // (core/finance/earnings.controller.js). Declared before '/:key'.
 router.get('/earnings/:vertical', getEarningsController);
+
+/*
+ * Master > Customers: every customer on the platform, in one list.
+ *
+ * Reads are open to any authenticated admin, like the rest of this router. The
+ * EXPORT is not: a file of every customer's name, phone and spend is a
+ * different thing from a paginated screen, so it needs the same permission as
+ * changing a platform setting.
+ */
+router.get('/users', listGlobalUsersController);
+router.get('/users/export', requireFinancePermission('PLATFORM_SETTING_SET'), exportGlobalUsersController);
 
 router.get('/catalogue', getCatalogueController);
 router.get('/resolve', resolveAllController);

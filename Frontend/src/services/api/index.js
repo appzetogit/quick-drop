@@ -206,6 +206,22 @@ export const platformSettingsAPI = {
       params: context,
       contextModule: "admin",
     }),
+  /**
+   * Every customer on the platform, in one list.
+   *
+   * Food and taxi customers are already the same documents; quick commerce and
+   * services are matched in by link or by phone. Read only -- blocking and
+   * editing stay on the screens whose schema owns those fields.
+   */
+  getGlobalUsers: (params = {}) =>
+    apiClient.get("/platform/settings/users", { params, contextModule: "admin" }),
+  /** The same list as a CSV file. Streamed by the server, so kept as a blob. */
+  exportGlobalUsers: (params = {}) =>
+    apiClient.get("/platform/settings/users/export", {
+      params,
+      responseType: "blob",
+      contextModule: "admin",
+    }),
   /** Terms and privacy per app. */
   getAppLegal: () => apiClient.get("/platform/settings/app-legal", { contextModule: "admin" }),
   /** Empty `content` clears the app's page. */

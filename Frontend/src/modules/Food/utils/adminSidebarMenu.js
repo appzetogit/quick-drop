@@ -37,6 +37,19 @@ export const adminSidebarMenu = [
        * brand, legal, payment keys -- which is set once and rarely reopened.
        * Filing them together also pushed the tab row past the width it had.
        */
+      /*
+       * One customer list for the whole platform. Food and taxi customers are
+       * already the same documents (one `users` collection); quick commerce and
+       * services are matched in by link or phone. The per-vertical customer
+       * screens stay where they are -- they own blocking and editing, which this
+       * one deliberately does not do.
+       */
+      {
+        type: "link",
+        label: "Customers",
+        path: "/admin/master/customers",
+        icon: "Users",
+      },
       {
         type: "link",
         label: "Delivery Earnings",
