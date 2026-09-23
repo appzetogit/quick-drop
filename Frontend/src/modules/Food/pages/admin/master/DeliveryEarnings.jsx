@@ -196,7 +196,14 @@ export default function DeliveryEarnings() {
   )
 
   return (
-    <div className="space-y-5">
+    <div className="min-h-full bg-neutral-100 p-4 lg:p-6">
+      <div className="mx-auto max-w-3xl space-y-5">
+        <div>
+          <h1 className="text-2xl font-semibold text-neutral-900">Delivery earnings</h1>
+          <p className="mt-1 text-sm text-neutral-600">What a rider is paid, set once for every module or overridden for one.</p>
+        </div>
+
+        <div className="space-y-5">
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-neutral-200 bg-white p-1">
         {MODULES.map((m) => (
           <button
@@ -337,6 +344,8 @@ export default function DeliveryEarnings() {
           </Card>
         </>
       )}
+        </div>
+      </div>
     </div>
   )
 }

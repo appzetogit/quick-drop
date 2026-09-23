@@ -30,6 +30,25 @@ export const adminSidebarMenu = [
         path: "/admin/master/app-services",
         icon: "LayoutGrid",
       },
+      /*
+       * Delivery pay and promo limits are their own screens, not tabs inside
+       * Master Settings. They are operational rules an admin comes here to
+       * change on their own; Master Settings is the platform's identity --
+       * brand, legal, payment keys -- which is set once and rarely reopened.
+       * Filing them together also pushed the tab row past the width it had.
+       */
+      {
+        type: "link",
+        label: "Delivery Earnings",
+        path: "/admin/master/delivery-earnings",
+        icon: "Bike",
+      },
+      {
+        type: "link",
+        label: "Promotions",
+        path: "/admin/master/promotions",
+        icon: "Ticket",
+      },
       {
         type: "link",
         label: "Admin Accounts",

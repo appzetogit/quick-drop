@@ -1,12 +1,10 @@
 import { useState, useEffect, useCallback } from "react"
 import { platformSettingsAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
-import { Loader2, Building2, FileText, ScrollText, PlugZap, Wallet, Bike, Ticket, CheckCircle2, ExternalLink, ImagePlus } from "lucide-react"
+import { Loader2, Building2, FileText, ScrollText, PlugZap, Wallet, CheckCircle2, ExternalLink, ImagePlus } from "lucide-react"
 import { legalHtmlToPlainText, plainTextToLegalHtml } from "@food/utils/legalContentFormat"
 import CashLimitSettings from "./CashLimitSettings"
 import AppLegalPages from "./AppLegalPages"
-import DeliveryEarnings from "./DeliveryEarnings"
-import PromoCeiling from "./PromoCeiling"
 
 /**
  * Master settings: what every service shares, set once for the whole platform
@@ -23,8 +21,6 @@ const TABS = [
   { key: "appTerms", label: "App terms", icon: ScrollText },
   { key: "integrations", label: "Payments & messages", icon: PlugZap },
   { key: "money", label: "Money rules", icon: Wallet },
-  { key: "earnings", label: "Delivery earnings", icon: Bike },
-  { key: "promos", label: "Promotions", icon: Ticket },
 ]
 
 const LEGAL = [
@@ -465,12 +461,14 @@ export default function PlatformSettings() {
         </div>
 
         <div className="flex gap-1 overflow-x-auto rounded-xl border border-neutral-200 bg-white p-1">
+          {/* shrink-0, not flex-1: with nowrap labels flex-1 squeezed each tab
+              below its text width and they drew over one another. */}
           {TABS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               type="button"
               onClick={() => setTab(key)}
-              className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium ${tab === key ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"}`}
+              className={`flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium ${tab === key ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"}`}
             >
               <Icon className="h-4 w-4 shrink-0" />
               {label}
@@ -480,10 +478,7 @@ export default function PlatformSettings() {
 
         {tab === "money" ? (
           <CashLimitSettings />
-        ) : tab === "earnings" ? (
-          <DeliveryEarnings />
-        ) : tab === "promos" ? (
-          <PromoCeiling />
+
         ) : tab === "appTerms" ? (
           <AppLegalPages />
         ) : !profile ? (

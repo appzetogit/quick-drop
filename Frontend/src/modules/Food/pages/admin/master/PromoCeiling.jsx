@@ -125,7 +125,14 @@ export default function PromoCeiling() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="min-h-full bg-neutral-100 p-4 lg:p-6">
+      <div className="mx-auto max-w-3xl space-y-5">
+        <div>
+          <h1 className="text-2xl font-semibold text-neutral-900">Promotions</h1>
+          <p className="mt-1 text-sm text-neutral-600">The most any single promo code may be used, across every module.</p>
+        </div>
+
+        <div className="space-y-5">
       <div className="flex gap-1 overflow-x-auto rounded-xl border border-neutral-200 bg-white p-1">
         {MODULES.map((m) => (
           <button
@@ -192,6 +199,8 @@ export default function PromoCeiling() {
           </button>
         </div>
       </section>
+        </div>
+      </div>
     </div>
   )
 }
