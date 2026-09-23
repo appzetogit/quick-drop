@@ -158,13 +158,21 @@ export const calculateReturnRefund = ({
     // at that rate on its own net value -- see untaggedLineRate() for where the rate
     // comes from. It used to take a value share of the ORDER's whole tax instead,
     // which handed a 5% line part of its neighbour's 18%.
+    //
+    // A PLATFORM-funded coupon was taxed on the full line value, because the
+    // seller was paid in full and the supply was worth the whole basket. The
+    // refund has to use that same base: taking the discount off here would
+    // return less tax than was collected, and the order would never reconcile.
+    const taxedOnFullValue = pricing?.discountFundedByPlatform === true;
     const fallbackRate = untaggedLineRate(items, pricing, orderSubtotalPaise);
     let taxPaise = 0;
     for (const line of matched) {
         const own = line.gstRate;
         const rate = own === null || own === undefined ? fallbackRate : Number(own);
         if (!(rate > 0)) continue;
-        const net = line.grossPaise - discountShareOf(line, goodsPaise, discountSharePaise);
+        const net = taxedOnFullValue
+            ? line.grossPaise
+            : line.grossPaise - discountShareOf(line, goodsPaise, discountSharePaise);
         taxPaise += Math.round((net * rate) / 100);
     }
 

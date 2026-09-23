@@ -271,12 +271,24 @@ export function estimateDeliveryPromiseMinutes(distanceKm) {
  * any basket of items that predate per-product slabs.
  *
  * The discount reduces every line in proportion to its share of the basket,
- * because a basket-level coupon is not attributable to any one product.
+ * because a basket-level coupon is not attributable to any one product --
+ * UNLESS the platform funded it, in which case it reduces no line at all.
+ *
+ * A platform-funded coupon leaves the seller paid in full: the customer pays
+ * part and the platform pays the rest, so the supply is still worth the whole
+ * basket and the tax is due on that. Only a seller's own discount comes out of
+ * the taxable value. Reducing the base for a platform coupon under-collects
+ * GST on every order that used one.
  */
-export function computeItemsTax(items = [], { subtotal = 0, discount = 0, fallbackRate = 0 } = {}) {
+export function computeItemsTax(
+  items = [],
+  { subtotal = 0, discount = 0, fallbackRate = 0, discountFundedByPlatform = false } = {},
+) {
   if (!(subtotal > 0)) return 0;
 
-  const taxableShare = Math.max(0, subtotal - discount) / subtotal;
+  const taxableShare = discountFundedByPlatform === true
+    ? 1
+    : Math.max(0, subtotal - discount) / subtotal;
   let tax = 0;
 
   for (const item of items) {
@@ -431,6 +443,12 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
   distanceKm = deliveryFeeResult.distanceKm ?? distanceKm;
 
   let discount = 0;
+  /*
+   * Who paid for the coupon, which decides what GST is charged on. Admin is the
+   * default and the fallback, matching how the money actually settles: an admin
+   * coupon comes off the platform and leaves the seller's payout whole.
+   */
+  let discountFundedByPlatform = false;
   let appliedCoupon = null;
   const codeRaw = dto.couponCode
     ? String(dto.couponCode).trim().toUpperCase()
@@ -513,13 +531,16 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
           );
         }
         appliedCoupon = { code: codeRaw, discount };
+        discountFundedByPlatform = offer.createdByRole !== 'RESTAURANT';
       }
     }
   }
 
-  // GST is charged on the post-discount item value (discount is already clamped to <= subtotal).
+  // GST is charged on the post-discount item value for a SELLER-funded coupon,
+  // and on the full value for a platform-funded one -- see computeItemsTax.
   const gstFallbackRate = Number(feeSettings.gstRate || 0);
   const tax = computeItemsTax(items, {
+    discountFundedByPlatform,
     subtotal,
     discount,
     fallbackRate: gstFallbackRate,
@@ -546,6 +567,12 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
     deliveryFeeGst,
     platformFee,
     discount,
+    /*
+     * Carried so the saved order records which base its GST was charged on, and
+     * so a return refunds the same tax it charged. Absent on orders placed
+     * before this existed, which read back as the older treatment.
+     */
+    discountFundedByPlatform,
     total,
     currency: "INR",
     couponCode: appliedCoupon?.code || codeRaw || null,

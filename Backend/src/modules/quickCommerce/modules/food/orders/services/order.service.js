@@ -692,6 +692,12 @@ export async function createOrder(userId, dto) {
           ? "quick"
           : "basic",
       discount: Number(pricingResult.pricing?.discount) || 0,
+      /*
+       * Copied from the quote so the order records the base its GST was charged
+       * on. This object is built field by field, so anything not named here is
+       * dropped -- and a return would then refund a tax the order never charged.
+       */
+      discountFundedByPlatform: pricingResult.pricing?.discountFundedByPlatform === true,
       couponCode: pricingResult.pricing?.couponCode
         ? String(pricingResult.pricing.couponCode).trim().toUpperCase()
         : null,
