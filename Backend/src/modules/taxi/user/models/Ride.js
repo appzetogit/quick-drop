@@ -708,6 +708,20 @@ const rideSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    /*
+     * The platform incentive included in `driverEarnings` above, from
+     * Master > Delivery Earnings. Kept separately so a payout can be explained:
+     * what the ride earned, and what the platform added on top of it.
+     *
+     * Declared here because the schema is strict -- a field the service sets but
+     * the model does not name is dropped on save, and the incentive would be
+     * paid with no record of why the earnings were higher.
+     */
+    driverIncentiveAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     walletSettledAt: {
       type: Date,
       default: null,

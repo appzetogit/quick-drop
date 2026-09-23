@@ -481,7 +481,44 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
     });
     const paymentMethod = normalizePaymentMethod(ride.paymentMethod);
     const cancellationFeeGoesTo = ride?.pricingSnapshot?.cancellation_fee_goes_to === 'driver' ? 'driver' : 'admin';
-    const driverEarnings = Math.max(normalizeAmount(grossFare - commissionAmount, 'driverEarnings'), 0);
+    /*
+     * The platform incentive, from Master > Delivery Earnings.
+     *
+     * Taxi drivers sat outside that engine: an admin who set an incentive for
+     * "All modules" paid food and quick-commerce riders and silently paid taxi
+     * drivers nothing. The fare TABLE is still taxi's own -- a ride is priced by
+     * base fare, per km and per minute, which no delivery distance band can
+     * express -- but the incentive is the same shape everywhere, so it is the
+     * part that unifies.
+     *
+     * Paid on the fare the driver actually earns from, and it needs no separate
+     * settlement: adding it here carries it through BOTH paths below. On cash,
+     * `driverEarnings - fare` turns into a smaller debit, or a credit when the
+     * incentive exceeds the commission. On online, it is part of what is
+     * credited. Zero unless an admin has set a rule, so nothing changes until
+     * they do.
+     */
+    let incentiveAmount = 0;
+    try {
+        const { resolveIncentive } = await import('../../../../core/finance/deliveryEarnings.service.js');
+        const rule = await resolveIncentive({ vertical: 'taxi', legacy: null });
+        if (rule.isEnabled && rule.incentivePercent > 0 && grossFare >= rule.minOrderAmount) {
+            incentiveAmount = normalizeAmount(
+                Math.round(grossFare * (rule.incentivePercent / 100) * 100) / 100,
+                'incentiveAmount',
+            );
+        }
+    } catch (err) {
+        // A settings read must never stop a completed ride being settled. No
+        // incentive is the safe direction: the driver is paid his fare either
+        // way, and an unpaid incentive is recoverable where a stuck ride is not.
+        console.warn(`[taxi wallet] incentive unavailable, settling without it: ${err.message}`);
+    }
+
+    const driverEarnings = Math.max(
+        normalizeAmount(grossFare - commissionAmount + incentiveAmount, 'driverEarnings'),
+        0,
+    );
 
     /*
      * Cash: the driver is holding the whole fare. His wallet moves by what he
@@ -504,6 +541,9 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
     ride.paymentMethod = paymentMethod;
     ride.commissionAmount = commissionAmount;
     ride.driverEarnings = driverEarnings;
+    // Recorded so a payout can be explained: what the ride earned and what the
+    // platform added on top of it.
+    ride.driverIncentiveAmount = incentiveAmount;
     if (earningsSettledNow) {
       ride.driverEarningsCreditedAt = new Date();
     }
@@ -535,6 +575,7 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
       metadata: {
         fare,
         grossFare,
+        incentiveAmount,
         promoDiscountAmount,
         promoFundedBy: 'platform',
         cashCollected: paymentMethod === 'cash' ? fare : 0,

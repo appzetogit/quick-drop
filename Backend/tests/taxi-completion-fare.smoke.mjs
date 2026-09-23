@@ -172,6 +172,75 @@ const main = async () => {
     const ci = await load(cancelledInsured);
     check('is never charged the premium', () => assert.equal(Number(ci.insurance_fee || 0), 0));
 
+    /*
+     * The platform incentive from Master > Delivery Earnings.
+     *
+     * Taxi drivers sat outside that engine: an admin who set an incentive for
+     * "All modules" paid food and quick-commerce riders and paid taxi drivers
+     * nothing. It has to reach the driver WITHOUT the rider being charged more
+     * -- the platform funds it, exactly like a promo.
+     */
+    console.log('');
+    console.log('the platform incentive from Master');
+    const { set: setSetting, invalidateCache } = await import('../src/core/config/resolver.service.js');
+
+    const u7 = await makeUser(); const d7 = await makeDriver();
+    const noRule = await makeRide({ userId: u7, driverId: d7, agreed: 118, method: 'cash' });
+    await complete(noRule, d7);
+    const before = await load(noRule);
+    check('no rule set: the driver earns exactly what he always did', () => {
+        assert.equal(r2(before.driverEarnings + before.commissionAmount), r2(before.fare), `earnings ${before.driverEarnings}`);
+        assert.equal(Number(before.driverIncentiveAmount || 0), 0);
+    });
+
+    await setSetting('earnings.incentive', {
+        level: 'vertical', scopeId: 'taxi',
+        // 20%, not 10%: commission here is 10%, and an incentive that exactly
+        // cancels it moves the wallet by zero -- which would make the credit
+        // check below pass while proving nothing.
+        value: { isEnabled: true, minOrderAmount: 100, incentivePercent: 20 },
+    });
+    invalidateCache();
+
+    const u8 = await makeUser(); const d8 = await makeDriver();
+    const withRule = await makeRide({ userId: u8, driverId: d8, agreed: 118, method: 'cash' });
+    await complete(withRule, d8);
+    const after = await load(withRule);
+    const afterTx = await credits(withRule);
+    check('the taxi driver is now paid the incentive on top of his fare', () => {
+        assert.ok(after.driverIncentiveAmount > 0, `incentive ${after.driverIncentiveAmount}`);
+        assert.equal(r2(after.driverEarnings), r2(before.driverEarnings + after.driverIncentiveAmount),
+            `earnings ${after.driverEarnings} vs ${before.driverEarnings} + ${after.driverIncentiveAmount}`);
+    });
+    check('  the RIDER is charged exactly the same -- the platform funds it', () => {
+        assert.equal(r2(after.fare), r2(before.fare), `fare ${after.fare} vs ${before.fare}`);
+    });
+    check('  and it reaches his wallet: on cash, the platform credits him', () => {
+        const t = afterTx[0];
+        assert.ok(t, 'no settlement transaction');
+        assert.equal(r2(t.amount), r2(after.driverEarnings - after.fare), `amount ${t.amount}`);
+        // 20% incentive against 10% commission, so he ends up owed money on a
+        // ride where he would normally owe the platform.
+        assert.ok(t.amount > 0, `expected a credit, got ${t.amount}`);
+    });
+
+    /*
+     * Under the floor. The incentive is judged on the fare the driver is
+     * SETTLED on, which is before any platform-funded promo -- a Rs 59 promo
+     * ride is still a Rs 126 ride to him. So the small ride here carries no
+     * promo, or it would clear the minimum after the promo is added back.
+     */
+    const u9 = await makeUser(); const d9 = await makeDriver();
+    const belowFloor = await makeRide({ userId: u9, driverId: d9, agreed: 50, method: 'cash' });
+    await complete(belowFloor, d9);
+    const small = await load(belowFloor);
+    check('a ride under the minimum earns no incentive', () => {
+        assert.equal(Number(small.driverIncentiveAmount || 0), 0, `incentive ${small.driverIncentiveAmount}`);
+    });
+
+    await setSetting('earnings.incentive', { level: 'vertical', scopeId: 'taxi', value: null });
+    invalidateCache();
+
     await mongoose.disconnect();
     await replSet.stop();
     console.log(failed ? `\n${failed} check(s) failed\n` : '\nall checks passed\n');

@@ -31,6 +31,14 @@ const MODULES = [
   { id: "food", level: "vertical", label: "Food", hint: "Overrides the all-modules table for food" },
   { id: "quickCommerce", level: "vertical", label: "Quick Commerce", hint: "Overrides it for quick commerce" },
   { id: "medical", level: "vertical", label: "Medical", hint: "Overrides it for pharmacy orders" },
+  /*
+   * Taxi takes the incentive but not the table. A ride is priced by base fare,
+   * per km and per minute from its vehicle's price row -- no delivery distance
+   * band can express that, and pretending otherwise would let an admin save a
+   * table that silently does nothing. The incentive is the same shape
+   * everywhere, so that is the part taxi shares.
+   */
+  { id: "taxi", level: "vertical", label: "Taxi", hint: "Driver incentive only — ride fares are set in the Taxi panel", incentiveOnly: true },
 ]
 
 /** Which module's figures to READ when showing "what is paid today". */
@@ -228,6 +236,13 @@ export default function DeliveryEarnings() {
         </div>
       ) : (
         <>
+          {mod.incentiveOnly && (
+            <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+              A ride is priced by base fare, per km and per minute in the Taxi panel, so the
+              distance table below does not apply here. The incentive does.
+            </p>
+          )}
+          {!mod.incentiveOnly && (
           <Card
             title="Rider earning formula"
             icon={Bike}
@@ -299,6 +314,7 @@ export default function DeliveryEarnings() {
               same for it.
             </p>
           </Card>
+          )}
 
           <Card
             title="Rider incentive"
