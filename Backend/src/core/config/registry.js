@@ -23,6 +23,12 @@
 const ALL_SCOPES = ['global', 'vertical', 'zone', 'partner'];
 const GLOBAL_ONLY = ['global'];
 const NOT_PER_PARTNER = ['global', 'vertical', 'zone'];
+/*
+ * A promo code already belongs to one city through its own service locations,
+ * so a zone-level ceiling would be a second, invisible way to scope the same
+ * thing -- and the two would disagree.
+ */
+const GLOBAL_AND_VERTICAL = ['global', 'vertical'];
 
 export const SETTINGS = Object.freeze({
     // --- partner money -------------------------------------------------------
@@ -134,6 +140,36 @@ export const SETTINGS = Object.freeze({
             if (!Number.isFinite(incentivePercent) || incentivePercent < 0 || incentivePercent > 100) throw new Error('Incentive percent must be between 0 and 100');
             return { isEnabled: v.isEnabled === true, minOrderAmount, incentivePercent };
         },
+    },
+
+    // --- promotions ----------------------------------------------------------
+    /*
+     * A ceiling on what any promo code may give away, NOT a default.
+     *
+     * The distinction is the whole point. A default would pre-fill a form and
+     * then be ignored by every code already out there; a ceiling is applied when
+     * the code is redeemed, so it reaches existing promos too. And it only ever
+     * TIGHTENS -- a code asking for fewer uses than the ceiling keeps its own
+     * number. Raising the ceiling can therefore never quietly make a live promo
+     * more generous than whoever created it intended.
+     *
+     * Unset means no ceiling, which is today's behaviour.
+     */
+    'promo.maxUsesPerUser': {
+        type: 'number',
+        default: null,
+        min: 1,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Most uses of one code per customer',
+        help: 'No promo code may be used by a single customer more times than this, whatever the code itself says. Unset means no ceiling. A code that allows fewer keeps its own limit -- this only ever tightens.',
+    },
+    'promo.maxUsesTotal': {
+        type: 'number',
+        default: null,
+        min: 1,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Most uses of one code in total',
+        help: 'No promo code may be redeemed more times than this across all customers. Unset means no ceiling. A code with a smaller cap of its own keeps it.',
     },
 
     // --- assignment ----------------------------------------------------------

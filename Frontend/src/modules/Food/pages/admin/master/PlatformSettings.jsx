@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react"
 import { platformSettingsAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
-import { Loader2, Building2, FileText, ScrollText, PlugZap, Wallet, Bike, CheckCircle2, ExternalLink, ImagePlus } from "lucide-react"
+import { Loader2, Building2, FileText, ScrollText, PlugZap, Wallet, Bike, Ticket, CheckCircle2, ExternalLink, ImagePlus } from "lucide-react"
 import { legalHtmlToPlainText, plainTextToLegalHtml } from "@food/utils/legalContentFormat"
 import CashLimitSettings from "./CashLimitSettings"
 import AppLegalPages from "./AppLegalPages"
 import DeliveryEarnings from "./DeliveryEarnings"
+import PromoCeiling from "./PromoCeiling"
 
 /**
  * Master settings: what every service shares, set once for the whole platform
@@ -23,6 +24,7 @@ const TABS = [
   { key: "integrations", label: "Payments & messages", icon: PlugZap },
   { key: "money", label: "Money rules", icon: Wallet },
   { key: "earnings", label: "Delivery earnings", icon: Bike },
+  { key: "promos", label: "Promotions", icon: Ticket },
 ]
 
 const LEGAL = [
@@ -480,6 +482,8 @@ export default function PlatformSettings() {
           <CashLimitSettings />
         ) : tab === "earnings" ? (
           <DeliveryEarnings />
+        ) : tab === "promos" ? (
+          <PromoCeiling />
         ) : tab === "appTerms" ? (
           <AppLegalPages />
         ) : !profile ? (

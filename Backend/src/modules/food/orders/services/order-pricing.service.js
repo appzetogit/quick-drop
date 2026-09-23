@@ -1,4 +1,5 @@
-import mongoose from 'mongoose';
+import mongoose from 'mongoose';
+import { resolvePromoCeiling, tighten } from '../../../../core/finance/promoLimits.service.js';
 import { FoodOrder } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { computeBill, normalizeTip, DEFAULT_PLATFORM_FEE_GST_RATE } from '../../shared/billing.js';
@@ -681,10 +682,21 @@ export async function calculateOrderPricing(userId, dto) {
         offer.restaurantScope !== "selected" ||
         String(offer.restaurantId || "") === String(dto.restaurantId || "");
       const minOk = subtotal >= (Number(offer.minOrderValue) || 0);
+
+      /*
+       * The same ceiling the claim applies (couponUsage.service.js). Checked
+       * here too so a quote never shows a discount that placing the order would
+       * then refuse -- the customer sees the coupon decline at the point they
+       * enter it, not after they have committed.
+       */
+      const promoCeiling = await resolvePromoCeiling({ vertical: 'food' });
+      const effectiveUsageLimit = tighten(offer.usageLimit, promoCeiling.total);
+      const effectivePerUserLimit = tighten(offer.perUserLimit, promoCeiling.perUser);
+
       let usageOk = true;
       if (
-        Number(offer.usageLimit) > 0 &&
-        Number(offer.usedCount || 0) >= Number(offer.usageLimit)
+        effectiveUsageLimit !== null &&
+        Number(offer.usedCount || 0) >= effectiveUsageLimit
       ) {
         usageOk = false;
       }
@@ -711,7 +723,7 @@ export async function calculateOrderPricing(userId, dto) {
         : null;
 
       let perUserOk = true;
-      if (countedOrders && Number(offer.perUserLimit) > 0) {
+      if (countedOrders && effectivePerUserLimit !== null) {
         const used = await FoodOrder.countDocuments({
           ...countedOrders,
           $or: [
@@ -719,7 +731,7 @@ export async function calculateOrderPricing(userId, dto) {
             { "pricing.couponCode": codeRaw, "pricing.discount": { $gt: 0 } },
           ],
         });
-        if (used >= Number(offer.perUserLimit)) {
+        if (used >= effectivePerUserLimit) {
           perUserOk = false;
         }
       }

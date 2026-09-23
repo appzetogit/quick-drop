@@ -64,6 +64,7 @@ const createInitialFormData = () => ({
   from: '',
   to: '',
   uses_per_user: '1',
+  max_uses_total: '',
   active: true,
 });
 
@@ -459,6 +460,8 @@ const PromoCodes = () => {
           from: promo.from ? new Date(promo.from).toISOString().split('T')[0] : '',
           to: promo.to ? new Date(promo.to).toISOString().split('T')[0] : '',
           uses_per_user: promo.uses_per_user || '1',
+          // 0 is the stored 'unlimited'; shown as blank so the placeholder explains it.
+          max_uses_total: promo.max_uses_total ? String(promo.max_uses_total) : '',
           active: promo.active !== false,
         });
       }
@@ -1110,6 +1113,24 @@ const PromoCodes = () => {
                       onChange={(e) => handleFieldChange('uses_per_user', e.target.value)}
                       className={inputClass}
                     />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <FieldLabel icon={Users}>
+                      Total uses across all users
+                    </FieldLabel>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="Leave blank for unlimited"
+                      value={formData.max_uses_total}
+                      onChange={(e) => handleFieldChange('max_uses_total', e.target.value)}
+                      className={inputClass}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      The whole promo stops once this many rides have used it, whoever used them.
+                      Blank or 0 means no limit.
+                    </p>
                   </div>
 
                   <div className="md:col-span-2">

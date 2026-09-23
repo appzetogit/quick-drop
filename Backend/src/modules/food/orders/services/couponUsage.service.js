@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { resolvePromoCeiling, tighten } from '../../../../core/finance/promoLimits.service.js';
 import { FoodOrder } from '../models/order.model.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
@@ -77,7 +78,12 @@ export async function takeCouponUse(code, userId, { enforceLimit = true } = {}) 
      * The unique (offerId, userId) index turns a claim at the limit into a
      * duplicate-key error on the upsert, which is the refusal.
      */
-    const perUser = Number(offer.perUserLimit) || 0;
+    /*
+     * The coupon's own limits with the Master > Promotions ceiling applied.
+     * `tighten` never loosens, and keeps 0 meaning unlimited on both sides.
+     */
+    const ceiling = await resolvePromoCeiling({ vertical: 'food' });
+    const perUser = tighten(offer.perUserLimit, ceiling.perUser) || 0;
     const claimUserId = toObjectId(userId);
     let perUserClaimed = false;
     if (enforceLimit && perUser > 0 && claimUserId) {
@@ -94,7 +100,7 @@ export async function takeCouponUse(code, userId, { enforceLimit = true } = {}) 
         if (!perUserClaimed) return { taken: false, exhausted: true, overLimit: false, perUser: true };
     }
 
-    const limit = Number(offer.usageLimit) || 0;
+    const limit = tighten(offer.usageLimit, ceiling.total) || 0;
     const capped = await FoodOffer.updateOne(
         limit > 0 ? { _id: offer._id, usedCount: { $lt: limit } } : { _id: offer._id },
         { $inc: { usedCount: 1 } },

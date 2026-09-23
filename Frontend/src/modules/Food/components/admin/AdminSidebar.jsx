@@ -375,10 +375,23 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   // A sub-admin sees only what they were given. The server refuses the rest
   // anyway; hiding it here is what makes the panel usable rather than a wall of
   // "no access" screens.
-  const verticalMenu = useMemo(
-    () => filterMenuForAccess(rebaseAdminMenu(adminSidebarMenu, adminBase), access),
-    [adminBase, access],
-  )
+  /*
+   * Master is its OWN panel, not a section bolted on top of food's menu.
+   *
+   * Its paths live under /admin/master, which currentAdminBase does not
+   * recognise, so it falls back to the food base and the whole food menu --
+   * orders, restaurants, riders -- rendered underneath the three Master links.
+   * An operator who switched to Master was still looking at Food.
+   *
+   * While inside Master the menu is the MASTER section and nothing else. The
+   * switcher is how you leave, exactly as it is for every other panel.
+   */
+  const inMaster = location.pathname.startsWith("/admin/master")
+  const verticalMenu = useMemo(() => {
+    const full = filterMenuForAccess(rebaseAdminMenu(adminSidebarMenu, adminBase), access)
+    if (!inMaster) return full
+    return (full || []).filter((node) => node.label === "MASTER")
+  }, [adminBase, access, inMaster])
   const navigate = useNavigate()
   const storedAccess = useServiceAccess()
   const serviceAccess = isRestricted(access)
@@ -430,7 +443,9 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
   }
   const [logoUrl, setLogoUrl] = useState(() => getCachedSettings()?.logo?.url || null)
   const [companyName, setCompanyName] = useState(() => getCachedSettings()?.companyName || null)
-  const displayTitle = getVerticalTitle(adminBase, companyName)
+  // In Master the heading names the panel, not the vertical whose base the
+  // path happened to fall back to.
+  const displayTitle = inMaster ? "Master" : getVerticalTitle(adminBase, companyName)
 
   // Business settings ship logo.url as "" until an operator uploads one, so on a fresh
   // install both activeLogo and logoUrl are empty and the expanded rail rendered

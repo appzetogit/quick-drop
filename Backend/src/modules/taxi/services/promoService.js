@@ -4,6 +4,7 @@ import { PromoCode } from '../admin/promotions/models/PromoCode.js';
 import { PromoRedemption } from '../admin/promotions/models/PromoRedemption.js';
 import { PromoUserCounter } from '../admin/promotions/models/PromoUserCounter.js';
 import { Ride } from '../user/models/Ride.js';
+import { effectivePromoLimits } from '../../../core/finance/promoLimits.service.js';
 
 const normalizeText = (value) => String(value ?? '').trim();
 
@@ -183,15 +184,22 @@ export const validatePromoForContext = async ({
     PromoCode.findById(promo._id).select('usage_count max_uses_total uses_per_user').lean(),
   ]);
 
-  const maxUsesTotal = Math.max(0, Number(promoFresh?.max_uses_total || promo.max_uses_total || 0));
+  /*
+   * The code's own limits, then the platform ceiling from Master > Promotions
+   * applied over them. `tighten` never loosens, so a code allowing fewer uses
+   * than the ceiling keeps its own number. Null means unlimited.
+   */
+  const ownTotal = Math.max(0, Number(promoFresh?.max_uses_total || promo.max_uses_total || 0));
+  const ownPerUser = Math.max(1, Number(promoFresh?.uses_per_user || promo.uses_per_user || 1));
+  const limits = await effectivePromoLimits({ vertical: 'taxi', ownPerUser, ownTotal });
+
   const usageCount = Math.max(0, Number(promoFresh?.usage_count || promo.usage_count || 0));
-  if (maxUsesTotal > 0 && usageCount >= maxUsesTotal) {
+  if (limits.total !== null && usageCount >= limits.total) {
     return { eligible: false, reason: 'MAX_USES_REACHED', message: 'Promo code usage limit reached' };
   }
 
-  const usesPerUser = Math.max(1, Number(promoFresh?.uses_per_user || promo.uses_per_user || 1));
   const userUses = Math.max(0, Number(userCounter?.uses_count || 0));
-  if (userId && userUses >= usesPerUser) {
+  if (userId && limits.perUser !== null && userUses >= limits.perUser) {
     return { eligible: false, reason: 'USER_MAX_USES_REACHED', message: 'Promo code usage limit reached for user' };
   }
 
@@ -215,8 +223,10 @@ export const validatePromoForContext = async ({
       maximum_discount_amount: Number(promo.maximum_discount_amount || 0),
       cumulative_max_discount_amount: Number(promo.cumulative_max_discount_amount || 0),
       discount_percentage: Number(promo.discount_percentage || 0),
-      uses_per_user: Number(promo.uses_per_user || 1),
-      max_uses_total: Number(promo.max_uses_total || 0),
+      // What is actually enforced, which is the code's own limit or the
+      // platform ceiling, whichever is smaller. 0 = unlimited, as before.
+      uses_per_user: limits.perUser === null ? 0 : limits.perUser,
+      max_uses_total: limits.total === null ? 0 : limits.total,
       usage_count: Number(usageCount || 0),
       active: promo.active !== false,
       from_date: promo.from_date,
@@ -290,14 +300,22 @@ export const applyPromoToRideInTransaction = async ({
     throw new ApiError(400, `Minimum trip amount is ${minimumTripAmount}`);
   }
 
-  const maxUsesTotal = Math.max(0, Number(promo.max_uses_total || 0));
+  // Same ceiling as the quote path, so a redemption cannot succeed on terms the
+  // quote would have refused.
+  const redeemLimits = await effectivePromoLimits({
+    vertical: 'taxi',
+    ownPerUser: Math.max(1, Number(promo.uses_per_user || 1)),
+    ownTotal: Math.max(0, Number(promo.max_uses_total || 0)),
+  });
+  const maxUsesTotal = redeemLimits.total === null ? 0 : redeemLimits.total;
+  const usesPerUser = redeemLimits.perUser === null ? 0 : redeemLimits.perUser;
+
   if (maxUsesTotal > 0 && Number(promo.usage_count || 0) >= maxUsesTotal) {
     throw new ApiError(409, 'Promo code usage limit reached');
   }
 
   const userCounter = await PromoUserCounter.findOne({ promo_id: promo._id, user_id: userObjectId }).session(session);
-  const usesPerUser = Math.max(1, Number(promo.uses_per_user || 1));
-  if (userCounter && Number(userCounter.uses_count || 0) >= usesPerUser) {
+  if (userCounter && usesPerUser > 0 && Number(userCounter.uses_count || 0) >= usesPerUser) {
     throw new ApiError(409, 'Promo code usage limit reached for user');
   }
 
@@ -336,7 +354,10 @@ export const applyPromoToRideInTransaction = async ({
       { session },
     );
   } else {
-    const counterQuery = { _id: userCounter._id, uses_count: { $lt: usesPerUser } };
+    // 0 is unlimited, and `$lt: 0` matches nothing -- which would refuse every
+    // redemption of an uncapped code rather than allowing them.
+    const counterQuery = { _id: userCounter._id };
+    if (usesPerUser > 0) counterQuery.uses_count = { $lt: usesPerUser };
     if (cumulativeCeiling !== null) {
       counterQuery.cumulative_discount_amount = { $lte: cumulativeCeiling };
     }
