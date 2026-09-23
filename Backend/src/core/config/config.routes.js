@@ -15,6 +15,7 @@ import {
     testSmsController,
 } from '../settings/platformProfile.controller.js';
 import { listAppLegal, saveAppLegal } from '../settings/appLegal.js';
+import { getEarningsController } from '../finance/earnings.controller.js';
 
 /**
  * Master / Global settings.
@@ -41,6 +42,10 @@ router.post('/profile/test/sms', requireFinancePermission('PLATFORM_SETTING_SET'
 // Terms and privacy per app (core/settings/appLegal.js).
 router.get('/app-legal', listAppLegal);
 router.put('/app-legal/:app/:kind', requireFinancePermission('PLATFORM_SETTING_SET'), saveAppLegal);
+
+// What a module pays its riders today, and its own bands to start an edit from
+// (core/finance/earnings.controller.js). Declared before '/:key'.
+router.get('/earnings/:vertical', getEarningsController);
 
 router.get('/catalogue', getCatalogueController);
 router.get('/resolve', resolveAllController);

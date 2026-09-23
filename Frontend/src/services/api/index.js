@@ -194,6 +194,18 @@ export const platformSettingsAPI = {
     ),
   invalidateCache: () =>
     apiClient.post("/platform/settings/cache/invalidate", {}, { contextModule: "admin" }),
+  /**
+   * What a module pays its riders today, plus its own distance bands.
+   *
+   * The bands come back with their ids, which is what lets the Master editor
+   * start from the module's current table without unhooking the per-band admin
+   * delivery commission that is keyed by them.
+   */
+  getEarnings: (vertical, context = {}) =>
+    apiClient.get(`/platform/settings/earnings/${encodeURIComponent(vertical)}`, {
+      params: context,
+      contextModule: "admin",
+    }),
   /** Terms and privacy per app. */
   getAppLegal: () => apiClient.get("/platform/settings/app-legal", { contextModule: "admin" }),
   /** Empty `content` clears the app's page. */

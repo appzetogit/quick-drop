@@ -1087,6 +1087,32 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
           {/* Module Switcher Tabs */}
           {!isCollapsed && (
             <div className="flex p-1 bg-[var(--sb-surface-raised)] backdrop-blur-sm rounded-xl mb-4 border border-[var(--sb-border)] shadow-inner animate-[slideIn_0.4s_ease-out_0.15s_both]">
+              {/* Master: the cross-module engine (earnings, incentives, cash
+                  limits, brand, legal). Gated on the owner level, matching the
+                  __owner__ rule /admin/master resolves to in adminAccess.js --
+                  a tab a sub-admin cannot open would only look like a fault. */}
+              {!isRestricted(access) && (
+              <button
+                type="button"
+                onClick={() => navigate("/admin/master/settings")}
+                className={cn(
+                  "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
+                  location.pathname.startsWith("/admin/master")
+                    ? "bg-[var(--sb-active-bg)] text-[var(--sb-active-ink)] shadow-[0_2px_8px_rgba(26,26,26,0.18)]"
+                    : "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
+                )}
+              >
+                <SlidersHorizontal
+                  className={cn(
+                    "w-3.5 h-3.5",
+                    location.pathname.startsWith("/admin/master")
+                      ? "text-[var(--sb-active-ink)]"
+                      : "text-[var(--sb-ink-faint)]"
+                  )}
+                />
+                Master
+              </button>
+              )}
               {serviceAccess.food && (
               <button
                 type="button"

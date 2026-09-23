@@ -50,6 +50,7 @@ import {
   ShoppingBasket,
   Pill,
   Zap,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -1503,6 +1504,19 @@ const AdminLayout = () => {
             {/* Module Switcher Tabs */}
             {!isCollapsed && (
               <div className="flex p-1 bg-[var(--sb-surface-raised)] backdrop-blur-sm rounded-xl mb-1 border border-[var(--sb-border)] shadow-inner">
+                {/* Master: the cross-module engine, same screen from every panel.
+                    Owner-only, matching the __owner__ rule /admin/master maps to. */}
+                {!restrictedAdmin && <button
+                  type="button"
+                  onClick={() => navigate("/admin/master/settings")}
+                  className={cn(
+                    "flex-1 min-w-0 flex flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] leading-none font-bold rounded-lg transition-all duration-300",
+                    "text-[var(--sb-ink-faint)] hover:text-[var(--sb-ink-soft)] hover:bg-[var(--sb-hover)]"
+                  )}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-[var(--sb-ink-faint)]" />
+                  Master
+                </button>}
                 {showPanel("food") && <button
                   type="button"
                   onClick={() => navigate("/admin/food")}

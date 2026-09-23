@@ -7,6 +7,7 @@ import { FoodOffer } from '../../admin/models/offer.model.js';
 import { ORDER_STATUSES_NOT_COUNTED_FOR_COUPONS } from './couponUsage.service.js';
 import { FoodDeliverySurgeZone } from '../../admin/models/deliverySurgeZone.model.js';
 import { FoodDeliveryCommissionRule } from '../../admin/models/deliveryCommissionRule.model.js';
+import { resolveEarningSlabs, resolveIncentive, pickSlab } from '../../../../core/finance/deliveryEarnings.service.js';
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
@@ -263,24 +264,28 @@ export async function resolveOrderZoneId(dto = {}, restaurant = null) {
   return null;
 }
 
-async function resolveDistanceRule(distanceKm) {
+/**
+ * The earning band for a distance.
+ *
+ * The table now comes from Master > Delivery earnings when one is saved there,
+ * and from this module's own `food_delivery_commission_rules` rows when it is
+ * not -- so behaviour is unchanged until an admin sets one. The band-matching
+ * fallbacks live in the engine (core/finance/deliveryEarnings.service.js) and
+ * are the same ones this function used.
+ *
+ * `_id` is preserved on the returned band so the per-band admin delivery
+ * commission in fee settings, which is keyed by it, still matches.
+ */
+async function resolveDistanceRule(distanceKm, zoneId) {
   if (!Number.isFinite(Number(distanceKm)) || Number(distanceKm) < 0) return null;
-  const rules = await FoodDeliveryCommissionRule.find({ status: { $ne: false } }).lean();
-  if (!rules.length) return null;
-  const d = Number(distanceKm);
-  const sorted = [...rules].sort((a, b) => Number(a.minDistance || 0) - Number(b.minDistance || 0));
-  const matched = sorted.find((r) => {
-    const min = Number(r.minDistance || 0);
-    const max = r.maxDistance == null ? null : Number(r.maxDistance);
-    return d >= min && (max == null || d < max);
+  const { slabs } = await resolveEarningSlabs({
+    vertical: 'food',
+    zoneId,
+    loadLegacy: () => FoodDeliveryCommissionRule.find({ status: { $ne: false } }).lean(),
   });
-  if (matched) return matched;
-
-  const lowerRule = [...sorted]
-    .reverse()
-    .find((r) => d >= Number(r.minDistance || 0));
-
-  return lowerRule || sorted[0] || null;
+  const band = pickSlab(slabs, distanceKm);
+  if (!band) return null;
+  return { ...band, _id: band.distanceRuleId || band._id || null };
 }
 
 export async function calculateOrderPricing(userId, dto) {
@@ -398,11 +403,22 @@ export async function calculateOrderPricing(userId, dto) {
     ? 0
     : Math.round(configuredPlatformFee * 100) / 100;
 
-  const incentiveRule = feeSettings.deliveryPartnerIncentiveRule || {
-    isEnabled: false,
-    minOrderAmount: 0,
-    incentivePercent: 0,
-  };
+  /*
+   * Resolved once, before pricing: the earning table, the incentive and the
+   * surge are all scoped by zone and must agree on which zone this order is in.
+   * Reused for surge further down rather than resolved a second time.
+   */
+  const orderZoneId = await resolveOrderZoneId(dto, restaurant);
+
+  /*
+   * Master > Delivery earnings when a rule is saved there, this module's own
+   * fee-settings rule when it is not -- so nothing changes until one is set.
+   */
+  const incentiveRule = await resolveIncentive({
+    vertical: 'food',
+    zoneId: orderZoneId,
+    legacy: feeSettings.deliveryPartnerIncentiveRule || null,
+  });
 
   const mode = String(feeSettings.deliveryFeeComputationMode || '');
   let deliveryFee = 0;
@@ -442,10 +458,10 @@ export async function calculateOrderPricing(userId, dto) {
       distanceKm = measured.km;
       distanceSource = measured.source;
       measuredDistanceKm = measured.km;
-      distanceRule = await resolveDistanceRule(distanceKm);
+      distanceRule = await resolveDistanceRule(distanceKm, orderZoneId);
     } else {
       // Fallback: If coordinates are missing, assume base distance (0 km) to apply base delivery fee
-      distanceRule = await resolveDistanceRule(0);
+      distanceRule = await resolveDistanceRule(0, orderZoneId);
       /*
        * Worth shouting about. Every order from this restaurant is priced at the
        * nearest slab whatever the real trip, and free delivery can never apply
@@ -745,7 +761,7 @@ export async function calculateOrderPricing(userId, dto) {
     }
   }
 
-  const zoneIdForSurge = await resolveOrderZoneId(dto, restaurant);
+  const zoneIdForSurge = orderZoneId;
   let surgeAmount = 0;
   if (zoneIdForSurge) {
     const surgeConfig = await FoodDeliverySurgeZone.findOne({ zoneId: zoneIdForSurge }).lean();

@@ -56,6 +56,86 @@ export const SETTINGS = Object.freeze({
         help: 'Off by default. Taxi encodes cash owed as a negative balance, so switching this on platform-wide stops most riders who have collected any cash.',
     },
 
+    // --- rider earnings ------------------------------------------------------
+    /*
+     * What a rider is paid, as the whole distance table rather than one number.
+     *
+     * The formula is `basePayout + commissionPerKm` PER DISTANCE SLAB, so a
+     * scalar key cannot express it: a single global "base payout" would flatten
+     * every slab into one and quietly re-price every delivery. The value is
+     * therefore the table itself, which is also what makes "set it for one
+     * module or for all" work -- the whole table is what differs between
+     * verticals, not one row of it.
+     *
+     * Unset (the default) means the vertical keeps reading its own
+     * `food_delivery_commission_rules` rows exactly as today. Food and quick
+     * commerce currently point at that SAME collection, so they already share
+     * one table by accident; setting a vertical value here is what finally lets
+     * them differ on purpose.
+     */
+    'earnings.distanceSlabs': {
+        type: 'object',
+        default: null,
+        scopes: NOT_PER_PARTNER,
+        label: 'Rider earning formula',
+        help: 'The distance table a rider is paid from: base payout plus a per-km rate for each distance band. Leave unset and each module keeps its existing table. Set it globally to pay the same everywhere, or per module to pay differently.',
+        validate: (rows) => {
+            if (!Array.isArray(rows)) throw new Error('The earning formula must be a list of distance bands');
+            if (!rows.length) throw new Error('Add at least one distance band, or clear the setting to use the module\'s own table');
+            return rows.map((r, i) => {
+                const at = `Band ${i + 1}`;
+                const min = Number(r?.minDistance);
+                const max = r?.maxDistance === null || r?.maxDistance === undefined || r?.maxDistance === '' ? null : Number(r.maxDistance);
+                const perKm = Number(r?.commissionPerKm);
+                const base = Number(r?.basePayout);
+                const userFee = Number(r?.userDeliveryFee ?? 0);
+                if (!Number.isFinite(min) || min < 0) throw new Error(`${at}: "from" must be 0 or more`);
+                if (max !== null && (!Number.isFinite(max) || max <= min)) throw new Error(`${at}: "to" must be greater than "from"`);
+                if (!Number.isFinite(perKm) || perKm < 0) throw new Error(`${at}: per-km rate must be 0 or more`);
+                if (!Number.isFinite(base) || base < 0) throw new Error(`${at}: base payout must be 0 or more`);
+                if (!Number.isFinite(userFee) || userFee < 0) throw new Error(`${at}: customer delivery fee must be 0 or more`);
+                return {
+                    /*
+                     * The id of the module band this row came from, kept so the
+                     * per-band admin delivery commission in fee settings -- which
+                     * is keyed by that id -- still matches after the table moves
+                     * here. The panel pre-fills from the module's own table, so
+                     * an admin who edits rates keeps their commission rows; only
+                     * a band added here is new and has none.
+                     */
+                    distanceRuleId: r?.distanceRuleId ? String(r.distanceRuleId) : null,
+                    name: String(r?.name || '').trim(),
+                    minDistance: min,
+                    maxDistance: max,
+                    userDeliveryFee: userFee,
+                    commissionPerKm: perKm,
+                    basePayout: base,
+                };
+            }).sort((a, b) => a.minDistance - b.minDistance);
+        },
+    },
+    /*
+     * The top-up a rider earns on a large order. Scalar, unlike the table above,
+     * and today it exists only in food's fee settings -- quick commerce has no
+     * incentive rule at all, so its riders silently get nothing on the same
+     * order. Setting this globally is what closes that gap.
+     */
+    'earnings.incentive': {
+        type: 'object',
+        default: null,
+        scopes: NOT_PER_PARTNER,
+        label: 'Rider incentive',
+        help: 'An extra percentage paid to the rider on orders at or above a given value. Leave unset and each module keeps its own rule (quick commerce currently has none). Set it globally to pay the same incentive everywhere.',
+        validate: (v) => {
+            if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error('The incentive must be a single rule');
+            const minOrderAmount = Number(v.minOrderAmount ?? 0);
+            const incentivePercent = Number(v.incentivePercent ?? 0);
+            if (!Number.isFinite(minOrderAmount) || minOrderAmount < 0) throw new Error('Minimum order value must be 0 or more');
+            if (!Number.isFinite(incentivePercent) || incentivePercent < 0 || incentivePercent > 100) throw new Error('Incentive percent must be between 0 and 100');
+            return { isEnabled: v.isEnabled === true, minOrderAmount, incentivePercent };
+        },
+    },
+
     // --- assignment ----------------------------------------------------------
     'assignment.maxConcurrentJobs': {
         type: 'number',
@@ -157,6 +237,34 @@ export function coerce(key, raw) {
             throw err;
         }
         return n;
+    }
+
+    /*
+     * Structured values (the earning table, the incentive rule) validate through
+     * the key's own `validate`, which also NORMALISES: it returns the shape that
+     * gets stored, so a table saved from the panel and one saved by a script are
+     * the same rows in the same order. Without that the store keeps whatever was
+     * posted, and pricing has to defend against every variation of it.
+     */
+    if (def.type === 'object') {
+        let value = raw;
+        if (typeof value === 'string') {
+            try {
+                value = JSON.parse(value);
+            } catch {
+                const err = new Error(`"${key}" must be valid JSON`);
+                err.statusCode = 400;
+                throw err;
+            }
+        }
+        if (typeof def.validate !== 'function') return value;
+        try {
+            return def.validate(value);
+        } catch (e) {
+            const err = new Error(e.message);
+            err.statusCode = 400;
+            throw err;
+        }
     }
 
     return raw;

@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { FoodOrder } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
+import { resolveEarningSlabs } from '../../../../../../core/finance/deliveryEarnings.service.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
@@ -175,19 +176,58 @@ function matchFeeRange(ranges, distanceKm, pickValue) {
   return null;
 }
 
-export async function loadActiveFeeSettings() {
+/**
+ * The Master earning table in this module's own band shape.
+ *
+ * Quick commerce pays `deliveryBoyBasePay` OR `deliveryBoyPerKm` per band and
+ * charges `fee`; the engine stores the same three figures under the names food
+ * uses. Only the names are translated -- which of the two a rider is actually
+ * paid stays this module's rule (basePay wins, see calculateRiderEarning), so
+ * moving the table here does not move the formula with it.
+ */
+const asQcRanges = (slabs) =>
+  (Array.isArray(slabs) ? slabs : []).map((b) => ({
+    min: Number(b.minDistance || 0),
+    // This module's bands are closed ranges; an open-ended engine band becomes
+    // the largest band rather than one with no ceiling, which matchFeeRange
+    // would never match.
+    max: b.maxDistance == null ? Number.MAX_SAFE_INTEGER : Number(b.maxDistance),
+    fee: Number(b.userDeliveryFee || 0),
+    deliveryBoyPerKm: Number(b.commissionPerKm || 0),
+    deliveryBoyBasePay: Number(b.basePayout || 0),
+  }));
+
+/**
+ * @param {object} [opts]
+ * @param {string} [opts.zoneId] scopes the earning table to a city when set
+ *
+ * The one place every quick-commerce earning path reads its bands from, which is
+ * why the Master table is overlaid HERE: order pricing, order creation and
+ * prescription orders all pick it up without each being rewired.
+ */
+export async function loadActiveFeeSettings({ zoneId } = {}) {
   const feeDoc = await FoodFeeSettings.findOne({ isActive: { $ne: false } })
     .sort({ createdAt: -1 })
     .lean();
 
-  return (
-    feeDoc || {
-      deliveryFee: 0,
-      deliveryFeeRanges: [],
-      platformFee: 0,
-      gstRate: 0,
-    }
-  );
+  const settings = feeDoc || {
+    deliveryFee: 0,
+    deliveryFeeRanges: [],
+    platformFee: 0,
+    gstRate: 0,
+  };
+
+  // Master > Delivery earnings when a table is saved there; this module's own
+  // bands when it is not, so nothing changes until an admin sets one.
+  const { slabs, level } = await resolveEarningSlabs({
+    vertical: 'quickCommerce',
+    zoneId,
+    loadLegacy: async () => [],
+  });
+  if (level && level !== 'legacy' && slabs.length) {
+    return { ...settings, deliveryFeeRanges: asQcRanges(slabs) };
+  }
+  return settings;
 }
 
 /**
