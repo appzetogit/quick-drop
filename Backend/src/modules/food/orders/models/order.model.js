@@ -147,6 +147,19 @@ const pricingSchema = new mongoose.Schema(
         monetizationMode: { type: String, enum: ['commission', 'plan'] },
         discount: { type: Number, default: 0, min: 0 },
         /**
+         * Whether the PLATFORM funded the coupon rather than the restaurant.
+         *
+         * Decides what GST was charged on (shared/billing.js): a platform-funded
+         * coupon leaves the restaurant paid in full, so the supply is still
+         * worth the pre-coupon amount and the tax is due on it.
+         *
+         * Declared here for the same reason `couponCode` above had to be: the
+         * schema is strict, so a field the services set but the model does not
+         * name is dropped on every save. Undefined on orders placed before this
+         * existed, which read back as the older treatment and are not re-taxed.
+         */
+        discountFundedByPlatform: { type: Boolean },
+        /**
          * What the buy-one-get-one units were worth.
          *
          * Recorded, not deducted: the free units were already split onto

@@ -674,6 +674,14 @@ export async function calculateOrderPricing(userId, dto) {
 
   let discount = 0;
   let appliedCoupon = null;
+  /*
+   * Who paid for the coupon, which decides what the GST is charged on
+   * (shared/billing.js). Admin-created is the default and the fallback, and it
+   * means the platform funded it -- matching how the money is actually settled
+   * in foodTransaction.service.js, where an admin coupon comes off the
+   * platform's profit and leaves the restaurant's payout whole.
+   */
+  let discountFundedByPlatform = false;
   const codeRaw = dto.couponCode
     ? String(dto.couponCode).trim().toUpperCase()
     : "";
@@ -776,6 +784,7 @@ export async function calculateOrderPricing(userId, dto) {
           );
         }
         appliedCoupon = { code: codeRaw, discount };
+        discountFundedByPlatform = offer.createdByRole !== 'RESTAURANT';
       }
     }
   }
@@ -798,6 +807,7 @@ export async function calculateOrderPricing(userId, dto) {
    */
   const bill = computeBill({
     itemAmount: subtotal,
+    discountFundedByPlatform,
     packagingFee,
     deliveryFee,
     platformFee,
@@ -878,6 +888,14 @@ export async function calculateOrderPricing(userId, dto) {
       platformFee,
       surgeAmount,
       discount,
+      /*
+       * Carried on the pricing so the settled bill at order creation taxes the
+       * same value the quote did, and so a past order can be read back and
+       * explained. Orders priced before this existed have no such field, and
+       * default to the old treatment -- which is what keeps the change forward
+       * only.
+       */
+      discountFundedByPlatform,
       total,
       /*
        * The bill line by line, for a summary that shows its working. `tax` and

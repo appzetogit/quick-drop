@@ -79,10 +79,11 @@ export function normalizeTip(raw) {
 /**
  * Build the bill.
  *
- * `discount` is applied to the food and the packaging, before tax, because that
- * is what a coupon reduces -- taxing the pre-discount amount would charge GST
- * on money nobody paid. It cannot reach the delivery fee, the surge or the tip,
- * which are the rider's.
+ * `discount` is applied to the food and the packaging before tax, and it cannot
+ * reach the delivery fee, the surge or the tip, which are the rider's.
+ *
+ * WHICH VALUE THE GST IS CHARGED ON depends on who paid for the coupon, and the
+ * two answers are not interchangeable -- see `discountFundedByPlatform`.
  */
 export function computeBill({
     itemAmount = 0,
@@ -123,6 +124,27 @@ export function computeBill({
      * is not the restaurant's to declare inclusive.
      */
     packagingBelongsToRestaurant = false,
+    /*
+     * Whether the PLATFORM funded the coupon rather than the restaurant.
+     *
+     * This decides what the GST is charged on, and the two cases are genuinely
+     * different rather than a matter of preference.
+     *
+     * A restaurant's own coupon is a discount by the supplier at the time of
+     * supply, shown on the invoice: it comes out of the taxable value, and the
+     * customer is taxed on what they actually pay. Charging tax on the full
+     * price there would overcharge them.
+     *
+     * A platform-funded coupon is not the supplier's discount. The restaurant
+     * is paid in full -- part by the customer, part by the platform -- so the
+     * consideration for the supply is still the whole amount and the tax is due
+     * on it. Treating it as a supplier discount under-collects GST, quietly,
+     * on every order that used one.
+     *
+     * Off by default: a caller that does not know who funded the coupon gets
+     * the treatment this function has always applied.
+     */
+    discountFundedByPlatform = false,
 } = {}) {
     const items = nonNegative(itemAmount);
     const packaging = nonNegative(packagingFee);
@@ -199,23 +221,44 @@ export function computeBill({
      * the two -- an inclusive restaurant under a platform-set packaging charge
      * -- still reconciles.
      */
+    /*
+     * The value the tax is charged on. Pre-coupon when the platform funded it,
+     * because the restaurant is still paid in full and the supply is still
+     * worth the whole amount; post-coupon when the restaurant funded it, which
+     * is a supplier discount and comes out of the taxable value.
+     */
+    const platformFundedDiscount = discountFundedByPlatform === true && appliedDiscount > 0;
+    const inclusiveTaxBase = platformFundedDiscount ? inclusiveItems : inclusiveAfterDiscount;
+    const exclusiveTaxBase = platformFundedDiscount ? exclusiveItems : exclusiveAfterDiscount;
+    const packagingTaxBase = platformFundedDiscount ? round2(packaging) : packagingAfterDiscount;
+
     const taxOnItems =
         // taken out of the prices that already contained it...
-        (inclusiveAfterDiscount - deTax(inclusiveAfterDiscount))
+        (inclusiveTaxBase - deTax(inclusiveTaxBase))
         // ...and added to the prices that did not.
-        + (exclusiveAfterDiscount * gstFraction);
-    const taxOnPackaging = pricesIncludeGst && packagingBelongsToRestaurant
-        ? packagingAfterDiscount - netPackagingFee
-        : netPackagingFee * gstFraction;
+        + (exclusiveTaxBase * gstFraction);
+    const taxOnPackaging = packagingIsInclusive
+        ? packagingTaxBase - deTax(packagingTaxBase)
+        : packagingTaxBase * gstFraction;
 
-    const taxableAmount = round2(netItemAmount + netPackagingFee);
+    /*
+     * Two different figures, and they are equal only when the restaurant funded
+     * the coupon. `chargedFoodNet` is what the customer pays for the food;
+     * `taxableAmount` is what the tax is calculated on. Keeping them separate is
+     * what lets a platform-funded coupon reduce the bill without also reducing
+     * the tax due on the supply.
+     */
+    const chargedFoodNet = round2(netItemAmount + netPackagingFee);
+    const taxableAmount = platformFundedDiscount
+        ? round2(netItemAmountBeforeDiscount + netPackagingFeeBeforeDiscount)
+        : chargedFoodNet;
     const gstOnItems = round2(taxOnItems + taxOnPackaging);
 
     const platformFeeGst = round2(platform * (rate(platformFeeGstRate) / 100));
 
     // What the bill shows above the tip line.
     const totalBeforeTip = round2(
-        taxableAmount + gstOnItems + delivery + surge + platform + platformFeeGst,
+        chargedFoodNet + gstOnItems + delivery + surge + platform + platformFeeGst,
     );
     const payableBeforeRounding = round2(totalBeforeTip + tipAmount);
 
@@ -249,8 +292,15 @@ export function computeBill({
         netPackagingFeeBeforeDiscount,
         /** What the coupon took off those two. Never print `discount` beside them. */
         discountOnNet,
-        /** Both of the above together -- the base the food GST is charged on. */
+        /**
+         * The base the food GST is charged on. Equal to netItemAmount +
+         * netPackagingFee for a restaurant-funded coupon, and the PRE-coupon
+         * value for a platform-funded one -- so never assume it is what the
+         * customer paid for the food.
+         */
         taxableAmount,
+        /** True when the base above is the pre-coupon value. Recorded so an invoice can say why. */
+        gstOnPreDiscountValue: platformFundedDiscount,
         gstRate: rate(gstRate),
         gstOnItems,
         /**

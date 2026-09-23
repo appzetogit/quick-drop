@@ -11,6 +11,14 @@
  * the re-price. The use was never counted either.
  *
  * Drives the real validators and createOrder against an in-memory Mongo.
+ *
+ * The totals here are Rs 202, not the Rs 199 this once expected. SAVE50 has no
+ * `createdByRole`, so it is an admin coupon: the platform funds it and the
+ * restaurant is paid in full, which means the supply is still worth the
+ * pre-coupon amount and GST is due on that. The customer saves the coupon's
+ * face value and no more. A restaurant-funded coupon IS a supplier discount
+ * and still comes off the taxable value -- the SHOP50 section pins the
+ * difference, and Rs 199 is where it lands.
  */
 import { startFoodWorld, makeChecker, near } from './food-order-fixture.mjs';
 
@@ -26,22 +34,36 @@ try {
     console.log('\nthe Flutter app: the coupon travels only inside pricing');
     const buyer = await w.makeUser();
     const quoted = await w.quote(buyer._id, { items, couponCode: 'SAVE50' });
-    check('the cart is quoted Rs 199 with the coupon', near(quoted.total, 199) && near(quoted.discount, 50),
+    check('the cart is quoted Rs 202 with the coupon', near(quoted.total, 202) && near(quoted.discount, 50),
         `total ${quoted.total}, discount ${quoted.discount}`);
 
     const order = await w.saved(await w.place(buyer._id, { items, pricing: quoted }));
-    check('THE BUG: the order is charged the quoted Rs 199, not Rs 252', near(order.pricing.total, 199),
+    check('THE BUG: the order is charged the quoted Rs 202, not Rs 252', near(order.pricing.total, 202),
         `charged ${order.pricing.total}`);
     check('the discount is on the saved order', near(order.pricing.discount, 50), `${order.pricing.discount}`);
-    check('the customer is asked for Rs 199', near(order.payment.amountDue, 199), `${order.payment.amountDue}`);
+    check('the customer is asked for Rs 202', near(order.payment.amountDue, 202), `${order.payment.amountDue}`);
     check('the coupon use is counted', (await usedCount()) === 1, `usedCount ${await usedCount()}`);
 
     console.log('\nan older web build: pricing.couponCode only');
     const webBuyer = await w.makeUser();
     const webQuote = await w.quote(webBuyer._id, { items, couponCode: 'SAVE50' });
     const webOrder = await w.saved(await w.place(webBuyer._id, { items, pricing: { ...webQuote, couponCode: 'SAVE50' } }));
-    check('charged Rs 199', near(webOrder.pricing.total, 199), `charged ${webOrder.pricing.total}`);
+    check('charged Rs 202', near(webOrder.pricing.total, 202), `charged ${webOrder.pricing.total}`);
     check('counted', (await usedCount()) === 2, `usedCount ${await usedCount()}`);
+
+    console.log('\na restaurant-funded coupon still comes off the taxable value');
+    await w.m.FoodOffer.create({
+        couponCode: 'SHOP50', discountType: 'flat-price', discountValue: 50,
+        status: 'active', createdByRole: 'RESTAURANT',
+    });
+    const shopBuyer = await w.makeUser();
+    const shopQuote = await w.quote(shopBuyer._id, { items, couponCode: 'SHOP50' });
+    // The restaurant gives this one up, so the tax goes with it: Rs 50 off
+    // the food AND the GST that was riding on it.
+    check('a shop coupon is quoted Rs 199, tax and all', near(shopQuote.total, 199) && near(shopQuote.discount, 50),
+        `total ${shopQuote.total}, discount ${shopQuote.discount}`);
+    const shopOrder = await w.saved(await w.place(shopBuyer._id, { items, pricing: shopQuote }));
+    check('and charged the Rs 199 it quoted', near(shopOrder.pricing.total, 199), `charged ${shopOrder.pricing.total}`);
 
     console.log('\nno coupon: /calculate echoes couponCode null');
     const plainBuyer = await w.makeUser();

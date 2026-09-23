@@ -228,6 +228,13 @@ export async function createOrder(userId, dto) {
       platformFee: Number(pricingResult.pricing.platformFee ?? 0) || 0,
       surgeAmount: Number(pricingResult.pricing.surgeAmount ?? 0) || 0,
       discount: Number(pricingResult.pricing.discount ?? 0) || 0,
+      /*
+       * Copied from the quote so the order is taxed on the same value it was
+       * quoted on. This object is built field by field, so anything not named
+       * here is dropped -- which is how the quote and the charge come to
+       * disagree by the GST on the coupon.
+       */
+      discountFundedByPlatform: pricingResult.pricing.discountFundedByPlatform === true,
       // Recorded, not deducted -- the free units are already out of the subtotal.
       bogoSavings: Number(pricingResult.pricing.bogo?.savings ?? 0) || 0,
       /*
@@ -289,6 +296,12 @@ export async function createOrder(userId, dto) {
       platformFee: normalizedPricing.platformFee,
       surgeAmount: normalizedPricing.surgeAmount,
       discount: normalizedPricing.discount,
+      /*
+       * Taxed on the same value the quote used. Absent on anything priced
+       * before this existed, which falls back to false -- the old treatment --
+       * so no past order is re-taxed by being read back.
+       */
+      discountFundedByPlatform: normalizedPricing.discountFundedByPlatform === true,
       tip: normalizedPricing.tip,
       gstRate: normalizedPricing.gstRate,
       platformFeeGstRate: normalizedPricing.platformFeeGstRate,
