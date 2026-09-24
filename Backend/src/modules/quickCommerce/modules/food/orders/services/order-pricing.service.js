@@ -18,6 +18,7 @@ import { attachOutletTimingsToRestaurants } from '../../restaurant/services/outl
 import { getRestaurantAvailabilityStatus } from '../../restaurant/helpers/restaurantAvailability.helper.js';
 import { resolveOrderCartItems } from '../helpers/order-cart-items.helper.js';
 import { AVG_SPEED_KMPH, PACKING_MINUTES } from './order.helpers.js';
+import { withMasterFees } from '../../../../../../core/finance/platformFees.service.js';
 
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
@@ -226,12 +227,13 @@ export async function loadActiveFeeSettings({ zoneId } = {}) {
     .sort({ createdAt: -1 })
     .lean();
 
-  const settings = feeDoc || {
+  // Master's platform fee when set (core/finance/platformFees).
+  const settings = await withMasterFees('quickCommerce', feeDoc || {
     deliveryFee: 0,
     deliveryFeeRanges: [],
     platformFee: 0,
     gstRate: 0,
-  };
+  });
 
   // Master > Delivery earnings when a table is saved there; this module's own
   // bands when it is not, so nothing changes until an admin sets one.

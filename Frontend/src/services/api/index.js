@@ -197,6 +197,9 @@ export const platformSettingsAPI = {
   /** Master > Referral: what each service pays now, and who set it. */
   referralOverview: () =>
     apiClient.get("/platform/settings/referral/overview", { contextModule: "admin" }),
+  /** Master > Platform Fee & GST: what each service charges now, and who set it. */
+  feesOverview: () =>
+    apiClient.get("/platform/settings/fees/overview", { contextModule: "admin" }),
   /**
    * What a module pays its riders today, plus its own distance bands.
    *

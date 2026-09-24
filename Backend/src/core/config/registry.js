@@ -183,6 +183,31 @@ export const SETTINGS = Object.freeze({
         help: 'No promo code may be redeemed more times than this across all customers. Unset means no ceiling. A code with a smaller cap of its own keeps it.',
     },
 
+    // --- fees ----------------------------------------------------------------
+    /*
+     * The platform fee on an order and the GST on it, set once (Master >
+     * Platform Fee & GST). Unset keeps each service's own fee settings, which is
+     * how it worked before. Read by core/finance/platformFees.service.js.
+     */
+    'fees.platformFee': {
+        type: 'number',
+        default: null,
+        min: 0,
+        max: 1000,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Platform fee per order',
+        help: 'A flat amount added to every Food and Quick & Medical order. 0 charges none. Unset keeps each service’s own fee.',
+    },
+    'fees.platformFeeGstRate': {
+        type: 'number',
+        default: null,
+        min: 0,
+        max: 100,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'GST on the platform fee (%)',
+        help: 'Added on top of the platform fee. Food only: Quick & Medical does not add GST to its platform fee. Unset keeps Food’s own rate (18% if it has none).',
+    },
+
     // --- referral ------------------------------------------------------------
     /*
      * What a referral pays, set once for every service (Master > Referral).

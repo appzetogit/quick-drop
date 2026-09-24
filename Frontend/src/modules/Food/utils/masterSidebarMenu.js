@@ -39,6 +39,7 @@ export const masterSidebarMenu = [
           { label: "Brand & Contact", path: "/admin/master/settings/brand" },
           { label: "Payments & Messages", path: "/admin/master/settings/integrations" },
           { label: "Money Rules & Cash Limit", path: "/admin/master/settings/money" },
+          { label: "Platform Fee & GST", path: "/admin/master/fees" },
           { label: "Promo Limits", path: "/admin/master/promotions" },
         ],
       },

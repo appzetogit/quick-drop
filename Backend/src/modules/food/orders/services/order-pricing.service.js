@@ -14,6 +14,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { resolveDeliveryDistanceKm } from './deliveryDistance.service.js';
+import { withMasterFees } from '../../../../core/finance/platformFees.service.js';
 import {
     assertOrderQuantity,
     resolveOrderQuantityRules
@@ -380,7 +381,8 @@ export async function calculateOrderPricing(userId, dto) {
     .sort({ createdAt: -1 })
     .lean();
     
-  const feeSettings = feeDoc || {
+  // Master's platform fee and its GST rate when set (core/finance/platformFees).
+  const feeSettings = await withMasterFees('food', feeDoc || {
     platformFee: 0,
     deliveryFeeComputationMode: 'distance_order_value',
     gstRate: 0,
@@ -389,7 +391,7 @@ export async function calculateOrderPricing(userId, dto) {
       minOrderAmount: 0,
       incentivePercent: 0,
     }
-  };
+  });
 
   // The mode decides who keeps the packaging money, which in turn decides
   // whether an inclusive restaurant's GST setting reaches that line and whether
@@ -591,8 +593,16 @@ export async function calculateOrderPricing(userId, dto) {
    * An address with no saved location is let through, as quick commerce's
    * catalogue did before it: refusing it would block customers over data they
    * never entered, and the radius check still covers restaurants that set one.
+   *
+   * So is every address on a platform that has drawn no food zones yet: with
+   * none, "outside every zone" would be every address, and a new site could
+   * take no orders at all until someone found the zone screen.
    */
-  if (serviceability.deliverable !== false && extractCoords(dto?.address || dto?.deliveryAddress)) {
+  if (
+    serviceability.deliverable !== false
+    && extractCoords(dto?.address || dto?.deliveryAddress)
+    && (await FoodZone.exists({ isActive: true }))
+  ) {
     const addressZoneId = await detectZoneIdFromAddress(dto?.address || dto?.deliveryAddress);
     const restaurantZoneId = restaurant?.zoneId ? String(restaurant.zoneId) : '';
     if (!addressZoneId) {
