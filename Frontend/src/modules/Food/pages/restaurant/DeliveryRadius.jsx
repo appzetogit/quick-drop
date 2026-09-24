@@ -71,7 +71,7 @@ export default function DeliveryRadius() {
     try {
       const res = await restaurantAPI.updateServiceRadius(value)
       apply(res?.data?.data || res?.data || {})
-      toast.success(value === null ? "You now deliver across your whole zone" : `You now deliver within ${value} km`)
+      toast.success(value === null ? `You now deliver within the platform radius (${max} km)` : `You now deliver within ${value} km`)
     } catch (error) {
       toast.error(error?.response?.data?.message || "Could not save your delivery radius")
     } finally {
@@ -133,7 +133,7 @@ export default function DeliveryRadius() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
-                  { on: false, title: "My whole zone", hint: "Anyone in your delivery zone can order" },
+                  { on: false, title: "Platform radius", hint: `Customers within ${max} km can order` },
                   { on: true, title: "Only within a radius", hint: "Customers further away cannot see or order from you" },
                 ].map((opt) => (
                   <button
@@ -212,7 +212,7 @@ export default function DeliveryRadius() {
               <div className="text-xs text-gray-600 leading-relaxed space-y-1">
                 <p>
                   {data?.effectiveRadiusKm != null
-                    ? `In effect now: you deliver within ${data.effectiveRadiusKm} km of your outlet.`
+                    ? `In effect now: you deliver within ${data.effectiveRadiusKm} km of your outlet${data.usesDefault ? " (the platform radius)" : ""}.`
                     : "In effect now: you deliver across your whole zone."}
                   {data?.updatedBy &&
                     ` Last changed by ${data.updatedBy === "admin" ? "the Quick Drop team" : "you"}${

@@ -155,10 +155,11 @@ export default function DeliveryRadiusPage() {
 
             {/* ---------------- ceiling ---------------- */}
             <section className="bg-white rounded-2xl border border-slate-200 p-5 md:p-6">
-                <h2 className="text-sm font-semibold text-slate-800">Largest radius a restaurant may set</h2>
+                <h2 className="text-sm font-semibold text-slate-800">Delivery radius for every restaurant</h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                    Applies to restaurants and to this panel alike. Lowering it takes effect immediately for every
-                    restaurant above it; what they saved is kept and comes back if you raise it again.
+                    Restaurants without a radius of their own deliver within this distance, and customers further
+                    away don't see them. A restaurant can choose a smaller radius, never a larger one. Changes apply
+                    immediately.
                 </p>
                 <div className="mt-4 flex flex-col sm:flex-row sm:items-end gap-3">
                     <div className="w-full sm:w-48 space-y-2">
@@ -251,7 +252,7 @@ export default function DeliveryRadiusPage() {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     {[
-                                        { on: false, title: "Its whole zone", hint: "No radius of its own." },
+                                        { on: false, title: "Platform radius", hint: `Within ${radius.maxRadiusKm} km, set above.` },
                                         { on: true, title: "Only within a radius", hint: "Further away is refused." },
                                     ].map((opt) => (
                                         <button
@@ -289,7 +290,7 @@ export default function DeliveryRadiusPage() {
                                 <p className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-sm text-slate-700">
                                     <span className="font-semibold">In effect now — </span>
                                     {radius.effectiveRadiusKm != null
-                                        ? `delivers within ${radius.effectiveRadiusKm} km`
+                                        ? `delivers within ${radius.effectiveRadiusKm} km${radius.usesDefault ? " (the platform radius)" : ""}`
                                         : "delivers across its whole zone"}
                                     {radius.capped &&
                                         ` (saved ${radius.serviceRadiusKm} km, held to ${radius.maxRadiusKm} km by the limit)`}

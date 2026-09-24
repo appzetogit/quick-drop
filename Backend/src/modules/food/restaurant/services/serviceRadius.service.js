@@ -71,6 +71,7 @@ function describe(restaurant, settings) {
         restaurantName: restaurant.restaurantName || '',
         serviceRadiusKm: effective.savedRadiusKm,
         effectiveRadiusKm: effective.radiusKm,
+        usesDefault: effective.isDefault === true,
         capped: effective.capped,
         maxRadiusKm: effective.maxRadiusKm,
         minRadiusKm: 1,
@@ -167,13 +168,15 @@ export async function serviceRadiusListingClause(lat, lng) {
     if (Math.abs(latN) > 90 || Math.abs(lngN) > 180) return null;
 
     const { maxRadiusKm } = await loadServiceRadiusSettings();
+    // Every restaurant is held to a radius now: its own, or the platform's when
+    // it set none (resolveEffectiveServiceRadius). Straight-line here, as the
+    // listing always was; checkout judges the road distance.
     const reachable = await FoodRestaurant.aggregate([
         {
             $geoNear: {
                 near: { type: 'Point', coordinates: [lngN, latN] },
                 distanceField: 'distanceMeters',
                 spherical: true,
-                query: { serviceRadiusKm: { $gt: 0 } },
             },
         },
         {
@@ -181,7 +184,18 @@ export async function serviceRadiusListingClause(lat, lng) {
                 $expr: {
                     $lte: [
                         '$distanceMeters',
-                        { $multiply: [{ $min: ['$serviceRadiusKm', maxRadiusKm] }, 1000] },
+                        {
+                            $multiply: [
+                                {
+                                    $cond: [
+                                        { $gt: [{ $ifNull: ['$serviceRadiusKm', 0] }, 0] },
+                                        { $min: ['$serviceRadiusKm', maxRadiusKm] },
+                                        maxRadiusKm,
+                                    ],
+                                },
+                                1000,
+                            ],
+                        },
                     ],
                 },
             },
@@ -191,9 +205,9 @@ export async function serviceRadiusListingClause(lat, lng) {
 
     return {
         $or: [
-            { serviceRadiusKm: null },
-            { serviceRadiusKm: { $exists: false } },
-            { serviceRadiusKm: { $lte: 0 } },
+            // A restaurant with no map pin cannot be measured, so it is not
+            // hidden for it; the zone still decides where it shows.
+            { 'location.coordinates.1': { $exists: false } },
             { _id: { $in: reachable.map((r) => r._id) } },
         ],
     };

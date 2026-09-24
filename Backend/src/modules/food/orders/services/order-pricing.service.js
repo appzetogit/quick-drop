@@ -549,7 +549,10 @@ export async function calculateOrderPricing(userId, dto) {
     distanceKm: measuredDistanceKm,
     reason: '',
   };
-  if (Number(restaurant?.serviceRadiusKm) > 0) {
+  // Every restaurant with a map pin: its own radius, or the platform default
+  // (resolveEffectiveServiceRadius). One without a pin cannot be measured, and
+  // refusing it for that would stop it trading; the zone check below still holds.
+  if (extractCoords(restaurant)) {
     const { resolveEffectiveServiceRadius, judgeServiceRadius } =
       await import('../../shared/serviceRadius.js');
     const { loadServiceRadiusSettings } =

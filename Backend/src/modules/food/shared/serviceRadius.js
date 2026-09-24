@@ -98,7 +98,13 @@ export function validateServiceRadius(value, settings = null) {
 /**
  * The radius actually enforced for this restaurant today.
  *
- * `radiusKm` null means the restaurant has none and only the zone applies.
+ * A restaurant that saved no radius of its own gets the platform's
+ * (`isDefault`). It used to get none at all -- "only the zone applies" -- so
+ * the admin's radius setting bound one restaurant in seven: with 15 km set, six
+ * restaurants still listed and delivered at any distance, which is the reverse
+ * of what anyone setting a delivery radius means. A restaurant's own radius can
+ * only narrow it.
+ *
  * `capped` is true when the platform ceiling is holding it below what it saved,
  * so both panels can say so instead of showing a number that is not in force.
  */
@@ -107,10 +113,10 @@ export function resolveEffectiveServiceRadius({ restaurantRadiusKm = null, setti
     const saved = isBlank(restaurantRadiusKm) ? NaN : Number(restaurantRadiusKm);
 
     if (!Number.isFinite(saved) || saved <= 0) {
-        return { radiusKm: null, savedRadiusKm: null, maxRadiusKm, capped: false };
+        return { radiusKm: maxRadiusKm, savedRadiusKm: null, maxRadiusKm, capped: false, isDefault: true };
     }
     const radiusKm = round2(Math.min(saved, maxRadiusKm));
-    return { radiusKm, savedRadiusKm: round2(saved), maxRadiusKm, capped: radiusKm < saved };
+    return { radiusKm, savedRadiusKm: round2(saved), maxRadiusKm, capped: radiusKm < saved, isDefault: false };
 }
 
 /**
