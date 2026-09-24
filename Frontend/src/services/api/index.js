@@ -194,6 +194,9 @@ export const platformSettingsAPI = {
     ),
   invalidateCache: () =>
     apiClient.post("/platform/settings/cache/invalidate", {}, { contextModule: "admin" }),
+  /** Master > Referral: what each service pays now, and who set it. */
+  referralOverview: () =>
+    apiClient.get("/platform/settings/referral/overview", { contextModule: "admin" }),
   /**
    * What a module pays its riders today, plus its own distance bands.
    *

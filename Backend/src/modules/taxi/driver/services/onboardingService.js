@@ -25,6 +25,7 @@ import { WalletTransaction } from '../models/WalletTransaction.js';
 import { applyDriverWalletAdjustment } from './walletService.js';
 import { ensureAllDriverCapabilities } from '../../../../core/identity/driverCapabilities.service.js';
 
+import { taxiReferralFor } from '../../../../core/referral/referralSettings.service.js';
 const OTP_TTL_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DRIVER_NAME_REGEX = /^[A-Za-z]+(?:[ .'-][A-Za-z]+)*$/;
@@ -103,7 +104,7 @@ const generateDriverReferralCode = (driver) => {
 
 const getDriverReferralProgramSettings = async () => {
   const setting = await AdminBusinessSetting.findOne({ scope: 'default' }).lean();
-  const driverReferral = setting?.referral?.driver || {};
+  const driverReferral = await taxiReferralFor('driver', setting?.referral?.driver);
 
   return {
     enabled: Boolean(driverReferral.enabled),

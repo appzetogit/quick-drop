@@ -39,6 +39,7 @@ import {
   purchaseUserSubscription,
 } from '../services/subscriptionService.js';
 
+import { taxiReferralFor } from '../../../../core/referral/referralSettings.service.js';
 const VALID_GENDERS = new Set(['male', 'female', 'other', 'prefer-not-to-say', '']);
 
 const toCleanString = (value) => String(value || '').trim();
@@ -1110,7 +1111,7 @@ const generateUserReferralCode = (user) => {
 
 const getUserReferralProgramSettings = async () => {
   const setting = await AdminBusinessSetting.findOne({ scope: 'default' }).lean();
-  const userReferral = setting?.referral?.user || {};
+  const userReferral = await taxiReferralFor('user', setting?.referral?.user);
 
   return {
     enabled: Boolean(userReferral.enabled),

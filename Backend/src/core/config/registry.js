@@ -183,6 +183,49 @@ export const SETTINGS = Object.freeze({
         help: 'No promo code may be redeemed more times than this across all customers. Unset means no ceiling. A code with a smaller cap of its own keeps it.',
     },
 
+    // --- referral ------------------------------------------------------------
+    /*
+     * What a referral pays, set once for every service (Master > Referral).
+     *
+     * Unset means each service keeps paying what its own referral screen says,
+     * which is how the platform behaved before this existed. Once set, it is what
+     * Food, Quick & Medical and Taxi pay (core/referral/referralSettings.service.js);
+     * WHEN each pays stays the service's own rule -- Food and Quick at sign-up or
+     * approval, Taxi after the rides its screen asks for.
+     */
+    'referral.customerReward': {
+        type: 'number',
+        default: null,
+        min: 0,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Reward for referring a customer',
+        help: 'Credited to the wallet of the customer who invited a new one. 0 switches customer referral rewards off. Unset keeps what each service pays today.',
+    },
+    'referral.customerLimit': {
+        type: 'number',
+        default: null,
+        min: 1,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Most rewarded customer referrals per person',
+        help: 'After this many rewarded invites a customer earns nothing more. Food and Quick only: Taxi has no cap. Unset keeps each service’s own limit.',
+    },
+    'referral.partnerReward': {
+        type: 'number',
+        default: null,
+        min: 0,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Reward for referring a rider or driver',
+        help: 'Credited to the rider or driver who brought in a new one. 0 switches these rewards off. Unset keeps what each service pays today.',
+    },
+    'referral.partnerLimit': {
+        type: 'number',
+        default: null,
+        min: 1,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Most rewarded rider or driver referrals per person',
+        help: 'Food and Quick riders only: Taxi has no cap. Unset keeps each service’s own limit.',
+    },
+
     // --- assignment ----------------------------------------------------------
     'assignment.maxConcurrentJobs': {
         type: 'number',

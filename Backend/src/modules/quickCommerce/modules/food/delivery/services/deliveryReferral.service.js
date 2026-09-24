@@ -7,6 +7,7 @@ import { FoodReferralLog } from '../../admin/models/referralLog.model.js';
 import { logger } from '../../../../utils/logger.js';
 import { config } from '../../../../config/env.js';
 
+import { referralSettingsFor } from '../../../../../../core/referral/referralSettings.service.js';
 /** Fallback path when only an origin is configured (no {code} template). */
 const REFERRAL_SIGNUP_PATH = '/food/delivery/signup';
 
@@ -62,7 +63,7 @@ export const getDeliveryReferralStats = async (deliveryPartnerId) => {
     const oid = new mongoose.Types.ObjectId(id);
     const [partner, settingsDoc, bonusAgg, logs] = await Promise.all([
         FoodDeliveryPartner.findById(oid).select('_id referralCount referralCode').lean(),
-        FoodReferralSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean(),
+        referralSettingsFor('quickCommerce', FoodReferralSettings),
         DeliveryBonusTransaction.aggregate([
             { $match: { deliveryPartnerId: oid, reference: { $regex: /referral/i } } },
             { $group: { _id: null, total: { $sum: '$amount' } } }
@@ -160,7 +161,7 @@ export const creditDeliveryReferralOnFirstDelivery = async (refereePartnerId) =>
         if (existing) return { credited: false, reason: 'already_decided' };
 
         const [settingsDoc, referrer] = await Promise.all([
-            FoodReferralSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean(),
+            referralSettingsFor('quickCommerce', FoodReferralSettings),
             FoodDeliveryPartner.findById(referee.referredBy)
                 .select('_id referralCount status')
                 .lean()

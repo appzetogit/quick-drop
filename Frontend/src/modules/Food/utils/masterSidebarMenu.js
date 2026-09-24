@@ -127,6 +127,7 @@ export const masterSidebarMenu = [
         label: "Referral Management",
         icon: "Gift",
         subItems: [
+          { label: "Referral Rewards (all services)", path: "/admin/master/referral" },
           { label: "Food · Referral", path: "/admin/food/referral-settings" },
           { label: "Quick · Referral", path: "/admin/quick-commerce/referral-settings" },
           { label: "Taxi · User Referral", path: "/taxi/admin/referrals/user-settings" },

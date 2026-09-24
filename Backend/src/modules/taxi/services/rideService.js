@@ -31,6 +31,7 @@ import { RideInsurancePlan } from '../admin/models/RideInsurancePlan.js';
 import { availablePlans, insuranceSnapshot, planApplies } from '../common/rideInsurance.js';
 import { measureTrip, measureTripRoad } from '../common/tripMeasure.js';
 
+import { taxiReferralFor } from '../../../core/referral/referralSettings.service.js';
 const clearUserActiveRideIfPresent = async (user) => {
   if (!user?.currentRideId) {
     return;
@@ -147,7 +148,7 @@ const ensureUserWallet = async (userId) => {
 
 const getUserReferralProgramSettings = async () => {
   const setting = await AdminBusinessSetting.findOne({ scope: 'default' }).lean();
-  const userReferral = setting?.referral?.user || {};
+  const userReferral = await taxiReferralFor('user', setting?.referral?.user);
 
   return {
     enabled: Boolean(userReferral.enabled),
@@ -159,7 +160,7 @@ const getUserReferralProgramSettings = async () => {
 
 const getDriverReferralProgramSettings = async () => {
   const setting = await AdminBusinessSetting.findOne({ scope: 'default' }).lean();
-  const driverReferral = setting?.referral?.driver || {};
+  const driverReferral = await taxiReferralFor('driver', setting?.referral?.driver);
 
   return {
     enabled: Boolean(driverReferral.enabled),

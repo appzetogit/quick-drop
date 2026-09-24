@@ -31,6 +31,7 @@
     "test:flow": "node tests/flow.smoke.mjs",
     "test:unify": "node tests/unify.smoke.mjs",
     "test:support-inbox": "node tests/support-inbox.smoke.mjs",
+    "test:referral-master": "node tests/referral-master.smoke.mjs",
     "test:assignment": "node tests/assignment.smoke.mjs",
     "test:assignment-claim": "node tests/assignment.claim.smoke.mjs",
     "test:dispatch": "node tests/dispatch.smoke.mjs",
