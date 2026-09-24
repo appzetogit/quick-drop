@@ -286,8 +286,8 @@ router.delete('/orders/:orderId', orderController.deleteOrderAdminController);
 // ----- Order cancellation after the restaurant accepts -----
 router.get('/order-cancellation', async (_req, res, next) => {
     try {
-        const { getCancelRules } = await import('../../orders/services/cancellationPolicy.js');
-        return res.status(200).json({ success: true, message: 'OK', data: await getCancelRules() });
+        const { foodCancelRulesForAdmin } = await import('../../orders/services/cancellationPolicy.js');
+        return res.status(200).json({ success: true, message: 'OK', data: await foodCancelRulesForAdmin() });
     } catch (err) { return next(err); }
 });
 router.put('/order-cancellation', async (req, res, next) => {

@@ -125,10 +125,13 @@ export const getRestaurantTaxSettingsController = async (req, res, next) => {
         ]);
         const { DEFAULT_PLATFORM_FEE_GST_RATE } = await import('../../shared/billing.js');
 
-        const [restaurant, feeSettings] = await Promise.all([
+        const { withMasterFees } = await import('../../../../core/finance/platformFees.service.js');
+        const [restaurant, ownFeeSettings] = await Promise.all([
             FoodRestaurant.findById(restaurantId).select('priceIncludesGst').lean(),
             FoodFeeSettings.findOne({ isActive: true }).lean(),
         ]);
+        // The rate the checkout charges, which is Master's when one is set.
+        const feeSettings = await withMasterFees('food', ownFeeSettings);
 
         if (!restaurant) {
             return sendResponse(res, 404, 'Restaurant not found', null);

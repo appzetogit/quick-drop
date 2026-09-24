@@ -33,7 +33,8 @@ const DEFAULTS = { allowAfterAccept: false, windowMinutes: 5, stopWhenPreparing:
 const TTL_MS = 30_000;
 let cache = null;
 
-export async function getCancelRules() {
+/** Food's own rules, from its Order cancellation screen. */
+async function foodOwnRules() {
   if (cache && Date.now() - cache.at < TTL_MS) return cache.rules;
   const doc = await FoodOrderCancelRules.findOne({ key: 'default' }).lean();
   const rules = {
@@ -44,6 +45,46 @@ export async function getCancelRules() {
   };
   cache = { at: Date.now(), rules };
   return rules;
+}
+
+const MASTER_KEYS = {
+  allowAfterAccept: 'orders.cancelAfterAccept',
+  windowMinutes: 'orders.cancelWindowMinutes',
+  stopWhenPreparing: 'orders.cancelStopWhenPreparing',
+};
+
+/**
+ * The rules in force for one service.
+ *
+ * Master > Cancellation Policy wins for anything set there (for every service
+ * or this one). Otherwise each service keeps its own: Food's Order
+ * cancellation screen, and for Quick & Medical the rule it always had --
+ * cancel only before the store accepts. Quick runs the same order flow as Food
+ * (it is a fork of it), so judgeUserCancel below applies to its orders as is.
+ *
+ * A Master read that fails falls back to the service's own rule rather than
+ * blocking or allowing every cancellation.
+ *
+ * @param {'food'|'quickCommerce'} vertical
+ */
+export async function getCancelRules(vertical = 'food') {
+  const own = vertical === 'food'
+    ? await foodOwnRules()
+    : { ...DEFAULTS, updatedAt: null, sellerWord: 'store' };
+  try {
+    const { getMany } = await import('../../../../core/config/resolver.service.js');
+    const rows = await getMany(Object.values(MASTER_KEYS), { vertical });
+    const out = { ...own, source: {} };
+    for (const [field, key] of Object.entries(MASTER_KEYS)) {
+      const row = rows[key];
+      const set = row && !row.isDefault && row.value !== null && row.value !== undefined;
+      if (set) out[field] = row.value;
+      out.source[field] = set ? 'master' : 'service';
+    }
+    return out;
+  } catch {
+    return { ...own, source: { allowAfterAccept: 'service', windowMinutes: 'service', stopWhenPreparing: 'service' } };
+  }
 }
 
 export async function setCancelRules(body = {}, actorId = '') {
@@ -58,7 +99,21 @@ export async function setCancelRules(body = {}, actorId = '') {
   set.updatedBy = String(actorId || '');
   await FoodOrderCancelRules.updateOne({ key: 'default' }, { $set: set, $setOnInsert: { key: 'default' } }, { upsert: true });
   cache = null;
-  return getCancelRules();
+  return foodCancelRulesForAdmin();
+}
+
+/**
+ * What Food's own Order cancellation screen shows: Food's saved rules, and which
+ * of them Master > Cancellation Policy is currently overriding. Editing an
+ * overridden field here saves it but changes nothing until Master's is cleared,
+ * so the screen needs to say so.
+ */
+export async function foodCancelRulesForAdmin() {
+  const [own, inForce] = await Promise.all([foodOwnRules(), getCancelRules('food')]);
+  const overriddenByMaster = Object.entries(inForce.source || {})
+    .filter(([, from]) => from === 'master')
+    .map(([field]) => field);
+  return { ...own, overriddenByMaster, inForce: { allowAfterAccept: inForce.allowAfterAccept, windowMinutes: inForce.windowMinutes, stopWhenPreparing: inForce.stopWhenPreparing } };
 }
 
 export const clearCancelRulesCache = () => { cache = null; };
@@ -82,6 +137,8 @@ const riderHasTheFood = (order) =>
  *   there is no deadline, i.e. still waiting for the restaurant).
  */
 export function judgeUserCancel(order, rules, now = new Date()) {
+  // 'store' for Quick & Medical (getCancelRules sets it), 'restaurant' for Food.
+  const seller = rules?.sellerWord || 'restaurant';
   const status = String(order?.orderStatus || '');
   if (status === 'created') return { allowed: true, until: null, reason: '' };
   if (status.startsWith('cancelled')) return { allowed: false, until: null, reason: 'This order is already cancelled' };
@@ -89,7 +146,7 @@ export function judgeUserCancel(order, rules, now = new Date()) {
     return { allowed: false, until: null, reason: 'This order has been picked up and can no longer be cancelled' };
   }
   if (!rules?.allowAfterAccept) {
-    return { allowed: false, until: null, reason: 'This order can no longer be cancelled: the restaurant has accepted it' };
+    return { allowed: false, until: null, reason: `This order can no longer be cancelled: the ${seller} has accepted it` };
   }
   const open = rules.stopWhenPreparing ? ['confirmed'] : ['confirmed', 'preparing'];
   if (!open.includes(status)) {
@@ -97,7 +154,7 @@ export function judgeUserCancel(order, rules, now = new Date()) {
       allowed: false,
       until: null,
       reason: status === 'preparing'
-        ? 'This order can no longer be cancelled: the restaurant has started preparing it'
+        ? `This order can no longer be cancelled: the ${seller} has started preparing it`
         : 'This order can no longer be cancelled',
     };
   }
@@ -108,7 +165,7 @@ export function judgeUserCancel(order, rules, now = new Date()) {
     return {
       allowed: false,
       until,
-      reason: `This order can no longer be cancelled: the restaurant accepted it more than ${rules.windowMinutes} minute${Number(rules.windowMinutes) === 1 ? '' : 's'} ago`,
+      reason: `This order can no longer be cancelled: the ${seller} accepted it more than ${rules.windowMinutes} minute${Number(rules.windowMinutes) === 1 ? '' : 's'} ago`,
     };
   }
   return { allowed: true, until, reason: '' };

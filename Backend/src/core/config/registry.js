@@ -183,6 +183,62 @@ export const SETTINGS = Object.freeze({
         help: 'No promo code may be redeemed more times than this across all customers. Unset means no ceiling. A code with a smaller cap of its own keeps it.',
     },
 
+    // --- fees ----------------------------------------------------------------
+    /*
+     * The platform fee on an order and the GST on it, set once (Master >
+     * Platform Fee & GST). Unset keeps each service's own fee settings, which is
+     * how it worked before. Read by core/finance/platformFees.service.js.
+     */
+    'fees.platformFee': {
+        type: 'number',
+        default: null,
+        min: 0,
+        max: 1000,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Platform fee per order',
+        help: 'A flat amount added to every Food and Quick & Medical order. 0 charges none. Unset keeps each service’s own fee.',
+    },
+    'fees.platformFeeGstRate': {
+        type: 'number',
+        default: null,
+        min: 0,
+        max: 100,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'GST on the platform fee (%)',
+        help: 'Added on top of the platform fee. Food only: Quick & Medical does not add GST to its platform fee. Unset keeps Food’s own rate (18% if it has none).',
+    },
+
+    // --- order cancellation --------------------------------------------------
+    /*
+     * How long a customer may cancel after the restaurant or store accepts
+     * (Master > Cancellation Policy). Unset keeps each service's own rule: Food's
+     * Order cancellation screen, and Quick & Medical's "only before the store
+     * accepts". Read by modules/food/orders/services/cancellationPolicy.js.
+     */
+    'orders.cancelAfterAccept': {
+        type: 'boolean',
+        default: null,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Customers may cancel after the order is accepted',
+        help: 'Off: a customer can cancel only while the order waits to be accepted. Never once the rider has picked it up.',
+    },
+    'orders.cancelWindowMinutes': {
+        type: 'number',
+        default: null,
+        min: 1,
+        max: 120,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Minutes after acceptance to allow cancelling',
+        help: 'Counted from when the restaurant or store accepted.',
+    },
+    'orders.cancelStopWhenPreparing': {
+        type: 'boolean',
+        default: null,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Stop as soon as preparing starts',
+        help: 'On: cancelling closes when the kitchen or store marks it preparing, even inside the window.',
+    },
+
     // --- referral ------------------------------------------------------------
     /*
      * What a referral pays, set once for every service (Master > Referral).

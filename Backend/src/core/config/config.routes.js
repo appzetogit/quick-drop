@@ -18,6 +18,7 @@ import { listAppLegal, saveAppLegal } from '../settings/appLegal.js';
 import { getEarningsController } from '../finance/earnings.controller.js';
 import { listGlobalUsersController, exportGlobalUsersController } from '../users/globalUsers.controller.js';
 import { referralOverview } from '../referral/referralSettings.service.js';
+import { platformFeesOverview } from '../finance/platformFees.service.js';
 
 /**
  * Master / Global settings.
@@ -65,6 +66,24 @@ router.get('/users/export', requireFinancePermission('PLATFORM_SETTING_SET'), ex
 router.get('/referral/overview', async (req, res, next) => {
     try {
         res.json({ success: true, data: await referralOverview() });
+    } catch (err) {
+        next(err);
+    }
+});
+// Master > Platform Fee & GST: what each service charges now, and who set it.
+router.get('/fees/overview', async (req, res, next) => {
+    try {
+        res.json({ success: true, data: await platformFeesOverview() });
+    } catch (err) {
+        next(err);
+    }
+});
+// Master > Cancellation Policy: the rules each service is using now, and who set them.
+router.get('/cancellation/overview', async (req, res, next) => {
+    try {
+        const { getCancelRules } = await import('../../modules/food/orders/services/cancellationPolicy.js');
+        const [food, quickCommerce] = await Promise.all([getCancelRules('food'), getCancelRules('quickCommerce')]);
+        res.json({ success: true, data: { services: [{ vertical: 'food', ...food }, { vertical: 'quickCommerce', ...quickCommerce }] } });
     } catch (err) {
         next(err);
     }

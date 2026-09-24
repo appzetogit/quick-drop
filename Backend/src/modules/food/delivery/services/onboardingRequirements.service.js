@@ -40,7 +40,14 @@ const serializeVehicle = (vehicle) => ({
 const serializeDocument = (doc) => ({
     id: String(doc._id),
     name: doc.name || '',
-    key: doc.field_key || '',
+    /*
+     * What the app names this document's uploads by (doc_<key>_front). The
+     * admin form sets field_key only on vehicle fields, never on documents, so
+     * every document went out keyed '' -- and nothing the admin added to the
+     * catalogue could be uploaded, because doc__front matches no document.
+     * The slug is unique and always present, so it is the key when none is set.
+     */
+    key: doc.field_key || doc.slug || '',
     /** 'single' or 'double' — whether a back image is wanted too. */
     imageType: doc.image_type || 'single',
     fieldType: doc.field_type || 'text',
@@ -106,7 +113,7 @@ export const getOnboardingRequirements = async ({ driverClass, intents } = {}) =
         // vehicle, not papers anyone uploads. Returning them as documents asked
         // the applicant to photograph their car's model year.
         DriverNeededDocument.find({ active: true, template_type: 'document' })
-            .select('name field_key image_type field_type placeholder help_text sort_order applies_to is_required')
+            .select('name slug field_key image_type field_type placeholder help_text sort_order applies_to is_required')
             .sort({ sort_order: 1, name: 1 })
             .lean(),
     ]);

@@ -197,6 +197,12 @@ export const platformSettingsAPI = {
   /** Master > Referral: what each service pays now, and who set it. */
   referralOverview: () =>
     apiClient.get("/platform/settings/referral/overview", { contextModule: "admin" }),
+  /** Master > Platform Fee & GST: what each service charges now, and who set it. */
+  feesOverview: () =>
+    apiClient.get("/platform/settings/fees/overview", { contextModule: "admin" }),
+  /** Master > Cancellation Policy: the rule each service uses now, and who set it. */
+  cancellationOverview: () =>
+    apiClient.get("/platform/settings/cancellation/overview", { contextModule: "admin" }),
   /**
    * What a module pays its riders today, plus its own distance bands.
    *
@@ -314,6 +320,23 @@ export const adminAccountsAPI = {
   setStatus: (id, isActive) =>
     apiClient.patch(`/platform/admins/${encodeURIComponent(id)}/status`, { isActive }, { contextModule: "admin" }),
   remove: (id) => apiClient.delete(`/platform/admins/${encodeURIComponent(id)}`, { contextModule: "admin" }),
+};
+
+// Master > Commission Overview: what the platform takes, per partner (core/finance).
+export const commissionOverviewAPI = {
+  get: () => apiClient.get("/platform/commission", { contextModule: "admin" }),
+};
+
+// Master > Home Screen Banners: every picture on the app's home screens (core/cms).
+// The path avoids the word "banner", which ad blockers abort requests on.
+export const homeContentAPI = {
+  list: () => apiClient.get("/platform/home-content", { contextModule: "admin" }),
+  setLive: (group, id, live) =>
+    apiClient.patch(`/platform/home-content/${encodeURIComponent(group)}/${encodeURIComponent(id)}/live`, { live }, { contextModule: "admin" }),
+  uploadQuickTop: (formData) =>
+    apiClient.post("/platform/home-content/quickTop", formData, { contextModule: "admin" }),
+  removeQuickTop: (id) =>
+    apiClient.delete(`/platform/home-content/quickTop/${encodeURIComponent(id)}`, { contextModule: "admin" }),
 };
 
 // Master > Platform Earnings: what the platform kept, per service (core/finance/platformPnl).

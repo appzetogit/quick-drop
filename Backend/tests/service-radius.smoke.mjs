@@ -304,12 +304,30 @@ await check('a nonsense ceiling is refused', async () => {
 
 console.log('\nclearing it');
 
-await check('clearing the radius serves the whole zone again', async () => {
+/*
+ * Changed on 24 Sep 2026: a restaurant with no radius of its own used to serve
+ * its whole zone, so the admin's radius bound only the few that set one (six of
+ * seven on Quick Drop set none). It now falls back to the platform radius.
+ */
+await check('clearing the radius falls back to the platform radius', async () => {
     await radius.setRestaurantServiceRadius(tenKm._id, null, { actor: 'restaurant' });
     const { pricing: p } = await quote(AT_12KM);
-    assert.equal(p.serviceability.applies, false);
+    assert.equal(p.serviceability.applies, true);
+    assert.equal(p.serviceability.radiusKm, 20);
     assert.equal(p.serviceability.deliverable, true);
     assert.ok((await listedNames(AT_12KM)).includes('Ten Km Kitchen'));
+    const seen = await radius.getRestaurantServiceRadius(tenKm._id);
+    assert.equal(seen.serviceRadiusKm, null);
+    assert.equal(seen.effectiveRadiusKm, 20);
+    assert.equal(seen.usesDefault, true);
+});
+
+await check('  and the platform radius holds it: lowered to 10 km, 12 km away is refused and unlisted', async () => {
+    await radius.updateServiceRadiusSettings({ maxRadiusKm: 10 });
+    const { pricing: p } = await quote(AT_12KM);
+    assert.equal(p.serviceability.deliverable, false);
+    assert.ok(!(await listedNames(AT_12KM)).includes('Ten Km Kitchen'));
+    await radius.updateServiceRadiusSettings({ maxRadiusKm: 20 });
 });
 
 await mongoose.disconnect();

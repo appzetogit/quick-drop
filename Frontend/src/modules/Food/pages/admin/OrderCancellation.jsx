@@ -93,6 +93,19 @@ export default function OrderCancellation() {
           <p className="mt-1 text-sm text-neutral-600">How long a customer can still cancel a food order after the restaurant accepts it.</p>
         </div>
 
+        {saved?.overriddenByMaster?.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+            <p className="font-medium">Master &gt; Cancellation Policy is overriding this page.</p>
+            <p className="mt-0.5">
+              In force now: {saved.inForce.allowAfterAccept
+                ? `cancelling allowed for ${saved.inForce.windowMinutes} minutes after acceptance${saved.inForce.stopWhenPreparing ? ", until preparing starts" : ""}`
+                : "cancelling only before the restaurant accepts"}
+              . Changes here are saved but take effect only once the Master value is cleared.{" "}
+              <a href="/admin/master/cancellation" className="font-medium underline">Open Master</a>
+            </p>
+          </div>
+        )}
+
         <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
           <div className="flex items-start justify-between gap-4 px-5 py-4">
             <div>
