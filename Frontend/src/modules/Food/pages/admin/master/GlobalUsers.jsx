@@ -216,7 +216,14 @@ export default function GlobalUsers() {
                         {u.city && <p className="text-xs text-neutral-400">{u.city}</p>}
                       </td>
                       <td className="px-3 py-3"><AppTags apps={u.apps} /></td>
-                      <td className="px-3 py-3 text-right tabular-nums">{u.orders}</td>
+                      <td className="px-3 py-3 text-right tabular-nums">
+                        {u.orders}
+                        {u.orders > 0 && (
+                          <p className="text-[11px] text-neutral-400">
+                            {u.foodOrders} food · {u.quickOrders} quick
+                          </p>
+                        )}
+                      </td>
                       <td className="px-3 py-3 text-right tabular-nums">{rupees(u.orderValue)}</td>
                       <td className="px-3 py-3 text-right tabular-nums">{u.rides}</td>
                       <td className="px-3 py-3 text-right tabular-nums">{rupees(u.walletBalance)}</td>
@@ -250,8 +257,8 @@ export default function GlobalUsers() {
         </section>
 
         <p className="px-1 text-xs text-neutral-500">
-          Orders covers Food, Quick Commerce and Medical together — all three share one order
-          collection, so a split here would be a guess. Blocking and editing a customer stay on that
+          Orders counts Food, and Quick Commerce with Medical, from their own order records; the
+          small figures under each total show the split. Blocking and editing a customer stay on that
           vertical&apos;s own screen.
         </p>
       </div>

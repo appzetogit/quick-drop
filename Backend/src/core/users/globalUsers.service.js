@@ -90,7 +90,7 @@ export function buildUserFilter({ search = '', status = '', from = '', to = '' }
 export async function enrichUsers(users = []) {
     const ids = users.map((u) => u._id).filter(Boolean);
     const out = new Map(ids.map((id) => [String(id), {
-        orders: 0, orderValue: 0, rides: 0, walletBalance: 0, apps: [],
+        orders: 0, orderValue: 0, foodOrders: 0, quickOrders: 0, rides: 0, walletBalance: 0, apps: [],
     }]));
     if (!ids.length) return out;
 
@@ -114,9 +114,11 @@ export async function enrichUsers(users = []) {
     const jobs = [];
 
     /*
-     * Orders covers food, quick commerce and medical together: all three write
-     * to `food_orders`, so splitting them here would be a guess. The column is
-     * labelled to say so rather than implying a breakdown that does not exist.
+     * Food orders only. Quick commerce and medical write to `qc_orders` -- the
+     * QC order model passes that as mongoose.model's third argument, which
+     * overrides the `food_orders` its schema declares -- and are counted below.
+     * This used to claim all three shared `food_orders`, and silently left out
+     * every grocery and pharmacy order.
      */
     if (FoodOrder) {
         jobs.push(FoodOrder.aggregate([
@@ -125,7 +127,7 @@ export async function enrichUsers(users = []) {
         ]).then((rows) => {
             for (const r of rows) {
                 const e = out.get(String(r._id));
-                if (e) { e.orders = r.n; e.orderValue = Math.round((r.value || 0) * 100) / 100; }
+                if (e) { e.foodOrders = r.n; e.orderValue += Math.round((r.value || 0) * 100) / 100; }
             }
         }).catch((err) => logger.warn(`globalUsers: order counts failed: ${err.message}`)));
     }
@@ -185,12 +187,54 @@ export async function enrichUsers(users = []) {
         }
     };
 
+    /*
+     * Quick commerce and medical orders. They are keyed by the customer's
+     * `qc_users` id, not the platform one, so each qc_users row is first mapped
+     * to its owner -- by `platformUserId`, or by phone where the backfill has
+     * not reached -- and the orders summed onto that owner.
+     */
+    jobs.push((async () => {
+        try {
+            const qcUsers = await mongoose.connection.collection('qc_users').find(
+                {
+                    $or: [
+                        { platformUserId: { $in: ids } },
+                        ...(phones.length ? [{ phone: { $in: phones.flatMap((t) => [t, `+91${t}`, `91${t}`]) } }] : []),
+                    ],
+                },
+                { projection: { platformUserId: 1, phone: 1 } },
+            ).toArray();
+            const ownerOf = new Map();
+            for (const q of qcUsers) {
+                let owner = q.platformUserId && out.has(String(q.platformUserId)) ? String(q.platformUserId) : null;
+                if (!owner && q.phone) owner = idByPhone.get(toTenDigits(q.phone)) || null;
+                if (owner) ownerOf.set(String(q._id), owner);
+            }
+            if (!ownerOf.size) return;
+            const rows = await mongoose.connection.collection('qc_orders').aggregate([
+                { $match: { userId: { $in: [...ownerOf.keys()].map((id) => new mongoose.Types.ObjectId(id)) } } },
+                { $group: { _id: '$userId', n: { $sum: 1 }, value: { $sum: { $ifNull: ['$pricing.total', 0] } } } },
+            ]).toArray();
+            for (const r of rows) {
+                const e = out.get(ownerOf.get(String(r._id)));
+                if (!e) continue;
+                e.quickOrders += r.n;
+                e.orderValue += Math.round((r.value || 0) * 100) / 100;
+            }
+        } catch (err) {
+            logger.warn(`globalUsers: quick-commerce order counts failed: ${err.message}`);
+        }
+    })());
+
     await Promise.all(jobs);
     await Promise.all([satellite('qc_users', 'quick'), satellite('sp_users', 'services')]);
 
     // Apps derived from what they actually did, plus the satellites above.
     for (const [, e] of out) {
-        if (e.orders > 0 && !e.apps.includes('food')) e.apps.unshift('food');
+        e.orders = e.foodOrders + e.quickOrders;
+        e.orderValue = Math.round(e.orderValue * 100) / 100;
+        if (e.foodOrders > 0 && !e.apps.includes('food')) e.apps.unshift('food');
+        if (e.quickOrders > 0 && !e.apps.includes('quick')) e.apps.push('quick');
         if (e.rides > 0 && !e.apps.includes('taxi')) e.apps.push('taxi');
     }
     return out;
@@ -232,6 +276,8 @@ const shape = (u, e = {}) => ({
     referralCode: u.referralCode || '',
     referralCount: Number(u.referralCount) || 0,
     orders: e?.orders || 0,
+    foodOrders: e?.foodOrders || 0,
+    quickOrders: e?.quickOrders || 0,
     orderValue: e?.orderValue || 0,
     rides: e?.rides || 0,
     walletBalance: e?.walletBalance || 0,
@@ -262,7 +308,8 @@ const CSV_COLUMNS = [
     ['Status', (u) => (u.isActive ? 'Active' : 'Blocked')],
     ['Verified', (u) => (u.isVerified ? 'Yes' : 'No')],
     ['Apps used', (u) => (u.apps || []).join(' / ')],
-    ['Orders (food, quick & medical)', (u) => u.orders],
+    ['Food orders', (u) => u.foodOrders],
+    ['Quick & medical orders', (u) => u.quickOrders],
     ['Order value', (u) => u.orderValue],
     ['Rides', (u) => u.rides],
     ['Wallet balance', (u) => u.walletBalance],
