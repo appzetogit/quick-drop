@@ -66,6 +66,7 @@ import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSet
 import quickSpicyLogo from "@food/assets/k9-logo.jpg"
 import { useSettings } from "../../../Taxi/shared/context/SettingsContext"
 import { useAdminAccess, filterMenuForAccess, hasPanel, isRestricted } from "@food/utils/adminAccess"
+import { SERVICE_PROVIDER_ENABLED } from "@/config/features"
 /**
  * Which service tabs this admin may see.
  *
@@ -418,11 +419,17 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
     ? {
         food: hasPanel(access, "food"),
         taxi: hasPanel(access, "taxi"),
-        serviceProvider: false,
+        serviceProvider: SERVICE_PROVIDER_ENABLED && hasPanel(access, "serviceProvider"),
         quickCommerce: hasPanel(access, "quickCommerce"),
         medical: hasPanel(access, "medical"),
       }
-    : { ...storedAccess, medical: storedAccess.quickCommerce }
+    : {
+        ...storedAccess,
+        medical: storedAccess.quickCommerce,
+        // Off on a site that has not switched the module on, whatever the
+        // stored session says -- the tab would lead to a route that is absent.
+        serviceProvider: SERVICE_PROVIDER_ENABLED && storedAccess.serviceProvider !== false,
+      }
   const [searchQuery, setSearchQuery] = useState("")
   const [badges, setBadges] = useState({})
 
@@ -1192,10 +1199,8 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                 Taxi
               </button>
               )}
-              {/* SERVICE PROVIDER TAB -- hidden on request, NOT removed.
-                  Restore by deleting this comment wrapper. The /admin/sp routes are
-                  commented out in AdminRouter.jsx alongside it; both must come back
-                  together or this tab navigates to a dead route.
+              {/* SERVICE PROVIDER TAB -- per site (config/features.js). The flag
+                  also gates the /admin/sp route, so the two stay together. */}
               {serviceAccess.serviceProvider && (
               <button
                 type="button"
@@ -1216,7 +1221,6 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                 Services
               </button>
               )}
-              */}
               {serviceAccess.quickCommerce && (
               <button
                 type="button"

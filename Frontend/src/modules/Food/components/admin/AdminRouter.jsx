@@ -151,8 +151,10 @@ const EditRestaurant = lazy(() => import("@food/pages/admin/restaurant/EditResta
 const AdminLogin = lazy(() => import("@food/pages/admin/auth/AdminLogin"));
 const AdminSignup = lazy(() => import("@food/pages/admin/auth/AdminSignup"));
 const AdminForgotPassword = lazy(() => import("@food/pages/admin/auth/AdminForgotPassword"));
-// Hidden with the /admin/sp route below; uncomment both together.
-// const SPAdminRoutes = lazy(() => import("@sp/admin/routes"));
+import { SERVICE_PROVIDER_ENABLED } from "@/config/features";
+// The Services admin, on for sites that set VITE_ENABLE_SERVICE_PROVIDER
+// (config/features.js). Lazy, so a site with it off never downloads it.
+const SPAdminRoutes = lazy(() => import("@sp/admin/routes"));
 // One admin-accounts screen for every panel (food, quick commerce, medical, taxi).
 // Stock per product size, per store (quick commerce and medical only).
 const StockManager = lazy(() => import("@food/pages/shared/StockManager"));
@@ -348,29 +350,28 @@ export default function AdminRouter() {
         <Route path="forgot-password" element={<AdminForgotPassword />} />
         <Route path="signup" element={<AdminSignup />} />
 
-        {/* SERVICE PROVIDER ADMIN -- HIDDEN ON REQUEST, NOT REMOVED.
-            To restore: uncomment the <Route path="sp/*"> block below, the
-            SPAdminRoutes import above, and the Services tab in AdminSidebar.jsx.
-            All three go together; a route without its tab is unreachable, and a
-            tab without its route lands on the catch-all.
+        {/* SERVICE PROVIDER ADMIN -- per site, not per branch.
+            On only where VITE_ENABLE_SERVICE_PROVIDER=true (config/features.js),
+            and the Services tab in both panel switchers reads the same flag, so a
+            route and its tab can never be out of step: a route without its tab is
+            unreachable, and a tab without its route lands on the catch-all.
 
-            Original note follows.
             Deliberately OUTSIDE master's AdminLayout: the SP pages ship their own
             AdminLayout (sidebar + a position:fixed header), so nesting them inside
             master's shell stacked two sidebars and overlapped two headers. Taxi has
             the same shape and is handled the same way -- it owns its chrome inside
             TaxiApp. Auth is still shared: same ProtectedRoute, same /admin/login,
-            same token.
-
-        <Route
-          path="sp/*"
-          element={
-            <ProtectedRoute>
-              <SPAdminRoutes />
-            </ProtectedRoute>
-          }
-        />
-        */}
+            same token. */}
+        {SERVICE_PROVIDER_ENABLED && (
+          <Route
+            path="sp/*"
+            element={
+              <ProtectedRoute>
+                <SPAdminRoutes />
+              </ProtectedRoute>
+            }
+          />
+        )}
 
         {/* Protected Routes - With Layout */}
         <Route
