@@ -194,6 +194,9 @@ export const platformSettingsAPI = {
     ),
   invalidateCache: () =>
     apiClient.post("/platform/settings/cache/invalidate", {}, { contextModule: "admin" }),
+  /** Master > Referral: what each service pays now, and who set it. */
+  referralOverview: () =>
+    apiClient.get("/platform/settings/referral/overview", { contextModule: "admin" }),
   /**
    * What a module pays its riders today, plus its own distance bands.
    *
@@ -308,6 +311,28 @@ export const adminAccountsAPI = {
   setStatus: (id, isActive) =>
     apiClient.patch(`/platform/admins/${encodeURIComponent(id)}/status`, { isActive }, { contextModule: "admin" }),
   remove: (id) => apiClient.delete(`/platform/admins/${encodeURIComponent(id)}`, { contextModule: "admin" }),
+};
+
+// Master > Platform Earnings: what the platform kept, per service (core/finance/platformPnl).
+export const platformPnlAPI = {
+  get: (params) => apiClient.get("/platform/pnl", { params, contextModule: "admin" }),
+};
+
+// Master > Coupons: every service's coupons in one list (core/promotions).
+export const couponListAPI = {
+  list: (params) => apiClient.get("/platform/coupons", { params, contextModule: "admin" }),
+  setLive: (source, id, live) =>
+    apiClient.patch(`/platform/coupons/${encodeURIComponent(source)}/${encodeURIComponent(id)}/live`, { live }, { contextModule: "admin" }),
+};
+
+// Master > Help & Support: every service's tickets in one inbox (core/support).
+export const supportInboxAPI = {
+  list: (params) => apiClient.get("/platform/support/tickets", { params, contextModule: "admin" }),
+  stats: () => apiClient.get("/platform/support/stats", { contextModule: "admin" }),
+  get: (source, id) =>
+    apiClient.get(`/platform/support/tickets/${encodeURIComponent(source)}/${encodeURIComponent(id)}`, { contextModule: "admin" }),
+  update: (source, id, data) =>
+    apiClient.patch(`/platform/support/tickets/${encodeURIComponent(source)}/${encodeURIComponent(id)}`, data, { contextModule: "admin" }),
 };
 
 export const adminAPI = {

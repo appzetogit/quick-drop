@@ -83,6 +83,7 @@ import {
   syncDriverTodaySummaryDocument,
 } from "../services/driverTodaySummaryService.js";
 
+import { taxiReferralFor } from '../../../../core/referral/referralSettings.service.js';
 const generateDriverReferralCode = (driver) => {
   const idPart = String(driver?._id || "")
     .slice(-6)
@@ -7125,7 +7126,7 @@ export const getDriverIncentives = async (req, res) => {
   };
 
   const settingsDoc = await AdminBusinessSetting.findOne({ scope: "default" }).lean();
-  const driverSettings = settingsDoc?.referral?.driver || {};
+  const driverSettings = await taxiReferralFor('driver', settingsDoc?.referral?.driver);
   const rides = await Ride.find({ driverId: driver._id }).select("status liveStatus createdAt updatedAt completedAt").lean();
 
   const snapshot = buildDriverIncentiveSnapshot({
@@ -7156,7 +7157,7 @@ export const claimDriverIncentiveReward = async (req, res) => {
   }
 
   const settingsDoc = await AdminBusinessSetting.findOne({ scope: "default" }).lean();
-  const driverSettings = settingsDoc?.referral?.driver || {};
+  const driverSettings = await taxiReferralFor('driver', settingsDoc?.referral?.driver);
   const rides = await Ride.find({ driverId: driver._id }).select("status liveStatus createdAt updatedAt completedAt").lean();
   const liveDriver = {
     ...driver.toObject(),

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { referralSettingsFor } from '../../../../core/referral/referralSettings.service.js';
 import { zoneMatchFrom } from '../../../../core/admin/adminZoneScope.js';
 import { shouldAutoMark99, crossedInto99Cap } from '../../shared/ninetyNineStore.js';
 import { resolveSeedOtherPriceForRestaurant } from '../../shared/otherPlatformSeed.service.js';
@@ -5036,7 +5037,7 @@ export async function approveDeliveryPartner(id, { serviceCapabilities } = {}) {
         if (referrerId && mongoose.Types.ObjectId.isValid(referrerId)) {
             const already = await FoodReferralLog.findOne({ refereeId: partner._id, role: 'DELIVERY_PARTNER' }).lean();
             if (!already) {
-                const settingsDoc = await FoodReferralSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
+                const settingsDoc = await referralSettingsFor('food', FoodReferralSettings);
                 const reward = Math.max(0, Number(settingsDoc?.referralRewardDelivery) || 0);
                 const limit = Math.max(0, Number(settingsDoc?.referralLimitDelivery) || 0);
                 const referrer = await FoodDeliveryPartner.findById(referrerId).select('_id referralCount status').lean();

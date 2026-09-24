@@ -49,6 +49,7 @@ import {
   upsertFirebaseDeviceToken,
 } from "../notifications/firebase.service.js";
 
+import { referralSettingsFor } from '../../../../core/referral/referralSettings.service.js';
 const ROLES = {
   USER: "USER",
   RESTAURANT: "RESTAURANT",
@@ -231,9 +232,7 @@ export const verifyUserOtpAndLogin = async (
         if (String(referrerId) !== String(userDoc._id)) {
           const [referrer, settingsDoc] = await Promise.all([
             FoodUser.findById(referrerId).select("_id referralCount").lean(),
-            FoodReferralSettings.findOne({ isActive: true })
-              .sort({ createdAt: -1 })
-              .lean(),
+            referralSettingsFor('quickCommerce', FoodReferralSettings),
           ]);
 
           if (referrer && settingsDoc) {

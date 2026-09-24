@@ -70,6 +70,7 @@ export const masterSidebarMenu = [
         label: "Report Management",
         icon: "Receipt",
         subItems: [
+          { label: "Platform Earnings (all services)", path: "/admin/master/platform-earnings" },
           { label: "Food · Transactions", path: "/admin/food/transaction-report" },
           { label: "Food · Orders", path: "/admin/food/order-report/regular" },
           { label: "Food · Tax", path: "/admin/food/tax-report" },
@@ -128,6 +129,8 @@ export const masterSidebarMenu = [
         label: "Referral Management",
         icon: "Gift",
         subItems: [
+          { label: "Referral Rewards (all services)", path: "/admin/master/referral" },
+          { label: "All Coupons & Promo Codes", path: "/admin/master/coupons" },
           { label: "Food · Referral", path: "/admin/food/referral-settings" },
           { label: "Quick · Referral", path: "/admin/quick-commerce/referral-settings" },
           { label: "Taxi · User Referral", path: "/taxi/admin/referrals/user-settings" },
@@ -155,6 +158,7 @@ export const masterSidebarMenu = [
         label: "Help & Support",
         icon: "MessageSquare",
         subItems: [
+          { label: "All Tickets", path: "/admin/master/support" },
           { label: "Food · Customer Tickets", path: "/admin/food/support-tickets" },
           { label: "Food · Rider Tickets", path: "/admin/food/delivery-support-tickets" },
           { label: "Food · Restaurant Complaints", path: "/admin/food/restaurants/complaints" },

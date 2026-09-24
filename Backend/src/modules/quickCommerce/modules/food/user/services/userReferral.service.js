@@ -6,6 +6,7 @@ import { FoodReferralSettings } from '../../admin/models/referralSettings.model.
 import { FoodReferralLog } from '../../admin/models/referralLog.model.js';
 import { buildReferralLinkFromTemplate } from '../../delivery/services/deliveryReferral.service.js';
 
+import { referralSettingsFor } from '../../../../../../core/referral/referralSettings.service.js';
 export const getUserReferralStats = async (userId) => {
     const id = String(userId || '');
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
@@ -15,7 +16,7 @@ export const getUserReferralStats = async (userId) => {
     const [user, wallet, settingsDoc] = await Promise.all([
         FoodUser.findById(oid).select('_id referralCount referralCode').lean(),
         FoodUserWallet.findOne({ userId: oid }).select('referralEarnings').lean(),
-        FoodReferralSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean()
+        referralSettingsFor('quickCommerce', FoodReferralSettings)
     ]);
 
     return {
@@ -42,7 +43,7 @@ export const getUserReferralDetails = async (userId) => {
     const [user, wallet, settingsDoc, logs] = await Promise.all([
         FoodUser.findById(oid).select('_id referralCount referralCode').lean(),
         FoodUserWallet.findOne({ userId: oid }).select('referralEarnings').lean(),
-        FoodReferralSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean(),
+        referralSettingsFor('quickCommerce', FoodReferralSettings),
         FoodReferralLog.find({ referrerId: oid, role: 'USER' })
             .sort({ createdAt: -1 })
             .limit(100)

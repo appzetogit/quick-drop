@@ -216,6 +216,12 @@ const PAGE_RULES = [
 export function resourceForPath(pathname = "") {
   // Admin accounts sit under Master but are open to anyone given "Admin accounts".
   if (pathname.startsWith("/admin/master/admins")) return "subadmins"
+  // The support inbox shows each admin only the services they have support for.
+  if (pathname.startsWith("/admin/master/support")) return "support"
+  // So is the coupon list, per service, under Offers & coupons.
+  if (pathname.startsWith("/admin/master/coupons")) return "promotions"
+  // And the earnings report, per service, under Reports.
+  if (pathname.startsWith("/admin/master/platform-earnings")) return "reports"
   if (pathname.startsWith("/admin/master")) return "__owner__"
   const panel = panelOfPath(pathname)
   if (!panel) return null

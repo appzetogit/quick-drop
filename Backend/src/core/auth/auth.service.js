@@ -17,6 +17,7 @@ import { sendAdminResetOtpEmail } from "../../utils/email.js";
 import mongoose from "mongoose";
 import { creditReferralReward } from "../../modules/food/user/services/userWallet.service.js";
 
+import { referralSettingsFor } from '../../core/referral/referralSettings.service.js';
 const ROLES = {
   USER: "USER",
   RESTAURANT: "RESTAURANT",
@@ -163,9 +164,7 @@ export const verifyUserOtpAndLogin = async (
         if (String(referrerId) !== String(userDoc._id)) {
           const [referrer, settingsDoc] = await Promise.all([
             FoodUser.findById(referrerId).select("_id referralCount").lean(),
-            FoodReferralSettings.findOne({ isActive: true })
-              .sort({ createdAt: -1 })
-              .lean(),
+            referralSettingsFor('food', FoodReferralSettings),
           ]);
 
           if (referrer && settingsDoc) {

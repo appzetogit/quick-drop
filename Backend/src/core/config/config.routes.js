@@ -17,6 +17,7 @@ import {
 import { listAppLegal, saveAppLegal } from '../settings/appLegal.js';
 import { getEarningsController } from '../finance/earnings.controller.js';
 import { listGlobalUsersController, exportGlobalUsersController } from '../users/globalUsers.controller.js';
+import { referralOverview } from '../referral/referralSettings.service.js';
 
 /**
  * Master / Global settings.
@@ -59,6 +60,15 @@ router.get('/earnings/:vertical', getEarningsController);
 router.get('/users', listGlobalUsersController);
 router.get('/users/export', requireFinancePermission('PLATFORM_SETTING_SET'), exportGlobalUsersController);
 
+// Master > Referral: what each service pays now, and whether Master or the
+// service set it. Declared before '/:key'.
+router.get('/referral/overview', async (req, res, next) => {
+    try {
+        res.json({ success: true, data: await referralOverview() });
+    } catch (err) {
+        next(err);
+    }
+});
 router.get('/catalogue', getCatalogueController);
 router.get('/resolve', resolveAllController);
 router.get('/:key/explain', explainSettingController);
