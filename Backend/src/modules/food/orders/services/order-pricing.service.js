@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from 'mongoose';
 import { resolvePromoCeiling, tighten } from '../../../../core/finance/promoLimits.service.js';
 import { FoodOrder } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
@@ -576,6 +576,37 @@ export async function calculateOrderPricing(userId, dto) {
       distanceKm: measuredDistanceKm,
       measured: measuredDistanceKm !== null,
     });
+  }
+
+  /*
+   * The restaurant's zone. The radius above is optional and most restaurants
+   * never set one, so without this nothing stopped an Indore restaurant taking
+   * an order to Palampur (six such orders reached production on 15-21 Sep
+   * 2026). Quick commerce has refused these since resolveServiceableZone; food
+   * now does the same, on food's own zone map.
+   *
+   * An address with no saved location is let through, as quick commerce's
+   * catalogue did before it: refusing it would block customers over data they
+   * never entered, and the radius check still covers restaurants that set one.
+   */
+  if (serviceability.deliverable !== false && extractCoords(dto?.address || dto?.deliveryAddress)) {
+    const addressZoneId = await detectZoneIdFromAddress(dto?.address || dto?.deliveryAddress);
+    const restaurantZoneId = restaurant?.zoneId ? String(restaurant.zoneId) : '';
+    if (!addressZoneId) {
+      serviceability = {
+        ...serviceability,
+        deliverable: false,
+        code: 'OUTSIDE_ALL_ZONES',
+        reason: "We don't deliver to this address yet.",
+      };
+    } else if (restaurantZoneId && restaurantZoneId !== addressZoneId) {
+      serviceability = {
+        ...serviceability,
+        deliverable: false,
+        code: 'OUTSIDE_RESTAURANT_ZONE',
+        reason: "This restaurant doesn't deliver to your selected address. Please choose a restaurant near you.",
+      };
+    }
   }
 
   /**
