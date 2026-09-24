@@ -218,6 +218,8 @@ export function resourceForPath(pathname = "") {
   if (pathname.startsWith("/admin/master/admins")) return "subadmins"
   // The support inbox shows each admin only the services they have support for.
   if (pathname.startsWith("/admin/master/support")) return "support"
+  // So is the coupon list, per service, under Offers & coupons.
+  if (pathname.startsWith("/admin/master/coupons")) return "promotions"
   if (pathname.startsWith("/admin/master")) return "__owner__"
   const panel = panelOfPath(pathname)
   if (!panel) return null

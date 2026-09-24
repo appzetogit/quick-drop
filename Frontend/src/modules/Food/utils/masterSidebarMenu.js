@@ -128,6 +128,7 @@ export const masterSidebarMenu = [
         icon: "Gift",
         subItems: [
           { label: "Referral Rewards (all services)", path: "/admin/master/referral" },
+          { label: "All Coupons & Promo Codes", path: "/admin/master/coupons" },
           { label: "Food · Referral", path: "/admin/food/referral-settings" },
           { label: "Quick · Referral", path: "/admin/quick-commerce/referral-settings" },
           { label: "Taxi · User Referral", path: "/taxi/admin/referrals/user-settings" },

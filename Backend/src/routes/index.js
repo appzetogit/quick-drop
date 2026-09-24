@@ -40,6 +40,7 @@ import platformSettingRoutes from '../core/config/config.routes.js';
 import appServicesRoutes from '../core/appServices/appServices.routes.js';
 import platformAdminRoutes from '../core/admin/platformAdmins.routes.js';
 import supportInboxRoutes from '../core/support/supportInbox.routes.js';
+import couponListRoutes from '../core/promotions/couponList.routes.js';
 import { getPublicAppLegal } from '../core/settings/appLegal.js';
 import { adminZoneScope } from '../core/admin/adminZoneScope.js';
 import { refuseRestrictedAdminWrites } from '../core/admin/enforceAdminAccess.middleware.js';
@@ -115,6 +116,8 @@ router.use('/v1/platform/app-services', appServicesRoutes);
 router.use('/v1/platform/admins', platformAdminRoutes);
 // One support inbox over every service's tickets (Master > Help & Support).
 router.use('/v1/platform/support', supportInboxRoutes);
+// Every service's coupons in one list (Master > Coupons).
+router.use('/v1/platform/coupons', couponListRoutes);
 // Terms and privacy for one app, public (shown before sign-in).
 router.get('/v1/platform/legal/:app/:kind', getPublicAppLegal);
 

@@ -293,6 +293,13 @@ export const adminAccountsAPI = {
   remove: (id) => apiClient.delete(`/platform/admins/${encodeURIComponent(id)}`, { contextModule: "admin" }),
 };
 
+// Master > Coupons: every service's coupons in one list (core/promotions).
+export const couponListAPI = {
+  list: (params) => apiClient.get("/platform/coupons", { params, contextModule: "admin" }),
+  setLive: (source, id, live) =>
+    apiClient.patch(`/platform/coupons/${encodeURIComponent(source)}/${encodeURIComponent(id)}/live`, { live }, { contextModule: "admin" }),
+};
+
 // Master > Help & Support: every service's tickets in one inbox (core/support).
 export const supportInboxAPI = {
   list: (params) => apiClient.get("/platform/support/tickets", { params, contextModule: "admin" }),
