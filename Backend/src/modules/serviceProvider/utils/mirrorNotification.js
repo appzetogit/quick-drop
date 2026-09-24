@@ -32,6 +32,23 @@ const mirrorNotification = async (doc) => {
     }
     const [field, ownerType] = hit;
 
+    // Customers go through the shared recorder, which files them under their
+    // platform account -- the id the app's inbox reads. Filed under the
+    // Services user id, as before, they were stored and never shown.
+    if (ownerType === 'USER') {
+      const { recordCustomerNotification } = await import('../../../core/notifications/customerInbox.js');
+      const filed = await recordCustomerNotification({
+        vertical: 'serviceProvider',
+        userId: doc[field],
+        title: doc.title,
+        message: doc.message,
+        data: { type: doc.type || 'general', spNotificationId: String(doc._id), relatedType: doc.relatedType || null, relatedId: doc.relatedId ? String(doc.relatedId) : null },
+        source: 'BOOKING',
+      });
+      if (filed) return;
+      // No platform account to file it under: keep the old copy, as before.
+    }
+
     // CommonJS module reaching the ESM core.
     const { FoodNotification } = await import('../../../core/notifications/models/notification.model.js');
 

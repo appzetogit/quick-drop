@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { recordCustomerNotification } from '../../../../core/notifications/customerInbox.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { FoodUser } from '../users/user.model.js';
@@ -637,6 +638,20 @@ export const sendPushNotification = async (tokens, payload = {}) => {
 };
 
 export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, platform } = {}) => {
+    // Every customer push is also filed in the one inbox the app reads
+    // (core/notifications/customerInbox.js), before the device check: a customer
+    // with notifications off still finds it there. Never blocks the push.
+    if (String(ownerType || '').toUpperCase() === 'USER' && !payload?.skipInbox) {
+        await recordCustomerNotification({
+            vertical: 'quickCommerce',
+            userId: ownerId,
+            title: payload?.title || payload?.notification?.title,
+            message: payload?.body || payload?.message || payload?.notification?.body,
+            data: payload?.data,
+            image: payload?.image,
+        });
+    }
+
     // Clone payload to avoid side-effects across batched sends.
     const enrichedPayload = { ...payload };
 

@@ -36,6 +36,7 @@
     "test:platform-pnl": "node tests/platform-pnl.smoke.mjs",
     "test:platform-fees": "node tests/platform-fees.smoke.mjs",
     "test:cancel-policy-master": "node tests/cancel-policy-master.smoke.mjs",
+    "test:customer-inbox": "node tests/customer-inbox.smoke.mjs",
     "test:assignment": "node tests/assignment.smoke.mjs",
     "test:assignment-claim": "node tests/assignment.claim.smoke.mjs",
     "test:dispatch": "node tests/dispatch.smoke.mjs",

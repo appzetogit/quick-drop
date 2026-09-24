@@ -382,6 +382,12 @@ export const sendPushNotificationToEntities = async ({
   image = '',
   data = {},
 }) => {
+  // Ride updates to customers are filed in the one inbox the app reads
+  // (core/notifications/customerInbox.js). Drivers have their own app.
+  const { recordCustomerNotification } = await import('../../../core/notifications/customerInbox.js');
+  for (const userId of [...new Set((userIds || []).map(String))]) {
+    await recordCustomerNotification({ vertical: 'taxi', userId, title, message: body, data, image });
+  }
   const targets = await collectDirectTargets({ userIds, driverIds });
   return sendPushToTargets({
     targets,

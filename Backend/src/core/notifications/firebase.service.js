@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { recordCustomerNotification } from './customerInbox.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { FoodUser } from '../users/user.model.js';
@@ -472,6 +473,20 @@ export const sendPushNotification = async (tokens, payload = {}) => {
 };
 
 export const sendNotificationToOwner = async ({ ownerType, ownerId, payload, platform } = {}) => {
+    // Every customer push is also filed in the one inbox the app reads
+    // (core/notifications/customerInbox.js), before the device check: a customer
+    // with notifications off still finds it there. Never blocks the push.
+    if (String(ownerType || '').toUpperCase() === 'USER' && !payload?.skipInbox) {
+        await recordCustomerNotification({
+            vertical: 'food',
+            userId: ownerId,
+            title: payload?.title || payload?.notification?.title,
+            message: payload?.body || payload?.message || payload?.notification?.body,
+            data: payload?.data,
+            image: payload?.image,
+        });
+    }
+
     // 💡 Clone the payload to avoid side-effects (e.g. adding multiple prefixes to the same object during broadcasting)
     const enrichedPayload = { ...payload };
 
