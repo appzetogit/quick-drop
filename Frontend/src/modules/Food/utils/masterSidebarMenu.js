@@ -154,6 +154,7 @@ export const masterSidebarMenu = [
         label: "Help & Support",
         icon: "MessageSquare",
         subItems: [
+          { label: "All Tickets", path: "/admin/master/support" },
           { label: "Food · Customer Tickets", path: "/admin/food/support-tickets" },
           { label: "Food · Rider Tickets", path: "/admin/food/delivery-support-tickets" },
           { label: "Food · Restaurant Complaints", path: "/admin/food/restaurants/complaints" },

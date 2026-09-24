@@ -290,6 +290,16 @@ export const adminAccountsAPI = {
   remove: (id) => apiClient.delete(`/platform/admins/${encodeURIComponent(id)}`, { contextModule: "admin" }),
 };
 
+// Master > Help & Support: every service's tickets in one inbox (core/support).
+export const supportInboxAPI = {
+  list: (params) => apiClient.get("/platform/support/tickets", { params, contextModule: "admin" }),
+  stats: () => apiClient.get("/platform/support/stats", { contextModule: "admin" }),
+  get: (source, id) =>
+    apiClient.get(`/platform/support/tickets/${encodeURIComponent(source)}/${encodeURIComponent(id)}`, { contextModule: "admin" }),
+  update: (source, id, data) =>
+    apiClient.patch(`/platform/support/tickets/${encodeURIComponent(source)}/${encodeURIComponent(id)}`, data, { contextModule: "admin" }),
+};
+
 export const adminAPI = {
   getFoodAssignableZones: () =>
     apiClient.get("/food/admin/admin-management/assignable-zones", { contextModule: "admin" }),

@@ -30,6 +30,7 @@
     "test:sp-unit": "node src/modules/serviceProvider/tests/security.test.js && node src/modules/serviceProvider/tests/transaction.test.js && node src/modules/serviceProvider/tests/payment-verification.test.js",
     "test:flow": "node tests/flow.smoke.mjs",
     "test:unify": "node tests/unify.smoke.mjs",
+    "test:support-inbox": "node tests/support-inbox.smoke.mjs",
     "test:assignment": "node tests/assignment.smoke.mjs",
     "test:assignment-claim": "node tests/assignment.claim.smoke.mjs",
     "test:dispatch": "node tests/dispatch.smoke.mjs",

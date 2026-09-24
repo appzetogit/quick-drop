@@ -18,6 +18,7 @@ const StatusMonitor = lazy(() => import("@food/pages/admin/dashboard/StatusMonit
 const AdminProfile = lazy(() => import("@food/pages/admin/AdminProfile"));
 const AdminSettings = lazy(() => import("@food/pages/admin/AdminSettings"));
 const PlatformSettings = lazy(() => import("@food/pages/admin/master/PlatformSettings"))
+const SupportInbox = lazy(() => import("@food/pages/admin/master/SupportInbox"))
 const AppServices = lazy(() => import("@food/pages/admin/master/AppServices"))
 const MasterCustomers = lazy(() => import("@food/pages/admin/master/GlobalUsers"))
 const MasterDeliveryEarnings = lazy(() => import("@food/pages/admin/master/DeliveryEarnings"))
@@ -395,6 +396,7 @@ export default function AdminRouter() {
           */}
           <Route path="master/settings" element={<PlatformSettings />} />
           <Route path="master/settings/:tab" element={<PlatformSettings />} />
+          <Route path="master/support" element={<SupportInbox />} />
           <Route path="master/app-services" element={<AppServices />} />
           <Route path="master/customers" element={<MasterCustomers />} />
           <Route path="master/delivery-earnings" element={<MasterDeliveryEarnings />} />
