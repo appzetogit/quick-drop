@@ -1,102 +1,28 @@
-import admin from 'firebase-admin';
-import { readFileSync, existsSync } from 'fs';
-import { resolve } from 'path';
-import { config } from './env.js';
-import { logger } from '../utils/logger.js';
-
-let db = null;
-let messaging = null;
-let cachedServiceAccount = null;
-
-const sanitizeString = (value) => String(value ?? '').trim();
-
-const getServiceAccountFromEnv = () => {
-    if (cachedServiceAccount) return cachedServiceAccount;
-
-    const rawJson = sanitizeString(config.firebaseServiceAccount);
-    if (rawJson) {
-        try {
-            cachedServiceAccount = JSON.parse(rawJson);
-            return cachedServiceAccount;
-        } catch (err) {
-            logger.error('Error parsing FIREBASE_SERVICE_ACCOUNT JSON:', err.message);
-        }
-    }
-
-    const pathValue = sanitizeString(config.firebaseServiceAccountPath);
-    if (pathValue) {
-        const filePath = resolve(process.cwd(), pathValue);
-        if (existsSync(filePath)) {
-            try {
-                cachedServiceAccount = JSON.parse(readFileSync(filePath, 'utf8'));
-                return cachedServiceAccount;
-            } catch (err) {
-                logger.error(`Error reading or parsing firebase service account file at ${filePath}:`, err.message);
-            }
-        }
-    }
-
-    return null;
-};
-
 /**
- * Initializes Firebase Admin SDK with Service Account.
- * Supports both FCM and Realtime Database.
+ * Quick commerce's Firebase: the platform's, not a second copy.
+ *
+ * This file used to hold its own firebase-admin setup, and nothing ever called
+ * its `initializeFirebaseRealtime()` -- server.js initialises the platform's
+ * (src/config/firebase.js) and only that one. So this module's `db` and
+ * `messaging` stayed null for the life of the process and its getters threw
+ * "Firebase Realtime Database not initialized" on every call. The callers catch
+ * it, so nothing crashed: quick-commerce and medical live order tracking simply
+ * never reached Firebase, and customers never saw the rider move. Production's
+ * error log had 273 of them.
+ *
+ * It also read credentials from the environment only, where the platform module
+ * honours the ones set in Master > Settings. firebase-admin keeps ONE default
+ * app per process and whichever module initialised first would have decided the
+ * credentials for both -- so an admin's Firebase settings could be silently
+ * ignored depending on load order.
+ *
+ * Re-exporting the platform module fixes both: one initialisation, one set of
+ * credentials, and getters that return null rather than throw when Firebase is
+ * genuinely not configured -- which is what every caller here already checks.
  */
-export const initializeFirebaseRealtime = () => {
-    try {
-        if (admin.apps.length > 0) {
-            db = admin.database();
-            messaging = admin.messaging();
-            return { db, messaging };
-        }
-
-        const serviceAccount = getServiceAccountFromEnv();
-        const databaseURL = config.firebaseDatabaseUrl;
-
-        if (!serviceAccount) {
-            logger.warn('⚠️ Firebase service account not configured. Firebase features may not work.');
-            return null;
-        }
-
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
-            databaseURL: databaseURL || undefined
-        });
-
-        db = admin.database();
-        messaging = admin.messaging();
-
-        logger.info('✅ Firebase Realtime Database Initialized Successfully');
-        return { db, messaging };
-    } catch (error) {
-        logger.error(`❌ Firebase Initialization Error: ${error.message}`);
-        return null;
-    }
-};
-
-/**
- * Returns the initialized Firebase Realtime Database instance.
- * @returns {admin.database.Database}
- * @throws Error if not initialized
- */
-export const getFirebaseDB = () => {
-    if (!db) {
-        throw new Error('⚠️ Firebase Realtime Database not initialized. Call initializeFirebaseRealtime() first.');
-    }
-    return db;
-};
-
-/**
- * Returns the initialized Firebase Messaging instance.
- * @returns {admin.messaging.Messaging}
- * @throws Error if not initialized
- */
-export const getFirebaseMessaging = () => {
-    if (!messaging) {
-        throw new Error('⚠️ Firebase Messaging not initialized. Call initializeFirebaseRealtime() first.');
-    }
-    return messaging;
-};
-
-export default admin;
+export {
+    initializeFirebaseRealtime,
+    getFirebaseDB,
+    getFirebaseMessaging,
+    default,
+} from '../../../config/firebase.js';
