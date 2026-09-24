@@ -67,6 +67,11 @@ const DELIBERATELY_SHARED = new Set([
     // The unified notification inbox. QC keeps its own model so its writes default to
     // vertical:'quickCommerce', but they land in the shared collection.
     'food_notifications',
+    // The customer's one wallet (24 Sep 2026). Quick's wallet model is the shared
+    // CustomerWallet schema on this collection, translating Quick customer ids to the
+    // platform account on every read and write, so money moves freely between Food,
+    // Rides and Quick & Medical. Guarded by tests/one-wallet-quick.smoke.mjs.
+    'food_user_wallets',
 ]);
 
 const leaked = (c) => !c.startsWith('qc_') && !DELIBERATELY_SHARED.has(c);
