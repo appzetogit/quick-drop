@@ -2474,6 +2474,13 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
 
     await processCompletedRideReferralReward(ride);
     await processCompletedDriverReferralReward(ride);
+
+    // Daily order-target incentive progress (rides and parcel/porter jobs
+    // both count toward the taxiAndPorter target). Fire-and-forget and
+    // idempotent per rider/rule/day — must never fail ride completion.
+    import('../../../core/incentives/services/incentiveService.js')
+      .then(({ onTaxiRideCompleted }) => onTaxiRideCompleted({ driverId }))
+      .catch((err) => logger.warn(`incentive progress hook failed for ride ${ride._id}: ${err?.message || err}`));
   }
 
   const populatedRide = await populateRideRealtime(ride._id);

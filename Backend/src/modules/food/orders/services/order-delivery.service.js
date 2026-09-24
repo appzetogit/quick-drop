@@ -1030,6 +1030,13 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     .then(({ awardOrderCashback }) => awardOrderCashback(String(order._id)))
     .catch((err) => logger.warn(`Cashback award skipped for ${order._id}: ${err?.message || err}`));
 
+  // Daily order-target incentive progress. Fire-and-forget and idempotent
+  // per rider/rule/day — never fails the delivery the driver just completed.
+  import('../../../../core/incentives/services/incentiveService.js')
+    .then(({ onFoodOrQuickCommerceOrderCompleted }) =>
+      onFoodOrQuickCommerceOrderCompleted({ deliveryPartnerId, vertical: 'food' }))
+    .catch((err) => logger.warn(`Incentive progress hook skipped for ${order._id}: ${err?.message || err}`));
+
   return sanitizeOrderForExternal(order);
 }
 

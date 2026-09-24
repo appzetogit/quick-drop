@@ -8,6 +8,7 @@ import {
     createOrderEmergencyRequestController,
     getOrderEmergencyRequestController
 } from '../controllers/orderEmergencyRequest.controller.js';
+import { getCurrentIncentiveController } from '../../../../core/incentives/controllers/incentiveController.js';
 import { onboardingOptionsController,
     onboardingRequirementsController,
     registerDeliveryPartnerController, updateDeliveryPartnerProfileController, updateDeliveryPartnerBankDetailsController, listSupportTicketsController, createSupportTicketController, getSupportTicketByIdController, updateDeliveryPartnerDetailsController, updateDeliveryPartnerProfilePhotoBase64Controller, updateAvailabilityController, getWalletController, createWithdrawalRequestController, createCashDepositOrderController, verifyCashDepositPaymentController, getEarningsController, getTripHistoryController, getPocketDetailsController, getEmergencyHelpController, getCashLimitController, getDeliveryReferralStatsController, getActiveEarningAddonsController, deleteDeliveryPartnerAccountController } from '../controllers/delivery.controller.js';
@@ -137,6 +138,7 @@ router.get('/pocket-details', authMiddleware, requireFoodDeliveryPartner, getPoc
 router.get('/emergency-help', authMiddleware, requireFoodDeliveryPartner, getEmergencyHelpController);
 router.get('/cash-limit', authMiddleware, requireFoodDeliveryPartner, getCashLimitController);
 router.get('/referrals/stats', authMiddleware, requireFoodDeliveryPartner, getDeliveryReferralStatsController);
+router.get('/incentives/current', authMiddleware, requireFoodDeliveryPartner, getCurrentIncentiveController);
 
 export default router;
 

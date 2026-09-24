@@ -11,6 +11,7 @@ import * as notificationBroadcastController from '../controllers/notificationBro
 import * as diningAdminController from '../../dining/controllers/diningAdmin.controller.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
 import { getAdminPageController, upsertAdminPageController } from '../controllers/pageContent.controller.js';
+import * as incentiveController from '../../../../core/incentives/controllers/incentiveController.js';
 import { upload } from '../../../../middleware/upload.js';
 import { requireFinancePermission } from '../../../../core/admin/requireFinancePermission.middleware.js';
 import { enforceAdminAccess } from '../../../../core/admin/enforceAdminAccess.middleware.js';
@@ -172,6 +173,11 @@ router.delete('/feedback-experiences/:id', feedbackExperienceController.deleteFe
 // ----- Fee Settings -----
 router.get('/fee-settings', adminController.getFeeSettings);
 router.put('/fee-settings', adminController.createOrUpdateFeeSettings);
+
+// ----- Delivery Incentives (per duty segment: foodAndQuick / taxiAndPorter) -----
+router.get('/incentive-rules', incentiveController.listIncentiveRulesController);
+router.put('/incentive-rules', incentiveController.upsertIncentiveRuleController);
+router.delete('/incentive-rules/:id', incentiveController.deactivateIncentiveRuleController);
 
 // ----- Monetization mode (commission vs plan, platform-wide) -----
 // Its own endpoints rather than a field on the fee-settings PUT: that PUT
