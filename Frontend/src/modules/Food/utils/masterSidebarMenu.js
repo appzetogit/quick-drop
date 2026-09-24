@@ -77,6 +77,7 @@ export const masterSidebarMenu = [
         icon: "Receipt",
         subItems: [
           { label: "Platform Earnings (all services)", path: "/admin/master/platform-earnings" },
+          { label: "Commission Overview (all services)", path: "/admin/master/commission" },
           { label: "Food · Transactions", path: "/admin/food/transaction-report" },
           { label: "Food · Orders", path: "/admin/food/order-report/regular" },
           { label: "Food · Tax", path: "/admin/food/tax-report" },

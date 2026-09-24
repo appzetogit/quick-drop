@@ -319,6 +319,11 @@ export const adminAccountsAPI = {
   remove: (id) => apiClient.delete(`/platform/admins/${encodeURIComponent(id)}`, { contextModule: "admin" }),
 };
 
+// Master > Commission Overview: what the platform takes, per partner (core/finance).
+export const commissionOverviewAPI = {
+  get: () => apiClient.get("/platform/commission", { contextModule: "admin" }),
+};
+
 // Master > Home Screen Banners: every picture on the app's home screens (core/cms).
 // The path avoids the word "banner", which ad blockers abort requests on.
 export const homeContentAPI = {

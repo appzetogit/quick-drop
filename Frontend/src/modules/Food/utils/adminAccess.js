@@ -224,6 +224,8 @@ export function resourceForPath(pathname = "") {
   if (pathname.startsWith("/admin/master/platform-earnings")) return "reports"
   // And home-screen banners, per service, under Banners & pages.
   if (pathname.startsWith("/admin/master/home-screen")) return "cms"
+  // And the commission overview, under the permission that sets seller rates.
+  if (pathname.startsWith("/admin/master/commission")) return "restaurants"
   if (pathname.startsWith("/admin/master")) return "__owner__"
   const panel = panelOfPath(pathname)
   if (!panel) return null
