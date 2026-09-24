@@ -217,6 +217,8 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
     foodZoneIds: editing?.foodZoneIds || [],
     qcZoneIds: editing?.qcZoneIds || [],
     isActive: editing ? editing.isActive : true,
+    // New sub-admins start without delete access; it is granted on purpose.
+    canDelete: editing ? editing.canDelete !== false : false,
   }))
   const [showPassword, setShowPassword] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -300,6 +302,7 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
       foodZoneIds: showFoodZones ? form.foodZoneIds : [],
       qcZoneIds: showQcZones ? form.qcZoneIds : [],
       isActive: form.isActive,
+      ...(form.role !== "owner" ? { canDelete: form.canDelete } : {}),
       ...(form.password ? { password: form.password, password_confirmation: form.confirm } : {}),
     }
     setSaving(true)
@@ -538,6 +541,25 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
                   </ul>
                 </div>
               ))}
+            </section>
+          )}
+
+          {form.role !== "owner" && (
+            <section className="flex items-center justify-between gap-4 rounded-xl border border-neutral-200 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-neutral-900">Can delete</p>
+                <p className="text-xs text-neutral-500">
+                  {meta.me?.canDelete === false
+                    ? "You don't have delete access yourself, so you can't give it."
+                    : "Off: they can still add and edit, but can't delete anything in any panel, including zones, restaurants, stores, items, vehicles and drivers."}
+                </p>
+              </div>
+              <Toggle
+                checked={form.canDelete}
+                onChange={(v) => set({ canDelete: v })}
+                disabled={meta.me?.canDelete === false && !form.canDelete}
+                label="Can delete"
+              />
             </section>
           )}
 
@@ -783,7 +805,14 @@ export default function AdminAccounts() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3"><RoleBadge role={r.role} count={sections} /></td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <RoleBadge role={r.role} count={sections} />
+                            {r.canDelete === false && (
+                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-inset ring-amber-200">No delete</span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-3"><PanelChips services={r.servicesAccess} labels={{ ...panelLabels, food: "Food", quickCommerce: "Quick Commerce", medical: "Medical", taxi: "Taxi" }} /></td>
                         <td className="px-4 py-3 text-xs text-neutral-500">
                           {when(r.createdAt)}

@@ -196,12 +196,15 @@ export function servicesForApi(api) {
  */
 export const OPEN = '__open__';
 
-export function decideAdminAccess(admin, { service, resource, write }) {
+export function decideAdminAccess(admin, { service, resource, write, remove = false }) {
   if (!admin) return { allowed: false, reason: 'no_admin' };
   if (admin.isActive === false || admin.isDeleted === true) return { allowed: false, reason: 'inactive' };
 
   const level = effectiveAdminLevel(admin);
   if (level === ADMIN_LEVELS.PLATFORM_SUPERADMIN) return { allowed: true, reason: 'platform_superadmin' };
+  // Before every other grant: delete access is withheld across the board, so
+  // no section permission -- not even '*' -- lets an admin without it delete.
+  if (remove && !canAdminDelete(admin)) return { allowed: false, reason: 'no_delete', resource };
   if (level !== ADMIN_LEVELS.SUBADMIN) {
     // A module superadmin owns its module outright. Which modules it may enter at
     // all is still requireServiceAccess's job, as before.
@@ -227,6 +230,25 @@ export function decideAdminAccess(admin, { service, resource, write }) {
   return { allowed: false, reason: perms.includes(`${resource}.read`) ? 'read_only' : 'no_permission', resource };
 }
 
+/** Owners always can; anyone else unless delete access was switched off. */
+export function canAdminDelete(admin) {
+  if (!admin) return false;
+  if (effectiveAdminLevel(admin) === ADMIN_LEVELS.PLATFORM_SUPERADMIN) return true;
+  return admin.canDelete !== false;
+}
+
+/*
+ * Which requests delete something. Mostly the DELETE verb, plus the few routes
+ * that delete over POST/PATCH: bulk deletes, and approving an account-deletion
+ * request (which removes the customer or driver). Restoring or rejecting one
+ * does not delete anything and is left to the section's own permission.
+ */
+export function isDeleteRequest(method, path = '') {
+  if (String(method || '').toUpperCase() === 'DELETE') return true;
+  const p = String(path || '').split('?')[0];
+  return /(^|\/)bulk-delete(\/|$)/.test(p) || /\/delete-requests\/[^/]+\/approve\/?$/.test(p);
+}
+
 const RESOURCE_LABELS = Object.fromEntries(
   ADMIN_PERMISSION_CATALOG.flatMap((g) => g.resources.map((r) => [r.key, r.label])),
 );
@@ -237,6 +259,7 @@ export function denialMessage(decision) {
     case 'inactive': return 'Your admin account has been deactivated';
     case 'no_service': return 'Your admin account does not have access to this panel';
     case 'read_only': return `You can view ${label} but not change it`;
+    case 'no_delete': return 'You do not have delete access. Ask an owner to turn it on for your account';
     case 'unmapped_write': return 'Only a superadmin can make this change';
     default: return `You do not have access to ${label}`;
   }

@@ -70,7 +70,7 @@ const isSuperAdmin = async (req, res, next) => {
     // Role lives on the Admin document, not the JWT — always re-check against the DB
     const Admin = require('../models/Admin');
     const admin = await Admin.findById(req.user.id)
-      .select('role admin_type adminLevel')
+      .select('role admin_type adminLevel canDelete')
       .lean();
 
     // Recognise the PLATFORM's notion of a super-admin, not one exact spelling.
@@ -100,6 +100,15 @@ const isSuperAdmin = async (req, res, next) => {
       return res.status(403).json({
         success: false,
         message: 'Access denied. Super Admin role required.'
+      });
+    }
+
+    // The platform-wide delete switch (core/admin/adminAccessPolicy.js). Owners
+    // always keep it; a superadmin of this module can have it turned off.
+    if (req.method === 'DELETE' && admin.adminLevel !== 'platform_superadmin' && admin.canDelete === false) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have delete access. Ask an owner to turn it on for your account'
       });
     }
 

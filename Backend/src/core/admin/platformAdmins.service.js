@@ -13,6 +13,7 @@ import { getDescendantAdminIds } from './adminHierarchy.service.js';
 import {
   ADMIN_PERMISSION_CATALOG,
   ADMIN_SERVICES,
+  canAdminDelete,
   effectiveAdminLevel,
   effectiveServices,
   expandPermissions,
@@ -47,6 +48,7 @@ export function describeCaller(admin) {
     servicesAccess: services,
     canManageAdmins: wildcard || permissions.includes('subadmins.write'),
     canViewAdmins: wildcard || permissions.includes('subadmins.read'),
+    canDelete: canAdminDelete(admin),
     serviceLocationIds: (admin.service_location_ids || []).map(String),
     foodZoneIds: (admin.food_zone_ids || []).map(String),
     qcZoneIds: (admin.qc_zone_ids || []).map(String),
@@ -99,6 +101,7 @@ function serialize(doc, names = {}) {
     serviceLocationIds: (doc.service_location_ids || []).map(String),
     foodZoneIds: (doc.food_zone_ids || []).map(String),
     qcZoneIds: (doc.qc_zone_ids || []).map(String),
+    canDelete: role === ROLE.OWNER ? true : doc.canDelete !== false,
     isActive: active,
     createdBy: doc.parentAdminId ? (names[String(doc.parentAdminId)] || 'Another admin') : null,
     createdAt: doc.createdAt || null,
@@ -252,6 +255,15 @@ async function validatePayload(admin, caller, body, { creating }) {
 
   if (role === ROLE.OWNER) return out;
 
+  // Off unless ticked when creating; left as it was when an edit omits it. An
+  // admin without delete access cannot hand it out.
+  if (body.canDelete !== undefined || creating) {
+    out.canDelete = body.canDelete === true;
+    if (out.canDelete && !caller.canDelete) {
+      throw new ApiError(403, 'You cannot give delete access you do not have yourself');
+    }
+  }
+
   const services = sanitizeServices(body.servicesAccess);
   if (!services.length) throw new ApiError(400, 'Pick at least one panel');
   const outside = services.filter((s) => !caller.servicesAccess.includes(s));
@@ -314,7 +326,9 @@ function applyTo(doc, data, admin) {
     doc.module = null;
     doc.permissions = ['*'];
     doc.servicesAccess = ['food', 'quickCommerce', 'medical', 'taxi', 'serviceProvider'];
+    doc.canDelete = true;
   } else {
+    if (data.canDelete !== undefined) doc.canDelete = data.canDelete;
     doc.adminLevel = ADMIN_LEVELS.SUBADMIN;
     doc.admin_type = 'subadmin';
     doc.module = null;
@@ -387,6 +401,7 @@ export async function setAdminStatus(admin, id, isActive) {
 export async function deleteAdmin(admin, id) {
   const caller = describeCaller(admin);
   assertCanManage(caller);
+  if (!caller.canDelete) throw new ApiError(403, 'You do not have delete access. Ask an owner to turn it on for your account');
   await assertManages(admin, caller, id);
   const doc = await FoodAdmin.findById(id).lean();
   if (!doc) throw new ApiError(404, 'Admin account not found');

@@ -66,6 +66,19 @@ const adminSchema = new mongoose.Schema(
             type: [String],
             default: []
         },
+        /*
+         * Whether this admin may delete anything -- zones, restaurants, vehicles,
+         * items, anything -- in any panel. Separate from `permissions` because
+         * "can edit" and "can destroy" are different trust levels: an admin can
+         * run a section day to day without being able to wipe it. Enforced in
+         * adminAccessPolicy.decideAdminAccess. Defaults to true so accounts made
+         * before the switch keep what they could already do; the form starts
+         * new sub-admins with it off.
+         */
+        canDelete: {
+            type: Boolean,
+            default: true
+        },
         food_zone_ids: {
             type: [
                 {

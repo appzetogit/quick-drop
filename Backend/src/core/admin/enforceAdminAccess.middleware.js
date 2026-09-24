@@ -5,6 +5,7 @@ import {
   decideAdminAccess,
   denialMessage,
   effectiveServices,
+  isDeleteRequest,
   isRestrictedAdmin,
   isWriteMethod,
 } from './adminAccessPolicy.js';
@@ -30,7 +31,12 @@ export const enforceAdminAccess = (service, resolve, { prefix = '' } = {}) => as
 
     const path = `${prefix}${req.path}`;
     const resource = resolve(path, req.method);
-    const decision = decideAdminAccess(admin, { service, resource, write: isWriteMethod(req.method) });
+    const decision = decideAdminAccess(admin, {
+      service,
+      resource,
+      write: isWriteMethod(req.method),
+      remove: isDeleteRequest(req.method, path),
+    });
 
     if (!decision.allowed) {
       logger.warn(
