@@ -208,6 +208,37 @@ export const SETTINGS = Object.freeze({
         help: 'Added on top of the platform fee. Food only: Quick & Medical does not add GST to its platform fee. Unset keeps Food’s own rate (18% if it has none).',
     },
 
+    // --- order cancellation --------------------------------------------------
+    /*
+     * How long a customer may cancel after the restaurant or store accepts
+     * (Master > Cancellation Policy). Unset keeps each service's own rule: Food's
+     * Order cancellation screen, and Quick & Medical's "only before the store
+     * accepts". Read by modules/food/orders/services/cancellationPolicy.js.
+     */
+    'orders.cancelAfterAccept': {
+        type: 'boolean',
+        default: null,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Customers may cancel after the order is accepted',
+        help: 'Off: a customer can cancel only while the order waits to be accepted. Never once the rider has picked it up.',
+    },
+    'orders.cancelWindowMinutes': {
+        type: 'number',
+        default: null,
+        min: 1,
+        max: 120,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Minutes after acceptance to allow cancelling',
+        help: 'Counted from when the restaurant or store accepted.',
+    },
+    'orders.cancelStopWhenPreparing': {
+        type: 'boolean',
+        default: null,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Stop as soon as preparing starts',
+        help: 'On: cancelling closes when the kitchen or store marks it preparing, even inside the window.',
+    },
+
     // --- referral ------------------------------------------------------------
     /*
      * What a referral pays, set once for every service (Master > Referral).

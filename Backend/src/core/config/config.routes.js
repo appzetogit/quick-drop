@@ -78,6 +78,16 @@ router.get('/fees/overview', async (req, res, next) => {
         next(err);
     }
 });
+// Master > Cancellation Policy: the rules each service is using now, and who set them.
+router.get('/cancellation/overview', async (req, res, next) => {
+    try {
+        const { getCancelRules } = await import('../../modules/food/orders/services/cancellationPolicy.js');
+        const [food, quickCommerce] = await Promise.all([getCancelRules('food'), getCancelRules('quickCommerce')]);
+        res.json({ success: true, data: { services: [{ vertical: 'food', ...food }, { vertical: 'quickCommerce', ...quickCommerce }] } });
+    } catch (err) {
+        next(err);
+    }
+});
 router.get('/catalogue', getCatalogueController);
 router.get('/resolve', resolveAllController);
 router.get('/:key/explain', explainSettingController);

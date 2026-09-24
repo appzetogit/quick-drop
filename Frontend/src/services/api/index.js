@@ -200,6 +200,9 @@ export const platformSettingsAPI = {
   /** Master > Platform Fee & GST: what each service charges now, and who set it. */
   feesOverview: () =>
     apiClient.get("/platform/settings/fees/overview", { contextModule: "admin" }),
+  /** Master > Cancellation Policy: the rule each service uses now, and who set it. */
+  cancellationOverview: () =>
+    apiClient.get("/platform/settings/cancellation/overview", { contextModule: "admin" }),
   /**
    * What a module pays its riders today, plus its own distance bands.
    *
