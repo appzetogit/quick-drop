@@ -91,11 +91,17 @@ const ensureUserWallet = async (userId) => {
   );
 };
 
+/*
+ * The wallet is shared with food now (core/wallet/customerWallet.model.js), so
+ * this list includes food orders and refunds. Food words a row as `description`
+ * and a direction as `type`; without these fallbacks a food order would show
+ * here as a nameless row with no direction.
+ */
 const serializeUserWalletTransaction = (entry = {}) => ({
   id: entry._id,
-  kind: entry.kind,
+  kind: entry.kind || (entry.type === 'deduction' ? 'debit' : 'credit'),
   amount: Number(entry.amount || 0),
-  title: entry.title || '',
+  title: entry.title || entry.description || '',
   counterpartyPhone: entry.counterpartyPhone || '',
   createdAt: entry.createdAt || null,
 });

@@ -1,77 +1,11 @@
-import mongoose from 'mongoose';
-
-const walletTransactionSchema = new mongoose.Schema(
-  {
-    kind: {
-      type: String,
-      enum: ['credit', 'debit'],
-      required: true,
-    },
-    amount: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    title: {
-      type: String,
-      default: '',
-      trim: true,
-    },
-    counterpartyPhone: {
-      type: String,
-      default: '',
-      trim: true,
-    },
-    provider: {
-      type: String,
-      default: '',
-      trim: true,
-    },
-    providerOrderId: {
-      type: String,
-      default: '',
-      trim: true,
-    },
-    providerPaymentId: {
-      type: String,
-      default: '',
-      trim: true,
-    },
-    referenceKey: {
-      type: String,
-      default: '',
-      trim: true,
-    },
-  },
-  { _id: true, timestamps: true },
-);
-
-const userWalletSchema = new mongoose.Schema(
-  {
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'TaxiUser',
-      required: true,
-    },
-    balance: {
-      type: Number,
-      default: 0,
-      min: 0,
-      index: true,
-    },
-    refundWallet: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    transactions: {
-      type: [walletTransactionSchema],
-      default: [],
-    },
-  },
-  { timestamps: true },
-);
-
-userWalletSchema.index({ userId: 1 }, { unique: true });
-
-export const UserWallet = mongoose.models.TaxiUserWallet || mongoose.model('TaxiUserWallet', userWalletSchema);
+/**
+ * The customer wallet, shared with food (core/wallet/customerWallet.model.js).
+ *
+ * This file used to declare its own schema, which mongoose stored in
+ * `taxiuserwallets`, while food kept `food_user_wallets` -- two balances for one
+ * person. A customer who topped up while booking a ride saw Rs 0 when they went
+ * to order food. Re-exported under the old name so taxi's callers need no
+ * change; the shared schema carries every field taxi used (`refundWallet`, and
+ * `kind`, `title`, `referenceKey` and the provider references on each row).
+ */
+export { CustomerWallet as UserWallet } from '../../../../core/wallet/customerWallet.model.js';

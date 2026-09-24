@@ -48,13 +48,19 @@ export const getUserWallet = async (userId) => {
     return {
         balance: Number(wallet.balance) || 0,
         referralEarnings: Number(wallet.referralEarnings) || 0,
+        /*
+         * The wallet is shared with taxi now (core/wallet/customerWallet.model.js),
+         * so this list includes ride credits and refunds. Taxi words a row as
+         * `title` and a direction as `kind`; without the fallbacks a ride refund
+         * would show here with no label and no direction.
+         */
         transactions: tx.map((t) => ({
             id: String(t._id),
             _id: t._id,
-            type: t.type,
+            type: t.type || (t.kind === 'debit' ? 'deduction' : 'addition'),
             amount: Number(t.amount) || 0,
             status: t.status || 'Completed',
-            description: t.description || '',
+            description: t.description || t.title || '',
             date: t.createdAt,
             createdAt: t.createdAt,
             metadata: t.metadata || {}
