@@ -277,6 +277,26 @@ export const stockAPI = {
   history: (scope, params) => apiClient.get(`${stockBase(scope)}/history`, { params, ...stockCtx(scope) }),
 };
 
+/**
+ * Master > Delivery Incentives: "complete N orders, get ₹X" per duty
+ * segment (foodAndQuick / taxiAndPorter — the same split the rider app's
+ * DutySegment uses). Lives under /food/admin because the Master panel's own
+ * pages (/admin/master/*) are never subject to the /food→/qc rewrite below —
+ * see rewriteAdminVertical in axios.js — so this is safe to call from here
+ * exactly as written, unlike a per-vertical admin screen would be.
+ */
+export const incentiveRulesAPI = {
+  list: () => apiClient.get("/food/admin/incentive-rules", { contextModule: "admin" }),
+  upsert: ({ segment, title, targetOrders, rewardAmount }) =>
+    apiClient.put(
+      "/food/admin/incentive-rules",
+      { segment, title, targetOrders, rewardAmount },
+      { contextModule: "admin" },
+    ),
+  deactivate: (id) =>
+    apiClient.delete(`/food/admin/incentive-rules/${encodeURIComponent(id)}`, { contextModule: "admin" }),
+};
+
 export const adminAccountsAPI = {
   me: () => apiClient.get("/platform/admins/me", { contextModule: "admin" }),
   meta: () => apiClient.get("/platform/admins/meta", { contextModule: "admin" }),

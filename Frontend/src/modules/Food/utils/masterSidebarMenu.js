@@ -54,6 +54,7 @@ export const masterSidebarMenu = [
         icon: "Truck",
         subItems: [
           { label: "Delivery Earnings (all services)", path: "/admin/master/delivery-earnings" },
+          { label: "Delivery Incentives", path: "/admin/master/delivery-incentives" },
           { label: "Food · Delivery Partners", path: "/admin/food/delivery-partners" },
           { label: "Food · Join Requests", path: "/admin/food/delivery-partners/join-request" },
           { label: "Quick · Delivery Partners", path: "/admin/quick-commerce/delivery-partners" },
