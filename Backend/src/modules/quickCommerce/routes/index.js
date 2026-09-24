@@ -20,6 +20,7 @@ import { adminZoneScope } from '../../../core/admin/adminZoneScope.js';
 import userRoutes from '../modules/food/user/routes/user.routes.js';
 import orderUserRoutes from '../modules/food/orders/routes/order.routes.user.js';
 import medicalUserRoutes from '../modules/food/orders/routes/medical.routes.user.js';
+import { listNearbyPharmaciesController } from '../modules/food/orders/controllers/prescriptionRequest.controller.js';
 import paymentRoutes from '../core/payments/payment.routes.js';
 import fcmRoutes from '../core/notifications/fcm.routes.js';
 import notificationRoutes from '../../../core/notifications/notification.routes.js';
@@ -79,6 +80,21 @@ router.use('/user', authMiddleware, requireRoles('USER'), userRoutes);
 router.use('/notifications', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER'), notificationRoutes);
 router.use('/chat', authMiddleware, requireRoles('USER', 'RESTAURANT', 'DELIVERY_PARTNER', 'ADMIN'), chatRoutes);
 router.use('/orders', authMiddleware, requireRoles('USER'), orderUserRoutes);
+/*
+ * The pharmacy list is browsable without signing in, like food's restaurant
+ * list and taxi's vehicle list.
+ *
+ * It sat behind the login check with everything else in /medical, so a customer
+ * whose session had lapsed opened the Medical tab to "Could not load pharmacies
+ * -- check your connection" while Food and Rides beside it rendered normally:
+ * their browse screens are public, this one was not. Production logged these
+ * 401s daily. The list is shop names, distances, hours and ratings -- nothing
+ * personal -- and the handler never reads who is asking.
+ *
+ * Declared before the authenticated mount below so it answers first. Sending a
+ * prescription and reading your own requests still require a signed-in customer.
+ */
+router.get('/medical/pharmacies', listNearbyPharmaciesController);
 // The customer's medical section: nearby pharmacies, and prescriptions
 // broadcast to all of them. Not under /orders -- a broadcast is not an order
 // until a pharmacy accepts it.
