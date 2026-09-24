@@ -1,5 +1,5 @@
 import { DriverIncentiveRule } from '../models/driverIncentiveRule.model.js';
-import { getCurrentIncentiveForFoodPartner } from '../services/incentiveService.js';
+import { getCurrentIncentiveForFoodPartner, tiersOfRule } from '../services/incentiveService.js';
 import { validateIncentiveRuleUpsertDto } from '../validators/incentiveRule.validator.js';
 import { sendResponse, sendError } from '../../../utils/response.js';
 
@@ -18,7 +18,9 @@ export async function listIncentiveRulesController(req, res, next) {
     try {
         const active = await DriverIncentiveRule.find({ isActive: true }).sort({ segment: 1 }).lean();
         const recent = await DriverIncentiveRule.find({}).sort({ createdAt: -1 }).limit(20).lean();
-        return sendResponse(res, 200, 'Incentive rules fetched', { active, recent });
+        // Rules saved before tiers existed are shown as their one-rung ladder.
+        const withTiers = (r) => ({ ...r, tiers: tiersOfRule(r) });
+        return sendResponse(res, 200, 'Incentive rules fetched', { active: active.map(withTiers), recent: recent.map(withTiers) });
     } catch (error) {
         next(error);
     }

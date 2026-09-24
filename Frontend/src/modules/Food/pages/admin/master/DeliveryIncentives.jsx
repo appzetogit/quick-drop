@@ -162,7 +162,7 @@ function SegmentCard({ segment, active, saving, onSave }) {
     >
       {active ? (
         <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          Live now: {active.tiers.map((t) => `${t.fromOrders}-${t.toOrders} → ₹${t.rewardAmount}`).join(",  ")}
+          Live now: {(active.tiers || []).map((t) => `${t.fromOrders}-${t.toOrders} → ₹${t.rewardAmount}`).join(",  ")}
           {active.title ? <> — &ldquo;{active.title}&rdquo;</> : null}
         </div>
       ) : (

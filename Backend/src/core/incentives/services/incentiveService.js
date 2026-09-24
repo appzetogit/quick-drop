@@ -94,9 +94,21 @@ async function getActiveRule(segment) {
     return DriverIncentiveRule.findOne({ segment, isActive: true }).sort({ createdAt: -1 }).lean();
 }
 
-/** Rule's tiers, ascending by the order count that unlocks them. */
+/**
+ * Rule's tiers, ascending by the order count that unlocks them. A rule saved
+ * before tiers existed (one targetOrders/rewardAmount, no `tiers`) reads as a
+ * one-rung ladder keyed by the rule's own id, so it keeps paying riders.
+ */
+export function tiersOfRule(rule) {
+    if (Array.isArray(rule?.tiers) && rule.tiers.length) return rule.tiers;
+    if (Number(rule?.targetOrders) > 0) {
+        return [{ _id: rule._id, fromOrders: 1, toOrders: Number(rule.targetOrders), rewardAmount: Number(rule.rewardAmount) || 0 }];
+    }
+    return [];
+}
+
 function sortedTiersOf(rule) {
-    return Array.isArray(rule?.tiers) ? [...rule.tiers].sort((a, b) => a.toOrders - b.toOrders) : [];
+    return [...tiersOfRule(rule)].sort((a, b) => a.toOrders - b.toOrders);
 }
 
 async function countCompletedToday(ctx, segment, { start, end }) {
