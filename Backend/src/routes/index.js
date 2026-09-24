@@ -44,6 +44,7 @@ import couponListRoutes from '../core/promotions/couponList.routes.js';
 import platformPnlRoutes from '../core/finance/platformPnl.routes.js';
 import homeContentRoutes from '../core/cms/homeContent.routes.js';
 import commissionOverviewRoutes from '../core/finance/commissionOverview.routes.js';
+import myOrdersRoutes from '../core/orders/myOrders.routes.js';
 import { getPublicAppLegal } from '../core/settings/appLegal.js';
 import { adminZoneScope } from '../core/admin/adminZoneScope.js';
 import { refuseRestrictedAdminWrites } from '../core/admin/enforceAdminAccess.middleware.js';
@@ -127,6 +128,8 @@ router.use('/v1/platform/pnl', platformPnlRoutes);
 router.use('/v1/platform/home-content', homeContentRoutes);
 // What the platform takes from every partner (Master > Commission Overview).
 router.use('/v1/platform/commission', commissionOverviewRoutes);
+// The customer's orders from every service, in one list (the app's My Orders).
+router.use('/v1/platform/me', authMiddleware, requireRoles('USER'), myOrdersRoutes);
 // Terms and privacy for one app, public (shown before sign-in).
 router.get('/v1/platform/legal/:app/:kind', getPublicAppLegal);
 

@@ -40,6 +40,7 @@
     "test:home-content": "node tests/home-content.smoke.mjs",
     "test:partner-documents": "node tests/partner-documents.smoke.mjs",
     "test:commission-overview": "node tests/commission-overview.smoke.mjs",
+    "test:my-orders": "node tests/my-orders.smoke.mjs",
     "test:assignment": "node tests/assignment.smoke.mjs",
     "test:assignment-claim": "node tests/assignment.claim.smoke.mjs",
     "test:dispatch": "node tests/dispatch.smoke.mjs",
