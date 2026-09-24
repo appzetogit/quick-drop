@@ -148,7 +148,10 @@ const AdminHeader = ({ onMenuClick }) => {
 
   return (
     <header
-      className="bg-white fixed top-0 left-0 right-0 z-30 transition-all duration-300 lg:left-[278px] border-b border-gray-100 shadow-sm"
+      // lg:left-80 must match the sidebar's w-80 (AdminSidebar) and the content's
+      // lg:ml-80 (AdminLayout). It was 278px, so on desktop this fixed header drew
+      // over the right 42px of the sidebar's top and clipped the brand block.
+      className="bg-white fixed top-0 left-0 right-0 z-30 transition-all duration-300 lg:left-80 border-b border-gray-100 shadow-sm"
       style={{
         paddingTop: 'env(safe-area-inset-top, 0px)',
       }}
