@@ -42,6 +42,7 @@ import platformAdminRoutes from '../core/admin/platformAdmins.routes.js';
 import supportInboxRoutes from '../core/support/supportInbox.routes.js';
 import couponListRoutes from '../core/promotions/couponList.routes.js';
 import platformPnlRoutes from '../core/finance/platformPnl.routes.js';
+import homeContentRoutes from '../core/cms/homeContent.routes.js';
 import { getPublicAppLegal } from '../core/settings/appLegal.js';
 import { adminZoneScope } from '../core/admin/adminZoneScope.js';
 import { refuseRestrictedAdminWrites } from '../core/admin/enforceAdminAccess.middleware.js';
@@ -121,6 +122,8 @@ router.use('/v1/platform/support', supportInboxRoutes);
 router.use('/v1/platform/coupons', couponListRoutes);
 // What the platform kept, across every service (Master > Platform Earnings).
 router.use('/v1/platform/pnl', platformPnlRoutes);
+// Every home-screen banner in one list (Master > Home Screen Banners).
+router.use('/v1/platform/home-content', homeContentRoutes);
 // Terms and privacy for one app, public (shown before sign-in).
 router.get('/v1/platform/legal/:app/:kind', getPublicAppLegal);
 

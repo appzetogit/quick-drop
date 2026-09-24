@@ -319,6 +319,18 @@ export const adminAccountsAPI = {
   remove: (id) => apiClient.delete(`/platform/admins/${encodeURIComponent(id)}`, { contextModule: "admin" }),
 };
 
+// Master > Home Screen Banners: every picture on the app's home screens (core/cms).
+// The path avoids the word "banner", which ad blockers abort requests on.
+export const homeContentAPI = {
+  list: () => apiClient.get("/platform/home-content", { contextModule: "admin" }),
+  setLive: (group, id, live) =>
+    apiClient.patch(`/platform/home-content/${encodeURIComponent(group)}/${encodeURIComponent(id)}/live`, { live }, { contextModule: "admin" }),
+  uploadQuickTop: (formData) =>
+    apiClient.post("/platform/home-content/quickTop", formData, { contextModule: "admin" }),
+  removeQuickTop: (id) =>
+    apiClient.delete(`/platform/home-content/quickTop/${encodeURIComponent(id)}`, { contextModule: "admin" }),
+};
+
 // Master > Platform Earnings: what the platform kept, per service (core/finance/platformPnl).
 export const platformPnlAPI = {
   get: (params) => apiClient.get("/platform/pnl", { params, contextModule: "admin" }),

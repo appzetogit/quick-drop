@@ -89,6 +89,7 @@ export const masterSidebarMenu = [
         label: "Banner & Settings",
         icon: "Image",
         subItems: [
+          { label: "Home Screen Banners (all services)", path: "/admin/master/home-screen" },
           { label: "Food · Banners", path: "/admin/food/banners" },
           { label: "Food · Promotional Banners", path: "/admin/food/promotional-banner" },
           { label: "Food · Landing Page", path: "/admin/food/hero-banner-management" },
