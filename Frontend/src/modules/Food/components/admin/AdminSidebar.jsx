@@ -61,6 +61,7 @@ import { cn } from "@food/utils/utils"
 import { Input } from "@food/components/ui/input"
 
 import { adminSidebarMenu } from "@food/utils/adminSidebarMenu"
+import { masterSidebarMenu } from "@food/utils/masterSidebarMenu"
 import { rulesFor, VERTICAL } from "@food/utils/verticalVocabulary"
 import { getCachedSettings, loadBusinessSettings } from "@food/utils/businessSettings"
 import quickSpicyLogo from "@food/assets/k9-logo.jpg"
@@ -405,13 +406,19 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
    * was given it can open Admin Accounts. Taking the section out of Food while
    * hiding the Master tab from them would strand that screen with no way in.
    */
+  // Master has its own menu (utils/masterSidebarMenu.js), never rebased: its
+  // links point at named services and must stay put whichever panel you came from.
+  const allowedMaster = useMemo(() => filterMenuForAccess(masterSidebarMenu, access) || [], [access])
   const masterItems = useMemo(
-    () => allowedMenu.find((node) => node.label === "MASTER")?.items || [],
-    [allowedMenu],
+    () =>
+      allowedMaster
+        .flatMap((section) => section.items || [])
+        .flatMap((item) => (item.path ? [item] : item.subItems || [])),
+    [allowedMaster],
   )
   const verticalMenu = useMemo(
-    () => allowedMenu.filter((node) => (inMaster ? node.label === "MASTER" : node.label !== "MASTER")),
-    [allowedMenu, inMaster],
+    () => (inMaster ? allowedMaster : allowedMenu.filter((node) => node.label !== "MASTER")),
+    [allowedMenu, allowedMaster, inMaster],
   )
   const navigate = useNavigate()
   const storedAccess = useServiceAccess()
@@ -660,7 +667,7 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
       setExpandedSections((prev) => {
         const newExpandedState = { ...prev }
 
-        adminSidebarMenu.forEach((item) => {
+        ;[...adminSidebarMenu, ...masterSidebarMenu].forEach((item) => {
           if (item.type === "section") {
             item.items.forEach((subItem) => {
               if (subItem.type === "expandable") {

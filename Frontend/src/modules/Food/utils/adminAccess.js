@@ -225,9 +225,33 @@ export function resourceForPath(pathname = "") {
   return hit ? hit[1] : null
 }
 
+/*
+ * Taxi and Services screens, reached from the Master menu. Taxi's own panel
+ * filters its menu by its own table; these only need to answer "may this
+ * sub-admin see the link", so the section is enough.
+ */
+const TAXI_PAGE_RULES = [
+  ["/taxi/admin/drivers", "delivery"],
+  ["/taxi/admin/reports", "reports"],
+  ["/taxi/admin/promotions/promo-codes", "promotions"],
+  ["/taxi/admin/promotions", "cms"],
+  ["/taxi/admin/referrals", "referrals"],
+  ["/taxi/admin/users", "customers"],
+  ["/taxi/admin/support", "support"],
+  ["/taxi/admin/safety", "support"],
+  ["/taxi/admin/settings", "settings"],
+]
+
 /** Can this admin open the screen at `pathname`? */
 export function canOpenPath(access, pathname) {
   if (!isRestricted(access)) return true
+  // The Services admin is for superadmins only (its own isSuperAdmin guard).
+  if (pathname.startsWith("/admin/sp")) return false
+  if (pathname.startsWith("/taxi/admin")) {
+    if (!hasPanel(access, "taxi")) return false
+    const hit = TAXI_PAGE_RULES.find(([prefix]) => pathname.startsWith(prefix))
+    return can(access, hit ? hit[1] : "settings", "read")
+  }
   const resource = resourceForPath(pathname)
   if (resource === "__owner__") return false
   const panel = panelOfPath(pathname)

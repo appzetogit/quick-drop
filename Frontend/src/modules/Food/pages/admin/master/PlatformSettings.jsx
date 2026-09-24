@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useNavigate, useParams } from "react-router-dom"
 import { platformSettingsAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
 import { Loader2, Building2, FileText, ScrollText, PlugZap, Wallet, CheckCircle2, ExternalLink, ImagePlus } from "lucide-react"
@@ -428,7 +429,12 @@ function IntegrationsTab({ profile, onSaved }) {
 /* ----------------------------------------------------------------- Page -- */
 
 export default function PlatformSettings() {
-  const [tab, setTab] = useState("brand")
+  // The tab is in the URL (/admin/master/settings/legal) so the Master sidebar
+  // can link straight to one, and a reload stays on it.
+  const { tab: tabParam } = useParams()
+  const navigate = useNavigate()
+  const tab = TABS.some((t) => t.key === tabParam) ? tabParam : "brand"
+  const setTab = (key) => navigate(`/admin/master/settings/${key}`, { replace: true })
   const [profile, setProfile] = useState(null)
   const [version, setVersion] = useState(0)
 

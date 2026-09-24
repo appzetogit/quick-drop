@@ -394,6 +394,7 @@ export default function AdminRouter() {
             once per vertical and wrong for a screen that does not.
           */}
           <Route path="master/settings" element={<PlatformSettings />} />
+          <Route path="master/settings/:tab" element={<PlatformSettings />} />
           <Route path="master/app-services" element={<AppServices />} />
           <Route path="master/customers" element={<MasterCustomers />} />
           <Route path="master/delivery-earnings" element={<MasterDeliveryEarnings />} />
