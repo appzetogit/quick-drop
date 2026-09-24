@@ -57,13 +57,17 @@ export const masterSidebarMenu = [
         subItems: [
           { label: "Delivery Earnings (all services)", path: "/admin/master/delivery-earnings" },
           { label: "Delivery Incentives", path: "/admin/master/delivery-incentives" },
+          // One catalogue for every partner: the partner app's sign-up (Food rider,
+          // Quick & Medical rider, bike taxi, cab, parcel) reads it for all of
+          // them, filtered by vehicle class. It lives on Taxi's screen, which is
+          // why it used to be labelled "Taxi · Driver Documents".
+          { label: "Partner Documents (all partners)", path: "/taxi/admin/drivers/documents" },
           { label: "Food · Delivery Partners", path: "/admin/food/delivery-partners" },
           { label: "Food · Join Requests", path: "/admin/food/delivery-partners/join-request" },
           { label: "Quick · Delivery Partners", path: "/admin/quick-commerce/delivery-partners" },
           { label: "Quick · Join Requests", path: "/admin/quick-commerce/delivery-partners/join-request" },
           { label: "Taxi · Drivers", path: "/taxi/admin/drivers" },
           { label: "Taxi · Pending Drivers", path: "/taxi/admin/drivers/pending" },
-          { label: "Taxi · Driver Documents", path: "/taxi/admin/drivers/documents" },
           ...sp([{ label: "Services · Workers", path: "/admin/sp/workers/all" }]),
         ],
       },

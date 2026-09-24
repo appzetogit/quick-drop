@@ -52,6 +52,29 @@ const collectCatalogueDocuments = async (payload = {}, files = {}) => {
     return entries.filter((entry) => entry.frontUrl || entry.backUrl || entry.number);
 };
 
+/*
+ * The three papers the admin panel reads BY NAME (aadharPhoto, panPhoto,
+ * drivingLicensePhoto and their numbers) everywhere a partner is reviewed.
+ * When one of them arrives through the catalogue instead -- keyed by its slug,
+ * e.g. doc_aadhar-card_front -- it is copied into the named field too, if that
+ * is empty, so the review screens show it whichever way the app sent it.
+ */
+const LEGACY_DOCUMENTS = [
+    { match: /aadha?a?r/i, photo: 'aadharPhoto', number: 'aadharNumber' },
+    { match: /(^|[-_ ])pan([-_ ]|$)|pan[-_ ]?card/i, photo: 'panPhoto', number: 'panNumber' },
+    { match: /licen[cs]e|(^|[-_ ])dl([-_ ]|$)/i, photo: 'drivingLicensePhoto', number: 'drivingLicenseNumber' },
+];
+
+export const mirrorLegacyDocuments = (catalogueDocs = [], images = {}, numbers = {}) => {
+    for (const doc of catalogueDocs) {
+        const legacy = LEGACY_DOCUMENTS.find((l) => l.match.test(`${doc.key} ${doc.name}`));
+        if (!legacy) continue;
+        if (!images[legacy.photo] && doc.frontUrl) images[legacy.photo] = doc.frontUrl;
+        if (!numbers[legacy.number] && doc.number) numbers[legacy.number] = doc.number;
+    }
+    return { images, numbers };
+};
+
 export const registerDeliveryPartner = async (payload, files) => {
     const { 
         name, phone, email, countryCode, address, city, state, 
@@ -109,6 +132,11 @@ export const registerDeliveryPartner = async (payload, files) => {
         );
     }
 
+    const onboardingDocuments = await collectCatalogueDocuments(payload, files);
+    const { numbers: legacyNumbers } = mirrorLegacyDocuments(onboardingDocuments, images, {
+        aadharNumber, panNumber, drivingLicenseNumber,
+    });
+
     const partner = await FoodDeliveryPartner.create({
         name,
         phone,
@@ -120,13 +148,13 @@ export const registerDeliveryPartner = async (payload, files) => {
         vehicleType,
         vehicleName,
         vehicleNumber,
-        drivingLicenseNumber,
-        panNumber,
-        aadharNumber,
+        drivingLicenseNumber: legacyNumbers.drivingLicenseNumber,
+        panNumber: legacyNumbers.panNumber,
+        aadharNumber: legacyNumbers.aadharNumber,
         // Recorded as asked, filtered to the options that belong to the
         // class. A cross-class pick is dropped rather than refused: it
         // means a confused client, not a bad applicant.
-        onboardingDocuments: await collectCatalogueDocuments(payload, files),
+        onboardingDocuments,
         driverClass: normalizeDriverClass(driverClass) || '',
         serviceIntents: normalizeDriverIntents(
             typeof serviceIntents === 'string' ? serviceIntents.split(',') : serviceIntents,
