@@ -293,6 +293,11 @@ export const adminAccountsAPI = {
   remove: (id) => apiClient.delete(`/platform/admins/${encodeURIComponent(id)}`, { contextModule: "admin" }),
 };
 
+// Master > Platform Earnings: what the platform kept, per service (core/finance/platformPnl).
+export const platformPnlAPI = {
+  get: (params) => apiClient.get("/platform/pnl", { params, contextModule: "admin" }),
+};
+
 // Master > Coupons: every service's coupons in one list (core/promotions).
 export const couponListAPI = {
   list: (params) => apiClient.get("/platform/coupons", { params, contextModule: "admin" }),
