@@ -281,19 +281,22 @@ export const stockAPI = {
 };
 
 /**
- * Master > Delivery Incentives: "complete N orders, get ₹X" per duty
- * segment (foodAndQuick / taxiAndPorter — the same split the rider app's
- * DutySegment uses). Lives under /food/admin because the Master panel's own
- * pages (/admin/master/*) are never subject to the /food→/qc rewrite below —
- * see rewriteAdminVertical in axios.js — so this is safe to call from here
- * exactly as written, unlike a per-vertical admin screen would be.
+ * Master > Delivery Incentives: an order-count ladder per duty segment
+ * (foodAndQuick / taxiAndPorter — the same split the rider app's
+ * DutySegment uses) — e.g. 1-5 orders → ₹100, 5-10 → ₹150, 10-15 → ₹200,
+ * each tier paid independently as the rider reaches it. Lives under
+ * /food/admin because the Master panel's own pages (/admin/master/*) are
+ * never subject to the /food→/qc rewrite below — see rewriteAdminVertical in
+ * axios.js — so this is safe to call from here exactly as written, unlike a
+ * per-vertical admin screen would be.
  */
 export const incentiveRulesAPI = {
   list: () => apiClient.get("/food/admin/incentive-rules", { contextModule: "admin" }),
-  upsert: ({ segment, title, targetOrders, rewardAmount }) =>
+  /** tiers: [{ fromOrders, toOrders, rewardAmount }, ...], e.g. 1-5 → ₹100, 5-10 → ₹150. */
+  upsert: ({ segment, title, tiers }) =>
     apiClient.put(
       "/food/admin/incentive-rules",
-      { segment, title, targetOrders, rewardAmount },
+      { segment, title, tiers },
       { contextModule: "admin" },
     ),
   deactivate: (id) =>

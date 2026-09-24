@@ -94,6 +94,11 @@ async function getActiveRule(segment) {
     return DriverIncentiveRule.findOne({ segment, isActive: true }).sort({ createdAt: -1 }).lean();
 }
 
+/** Rule's tiers, ascending by the order count that unlocks them. */
+function sortedTiersOf(rule) {
+    return Array.isArray(rule?.tiers) ? [...rule.tiers].sort((a, b) => a.toOrders - b.toOrders) : [];
+}
+
 async function countCompletedToday(ctx, segment, { start, end }) {
     if (segment === 'taxiAndPorter') {
         if (!ctx.taxiDriverId) return 0;
@@ -123,7 +128,7 @@ async function countCompletedToday(ctx, segment, { start, end }) {
 }
 
 /**
- * Pays the reward through whichever wallet this rider actually has.
+ * Pays one tier's reward through whichever wallet this rider actually has.
  *
  * A linked (unified) rider is paid through the taxi driver wallet —
  * applyDriverWalletAdjustment — because that is the balance getRiderFinance
@@ -131,11 +136,14 @@ async function countCompletedToday(ctx, segment, { start, end }) {
  * partner has no taxi driver record to credit, so they're paid through a
  * DeliveryBonusTransaction row instead, same as an admin-granted bonus.
  */
-async function payReward({ ctx, rule, completedOrders, periodKey }) {
-    const description = `${rule.title || 'Daily incentive'} — ${completedOrders}/${rule.targetOrders} completed`;
+async function payTierReward({ ctx, rule, tier, completedOrders, periodKey }) {
+    const description =
+        `${rule.title || 'Daily incentive'} — tier ${tier.fromOrders}-${tier.toOrders} ` +
+        `(${completedOrders} completed today)`;
     const metadata = {
         category: 'daily_order_incentive',
         ruleId: String(rule._id),
+        tierId: String(tier._id),
         segment: rule.segment,
         periodKey,
     };
@@ -143,7 +151,7 @@ async function payReward({ ctx, rule, completedOrders, periodKey }) {
     if (ctx.taxiDriverId) {
         await applyDriverWalletAdjustment({
             driverId: ctx.taxiDriverId,
-            amount: rule.rewardAmount,
+            amount: tier.rewardAmount,
             type: 'adjustment',
             description,
             metadata,
@@ -154,22 +162,28 @@ async function payReward({ ctx, rule, completedOrders, periodKey }) {
     const partnerId = ctx.foodPartnerId || ctx.qcPartnerId;
     if (!partnerId) throw new Error('No wallet to credit — rider resolved to neither a driver nor a delivery partner');
 
-    // transactionId doubles as a human-visible reference and, via the
-    // schema's unique index, a second idempotency guard alongside
-    // DriverIncentiveCredit's own unique index.
-    const transactionId = `INC-${periodKey.replace(/-/g, '')}-${String(partnerId).slice(-8)}`;
+    // Unique per (day, tier, partner) — via the schema's unique index, a
+    // second idempotency guard alongside DriverIncentiveCredit's own one.
+    const transactionId =
+        `INC-${periodKey.replace(/-/g, '')}-${String(tier._id).slice(-6)}-${String(partnerId).slice(-6)}`;
     await DeliveryBonusTransaction.create({
         deliveryPartnerId: partnerId,
         transactionId,
-        amount: rule.rewardAmount,
+        amount: tier.rewardAmount,
         reference: description,
     });
     return 'delivery_bonus_transaction';
 }
 
 /**
- * Recomputes today's progress and, if the target was just reached and this
- * rider/rule/day hasn't been credited yet, pays the reward.
+ * Recomputes today's progress and pays every tier the rider has newly
+ * reached and hasn't already been credited for today.
+ *
+ * A rule is a ladder (1-5 → ₹100, 5-10 → ₹150, 10-15 → ₹200, ...), so more
+ * than one rung can be due in a single call — a bulk backfill, or a tier
+ * whose threshold was low enough that yesterday's last order and today's
+ * first already cleared it. Each tier is credited independently and
+ * idempotently; a tier already paid today is simply skipped.
  *
  * Called from every order/ride completion path. Never throws — a failure
  * here must not fail the delivery or ride the rider just completed; callers
@@ -182,49 +196,57 @@ async function maybeCreditIncentive({ startFrom, id, segment }) {
         if (!ctx) return;
 
         const rule = await getActiveRule(segment);
-        if (!rule) return;
+        const tiers = sortedTiersOf(rule);
+        if (tiers.length === 0) return;
 
         const { start, end, periodKey } = istDayBounds();
         const completedOrders = await countCompletedToday(ctx, segment, { start, end });
-        if (completedOrders < rule.targetOrders) return;
 
-        // Insert the credit row FIRST — its unique index is what makes this
-        // idempotent under a race (two orders completing back to back). Only
-        // the insert that actually wins pays the reward.
-        let creditRow;
-        try {
-            creditRow = await DriverIncentiveCredit.create({
-                driverKey: ctx.driverKey,
-                ruleId: rule._id,
-                segment,
-                periodKey,
-                completedOrders,
-                rewardAmount: rule.rewardAmount,
-                creditedVia: ctx.taxiDriverId ? 'taxi_driver_wallet' : 'delivery_bonus_transaction',
-            });
-        } catch (err) {
-            if (err?.code === 11000) return; // already credited for today
-            throw err;
-        }
+        const dueTiers = tiers.filter((t) => completedOrders >= t.toOrders);
+        if (dueTiers.length === 0) return;
 
-        const creditedVia = await payReward({ ctx, rule, completedOrders, periodKey });
-        if (creditedVia !== creditRow.creditedVia) {
-            await DriverIncentiveCredit.updateOne({ _id: creditRow._id }, { $set: { creditedVia } });
-        }
+        for (const tier of dueTiers) {
+            let creditRow;
+            try {
+                creditRow = await DriverIncentiveCredit.create({
+                    driverKey: ctx.driverKey,
+                    ruleId: rule._id,
+                    tierId: tier._id,
+                    segment,
+                    periodKey,
+                    completedOrders,
+                    rewardAmount: tier.rewardAmount,
+                    creditedVia: ctx.taxiDriverId ? 'taxi_driver_wallet' : 'delivery_bonus_transaction',
+                });
+            } catch (err) {
+                if (err?.code === 11000) continue; // this tier was already credited today
+                throw err;
+            }
 
-        // notifyOwnerSafely's DELIVERY_PARTNER type only resolves against the
-        // food-vertical partner collection, not the QC one — so a QC-only,
-        // unlinked rider (ctx.foodPartnerId null) quietly gets no push here.
-        // The wallet credit above is unaffected either way.
-        if (ctx.foodPartnerId) {
-            notifyOwnerSafely(
-                { ownerType: 'DELIVERY_PARTNER', ownerId: ctx.foodPartnerId },
-                {
-                    title: 'Incentive unlocked! 🎉',
-                    body: `You completed ${rule.targetOrders} orders today and earned ₹${rule.rewardAmount}.`,
-                    data: { type: 'incentive_credited', ruleId: String(rule._id), amount: String(rule.rewardAmount) },
-                },
-            ).catch(() => {});
+            const creditedVia = await payTierReward({ ctx, rule, tier, completedOrders, periodKey });
+            if (creditedVia !== creditRow.creditedVia) {
+                await DriverIncentiveCredit.updateOne({ _id: creditRow._id }, { $set: { creditedVia } });
+            }
+
+            // notifyOwnerSafely's DELIVERY_PARTNER type only resolves against the
+            // food-vertical partner collection, not the QC one — so a QC-only,
+            // unlinked rider (ctx.foodPartnerId null) quietly gets no push here.
+            // The wallet credit above is unaffected either way.
+            if (ctx.foodPartnerId) {
+                notifyOwnerSafely(
+                    { ownerType: 'DELIVERY_PARTNER', ownerId: ctx.foodPartnerId },
+                    {
+                        title: 'Incentive unlocked! 🎉',
+                        body: `You completed ${tier.toOrders} orders today and earned ₹${tier.rewardAmount}.`,
+                        data: {
+                            type: 'incentive_credited',
+                            ruleId: String(rule._id),
+                            tierId: String(tier._id),
+                            amount: String(tier.rewardAmount),
+                        },
+                    },
+                ).catch(() => {});
+            }
         }
     } catch (err) {
         logger.warn(`incentive progress hook failed: ${err?.message || err}`);
@@ -261,27 +283,38 @@ export async function getCurrentIncentiveForFoodPartner(foodPartnerId) {
 
     const segment = ctx.workMode === 'taxi' || ctx.workMode === 'all' ? 'taxiAndPorter' : 'foodAndQuick';
     const rule = await getActiveRule(segment);
-    if (!rule) return null;
+    const tiers = sortedTiersOf(rule);
+    if (tiers.length === 0) return null;
 
     const { start, end, periodKey } = istDayBounds();
     const completedOrders = await countCompletedToday(ctx, segment, { start, end });
-    const credit = await DriverIncentiveCredit.findOne({
-        driverKey: ctx.driverKey,
-        ruleId: rule._id,
-        periodKey,
-    })
-        .select('_id')
+
+    const creditedRows = await DriverIncentiveCredit.find({ driverKey: ctx.driverKey, ruleId: rule._id, periodKey })
+        .select('tierId')
         .lean();
+    const creditedTierIds = new Set(creditedRows.map((r) => String(r.tierId)));
+
+    const finalTier = tiers[tiers.length - 1];
+    const totalRewardAmount = tiers.reduce((sum, t) => sum + t.rewardAmount, 0);
 
     return {
         id: String(rule._id),
-        title: rule.title || `Complete ${rule.targetOrders} orders, get ₹${rule.rewardAmount}`,
-        targetOrders: rule.targetOrders,
-        completedOrders: Math.min(completedOrders, rule.targetOrders),
-        rewardAmount: rule.rewardAmount,
+        title: rule.title || `Complete ${finalTier.toOrders} orders, get ₹${totalRewardAmount}`,
+        tiers: tiers.map((t) => ({
+            id: String(t._id),
+            fromOrders: t.fromOrders,
+            toOrders: t.toOrders,
+            rewardAmount: t.rewardAmount,
+            achieved: completedOrders >= t.toOrders,
+            credited: creditedTierIds.has(String(t._id)),
+        })),
+        completedOrders,
+        // Convenience fields for a simple display: the ladder's last rung and
+        // what every rung together pays out.
+        targetOrders: finalTier.toOrders,
+        totalRewardAmount,
         expiresAt: end.toISOString(),
-        rewardCredited: Boolean(credit),
     };
 }
 
-export const __testables = { istDayBounds, resolveDriverContext };
+export const __testables = { istDayBounds, resolveDriverContext, sortedTiersOf };
