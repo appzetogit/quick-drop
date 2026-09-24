@@ -12,7 +12,19 @@
  * report as well, so an app claiming 0 km paid the base fare for any trip.
  *
  * Drives the real rideService against an in-memory Mongo.
+ *
+ * Measured in a STRAIGHT LINE here, on purpose. Production prices on road
+ * distance (common/tripMeasure.js, TAXI_DISTANCE_SOURCE defaults to 'road'),
+ * and with no Maps key -- as in a test -- the road measure falls back to the
+ * straight line x 1.4. The rupee figures below were written for the straight
+ * line and this file checks that the SERVER measures the trip rather than the
+ * app, which holds either way. Pinning it keeps those figures exact instead of
+ * depending on whether a Maps key happens to be set. When this ran in road
+ * mode it quoted Rs 59 and Rs 149, which read like a pricing bug and was not
+ * one.
  */
+process.env.TAXI_DISTANCE_SOURCE = 'straight';
+
 import assert from 'node:assert/strict';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
@@ -140,6 +152,21 @@ const main = async () => {
     await check('a ride sent at Rs 0 is still charged its price', async () => {
         const ride = await book(sedan, 0);
         assert.equal(Number(ride.fare), 118, `charged ${ride.fare}`);
+        await reset();
+    });
+    /*
+     * The booking screen now shows this quote instead of its own estimate, so
+     * the two must agree for the SAME trip -- stops included. The web app used
+     * not to send stops when booking, so a trip with a stop was quoted as a
+     * detour and charged as a straight run.
+     */
+    await check('the quote is exactly what the booking charges, stop included', async () => {
+        const via = [{ lat: 22.70, lng: 75.90 }];
+        const quoted = quoteFor(await quote({ stops: via }), sedan).fare.total;
+        const ride = await book(sedan, 1, { stops: via });
+        assert.equal(Number(ride.fare), quoted, `quoted ${quoted}, charged ${ride.fare}`);
+        const direct = await quote();
+        assert.ok(quoted > quoteFor(direct, sedan).fare.total, 'the stop should cost more than the direct trip');
         await reset();
     });
     await check('an app claiming 0 km is still charged the measured trip', async () => {

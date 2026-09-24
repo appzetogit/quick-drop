@@ -607,6 +607,13 @@ const SearchingDriver = () => {
         const response = await api.post('/rides', {
           pickup: routeState.pickupCoords,
           drop: routeState.dropCoords,
+          /*
+           * The stops the quote was priced with. They were not sent, so a trip
+           * with a stop was quoted as a detour and charged as a straight run --
+           * the price on the booking screen and the price charged were measured
+           * over different routes.
+           */
+          stops: Array.isArray(routeState.stops) ? routeState.stops : [],
           pickupAddress: routeState.pickup || '',
           dropAddress: routeState.drop || '',
           fare: routeState.baseFare || routeState.fare || routeState.vehicle?.price || 22,

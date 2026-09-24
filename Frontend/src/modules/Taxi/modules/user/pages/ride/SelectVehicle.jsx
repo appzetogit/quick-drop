@@ -1271,6 +1271,88 @@ const SelectVehicle = () => {
 
 
 
+  /*
+   * What the server will actually charge, per vehicle.
+   *
+   * This screen priced every vehicle in the browser (calculateEstimatedFare),
+   * and the booking is charged by the server (rideService.createRideRecord),
+   * which ignores the fare the app sends. The two disagreed: the browser left
+   * out the platform fee, timed the trip from Google's traffic estimate where
+   * the server uses 25 km/h, and read surge from the price row where the server
+   * uses the zone's time slots. So the customer was shown one price and charged
+   * another.
+   *
+   * POST /rides/quote runs the very calculation the booking runs, on the trip
+   * the server measures itself. Its figure is what we show; the browser's
+   * estimate is only a placeholder until it arrives, or a fallback if the quote
+   * cannot be fetched, so the screen is never blank.
+   */
+  const [serverQuotes, setServerQuotes] = useState({});
+  const [isLoadingServerQuotes, setIsLoadingServerQuotes] = useState(false);
+  const vehicleQuoteKey = useMemo(
+    () => vehicles.map((v) => `${v.vehicleTypeId || ''}:${v.transportType || ''}`).join(','),
+    [vehicles],
+  );
+
+  useEffect(() => {
+    if (!vehicles.length || !Array.isArray(pickupCoords) || !Array.isArray(dropCoords)) {
+      setServerQuotes({});
+      return undefined;
+    }
+
+    // A quote is priced for one transport type, so one request per type.
+    const groups = new Map();
+    for (const vehicle of vehicles) {
+      if (!vehicle?.vehicleTypeId) continue;
+      const transportType = resolveRideTransportType(routeState.transport_type, routeState.transportType, vehicle?.transportType);
+      if (!groups.has(transportType)) groups.set(transportType, []);
+      groups.get(transportType).push(String(vehicle.vehicleTypeId));
+    }
+    if (!groups.size) {
+      setServerQuotes({});
+      return undefined;
+    }
+
+    let active = true;
+    setIsLoadingServerQuotes(true);
+    // A short pause so moving a pin or adding a stop asks once, not per frame.
+    const timer = setTimeout(async () => {
+      try {
+        const results = await Promise.all(
+          [...groups].map(([transport_type, vehicleTypeIds]) =>
+            api
+              .post('/rides/quote', {
+                pickup: pickupCoords,
+                drop: dropCoords,
+                stops,
+                vehicleTypeIds,
+                transport_type,
+                service_location_id: effectiveServiceLocationId || undefined,
+              })
+              .then((res) => res?.data?.quotes ?? res?.quotes ?? [])
+              .catch(() => [])),
+        );
+        if (!active) return;
+        const next = {};
+        for (const quote of results.flat()) {
+          const total = Number(quote?.fare?.total);
+          if (quote?.available && Number.isFinite(total)) next[String(quote.vehicleTypeId)] = total;
+        }
+        setServerQuotes(next);
+      } finally {
+        if (active) setIsLoadingServerQuotes(false);
+      }
+    }, 250);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+    // vehicleQuoteKey stands in for `vehicles`, whose identity changes on every
+    // refresh even when the list does not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicleQuoteKey, pickupCoords, dropCoords, stops, effectiveServiceLocationId, routeState.transport_type, routeState.transportType]);
+
   const pricedVehicles = useMemo(
     () =>
       vehicles.map((vehicle) => {
@@ -1283,23 +1365,34 @@ const SelectVehicle = () => {
           transportType: resolvedVehicleTransportType,
         });
 
+        const serverTotal = serverQuotes[String(vehicle.vehicleTypeId)];
+        const hasServerQuote = Number.isFinite(serverTotal);
+
         return {
           ...vehicle,
           pricingRule,
-          price: calculateEstimatedFare({
-            vehicle,
-            pricingRule,
-            distanceMeters: tripMetrics.distanceMeters,
-            durationMinutes: tripMetrics.durationMinutes,
-            pickupZone: matchedZone,
-            transportType: resolvedVehicleTransportType,
-          }) + pendingCancellationDue,
+          // The server's figure when we have it -- that is what is charged. A
+          // cancellation fee owed from an earlier ride is added at completion, so
+          // it is added here too, as it always was.
+          price: (hasServerQuote
+            ? serverTotal
+            : calculateEstimatedFare({
+              vehicle,
+              pricingRule,
+              distanceMeters: tripMetrics.distanceMeters,
+              durationMinutes: tripMetrics.durationMinutes,
+              pickupZone: matchedZone,
+              transportType: resolvedVehicleTransportType,
+            })) + pendingCancellationDue,
+          priceIsServerQuote: hasServerQuote,
         };
       }),
-    [pricingRules, effectiveServiceLocationId, matchedZoneId, tripMetrics.distanceMeters, tripMetrics.durationMinutes, vehicles, pendingCancellationDue],
+    [pricingRules, effectiveServiceLocationId, matchedZoneId, tripMetrics.distanceMeters, tripMetrics.durationMinutes, vehicles, pendingCancellationDue, serverQuotes],
   );
 
-  const isFarePending = isResolvingTripMetrics || isLoadingPricingRules;
+  // Held until the server's price arrives, so the customer is not shown the
+  // browser's estimate and then watch it change.
+  const isFarePending = isResolvingTripMetrics || isLoadingPricingRules || isLoadingServerQuotes;
 
   const hasAvailabilityResults = Object.keys(availabilityByVehicleId).length > 0;
 
