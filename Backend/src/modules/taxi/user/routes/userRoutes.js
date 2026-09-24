@@ -74,13 +74,36 @@ userRouter.get('/popular-places', asyncHandler(getPopularPlaces));
 userRouter.get('/set-prices', asyncHandler(getPublicSetPrices));
 userRouter.get('/service-locations', asyncHandler(listPublicServiceLocations));
 userRouter.get('/service-stores', asyncHandler(listPublicServiceStores));
-// userRouter.get('/rental-vehicles', asyncHandler(getPublicRentalVehicleCatalog));
-// userRouter.post('/rental-quote-requests', asyncHandler(createRentalQuoteRequest));
-// userRouter.post('/rental-bookings', authenticateOrResolveUser(['user']), asyncHandler(createRentalBookingRequest));
-// userRouter.get('/rental-bookings', authenticateOrResolveUser(['user']), asyncHandler(listMyRentalBookings));
-// userRouter.get('/rental-bookings/active', authenticateOrResolveUser(['user']), asyncHandler(getMyActiveRentalBooking));
-// userRouter.post('/rental-bookings/:id/end', authenticateOrResolveUser(['user']), asyncHandler(endMyActiveRentalRide));
-// userRouter.post('/rental-bookings/:id/location', authenticateOrResolveUser(['user']), asyncHandler(updateMyActiveRentalLocation));
+// The Rides home strip. The app has asked for this since the merge and got 404,
+// so it showed its bundled artwork and nothing the admin uploaded under Taxi >
+// Promotions > Banner Image ever reached a rider. Public: the home renders before
+// sign-in. `link` is what the app opens on tap.
+userRouter.get('/banners', asyncHandler(async (_req, res) => {
+  const { Banner } = await import('../../admin/promotions/models/Banner.js');
+  const rows = await Banner.find({ active: { $ne: false } }).sort({ createdAt: -1 }).limit(20).lean();
+  res.json({
+    success: true,
+    data: {
+      results: rows.map((b) => ({
+        _id: b._id,
+        title: b.title || '',
+        image: b.image || '',
+        link: b.redirect_url || b.external_link || b.deep_link || '',
+      })),
+    },
+  });
+}));
+// Rental, for customers. These arrived commented out when the taxi app was merged
+// in, with no reason recorded; every controller exists and the admin side (rental
+// booking requests, tracking) was already live, so Rental could be managed but not
+// booked. Switched on 24 Sep 2026.
+userRouter.get('/rental-vehicles', asyncHandler(getPublicRentalVehicleCatalog));
+userRouter.post('/rental-quote-requests', asyncHandler(createRentalQuoteRequest));
+userRouter.post('/rental-bookings', authenticateOrResolveUser(['user']), asyncHandler(createRentalBookingRequest));
+userRouter.get('/rental-bookings', authenticateOrResolveUser(['user']), asyncHandler(listMyRentalBookings));
+userRouter.get('/rental-bookings/active', authenticateOrResolveUser(['user']), asyncHandler(getMyActiveRentalBooking));
+userRouter.post('/rental-bookings/:id/end', authenticateOrResolveUser(['user']), asyncHandler(endMyActiveRentalRide));
+userRouter.post('/rental-bookings/:id/location', authenticateOrResolveUser(['user']), asyncHandler(updateMyActiveRentalLocation));
 userRouter.post('/register', asyncHandler(registerUser));
 userRouter.post('/signup', asyncHandler(signupUser));
 userRouter.post('/login', asyncHandler(loginUser));
@@ -107,9 +130,9 @@ userRouter.post('/wallet/razorpay/order', authenticateOrResolveUser(['user']), a
 userRouter.post('/wallet/razorpay/verify', authenticateOrResolveUser(['user']), asyncHandler(verifyRazorpayWalletTopup));
 userRouter.post('/wallet/phonepe/order', authenticateOrResolveUser(['user']), asyncHandler(createPhonePeWalletTopupOrder));
 userRouter.get('/wallet/phonepe/status/:merchantTransactionId', authenticateOrResolveUser(['user']), asyncHandler(verifyPhonePeWalletTopup));
-// userRouter.post('/rental-advance/razorpay/order', authenticateOrResolveUser(['user']), asyncHandler(createRentalAdvancePaymentOrder));
-// userRouter.post('/rental-advance/razorpay/verify', authenticateOrResolveUser(['user']), asyncHandler(verifyRentalAdvancePayment));
-// userRouter.post('/rental-advance/wallet', authenticateOrResolveUser(['user']), asyncHandler(payRentalAdvanceWithWallet));
+userRouter.post('/rental-advance/razorpay/order', authenticateOrResolveUser(['user']), asyncHandler(createRentalAdvancePaymentOrder));
+userRouter.post('/rental-advance/razorpay/verify', authenticateOrResolveUser(['user']), asyncHandler(verifyRentalAdvancePayment));
+userRouter.post('/rental-advance/wallet', authenticateOrResolveUser(['user']), asyncHandler(payRentalAdvanceWithWallet));
 userRouter.get('/buses/routes', authenticateOrResolveUser(['user']), asyncHandler(getBusRouteSuggestions));
 userRouter.get('/buses/search', authenticateOrResolveUser(['user']), asyncHandler(searchBuses));
 userRouter.get('/buses/:id/seats', authenticateOrResolveUser(['user']), asyncHandler(getBusSeatLayout));

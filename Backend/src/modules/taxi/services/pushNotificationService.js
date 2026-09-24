@@ -281,6 +281,46 @@ const collectDirectTargets = async ({ userIds = [], driverIds = [] }) => {
   return targets;
 };
 
+/**
+ * A Taxi admin campaign, filed in the shared customer inbox.
+ *
+ * Taxi's own Notifications screen listed campaigns, but the app's one inbox
+ * never saw them. Same customers the push targets (active, not deleted), written
+ * in one batch; a resent campaign is filed once. Drivers have their own app.
+ */
+const fileCampaignInCustomerInboxes = async ({ notificationId, sendTo, title, body, image }) => {
+  try {
+    if (!(sendTo === 'all' || sendTo === 'users')) return;
+    const t = String(title || '').trim();
+    const m = String(body || '').trim();
+    if (!t || !m) return;
+    const { FoodNotification } = await import('../../../core/notifications/models/notification.model.js');
+    const campaignId = String(notificationId || '');
+    if (campaignId && await FoodNotification.exists({ 'metadata.taxiCampaignId': campaignId })) return;
+    const users = await User.find({ deletedAt: null, isActive: { $ne: false }, active: { $ne: false } })
+      .select('_id')
+      .lean();
+    if (!users.length) return;
+    for (const batch of chunk(users, 1000)) {
+      await FoodNotification.insertMany(
+        batch.map((u) => ({
+          vertical: 'taxi',
+          ownerType: 'USER',
+          ownerId: u._id,
+          title: t,
+          message: m,
+          category: 'campaign',
+          source: 'ADMIN_BROADCAST',
+          metadata: { ...(campaignId ? { taxiCampaignId: campaignId } : {}), ...(image ? { image } : {}) },
+        })),
+        { ordered: false },
+      );
+    }
+  } catch (err) {
+    console.warn(`[inbox] taxi campaign ${notificationId} not filed: ${err.message}`);
+  }
+};
+
 export const sendPushNotificationToAudience = async ({
   notificationId,
   serviceLocationId,
@@ -289,6 +329,11 @@ export const sendPushNotificationToAudience = async ({
   body,
   image,
 }) => {
+  // Filed in every targeted customer's inbox first -- the one inbox the app reads
+  // (core/notifications/customerInbox.js) -- so a campaign reaches customers whose
+  // notifications are off, and stays after the push is dismissed. Best-effort.
+  await fileCampaignInCustomerInboxes({ notificationId, sendTo, title, body, image });
+
   const messaging = getFirebaseMessaging();
 
   if (!messaging) {
