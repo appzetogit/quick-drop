@@ -120,7 +120,7 @@ function TierRow({ tier, onChange, onRemove, disabled }) {
   )
 }
 
-function SegmentCard({ segment, active, saving, onSave }) {
+function SegmentCard({ segment, active, saving, onSave, onTurnOff, busy }) {
   const [form, setForm] = useState(() => ({ title: active?.title || "", tiers: tiersFromRule(active) }))
 
   // Re-seed the form whenever the active rule for THIS segment changes (a
@@ -148,6 +148,17 @@ function SegmentCard({ segment, active, saving, onSave }) {
       footer={
         <>
           {invalidReason && <span className="mr-auto text-xs text-red-600">{invalidReason}</span>}
+          {active && (
+            <button
+              type="button"
+              className={`${ghostCls} ${invalidReason ? "" : "mr-auto"}`}
+              disabled={saving || busy}
+              onClick={() => onTurnOff(active)}
+            >
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+              Turn off
+            </button>
+          )}
           <button
             type="button"
             className={btnCls}
@@ -162,7 +173,7 @@ function SegmentCard({ segment, active, saving, onSave }) {
     >
       {active ? (
         <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          Live now: {active.tiers.map((t) => `${t.fromOrders}-${t.toOrders} → ₹${t.rewardAmount}`).join(",  ")}
+          Live now: {(active.tiers || []).map((t) => `${t.fromOrders}-${t.toOrders} → ₹${t.rewardAmount}`).join(",  ")}
           {active.title ? <> — &ldquo;{active.title}&rdquo;</> : null}
         </div>
       ) : (
@@ -234,6 +245,7 @@ export default function DeliveryIncentives() {
   const [saving, setSaving] = useState(null) // segment id currently saving, or null
   const [active, setActive] = useState([])
   const [recent, setRecent] = useState([])
+  const [busyId, setBusyId] = useState(null) // rule being turned off or deleted
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -276,6 +288,38 @@ export default function DeliveryIncentives() {
     }
   }
 
+  const ladderText = (r) => (r.tiers || []).map((t) => `${t.fromOrders}-${t.toOrders} → ₹${t.rewardAmount}`).join(", ")
+  const segmentLabel = (id) => SEGMENTS.find((s) => s.id === id)?.label || id
+
+  const turnOff = async (rule) => {
+    if (!window.confirm(`Turn off the incentive ladder for ${segmentLabel(rule.segment)}? Riders stop seeing it straight away. It stays in Recent ladders.`)) return
+    setBusyId(rule._id)
+    try {
+      await incentiveRulesAPI.deactivate(rule._id)
+      toast.success("Incentive ladder turned off")
+      await load()
+    } catch (err) {
+      toast.error(errText(err, "Could not turn off the incentive ladder"))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const remove = async (rule) => {
+    const warning = rule.isActive ? " It is live now, so riders stop seeing it straight away." : ""
+    if (!window.confirm(`Delete the ladder ${ladderText(rule)} for ${segmentLabel(rule.segment)}?${warning} Rewards already paid to riders are not affected.`)) return
+    setBusyId(rule._id)
+    try {
+      await incentiveRulesAPI.remove(rule._id)
+      toast.success("Incentive ladder deleted")
+      await load()
+    } catch (err) {
+      toast.error(errText(err, "Could not delete the incentive ladder"))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   return (
     <div className="min-h-full bg-neutral-100 p-4 lg:p-6">
       <div className="mx-auto max-w-3xl space-y-5">
@@ -302,6 +346,8 @@ export default function DeliveryIncentives() {
                   active={activeFor(segment.id)}
                   saving={saving === segment.id}
                   onSave={save}
+                  onTurnOff={turnOff}
+                  busy={Boolean(activeFor(segment.id)) && busyId === activeFor(segment.id)._id}
                 />
               ))}
             </div>
@@ -315,7 +361,8 @@ export default function DeliveryIncentives() {
                         <th className="pb-2 pr-2">Segment</th>
                         <th className="pb-2 pr-2">Tiers</th>
                         <th className="pb-2 pr-2">Status</th>
-                        <th className="pb-2">Saved</th>
+                        <th className="pb-2 pr-2">Saved</th>
+                        <th className="pb-2" />
                       </tr>
                     </thead>
                     <tbody>
@@ -336,8 +383,20 @@ export default function DeliveryIncentives() {
                               </span>
                             )}
                           </td>
-                          <td className="py-2 align-top text-neutral-500">
+                          <td className="py-2 pr-2 align-top text-neutral-500">
                             {r.createdAt ? new Date(r.createdAt).toLocaleString() : "—"}
+                          </td>
+                          <td className="py-1 text-right align-top">
+                            <button
+                              type="button"
+                              onClick={() => remove(r)}
+                              disabled={busyId === r._id}
+                              className="rounded-lg p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                              aria-label={`Delete ladder ${ladderText(r)}`}
+                              title="Delete"
+                            >
+                              {busyId === r._id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                            </button>
                           </td>
                         </tr>
                       ))}

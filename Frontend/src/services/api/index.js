@@ -307,6 +307,9 @@ export const incentiveRulesAPI = {
     ),
   deactivate: (id) =>
     apiClient.delete(`/food/admin/incentive-rules/${encodeURIComponent(id)}`, { contextModule: "admin" }),
+  /** Removes the ladder from the list for good; credits already paid stay. */
+  remove: (id) =>
+    apiClient.delete(`/food/admin/incentive-rules/${encodeURIComponent(id)}?permanent=1`, { contextModule: "admin" }),
 };
 
 export const adminAccountsAPI = {

@@ -98,10 +98,11 @@ export const getUserWallet = async (userId) => {
         transactions: tx.map((t) => ({
             id: String(t._id),
             _id: t._id,
-            type: t.type,
+            // Shared with Food and Taxi now: taxi rows say `kind`/`title`, not `type`/`description`.
+            type: t.type || (t.kind === 'debit' ? 'deduction' : 'addition'),
             amount: Number(t.amount) || 0,
             status: t.status || 'Completed',
-            description: t.description || '',
+            description: t.description || t.title || '',
             date: t.createdAt,
             createdAt: t.createdAt,
             metadata: t.metadata || {}

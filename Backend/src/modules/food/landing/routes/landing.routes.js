@@ -169,6 +169,29 @@ router.patch('/hero-banners/gourmet/:id/status', adminOnly, toggleGourmetStatusA
 
 // Public landing endpoints (Food user app)
 router.get('/hero-banners/public', getPublicHeroBannersController);
+/*
+ * The video behind the Food home header. The app has always asked for this and
+ * got 404, so the header could only ever show still/GIF artwork. There is no
+ * separate setting: it is Food's header banners that are videos -- uploaded
+ * through the same Banners screen, which records resourceType -- in their order.
+ * None uploaded means an empty list, and the app shows the header images.
+ */
+router.get('/hero-banners/home-header-video/public', async (_req, res, next) => {
+    try {
+        const { FoodHeroBanner } = await import('../models/heroBanner.model.js');
+        const rows = await FoodHeroBanner.find({
+            isActive: true,
+            $and: [
+                { $or: [{ module: 'food' }, { module: { $exists: false } }, { module: null }] },
+                { $or: [{ resourceType: 'video' }, { imageUrl: { $regex: /\.(mp4|webm|mov|m3u8)(\?|$)/i } }] },
+            ],
+        }).sort({ sortOrder: 1, createdAt: -1 }).lean();
+        const videos = rows.map((b) => ({ _id: b._id, gifUrl: b.imageUrl, sourceUrl: b.imageUrl }));
+        res.status(200).json({ success: true, message: 'Home header videos', data: { videos, video: videos[0] || null } });
+    } catch (err) {
+        next(err);
+    }
+});
 router.get('/hero-banners/under-250/public', getPublicUnder250BannersController);
 router.get('/hero-banners/dining/public', getPublicDiningBannersController);
 router.get('/explore-icons/public', getPublicExploreIconsController);

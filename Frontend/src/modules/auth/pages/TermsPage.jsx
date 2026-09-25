@@ -211,7 +211,13 @@ export default function TermsPage({ defaultTab = "terms" }) {
                   prose-h1:text-2xl prose-h1:mb-6 prose-h1:pb-3 prose-h1:border-b prose-h1:border-slate-100
                   prose-h3:text-lg prose-h3:mt-6 prose-h3:mb-2
                   prose-p:text-slate-600 prose-p:text-sm prose-p:leading-relaxed prose-p:mb-4
-                  prose-strong:text-slate-800"
+                  prose-strong:text-slate-800
+                  text-sm leading-relaxed text-slate-600
+                  [&_h1]:text-2xl [&_h1]:font-black [&_h1]:text-slate-900 [&_h1]:mb-2 [&_h1]:pb-3 [&_h1]:border-b [&_h1]:border-slate-100
+                  [&_h2]:text-xl [&_h2]:font-black [&_h2]:text-slate-900 [&_h2]:mt-8 [&_h2]:mb-2
+                  [&_h3]:text-lg [&_h3]:font-black [&_h3]:text-slate-900 [&_h3]:mt-8 [&_h3]:mb-2
+                  [&_p]:mb-3 [&_strong]:text-slate-800 [&_a]:text-[#F38F24] [&_a]:underline
+                  [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-4 [&_li]:mb-1.5"
                 dangerouslySetInnerHTML={{ __html: pageContent }}
               />
             </div>

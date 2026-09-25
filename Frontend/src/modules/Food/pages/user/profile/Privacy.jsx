@@ -89,7 +89,12 @@ export default function Privacy() {
                 prose-p:text-gray-600 dark:prose-p:text-gray-400 prose-p:leading-relaxed
                 prose-strong:text-gray-900 dark:prose-strong:text-white
                 prose-a:text-[#ff6d00] dark:prose-a:text-[#EB590E]
-                prose-li:text-gray-600 dark:prose-li:text-gray-400"
+                prose-li:text-gray-600 dark:prose-li:text-gray-400
+                text-sm leading-relaxed text-gray-600 dark:text-gray-400
+                [&_h1]:text-2xl [&_h1]:font-black [&_h1]:text-gray-900 dark:[&_h1]:text-white [&_h1]:mb-2
+                [&_h3]:text-lg [&_h3]:font-black [&_h3]:text-gray-900 dark:[&_h3]:text-white [&_h3]:mt-8 [&_h3]:mb-2
+                [&_p]:mb-3 [&_strong]:text-gray-900 dark:[&_strong]:text-white [&_a]:text-[#ff6d00] [&_a]:underline
+                [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-4 [&_li]:mb-1.5"
               dangerouslySetInnerHTML={{ __html: privacyData.content }}
             />
           ) : (

@@ -157,5 +157,9 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
+// A linked customer's wallet balance is their ONE wallet (food_user_wallets),
+// shared with Food, Rides and Quick & Medical -- utils/sharedWalletBridge.js.
+require('../utils/sharedWalletBridge').attachSharedWallet(userSchema);
+
 module.exports = mongoose.models.SPUser || mongoose.model('SPUser', userSchema, 'sp_users');
 

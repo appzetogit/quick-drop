@@ -1,5 +1,5 @@
 import { DriverIncentiveRule } from '../models/driverIncentiveRule.model.js';
-import { getCurrentIncentiveForFoodPartner } from '../services/incentiveService.js';
+import { getCurrentIncentiveForFoodPartner, tiersOfRule } from '../services/incentiveService.js';
 import { validateIncentiveRuleUpsertDto } from '../validators/incentiveRule.validator.js';
 import { sendResponse, sendError } from '../../../utils/response.js';
 
@@ -18,7 +18,9 @@ export async function listIncentiveRulesController(req, res, next) {
     try {
         const active = await DriverIncentiveRule.find({ isActive: true }).sort({ segment: 1 }).lean();
         const recent = await DriverIncentiveRule.find({}).sort({ createdAt: -1 }).limit(20).lean();
-        return sendResponse(res, 200, 'Incentive rules fetched', { active, recent });
+        // Rules saved before tiers existed are shown as their one-rung ladder.
+        const withTiers = (r) => ({ ...r, tiers: tiersOfRule(r) });
+        return sendResponse(res, 200, 'Incentive rules fetched', { active: active.map(withTiers), recent: recent.map(withTiers) });
     } catch (error) {
         next(error);
     }
@@ -44,9 +46,21 @@ export async function upsertIncentiveRuleController(req, res, next) {
     }
 }
 
-/** DELETE /food/admin/incentive-rules/:id — turns a rule off without deleting its history. */
+/**
+ * DELETE /food/admin/incentive-rules/:id -- turns a rule off, keeping it in the
+ * history. With ?permanent=1 the rule is removed from the list altogether
+ * (turning it off first if it was live). Credits already paid under it are
+ * untouched: they are the riders' earnings record, not part of the rule.
+ * Either way this is a DELETE, so sub-admins without delete access are refused.
+ */
 export async function deactivateIncentiveRuleController(req, res, next) {
     try {
+        const permanent = ['1', 'true'].includes(String(req.query?.permanent || '').toLowerCase());
+        if (permanent) {
+            const removed = await DriverIncentiveRule.findByIdAndDelete(req.params.id);
+            if (!removed) return sendError(res, 404, 'Incentive rule not found');
+            return sendResponse(res, 200, 'Incentive rule deleted', { _id: removed._id, wasActive: removed.isActive });
+        }
         const updated = await DriverIncentiveRule.findByIdAndUpdate(
             req.params.id,
             { $set: { isActive: false } },
