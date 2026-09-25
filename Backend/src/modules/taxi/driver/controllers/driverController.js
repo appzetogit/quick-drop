@@ -2304,8 +2304,16 @@ export const setWorkMode = async (req, res) => {
   // Delivery is satisfied by EITHER delivery capability, since the one toggle
   // covers both verticals -- a driver set up for grocery but not food can still
   // turn deliveries on and will simply only be offered grocery.
-  if (requested === 'taxi' && !caps.includes('taxi')) {
-    throw new ApiError(400, 'You are not registered for taxi rides');
+  //
+  // 'taxi' is also satisfied by a bare 'parcel' capability: a parcel-vehicle
+  // driver (normal or heavy) is never granted 'taxi' itself, only 'parcel',
+  // per driverClasses.js's DRIVER_INTENTS -- yet the ride dispatcher is what
+  // has to receive them for a parcel job to ever reach them (see
+  // coerceWorkMode's canTaxi, which treats the two the same way). Requiring
+  // literal 'taxi' here rejected every heavy-parcel driver's own duty toggle
+  // with "not registered for taxi rides", even once fully approved.
+  if (requested === 'taxi' && !caps.includes('taxi') && !caps.includes('parcel')) {
+    throw new ApiError(400, 'You are not registered for taxi rides or parcel delivery');
   }
   if (requested === 'delivery' && !DELIVERY_CAPABILITIES.some((c) => caps.includes(c))) {
     throw new ApiError(400, 'You are not registered for deliveries');
@@ -2320,7 +2328,12 @@ export const setWorkMode = async (req, res) => {
   res.json({
     success: true,
     message: `Work mode set to ${requested}`,
-    data: { workMode: driver.workMode, serviceCapabilities: caps },
+    data: {
+      workMode: driver.workMode,
+      serviceCapabilities: caps,
+      driverClass: driver.driverClass || '',
+      serviceIntents: Array.isArray(driver.serviceIntents) ? driver.serviceIntents : [],
+    },
   });
 };
 
@@ -2518,6 +2531,15 @@ export const getCurrentDriver = async (req, res) => {
       serviceCapabilities: Array.isArray(driver.serviceCapabilities) && driver.serviceCapabilities.length
         ? driver.serviceCapabilities
         : ['taxi'],
+      // What the rider actually ticked at registration (e.g. 'bike_taxi_parcel',
+      // 'heavy_parcel_delivery') — finer-grained than serviceCapabilities, which
+      // collapses bike-taxi and passenger-taxi into one 'taxi' flag and normal
+      // vs. heavy parcel into one 'parcel' flag. The app's per-duty toggle row
+      // (WorkModeSwitcher) needs this finer list; serviceCapabilities alone
+      // can't tell "I have a bike" from "I have a car" apart. See
+      // driverClasses.js for the full DRIVER_INTENTS catalogue.
+      driverClass: driver.driverClass || '',
+      serviceIntents: Array.isArray(driver.serviceIntents) ? driver.serviceIntents : [],
       location: driver.location,
       zoneId: driver.zoneId,
       routeBooking: serializeDriverRouteBooking(driver.routeBooking),
