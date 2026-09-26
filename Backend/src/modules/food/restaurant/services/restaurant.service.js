@@ -412,19 +412,27 @@ const attachFreebieOffer = async (restaurants = []) => {
     }
 
     const itemNames = new Map();
+    const itemImages = new Map();
     const addonNames = new Map();
+    const addonImages = new Map();
     try {
         if (itemIds.size) {
             const { FoodItem } = await import('../../admin/models/food.model.js');
             const docs = await FoodItem.find({ _id: { $in: [...itemIds] }, isActive: { $ne: false }, isAvailable: { $ne: false } })
-                .select('_id name')
+                .select('_id name image')
                 .lean();
-            for (const d of docs) itemNames.set(String(d._id), d.name || '');
+            for (const d of docs) {
+                itemNames.set(String(d._id), d.name || '');
+                itemImages.set(String(d._id), d.image || '');
+            }
         }
         if (addonIds.size) {
             const { FoodAddon } = await import('../models/foodAddon.model.js');
             const docs = await FoodAddon.find({ _id: { $in: [...addonIds] }, isDeleted: { $ne: true } }).lean();
-            for (const d of docs) addonNames.set(String(d._id), d.published?.name || d.name || '');
+            for (const d of docs) {
+                addonNames.set(String(d._id), d.published?.name || d.name || '');
+                addonImages.set(String(d._id), d.published?.image || d.image || '');
+            }
         }
     } catch (err) {
         // Names best-effort -- a tier whose reward vanished just shows no name
@@ -437,6 +445,13 @@ const attachFreebieOffer = async (restaurants = []) => {
         if (tier.rewardType === 'addon') return addonNames.get(String(tier.rewardAddonId)) || '';
         return itemNames.get(String(tier.rewardItemId)) || '';
     };
+    // Manual rewards have no catalogue row, so nothing to show a photo of --
+    // the customer app falls back to a plain icon for those.
+    const rewardImageOf = (tier) => {
+        if (tier.rewardType === 'manual') return '';
+        if (tier.rewardType === 'addon') return addonImages.get(String(tier.rewardAddonId)) || '';
+        return itemImages.get(String(tier.rewardItemId)) || '';
+    };
 
     return list.map((r) => {
         const offer = offersByRestaurant.get(String(r._id));
@@ -447,6 +462,7 @@ const attachFreebieOffer = async (restaurants = []) => {
                 minOrderValue: tier.minOrderValue,
                 rewardType: tier.rewardType,
                 rewardName: rewardNameOf(tier),
+                rewardImage: rewardImageOf(tier),
             }))
             // A reward that no longer names anything (withdrawn item/add-on)
             // is not advertised -- same "quietly stop offering it" rule
