@@ -946,6 +946,23 @@ export default function OrdersMain() {
     "Other reason",
   ];
 
+  // A medical order is rejected for pharmacy-shaped reasons, not "kitchen
+  // closing soon" -- these apply whether the order was ever reviewed
+  // (isMedicalOrder) or is still sitting in prescription review.
+  const medicalRejectReasons = [
+    "Prescription is unclear or unreadable",
+    "Prescription is invalid or expired",
+    "Medicine out of stock",
+    "Prescription doesn't match the medicine ordered",
+    "Pharmacy is too busy",
+    "Technical issue",
+    "Other reason",
+  ];
+
+  const isMedicalOrder = (orderLike) => orderLike?.prescription?.required === true;
+  const rejectReasonsFor = (orderLike) =>
+    isMedicalOrder(orderLike) ? medicalRejectReasons : rejectReasons;
+
   // Fetch restaurant verification status
   useEffect(() => {
     const fetchRestaurantStatus = async () => {
@@ -2666,7 +2683,7 @@ export default function OrdersMain() {
                 {/* Content */}
                 <div className="px-4 py-4 max-h-[60vh] overflow-y-auto">
                   <div className="space-y-2">
-                    {rejectReasons.map((reason) => (
+                    {rejectReasonsFor(popupOrder || newOrder).map((reason) => (
                       <button
                         key={reason}
                         onClick={() => setRejectReason(reason)}
@@ -2757,7 +2774,7 @@ export default function OrdersMain() {
                 {/* Content */}
                 <div className="px-4 py-4">
                   <div className="space-y-3">
-                    {rejectReasons.map((reason) => (
+                    {rejectReasonsFor(orderToCancel).map((reason) => (
                       <button
                         key={reason}
                         type="button"
