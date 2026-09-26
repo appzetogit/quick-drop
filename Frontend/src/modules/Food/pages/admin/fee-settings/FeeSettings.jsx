@@ -1,7 +1,8 @@
 import { useMemo, useState, useEffect } from "react"
 import { Save, Loader2, DollarSign, Plus, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@food/components/ui/button"
-import { adminAPI } from "@food/api"
+import { adminAPI, platformSettingsAPI } from "@food/api"
+import { Link } from "react-router-dom"
 import { toast } from "sonner"
 
 const toNum = (v, fallback = 0) => {
@@ -30,6 +31,8 @@ export default function FeeSettings() {
     maxOrderQuantityCeiling: "",
   })
   const [distanceRules, setDistanceRules] = useState([])
+  // Master > Delivery earnings formula in force, if one is saved: this table is then unused.
+  const [masterFormula, setMasterFormula] = useState(null)
   const [loadingFeeSettings, setLoadingFeeSettings] = useState(false)
   const [savingFeeSettings, setSavingFeeSettings] = useState(false)
 
@@ -172,6 +175,15 @@ export default function FeeSettings() {
     fetchFeeSettings()
     fetchDistanceRules()
     fetchZoneSurges()
+    // The quick-commerce panel mounts this same page.
+    const vertical = window.location.pathname.includes("/quick-commerce") ? "quickCommerce" : "food"
+    platformSettingsAPI
+      .getEarnings(vertical)
+      .then((res) => {
+        const d = res?.data?.data
+        setMasterFormula(d?.formula ? { source: d.formulaSource } : null)
+      })
+      .catch(() => setMasterFormula(null))
   }, [])
 
   const validateSlabPayload = ({ minDistance, maxDistance, basePayout, commissionPerKm }) => {
@@ -446,6 +458,15 @@ export default function FeeSettings() {
             </div>
           ) : (
             <>
+              {masterFormula && (
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  Delivery fees and rider pay now come from the delivery formula in{" "}
+                  <Link to="/admin/master/delivery-earnings" className="font-semibold underline">
+                    Master &rsaquo; Delivery earnings
+                  </Link>{" "}
+                  ({masterFormula.source}). The distance table and admin delivery commission below are no longer used.
+                </div>
+              )}
               <h3 className="text-lg font-semibold text-slate-900 mb-1">Delivery Fee by Distance Range</h3>
               <p className="text-sm text-slate-500 mb-4">Set different delivery fees based on distance ranges (in km)</p>
 

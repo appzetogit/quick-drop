@@ -20,6 +20,8 @@
  * table of groupings that drifts from this one.
  */
 
+import { normalizeFormula } from '../finance/deliveryFormula.js';
+
 const ALL_SCOPES = ['global', 'vertical', 'zone', 'partner'];
 const GLOBAL_ONLY = ['global'];
 const NOT_PER_PARTNER = ['global', 'vertical', 'zone'];
@@ -130,6 +132,20 @@ export const SETTINGS = Object.freeze({
                 };
             }).sort((a, b) => a.minDistance - b.minDistance);
         },
+    },
+    /*
+     * The delivery formula: what the customer pays and what the rider earns,
+     * set as two separate lines (core/finance/deliveryFormula.js). Replaces
+     * the band table above for any module where it is set; where it is not,
+     * that module keeps the table exactly as before.
+     */
+    'earnings.formula': {
+        type: 'object',
+        default: null,
+        scopes: NOT_PER_PARTNER,
+        label: 'Delivery formula',
+        help: 'Customer pays a base fee for the first N km plus a per-km rate after that; the rider earns their own base plus per km. Optional distance bands, minimum and maximum fee.',
+        validate: (v) => normalizeFormula(v),
     },
     /*
      * The top-up a rider earns on a large order. Scalar, unlike the table above,

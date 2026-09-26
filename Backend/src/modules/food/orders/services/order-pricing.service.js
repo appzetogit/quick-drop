@@ -9,6 +9,7 @@ import { ORDER_STATUSES_NOT_COUNTED_FOR_COUPONS } from './couponUsage.service.js
 import { FoodDeliverySurgeZone } from '../../admin/models/deliverySurgeZone.model.js';
 import { FoodDeliveryCommissionRule } from '../../admin/models/deliveryCommissionRule.model.js';
 import { resolveEarningSlabs, resolveIncentive, pickSlab, bandFee } from '../../../../core/finance/deliveryEarnings.service.js';
+import { resolveDeliveryFormula, priceDelivery } from '../../../../core/finance/deliveryFormula.js';
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
@@ -440,7 +441,12 @@ export async function calculateOrderPricing(userId, dto) {
   // then assessed against a crow-flies radius. Null means never measured.
   let measuredDistanceKm = null;
 
-  if (mode === 'distance_order_value') {
+  // Master > Delivery earnings formula, when one is saved: it prices every
+  // order by distance whatever this module's own fee mode says, and pays the
+  // rider its own figure (core/finance/deliveryFormula.js). Null = old table.
+  const deliveryFormula = await resolveDeliveryFormula({ vertical: 'food', zoneId: orderZoneId });
+
+  if (mode === 'distance_order_value' || deliveryFormula) {
     const restCoords = extractCoords(restaurant);
     const customerCoords = extractCoords(dto?.address || dto?.deliveryAddress);
     
@@ -461,10 +467,10 @@ export async function calculateOrderPricing(userId, dto) {
       distanceKm = measured.km;
       distanceSource = measured.source;
       measuredDistanceKm = measured.km;
-      distanceRule = await resolveDistanceRule(distanceKm, orderZoneId);
+      if (!deliveryFormula) distanceRule = await resolveDistanceRule(distanceKm, orderZoneId);
     } else {
       // Fallback: If coordinates are missing, assume base distance (0 km) to apply base delivery fee
-      distanceRule = await resolveDistanceRule(0, orderZoneId);
+      if (!deliveryFormula) distanceRule = await resolveDistanceRule(0, orderZoneId);
       /*
        * Worth shouting about. Every order from this restaurant is priced at the
        * nearest slab whatever the real trip, and free delivery can never apply
@@ -480,7 +486,29 @@ export async function calculateOrderPricing(userId, dto) {
       }
     }
     
-    if (distanceRule) {
+    if (deliveryFormula) {
+        const priced = priceDelivery(deliveryFormula.formula, distanceKm);
+        deliveryFee = priced.customerFee;
+        // The rider's pay is set directly; no share of the fee, no commission.
+        riderDeliveryEarningAfterAdminCommission = priced.riderPay;
+        deliveryFeeBreakdown = {
+          source: 'delivery_formula',
+          formulaLevel: deliveryFormula.level,
+          formulaSource: deliveryFormula.source,
+          distanceKm: priced.distanceKm,
+          distanceSource,
+          appliedDeliveryFee: priced.customerFee,
+          riderPay: priced.riderPay,
+          platformKeeps: priced.platformKeeps,
+          band: priced.band,
+          orderValue: subtotal,
+          // Read by order.service as the rider's base pay: already inside riderPay.
+          basePayout: 0,
+          adminDeliveryCommissionPercent: 0,
+          adminDeliveryCommissionAmount: 0,
+          riderDeliveryEarningAfterAdminCommission: priced.riderPay,
+        };
+    } else if (distanceRule) {
         const commissionRows = Array.isArray(feeSettings.distanceSlabAdminDeliveryCommission)
           ? feeSettings.distanceSlabAdminDeliveryCommission
           : [];

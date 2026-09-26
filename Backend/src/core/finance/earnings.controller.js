@@ -1,4 +1,5 @@
 import { resolveEarningSlabs, resolveIncentive } from './deliveryEarnings.service.js';
+import { resolveDeliveryFormula, formulaFromSlabs } from './deliveryFormula.js';
 
 /**
  * What a module is paying today, and where that came from.
@@ -42,6 +43,17 @@ async function legacyFor(vertical) {
     return [];
 }
 
+/** Food's per-band admin delivery commission %, by band id (enabled rows only). */
+async function foodCommissionByBand() {
+    const { FoodFeeSettings } = await import('../../modules/food/admin/models/feeSettings.model.js');
+    const doc = await FoodFeeSettings.findOne({ isActive: { $ne: false } }).sort({ createdAt: -1 }).lean();
+    const out = {};
+    for (const r of doc?.distanceSlabAdminDeliveryCommission || []) {
+        if (r?.isEnabled === true) out[String(r.distanceRuleId)] = Number(r.adminDeliveryCommissionPercent) || 0;
+    }
+    return out;
+}
+
 /** The module's own incentive rule, where it has one. */
 async function legacyIncentiveFor(vertical) {
     if (vertical !== 'food') return null;
@@ -62,11 +74,18 @@ export async function getEarningsController(req, res, next) {
         }
         const zoneId = req.query.zoneId ? String(req.query.zoneId) : undefined;
 
-        const [table, incentive, ownBands] = await Promise.all([
+        const [table, incentive, ownBands, formula] = await Promise.all([
             resolveEarningSlabs({ vertical, zoneId, loadLegacy: () => legacyFor(vertical) }),
             resolveIncentive({ vertical, zoneId, legacy: await legacyIncentiveFor(vertical) }),
             legacyFor(vertical),
+            resolveDeliveryFormula({ vertical, zoneId }),
         ]);
+        // What is charged and paid today, written as the new formula, so the
+        // editor can open on it and saving changes nothing until a number does.
+        const currentAsFormula = formulaFromSlabs(table.slabs, {
+            riderRule: vertical === 'food' ? 'food' : 'quickCommerce',
+            commissionPercentByBand: vertical === 'food' ? await foodCommissionByBand() : {},
+        });
 
         return res.json({
             success: true,
@@ -77,6 +96,11 @@ export async function getEarningsController(req, res, next) {
                 slabSource: table.source,
                 slabLevel: table.level,
                 incentive,
+                // The formula in force (null = the module still uses its band table).
+                formula: formula ? formula.formula : null,
+                formulaSource: formula ? formula.source : null,
+                formulaLevel: formula ? formula.level : null,
+                currentAsFormula,
                 /*
                  * The module's own bands, always -- what "start from the current
                  * table" fills the editor with, even once a Master table is set,

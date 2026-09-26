@@ -745,7 +745,9 @@ export async function createOrder(userId, dto) {
       normalizedPricing.roadDistanceKm = distanceKm;
     }
 
-    const feeSettings = await loadActiveFeeSettings();
+    const feeSettings = await loadActiveFeeSettings({
+      vertical: isMedicalStore(restaurant?.storeType) ? 'medical' : 'quickCommerce',
+    });
     const riderEarning = calculateRiderEarning(feeSettings, distanceKm) || 0;
     
     // Calculate restaurant commission from subtotal

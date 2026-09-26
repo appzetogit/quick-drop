@@ -3,6 +3,7 @@ import { FoodOrder } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
 import { resolveEarningSlabs } from '../../../../../../core/finance/deliveryEarnings.service.js';
+import { resolveDeliveryFormula, priceDelivery } from '../../../../../../core/finance/deliveryFormula.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
@@ -19,6 +20,7 @@ import { getRestaurantAvailabilityStatus } from '../../restaurant/helpers/restau
 import { resolveOrderCartItems } from '../helpers/order-cart-items.helper.js';
 import { AVG_SPEED_KMPH, PACKING_MINUTES } from './order.helpers.js';
 import { withMasterFees } from '../../../../../../core/finance/platformFees.service.js';
+import { isMedicalStore } from '../../shared/storeType.js';
 
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
@@ -222,7 +224,7 @@ const asQcRanges = (slabs) =>
  * why the Master table is overlaid HERE: order pricing, order creation and
  * prescription orders all pick it up without each being rewired.
  */
-export async function loadActiveFeeSettings({ zoneId } = {}) {
+export async function loadActiveFeeSettings({ zoneId, vertical = 'quickCommerce' } = {}) {
   const feeDoc = await FoodFeeSettings.findOne({ isActive: { $ne: false } })
     .sort({ createdAt: -1 })
     .lean();
@@ -234,6 +236,11 @@ export async function loadActiveFeeSettings({ zoneId } = {}) {
     platformFee: 0,
     gstRate: 0,
   });
+
+  // Master > Delivery earnings formula, when one is saved: it prices the fee
+  // and the rider's pay from here on (resolveUserDeliveryFee, calculateRiderEarning).
+  const deliveryFormula = await resolveDeliveryFormula({ vertical, zoneId });
+  if (deliveryFormula) return { ...settings, deliveryFormula };
 
   // Master > Delivery earnings when a table is saved there; this module's own
   // bands when it is not, so nothing changes until an admin sets one.
@@ -314,6 +321,17 @@ export function computeItemsTax(
 }
 
 export function resolveUserDeliveryFee(feeSettings = {}, { subtotal = 0, distanceKm = null } = {}) {
+  if (feeSettings.deliveryFormula) {
+    // An unmeasured trip is charged the base fee, as the band table did.
+    const measured = Number.isFinite(distanceKm);
+    const priced = priceDelivery(feeSettings.deliveryFormula.formula, measured ? distanceKm : 0);
+    return {
+      deliveryFee: priced.customerFee,
+      distanceKm: measured ? Number(distanceKm.toFixed(2)) : null,
+      source: 'delivery_formula',
+    };
+  }
+
   const ranges = Array.isArray(feeSettings.deliveryFeeRanges)
     ? feeSettings.deliveryFeeRanges
     : [];
@@ -340,6 +358,7 @@ export function resolveUserDeliveryFee(feeSettings = {}, { subtotal = 0, distanc
 export function calculateRiderEarning(feeSettings = {}, distanceKm) {
   const distance = Number(distanceKm);
   if (!Number.isFinite(distance) || distance < 0) return 0;
+  if (feeSettings.deliveryFormula) return priceDelivery(feeSettings.deliveryFormula.formula, distance).riderPay;
 
   const ranges = Array.isArray(feeSettings.deliveryFeeRanges)
     ? feeSettings.deliveryFeeRanges
@@ -432,7 +451,10 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
     ),
   );
 
-  const feeSettings = await loadActiveFeeSettings();
+  // A pharmacy is priced by the Medical formula when one is set there.
+  const feeSettings = await loadActiveFeeSettings({
+    vertical: isMedicalStore(restaurant?.storeType) ? 'medical' : 'quickCommerce',
+  });
 
   const packagingFee = 0;
   const platformFee = Number(feeSettings.platformFee || 0);
