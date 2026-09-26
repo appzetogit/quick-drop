@@ -48,6 +48,16 @@ const driverIncentiveRuleSchema = new mongoose.Schema(
          */
         zoneId: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
         zoneName: { type: String, trim: true, default: '' },
+        /*
+         * taxiAndPorter only: the vehicle type this ladder is for (a
+         * TaxiVehicle id) — an e-rickshaw and a cab earn at different rates
+         * for the same trip count, so one zone can carry several ladders,
+         * one per vehicle type, same "null is the default" convention as
+         * zoneId. foodAndQuick rules leave this null; there is no vehicle
+         * type to key on there.
+         */
+        vehicleTypeId: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
+        vehicleTypeName: { type: String, trim: true, default: '' },
         /** Admin-authored headline shown as-is on the rider's card. */
         title: { type: String, trim: true, default: '' },
         /** Ascending by toOrders — validated on write, see incentiveRule.validator.js. */
@@ -59,9 +69,9 @@ const driverIncentiveRuleSchema = new mongoose.Schema(
                 message: 'At least one tier is required',
             },
         },
-        /** Only 'daily' today; kept as a field rather than a bare boolean so a
-         *  weekly/monthly window can be added later without a schema change. */
-        windowType: { type: String, enum: ['daily'], default: 'daily' },
+        /** Counted per calendar day (IST) or per calendar week (Mon-Sun IST) —
+         *  see istDayBounds/istWeekBounds in incentiveService.js. */
+        windowType: { type: String, enum: ['daily', 'weekly'], default: 'daily' },
         isActive: { type: Boolean, default: true, index: true },
         createdByAdminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     },
@@ -70,6 +80,7 @@ const driverIncentiveRuleSchema = new mongoose.Schema(
 
 driverIncentiveRuleSchema.index({ segment: 1, isActive: 1, createdAt: -1 });
 driverIncentiveRuleSchema.index({ segment: 1, zoneId: 1, isActive: 1, createdAt: -1 });
+driverIncentiveRuleSchema.index({ segment: 1, zoneId: 1, vehicleTypeId: 1, isActive: 1, createdAt: -1 });
 
 export const DriverIncentiveRule =
     mongoose.models.DriverIncentiveRule || mongoose.model('DriverIncentiveRule', driverIncentiveRuleSchema);

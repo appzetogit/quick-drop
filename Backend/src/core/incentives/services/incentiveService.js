@@ -32,6 +32,33 @@ function istDayBounds(at = new Date()) {
 }
 
 /**
+ * Monday 00:00 IST through Sunday 23:59:59.999 IST, the week containing
+ * `at` — for a weekly ladder (e.g. a taxi vehicle-type incentive counted
+ * per week rather than per day). periodKey is the Monday's date, prefixed
+ * so it can never collide with a daily key.
+ */
+function istWeekBounds(at = new Date()) {
+    const ist = new Date(at.getTime() + IST_OFFSET_MS);
+    const dow = ist.getUTCDay(); // 0 = Sunday .. 6 = Saturday
+    const mondayOffset = dow === 0 ? 6 : dow - 1;
+    const y = ist.getUTCFullYear();
+    const m = ist.getUTCMonth();
+    const d = ist.getUTCDate() - mondayOffset;
+    const startUtcMs = Date.UTC(y, m, d, 0, 0, 0, 0) - IST_OFFSET_MS;
+    const endUtcMs = startUtcMs + 7 * 24 * 60 * 60 * 1000 - 1;
+    const mondayIst = new Date(startUtcMs + IST_OFFSET_MS);
+    const periodKey =
+        `W${mondayIst.getUTCFullYear()}-${String(mondayIst.getUTCMonth() + 1).padStart(2, '0')}` +
+        `-${String(mondayIst.getUTCDate()).padStart(2, '0')}`;
+    return { start: new Date(startUtcMs), end: new Date(endUtcMs), periodKey };
+}
+
+/** Which window a rule counts in — daily unless it says otherwise. */
+function windowBoundsFor(rule, at = new Date()) {
+    return rule?.windowType === 'weekly' ? istWeekBounds(at) : istDayBounds(at);
+}
+
+/**
  * Resolves the caller's unified identity from any one of its three possible
  * starting points, so a food order, a QC order and a ride all agree on the
  * same rider for progress-counting and credit idempotency.
@@ -93,37 +120,74 @@ async function resolveDriverContext({ startFrom, id }) {
 
 const asId = (v) => (v && mongoose.Types.ObjectId.isValid(String(v)) ? new mongoose.Types.ObjectId(String(v)) : null);
 
-/** The live ladder for a segment: one zone's own, or (zoneId null) the default. */
-async function getActiveRule(segment, zoneId = null) {
-    return DriverIncentiveRule.findOne({ segment, zoneId: asId(zoneId), isActive: true })
-        .sort({ createdAt: -1 })
-        .lean();
+/** Every distinct non-null value a segment's rules use for one axis. */
+async function ownValuesOf(segment, field, windowType = 'daily') {
+    return DriverIncentiveRule.distinct(field, { segment, windowType, isActive: true, [field]: { $ne: null } });
 }
 
 /**
- * Which ladder an order or ride in `zoneId` climbs, and which of the rider's
- * trips count toward it.
+ * Which ladder an order or ride in `zoneId` (and, for taxiAndPorter,
+ * `vehicleTypeId`) climbs, and which of the rider's trips count toward it.
  *
- * A zone with its own ladder counts only that zone's trips: six orders in
- * Indore climb Indore's ladder, three in Dewas climb Dewas's. Every other trip
- * climbs the default ladder, which counts trips outside the zones that have
- * their own -- so no trip counts twice and none is lost.
+ * Two independent axes, most-specific-wins — same idea as CSS specificity:
+ * a ladder naming both zone and vehicle type beats one naming only zone or
+ * only vehicle type, which both beat the fully-default ladder. foodAndQuick
+ * never sets vehicleTypeId, so for it this collapses to the original
+ * zone-only behaviour (candidates 1 and 3 can never match, since `v` is
+ * always null).
  *
- * @returns {Promise<{rule: object|null, scope: {onlyZone?: ObjectId, excludeZones?: ObjectId[]}}>}
+ * Whichever axis the winning rule left null falls back to "every trip not
+ * already claimed by a MORE specific rule on that axis" — so no trip counts
+ * toward two ladders, and none is silently uncounted.
+ *
+ * Daily and weekly are independent ladders, not alternatives (see
+ * upsertIncentiveRuleController), so `windowType` narrows which one this
+ * call is about -- callers wanting both call this twice.
+ *
+ * @returns {Promise<{rule: object|null, scope: object}>}
  */
-async function ladderFor(segment, zoneId) {
-    const own = await DriverIncentiveRule.distinct('zoneId', { segment, isActive: true, zoneId: { $ne: null } });
-    const id = asId(zoneId);
-    if (id && own.some((z) => String(z) === String(id))) {
-        return { rule: await getActiveRule(segment, id), scope: { onlyZone: id } };
+async function ladderFor(segment, zoneId = null, vehicleTypeId = null, windowType = 'daily') {
+    const z = asId(zoneId);
+    const v = asId(vehicleTypeId);
+    const candidates = [
+        z && v ? { zoneId: z, vehicleTypeId: v } : null,
+        z ? { zoneId: z, vehicleTypeId: null } : null,
+        v ? { zoneId: null, vehicleTypeId: v } : null,
+        { zoneId: null, vehicleTypeId: null },
+    ].filter(Boolean);
+
+    for (const match of candidates) {
+        // eslint-disable-next-line no-await-in-loop
+        const rule = await DriverIncentiveRule.findOne({ segment, windowType, isActive: true, ...match })
+            .sort({ createdAt: -1 })
+            .lean();
+        if (!rule) continue;
+        return {
+            rule,
+            scope: {
+                onlyZone: match.zoneId || undefined,
+                excludeZones: match.zoneId ? undefined : await ownValuesOf(segment, 'zoneId', windowType),
+                onlyVehicleType: match.vehicleTypeId || undefined,
+                excludeVehicleTypes: match.vehicleTypeId
+                    ? undefined
+                    : await ownValuesOf(segment, 'vehicleTypeId', windowType),
+            },
+        };
     }
-    return { rule: await getActiveRule(segment, null), scope: { excludeZones: own } };
+    return { rule: null, scope: {} };
 }
 
 /** Mongo filter narrowing a food/quick order count to the ladder's zones. */
 function orderZoneFilter(scope = {}) {
     if (scope.onlyZone) return { zoneId: scope.onlyZone };
     if (scope.excludeZones?.length) return { zoneId: { $nin: scope.excludeZones } };
+    return {};
+}
+
+/** Rides only: narrows a ride count to the ladder's vehicle type, if any. */
+function rideVehicleTypeFilter(scope = {}) {
+    if (scope.onlyVehicleType) return { vehicleTypeId: scope.onlyVehicleType };
+    if (scope.excludeVehicleTypes?.length) return { vehicleTypeId: { $nin: scope.excludeVehicleTypes } };
     return {};
 }
 
@@ -166,6 +230,7 @@ async function countCompletedToday(ctx, segment, { start, end }, scope = {}) {
             liveStatus: 'completed',
             completedAt: { $gte: start, $lte: end },
             ...(await rideZoneFilter(scope)),
+            ...rideVehicleTypeFilter(scope),
         });
     }
 
@@ -252,18 +317,35 @@ async function payTierReward({ ctx, rule, tier, completedOrders, periodKey }) {
  * here must not fail the delivery or ride the rider just completed; callers
  * fire this with `.catch(logger.warn)`, matching the cashback/referral hooks
  * it sits alongside.
+ *
+ * Daily and weekly are independent ladders (see upsertIncentiveRuleController),
+ * so both are checked and credited on every completion — a rider can be on
+ * both at once, e.g. a per-day ladder and a per-week bonus for the same
+ * vehicle type.
  */
-async function maybeCreditIncentive({ startFrom, id, segment, zoneId = null }) {
+async function maybeCreditIncentive({ startFrom, id, segment, zoneId = null, vehicleTypeId = null }) {
     try {
         const ctx = await resolveDriverContext({ startFrom, id });
         if (!ctx) return;
 
-        // The zone's own ladder when it has one, else the default (ladderFor).
-        const { rule, scope } = await ladderFor(segment, zoneId);
+        for (const windowType of ['daily', 'weekly']) {
+            // eslint-disable-next-line no-await-in-loop
+            await creditWindow({ ctx, segment, zoneId, vehicleTypeId, windowType });
+        }
+    } catch (err) {
+        logger.warn(`incentive progress hook failed: ${err?.message || err}`);
+    }
+}
+
+/** One window's (daily or weekly) worth of maybeCreditIncentive's work. */
+async function creditWindow({ ctx, segment, zoneId, vehicleTypeId, windowType }) {
+    try {
+        // The most specific ladder for this zone/vehicle type, else the default.
+        const { rule, scope } = await ladderFor(segment, zoneId, vehicleTypeId, windowType);
         const tiers = sortedTiersOf(rule);
         if (tiers.length === 0) return;
 
-        const { start, end, periodKey } = istDayBounds();
+        const { start, end, periodKey } = windowBoundsFor(rule);
         const completedOrders = await countCompletedToday(ctx, segment, { start, end }, scope);
 
         const dueTiers = tiers.filter((t) => completedOrders >= t.toOrders);
@@ -331,7 +413,14 @@ export function onFoodOrQuickCommerceOrderCompleted({ deliveryPartnerId, vertica
 export async function onTaxiRideCompleted({ driverId, ride = null }) {
     const { taxiZoneIdOfRide } = await import('../../zones/taxiZone.js');
     const zoneId = ride ? await taxiZoneIdOfRide(ride) : null;
-    return maybeCreditIncentive({ startFrom: 'taxiDriver', id: driverId, segment: 'taxiAndPorter', zoneId });
+    const vehicleTypeId = ride?.vehicleTypeId || null;
+    return maybeCreditIncentive({
+        startFrom: 'taxiDriver',
+        id: driverId,
+        segment: 'taxiAndPorter',
+        zoneId,
+        vehicleTypeId,
+    });
 }
 
 /**
@@ -359,25 +448,48 @@ async function currentZoneOf(ctx, segment) {
 }
 
 /**
+ * The vehicle type the rider is driving now, for a taxiAndPorter ladder —
+ * the driver's own current vehicle type, since (unlike zone) that doesn't
+ * change ride to ride. Null when unset, which shows the vehicle-type-wide
+ * (or fully default) ladder.
+ */
+async function currentVehicleTypeOf(ctx) {
+    if (!ctx.taxiDriverId) return null;
+    const driver = await Driver.findById(ctx.taxiDriverId).select('vehicleTypeId').lean();
+    return driver?.vehicleTypeId || null;
+}
+
+/**
  * The rider-facing read path: what to show on the home-screen card right
- * now, for whichever segment this rider is currently working.
+ * now, for whichever segment this rider is currently working. Shared by both
+ * entry points below — [getCurrentIncentiveForFoodPartner] and
+ * [getCurrentIncentiveForDriver] only differ in how `ctx` was resolved.
  *
  * Segment guess for a linked rider: the server has no separate "quick
  * commerce toggle" signal today (see DutySegment.resolve in the Flutter app
  * for the fuller client-side rule this approximates), so a 'taxi' or 'all'
  * workMode is treated as the taxi segment and anything else as food/QC —
- * the same fallback the client itself uses.
+ * the same fallback the client itself uses. A rider resolved straight from a
+ * taxi driver id has no other option to guess between, so is always taxi.
+ *
+ * Daily and weekly ladders exist independently (see maybeCreditIncentive),
+ * but the card shows one at a time: the daily one when there is a live
+ * daily ladder, else the weekly one. A rider on both still gets both
+ * credited — this only decides which progress the card leads with.
  */
-export async function getCurrentIncentiveForFoodPartner(foodPartnerId) {
-    const ctx = await resolveDriverContext({ startFrom: 'foodPartner', id: foodPartnerId });
+async function buildCurrentIncentive(ctx, { forceSegment } = {}) {
     if (!ctx) return null;
 
-    const segment = ctx.workMode === 'taxi' || ctx.workMode === 'all' ? 'taxiAndPorter' : 'foodAndQuick';
-    const { rule, scope } = await ladderFor(segment, await currentZoneOf(ctx, segment));
+    const segment =
+        forceSegment || (ctx.workMode === 'taxi' || ctx.workMode === 'all' ? 'taxiAndPorter' : 'foodAndQuick');
+    const vehicleTypeId = segment === 'taxiAndPorter' ? await currentVehicleTypeOf(ctx) : null;
+    const zoneId = await currentZoneOf(ctx, segment);
+    let { rule, scope } = await ladderFor(segment, zoneId, vehicleTypeId, 'daily');
+    if (!rule) ({ rule, scope } = await ladderFor(segment, zoneId, vehicleTypeId, 'weekly'));
     const tiers = sortedTiersOf(rule);
     if (tiers.length === 0) return null;
 
-    const { start, end, periodKey } = istDayBounds();
+    const { start, end, periodKey } = windowBoundsFor(rule);
     const completedOrders = await countCompletedToday(ctx, segment, { start, end }, scope);
 
     const creditedRows = await DriverIncentiveCredit.find({ driverKey: ctx.driverKey, ruleId: rule._id, periodKey })
@@ -408,4 +520,28 @@ export async function getCurrentIncentiveForFoodPartner(foodPartnerId) {
     };
 }
 
-export const __testables = { istDayBounds, resolveDriverContext, sortedTiersOf, ladderFor, countCompletedToday };
+/** Entry point for a food/QC delivery partner opening their home screen. */
+export async function getCurrentIncentiveForFoodPartner(foodPartnerId) {
+    const ctx = await resolveDriverContext({ startFrom: 'foodPartner', id: foodPartnerId });
+    return buildCurrentIncentive(ctx);
+}
+
+/**
+ * Entry point for a taxi driver opening their home screen — including a
+ * driver with no linked food/QC partner at all, who [getCurrentIncentiveForFoodPartner]
+ * has no id to start from for. Always the taxiAndPorter segment: there is no
+ * workMode to guess from when the caller is already known to be a taxi driver.
+ */
+export async function getCurrentIncentiveForDriver(taxiDriverId) {
+    const ctx = await resolveDriverContext({ startFrom: 'taxiDriver', id: taxiDriverId });
+    return buildCurrentIncentive(ctx, { forceSegment: 'taxiAndPorter' });
+}
+
+export const __testables = {
+    istDayBounds,
+    istWeekBounds,
+    resolveDriverContext,
+    sortedTiersOf,
+    ladderFor,
+    countCompletedToday,
+};

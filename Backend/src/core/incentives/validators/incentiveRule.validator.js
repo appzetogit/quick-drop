@@ -58,11 +58,30 @@ export function validateIncentiveRuleUpsertDto(body = {}) {
         throw new ApiError(400, 'zoneId must be a zone id, or empty for the default ladder');
     }
 
+    // Optional, taxiAndPorter only: a ladder for one vehicle type. Empty
+    // applies to every vehicle type in the zone (or platform-wide).
+    const rawVehicleType =
+        body.vehicleTypeId === undefined || body.vehicleTypeId === null ? '' : String(body.vehicleTypeId).trim();
+    if (rawVehicleType && !mongoose.Types.ObjectId.isValid(rawVehicleType)) {
+        throw new ApiError(400, 'vehicleTypeId must be a vehicle type id, or empty for every vehicle type');
+    }
+    if (rawVehicleType && segment !== 'taxiAndPorter') {
+        throw new ApiError(400, 'vehicleTypeId only applies to the taxiAndPorter segment');
+    }
+
+    const windowType = String(body.windowType || 'daily').trim();
+    if (!['daily', 'weekly'].includes(windowType)) {
+        throw new ApiError(400, 'windowType must be "daily" or "weekly"');
+    }
+
     return {
         segment,
         tiers,
         title: String(body.title || '').trim(),
         zoneId: rawZone ? new mongoose.Types.ObjectId(rawZone) : null,
         zoneName: rawZone ? String(body.zoneName || '').trim().slice(0, 120) : '',
+        vehicleTypeId: rawVehicleType ? new mongoose.Types.ObjectId(rawVehicleType) : null,
+        vehicleTypeName: rawVehicleType ? String(body.vehicleTypeName || '').trim().slice(0, 120) : '',
+        windowType,
     };
 }

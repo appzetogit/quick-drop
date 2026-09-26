@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { asyncHandler } from "../../../../utils/asyncHandler.js";
 import { authenticate } from "../../middlewares/authMiddleware.js";
+import { getCurrentDriverIncentiveController } from "../../../../core/incentives/controllers/incentiveController.js";
 import {
   addDriverEmergencyContact,
   completeOnboarding,
@@ -188,6 +189,14 @@ driverRouter.get(
   "/incentives",
   authenticate(["driver"]),
   asyncHandler(getDriverIncentives),
+);
+// The same order/ride-count ladder card Food/Quick/Medical riders see, for
+// taxiAndPorter — see core/incentives/. Distinct path from "/incentives"
+// above, which is an unrelated milestone/streak gamification system.
+driverRouter.get(
+  "/incentives/ladder/current",
+  authenticate(["driver"]),
+  asyncHandler(getCurrentDriverIncentiveController),
 );
 driverRouter.post(
   "/incentives/claim",
