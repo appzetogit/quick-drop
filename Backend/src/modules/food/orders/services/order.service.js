@@ -823,7 +823,7 @@ export async function getOrderById(
     // Whether the app may offer Cancel, and until when (countdown).
     try {
       const { getCancelRules, cancellationForClient } = await import("./cancellationPolicy.js");
-      out.cancellation = cancellationForClient(order, await getCancelRules());
+      out.cancellation = cancellationForClient(order, await getCancelRules('food', order.zoneId));
     } catch {
       /* the app falls back to its own status check */
     }
@@ -1012,7 +1012,7 @@ export async function cancelOrder(orderId, userId, reason) {
   // Waiting for the restaurant: always. After it accepts: only inside the
   // window the admin set (Food -> Order cancellation), see cancellationPolicy.
   const { getCancelRules, judgeUserCancel } = await import("./cancellationPolicy.js");
-  const verdict = judgeUserCancel(order, await getCancelRules());
+  const verdict = judgeUserCancel(order, await getCancelRules('food', order.zoneId));
   if (!verdict.allowed) throw new ValidationError(verdict.reason || "Order cannot be cancelled");
 
   const from = order.orderStatus;

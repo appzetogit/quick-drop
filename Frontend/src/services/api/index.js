@@ -174,6 +174,9 @@ export const notificationAPI = {
  * exception needed in the rewrite.
  */
 export const platformSettingsAPI = {
+  /** One module's zones for the Master zone pickers: [{ id, name, active }]. */
+  zones: (module) =>
+    apiClient.get(`/platform/settings/zones/${encodeURIComponent(module)}`, { contextModule: "admin" }),
   getCatalogue: () =>
     apiClient.get("/platform/settings/catalogue", { contextModule: "admin" }),
   /** Every setting resolved for one context. `{ vertical, zoneId, partnerId }` */
@@ -299,10 +302,11 @@ export const stockAPI = {
 export const incentiveRulesAPI = {
   list: () => apiClient.get("/food/admin/incentive-rules", { contextModule: "admin" }),
   /** tiers: [{ fromOrders, toOrders, rewardAmount }, ...], e.g. 1-5 → ₹100, 5-10 → ₹150. */
-  upsert: ({ segment, title, tiers }) =>
+  /** zoneId empty = the default ladder; set = that zone's own ladder. */
+  upsert: ({ segment, title, tiers, zoneId = null, zoneName = "" }) =>
     apiClient.put(
       "/food/admin/incentive-rules",
-      { segment, title, tiers },
+      { segment, title, tiers, zoneId, zoneName },
       { contextModule: "admin" },
     ),
   deactivate: (id) =>

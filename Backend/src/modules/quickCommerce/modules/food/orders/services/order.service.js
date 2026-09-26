@@ -748,6 +748,7 @@ export async function createOrder(userId, dto) {
 
     const feeSettings = await loadActiveFeeSettings({
       vertical: isMedicalStore(restaurant?.storeType) ? 'medical' : 'quickCommerce',
+      zoneId: serviceableZone?._id ? String(serviceableZone._id) : restaurant?.zoneId ? String(restaurant.zoneId) : undefined,
     });
     const riderEarning = calculateRiderEarning(feeSettings, distanceKm) || 0;
     
@@ -1378,7 +1379,7 @@ export async function getOrderById(
       const { getCancelRules, cancellationForClient } = await import(
         "../../../../../food/orders/services/cancellationPolicy.js"
       );
-      out.cancellation = cancellationForClient(order, await getCancelRules("quickCommerce"));
+      out.cancellation = cancellationForClient(order, await getCancelRules("quickCommerce", order.zoneId));
     } catch {
       /* the app falls back to its own status check */
     }
@@ -1601,7 +1602,7 @@ export async function cancelOrder(orderId, userId, reason) {
   const { getCancelRules, judgeUserCancel } = await import(
     "../../../../../food/orders/services/cancellationPolicy.js"
   );
-  const verdict = judgeUserCancel(order, await getCancelRules("quickCommerce"));
+  const verdict = judgeUserCancel(order, await getCancelRules("quickCommerce", order.zoneId));
   if (!verdict.allowed) throw new ValidationError(verdict.reason || "Order cannot be cancelled");
 
   const from = order.orderStatus;

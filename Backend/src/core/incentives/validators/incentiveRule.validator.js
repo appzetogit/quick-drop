@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { ApiError } from '../../../utils/ApiError.js';
 
 const SEGMENTS = ['foodAndQuick', 'taxiAndPorter'];
@@ -51,9 +52,17 @@ export function validateIncentiveRuleUpsertDto(body = {}) {
         }
     }
 
+    // Optional: a ladder for one zone. Empty is the default ladder.
+    const rawZone = body.zoneId === undefined || body.zoneId === null ? '' : String(body.zoneId).trim();
+    if (rawZone && !mongoose.Types.ObjectId.isValid(rawZone)) {
+        throw new ApiError(400, 'zoneId must be a zone id, or empty for the default ladder');
+    }
+
     return {
         segment,
         tiers,
         title: String(body.title || '').trim(),
+        zoneId: rawZone ? new mongoose.Types.ObjectId(rawZone) : null,
+        zoneName: rawZone ? String(body.zoneName || '').trim().slice(0, 120) : '',
     };
 }

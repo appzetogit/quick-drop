@@ -501,7 +501,9 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
     let incentiveAmount = 0;
     try {
         const { resolveIncentive } = await import('../../../../core/finance/deliveryEarnings.service.js');
-        const rule = await resolveIncentive({ vertical: 'taxi', legacy: null });
+        const { taxiZoneIdOfRide } = await import('../../../../core/zones/taxiZone.js');
+        // The pickup's zone: a zone's own incentive beats taxi's and the global one.
+        const rule = await resolveIncentive({ vertical: 'taxi', zoneId: await taxiZoneIdOfRide(ride), legacy: null });
         if (rule.isEnabled && rule.incentivePercent > 0 && grossFare >= rule.minOrderAmount) {
             incentiveAmount = normalizeAmount(
                 Math.round(grossFare * (rule.incentivePercent / 100) * 100) / 100,

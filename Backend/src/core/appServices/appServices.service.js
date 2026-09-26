@@ -76,6 +76,20 @@ const ZONE_SOURCES = {
     },
 };
 
+/**
+ * A module's zones for an admin picker: id, name, whether active.
+ * `module` is the settings name ('food' | 'quickCommerce' | 'medical' | 'taxi').
+ */
+export async function listZonesFor(module) {
+    const key = { food: 'food', quickCommerce: 'quick', medical: 'medical', taxi: 'taxi' }[module];
+    if (!key) return null;
+    const source = await ZONE_SOURCES[key]();
+    const docs = await source.list();
+    return docs
+        .map((z) => ({ id: String(z._id), name: String(z.name || z.zoneName || 'Unnamed zone'), active: source.active(z) }))
+        .sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
+}
+
 async function qcZones(vertical) {
     const { zoneModelFor } = await import(
         '../../modules/quickCommerce/modules/food/shared/zoneServiceability.js'

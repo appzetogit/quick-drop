@@ -219,7 +219,7 @@ export async function fillPrescriptionOrder(orderId, restaurantId, dto = {}) {
 
     const restaurant = await loadRestaurantForOrdering(order.restaurantId);
     const distanceKm = await getDeliveryDistanceKm(restaurant, order.deliveryAddress);
-    const feeSettings = await loadActiveFeeSettings({ vertical: 'medical' });
+    const feeSettings = await loadActiveFeeSettings({ vertical: 'medical', zoneId: order.zoneId ? String(order.zoneId) : undefined });
 
     // resolveUserDeliveryFee() returns { deliveryFee, distanceKm, source }. Storing
     // the whole object as the fee made its GST 0 and the total NaN, and the save
@@ -351,7 +351,7 @@ export async function submitPrescriptionBill(orderId, restaurantId, dto = {}) {
 
     const restaurant = await loadRestaurantForOrdering(order.restaurantId);
     const distanceKm = await getDeliveryDistanceKm(restaurant, order.deliveryAddress);
-    const feeSettings = await loadActiveFeeSettings({ vertical: 'medical' });
+    const feeSettings = await loadActiveFeeSettings({ vertical: 'medical', zoneId: order.zoneId ? String(order.zoneId) : undefined });
 
     /*
      * The medicines are the bill total, as one line.

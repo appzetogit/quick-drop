@@ -2480,7 +2480,7 @@ export const updateRideLifecycle = async ({ rideId, driverId, nextStatus, paymen
     // both count toward the taxiAndPorter target). Fire-and-forget and
     // idempotent per rider/rule/day — must never fail ride completion.
     import('../../../core/incentives/services/incentiveService.js')
-      .then(({ onTaxiRideCompleted }) => onTaxiRideCompleted({ driverId }))
+      .then(({ onTaxiRideCompleted }) => onTaxiRideCompleted({ driverId, ride }))
       .catch((err) => logger.warn(`incentive progress hook failed for ride ${ride._id}: ${err?.message || err}`));
   }
 

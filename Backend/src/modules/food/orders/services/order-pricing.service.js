@@ -382,7 +382,15 @@ export async function calculateOrderPricing(userId, dto) {
     .sort({ createdAt: -1 })
     .lean();
     
-  // Master's platform fee and its GST rate when set (core/finance/platformFees).
+  /*
+   * Resolved once, before pricing: the platform fee, the delivery formula, the
+   * incentive and the surge are all scoped by zone and must agree on which
+   * zone this order is in. Reused for surge further down.
+   */
+  const orderZoneId = await resolveOrderZoneId(dto, restaurant);
+
+  // Master's platform fee and its GST rate when set (core/finance/platformFees),
+  // this zone's own when one is set there.
   const feeSettings = await withMasterFees('food', feeDoc || {
     platformFee: 0,
     deliveryFeeComputationMode: 'distance_order_value',
@@ -392,7 +400,7 @@ export async function calculateOrderPricing(userId, dto) {
       minOrderAmount: 0,
       incentivePercent: 0,
     }
-  });
+  }, { zoneId: orderZoneId });
 
   // The mode decides who keeps the packaging money, which in turn decides
   // whether an inclusive restaurant's GST setting reaches that line and whether
@@ -406,13 +414,6 @@ export async function calculateOrderPricing(userId, dto) {
   const platformFee = (!Number.isFinite(configuredPlatformFee) || configuredPlatformFee < 0)
     ? 0
     : Math.round(configuredPlatformFee * 100) / 100;
-
-  /*
-   * Resolved once, before pricing: the earning table, the incentive and the
-   * surge are all scoped by zone and must agree on which zone this order is in.
-   * Reused for surge further down rather than resolved a second time.
-   */
-  const orderZoneId = await resolveOrderZoneId(dto, restaurant);
 
   /*
    * Master > Delivery earnings when a rule is saved there, this module's own

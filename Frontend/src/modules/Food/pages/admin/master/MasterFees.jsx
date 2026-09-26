@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import { platformSettingsAPI } from "@food/api"
 import { toast } from "sonner"
 import { Loader2, Receipt, Info, ExternalLink } from "lucide-react"
+import ZonePicker from "./ZonePicker"
 
 /**
  * Master > Platform Fee & GST: the platform fee on an order, and the GST on it,
@@ -21,6 +22,8 @@ const SCOPES = [
   { id: "quickCommerce", level: "vertical", label: "Quick & Medical" },
 ]
 const SERVICE_LABEL = { food: "Food", quickCommerce: "Quick & Medical" }
+// Whose zones each tab's zone picker lists. A pharmacy order carries a Medical zone.
+const ZONE_MODULES = { "*": [], food: ["food"], quickCommerce: ["quickCommerce", "medical"] }
 
 const OWN_SCREENS = [
   { label: "Food fee settings", path: "/admin/food/fee-settings" },
@@ -83,11 +86,19 @@ export default function MasterFees() {
 
   const scope = SCOPES.find((s) => s.id === scopeId) || SCOPES[0]
   const isQuick = scopeId === "quickCommerce"
+  // A zone of the current service, or none: the service's own value.
+  const [zone, setZone] = useState({ id: "", name: "" })
+  const target = zone.id
+    ? { level: "zone", scopeId: zone.id, label: `${scope.label} · ${zone.name}` }
+    : { level: scope.level, scopeId: scope.level === "global" ? "*" : scopeId, label: scope.label }
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const context = scopeId === "*" ? {} : { vertical: scopeId }
+      const context = {
+        ...(scopeId === "*" ? {} : { vertical: scopeId }),
+        ...(zone.id ? { zoneId: zone.id } : {}),
+      }
       const [ov, fee, gst] = await Promise.all([
         platformSettingsAPI.feesOverview(),
         platformSettingsAPI.explain(KEYS.platformFee, context),
@@ -95,15 +106,16 @@ export default function MasterFees() {
       ])
       setOverview(ov?.data?.data || null)
       setValues({
-        platformFee: savedAt(fee?.data?.data, scope.level, scopeId),
-        platformFeeGstRate: savedAt(gst?.data?.data, scope.level, scopeId),
+        platformFee: savedAt(fee?.data?.data, target.level, target.scopeId),
+        platformFeeGstRate: savedAt(gst?.data?.data, target.level, target.scopeId),
       })
     } catch (err) {
       toast.error(errText(err, "Could not load platform fee settings"))
     } finally {
       setLoading(false)
     }
-  }, [scopeId, scope.level])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeId, scope.level, zone.id])
 
   useEffect(() => {
     load()
@@ -112,12 +124,11 @@ export default function MasterFees() {
   const save = async () => {
     setSaving(true)
     try {
-      const id = scope.level === "global" ? "*" : scopeId
-      const writes = [platformSettingsAPI.set(KEYS.platformFee, { level: scope.level, scopeId: id, value: values.platformFee })]
+      const writes = [platformSettingsAPI.set(KEYS.platformFee, { level: target.level, scopeId: target.scopeId, value: values.platformFee })]
       // Quick has no platform-fee GST line, so its tab never writes a rate.
-      if (!isQuick) writes.push(platformSettingsAPI.set(KEYS.platformFeeGstRate, { level: scope.level, scopeId: id, value: values.platformFeeGstRate }))
+      if (!isQuick) writes.push(platformSettingsAPI.set(KEYS.platformFeeGstRate, { level: target.level, scopeId: target.scopeId, value: values.platformFeeGstRate }))
       await Promise.all(writes)
-      toast.success(`Platform fee saved for ${scope.label}`)
+      toast.success(`Platform fee saved for ${target.label}`)
       await load()
     } catch (err) {
       toast.error(errText(err, "Could not save platform fee settings"))
@@ -194,7 +205,10 @@ export default function MasterFees() {
             <button
               key={s.id}
               type="button"
-              onClick={() => setScopeId(s.id)}
+              onClick={() => {
+                setScopeId(s.id)
+                setZone({ id: "", name: "" })
+              }}
               className={`min-w-0 flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium ${scopeId === s.id ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"}`}
             >
               {s.label}
@@ -202,15 +216,27 @@ export default function MasterFees() {
           ))}
         </div>
 
+        {scopeId !== "*" && (
+          <ZonePicker
+            modules={ZONE_MODULES[scopeId] || []}
+            value={zone.id}
+            allLabel={`All zones (${scope.label} default)`}
+            disabled={saving}
+            onChange={(id, name) => setZone({ id, name })}
+          />
+        )}
+
         <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
           <div className="flex items-start gap-3 border-b border-neutral-100 px-5 py-4">
             <Receipt className="mt-0.5 h-5 w-5 shrink-0 text-neutral-400" />
             <div className="min-w-0">
-              <h2 className="font-semibold text-neutral-900">{scope.id === "*" ? "For every service" : `Only for ${scope.label}`}</h2>
+              <h2 className="font-semibold text-neutral-900">{scope.id === "*" ? "For every service" : `Only for ${target.label}`}</h2>
               <p className="mt-0.5 text-sm text-neutral-500">
                 {scope.id === "*"
                   ? "Applies to Food and Quick & Medical unless a service has its own value in its tab."
-                  : `Overrides the "All services" value for ${scope.label}. Leave empty to use it.`}
+                  : zone.id
+                    ? `Overrides ${scope.label}'s value for orders in ${zone.name} only. Leave empty to use ${scope.label}'s.`
+                    : `Overrides the "All services" value for ${scope.label}. Leave empty to use it.`}
               </p>
             </div>
           </div>
@@ -256,7 +282,7 @@ export default function MasterFees() {
           <div className="flex items-center justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-5 py-3">
             <button type="button" className={btnCls} disabled={saving || loading} onClick={save}>
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-              Save for {scope.label}
+              Save for {target.label}
             </button>
           </div>
         </section>

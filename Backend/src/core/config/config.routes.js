@@ -95,6 +95,17 @@ router.get('/cancellation/overview', async (req, res, next) => {
         next(err);
     }
 });
+// Zone pickers on the Master pages: one module's zones (each module draws its own).
+router.get('/zones/:module', async (req, res, next) => {
+    try {
+        const { listZonesFor } = await import('../appServices/appServices.service.js');
+        const zones = await listZonesFor(String(req.params.module || ''));
+        if (!zones) return res.status(400).json({ success: false, message: 'Unknown module' });
+        return res.json({ success: true, data: { zones } });
+    } catch (err) {
+        return next(err);
+    }
+});
 router.get('/catalogue', getCatalogueController);
 router.get('/resolve', resolveAllController);
 router.get('/:key/explain', explainSettingController);

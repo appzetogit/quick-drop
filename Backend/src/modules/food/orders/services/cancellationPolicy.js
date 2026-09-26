@@ -66,14 +66,15 @@ const MASTER_KEYS = {
  * blocking or allowing every cancellation.
  *
  * @param {'food'|'quickCommerce'} vertical
+ * @param {string} [zoneId]  the order's zone: a zone's own rules beat the service's
  */
-export async function getCancelRules(vertical = 'food') {
+export async function getCancelRules(vertical = 'food', zoneId) {
   const own = vertical === 'food'
     ? await foodOwnRules()
     : { ...DEFAULTS, updatedAt: null, sellerWord: 'store' };
   try {
     const { getMany } = await import('../../../../core/config/resolver.service.js');
-    const rows = await getMany(Object.values(MASTER_KEYS), { vertical });
+    const rows = await getMany(Object.values(MASTER_KEYS), { vertical, zoneId: zoneId ? String(zoneId) : undefined });
     const out = { ...own, source: {} };
     for (const [field, key] of Object.entries(MASTER_KEYS)) {
       const row = rows[key];

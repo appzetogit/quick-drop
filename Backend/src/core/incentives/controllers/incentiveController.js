@@ -35,8 +35,9 @@ export async function listIncentiveRulesController(req, res, next) {
 export async function upsertIncentiveRuleController(req, res, next) {
     try {
         const body = validateIncentiveRuleUpsertDto(req.body || {});
+        // One live ladder per segment AND zone: the zone's own, or the default.
         await DriverIncentiveRule.updateMany(
-            { segment: body.segment, isActive: true },
+            { segment: body.segment, zoneId: body.zoneId, isActive: true },
             { $set: { isActive: false } },
         );
         const created = await DriverIncentiveRule.create({ ...body, createdByAdminId: req.user?._id || null });

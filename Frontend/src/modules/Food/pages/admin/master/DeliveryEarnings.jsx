@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import { platformSettingsAPI } from "@food/api"
 import { toast } from "sonner"
 import { Loader2, Plus, Trash2, RotateCcw, Bike, Gift, Calculator } from "lucide-react"
+import ZonePicker from "./ZonePicker"
 
 /**
  * Master > Delivery earnings: what the customer pays for delivery and what the
@@ -37,6 +38,9 @@ const MODULES = [
   // Rides are priced by base fare, per km and per minute in the Taxi panel.
   { id: "taxi", level: "vertical", label: "Taxi", hint: "Driver incentive only — ride fares are set in the Taxi panel", incentiveOnly: true },
 ]
+
+/** Whose zones the zone picker lists for each tab (none for All modules). */
+const ZONE_MODULES = { "*": [], food: ["food"], quickCommerce: ["quickCommerce"], medical: ["medical"], taxi: ["taxi"] }
 
 /** Which module's figures to READ when showing "what is charged today". */
 const readVertical = (moduleId) => (moduleId === "*" ? "food" : moduleId)
@@ -219,16 +223,26 @@ export default function DeliveryEarnings() {
   const [formula, setFormula] = useState(emptyFormula())
   const [incentive, setIncentive] = useState({ isEnabled: false, minOrderAmount: 0, incentivePercent: 0 })
   const [chain, setChain] = useState(null)
+  // A zone of the current module, or none: the module's own default.
+  const [zone, setZone] = useState({ id: "", name: "" })
 
   const mod = MODULES.find((m) => m.id === moduleId) || MODULES[0]
+  // Where a save goes: this zone, else the module, else all modules.
+  const target = zone.id
+    ? { level: "zone", scopeId: zone.id, label: `${mod.label} · ${zone.name}` }
+    : { level: mod.level, scopeId: mod.level === "global" ? "*" : moduleId, label: mod.label }
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const vertical = readVertical(moduleId)
+      const context = {
+        ...(moduleId === "*" ? {} : { vertical: moduleId }),
+        ...(zone.id ? { zoneId: zone.id } : {}),
+      }
       const [effective, explained] = await Promise.all([
-        platformSettingsAPI.getEarnings(vertical),
-        platformSettingsAPI.explain(FORMULA_KEY, moduleId === "*" ? {} : { vertical: moduleId }),
+        platformSettingsAPI.getEarnings(vertical, zone.id ? { zoneId: zone.id } : {}),
+        platformSettingsAPI.explain(FORMULA_KEY, context),
       ])
       const d = effective?.data?.data
       setData(d)
@@ -239,7 +253,7 @@ export default function DeliveryEarnings() {
       // today's table translated into the formula -- so saving without edits
       // changes no price.
       const own = (explained?.data?.data?.chain || []).find(
-        (l) => l.level === mod.level && (mod.level === "global" || l.scopeId === moduleId),
+        (l) => l.level === target.level && (target.level === "global" || String(l.scopeId) === String(target.scopeId)),
       )
       const start = (own?.set ? own.value : null) || d?.formula || d?.currentAsFormula || emptyFormula()
       setFormula({ ...emptyFormula(), ...start, bands: start.bands || [] })
@@ -253,7 +267,8 @@ export default function DeliveryEarnings() {
     } finally {
       setLoading(false)
     }
-  }, [moduleId, mod.level])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleId, mod.level, zone.id])
 
   useEffect(() => {
     load()
@@ -262,12 +277,8 @@ export default function DeliveryEarnings() {
   const save = async (key, value, what) => {
     setSaving(true)
     try {
-      await platformSettingsAPI.set(key, {
-        level: mod.level,
-        scopeId: mod.level === "global" ? "*" : moduleId,
-        value,
-      })
-      toast.success(value === null ? `${what} cleared` : `${what} saved for ${mod.label}`)
+      await platformSettingsAPI.set(key, { level: target.level, scopeId: target.scopeId, value })
+      toast.success(value === null ? `${what} cleared for ${target.label}` : `${what} saved for ${target.label}`)
       await load()
     } catch (err) {
       toast.error(errText(err, `Could not save ${what.toLowerCase()}`))
@@ -277,7 +288,7 @@ export default function DeliveryEarnings() {
   }
 
   const savedAtThisLevel = (chain?.chain || []).some(
-    (l) => l.level === mod.level && l.set && (mod.level === "global" || l.scopeId === moduleId),
+    (l) => l.level === target.level && l.set && (target.level === "global" || String(l.scopeId) === String(target.scopeId)),
   )
 
   // What is charged today: the formula in force, else the old table as a formula.
@@ -300,7 +311,7 @@ export default function DeliveryEarnings() {
         .slice(0, 4)
         .map((p) => `${p.km} km: customer ${rupees(p.before.fee)} → ${rupees(p.now.fee)}, rider ${rupees(p.before.pay)} → ${rupees(p.now.pay)}`)
         .join("\n")
-      if (!window.confirm(`New orders for ${mod.label} will be priced like this:\n\n${lines}\n\nOrders already placed keep what they were charged. Save?`)) return
+      if (!window.confirm(`New orders for ${target.label} will be priced like this:\n\n${lines}\n\nOrders already placed keep what they were charged. Save?`)) return
     }
     save(FORMULA_KEY, formula, "Delivery formula")
   }
@@ -327,7 +338,10 @@ export default function DeliveryEarnings() {
               <button
                 key={m.id}
                 type="button"
-                onClick={() => setModuleId(m.id)}
+                onClick={() => {
+                  setModuleId(m.id)
+                  setZone({ id: "", name: "" })
+                }}
                 className={`min-w-0 flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium ${moduleId === m.id ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"}`}
               >
                 {m.label}
@@ -335,6 +349,15 @@ export default function DeliveryEarnings() {
             ))}
           </div>
           <p className="-mt-3 px-1 text-xs text-neutral-500">{mod.hint}</p>
+          {moduleId !== "*" && (
+            <ZonePicker
+              modules={ZONE_MODULES[moduleId] || []}
+              value={zone.id}
+              allLabel={`All zones (${mod.label} default)`}
+              disabled={saving}
+              onChange={(id, name) => setZone({ id, name })}
+            />
+          )}
 
           {loading ? (
             <div className="flex items-center gap-2 py-10 text-neutral-500">
@@ -359,7 +382,7 @@ export default function DeliveryEarnings() {
                       {savedAtThisLevel && (
                         <button type="button" className={ghostCls} disabled={saving} onClick={() => save(FORMULA_KEY, null, "Delivery formula")}>
                           <RotateCcw className="h-4 w-4" />
-                          {mod.level === "global" ? "Clear formula" : "Reset to all modules"}
+                          {zone.id ? `Reset to ${mod.label} default` : mod.level === "global" ? "Clear formula" : "Reset to all modules"}
                         </button>
                       )}
                       <button
@@ -381,7 +404,8 @@ export default function DeliveryEarnings() {
                   {data?.formula ? (
                     <SourceLine>
                       In force now: <span className="font-medium">{data.formulaSource}</span>
-                      {!savedAtThisLevel && mod.level !== "global" && " (this module has no formula of its own)"}
+                      {!savedAtThisLevel && target.level !== "global" &&
+                        (zone.id ? " (this zone has no formula of its own)" : " (this module has no formula of its own)")}
                     </SourceLine>
                   ) : (
                     <SourceLine tone="warn">

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { incentiveRulesAPI } from "@food/api"
 import { toast } from "sonner"
 import { Loader2, Target, History, Plus, Trash2 } from "lucide-react"
+import ZonePicker from "./ZonePicker"
 
 /**
  * Master > Delivery Incentives: an order-count LADDER per duty segment —
@@ -23,11 +24,14 @@ const SEGMENTS = [
     id: "foodAndQuick",
     label: "Food, Quick Commerce & Medical",
     hint: "Riders on the food-and-delivery duty — food, groceries and medicine all count toward the same ladder.",
+    // A zone ladder can be for a Food, Quick or Medical zone: whichever the order is in.
+    zoneModules: ["food", "quickCommerce", "medical"],
   },
   {
     id: "taxiAndPorter",
     label: "Taxi & Porter",
     hint: "Riders on the rides-and-parcel duty — rides and parcel/porter jobs both count toward the same ladder.",
+    zoneModules: ["taxi"],
   },
 ]
 
@@ -120,7 +124,15 @@ function TierRow({ tier, onChange, onRemove, disabled }) {
   )
 }
 
-function SegmentCard({ segment, active, saving, onSave, onTurnOff, busy }) {
+const ladderLine = (rule) => (rule?.tiers || []).map((t) => `${t.fromOrders}-${t.toOrders} → ₹${t.rewardAmount}`).join(",  ")
+
+function SegmentCard({ segment, rules, saving, onSave, onTurnOff, busyId }) {
+  // A zone's own ladder, or (no zone) the default one every other zone uses.
+  const [zone, setZone] = useState({ id: "", name: "" })
+  const mine = (r) => r.segment === segment.id
+  const active = rules.find((r) => mine(r) && String(r.zoneId || "") === zone.id) || null
+  const fallback = zone.id ? rules.find((r) => mine(r) && !r.zoneId) || null : null
+  const busy = Boolean(active) && busyId === active._id
   const [form, setForm] = useState(() => ({ title: active?.title || "", tiers: tiersFromRule(active) }))
 
   // Re-seed the form whenever the active rule for THIS segment changes (a
@@ -142,7 +154,7 @@ function SegmentCard({ segment, active, saving, onSave, onTurnOff, busy }) {
 
   return (
     <Card
-      title={segment.label}
+      title={zone.id ? `${segment.label} · ${zone.name}` : segment.label}
       description={segment.hint}
       icon={Target}
       footer={
@@ -163,7 +175,7 @@ function SegmentCard({ segment, active, saving, onSave, onTurnOff, busy }) {
             type="button"
             className={btnCls}
             disabled={saving || !dirty || Boolean(invalidReason)}
-            onClick={() => onSave(segment.id, form)}
+            onClick={() => onSave(segment.id, form, zone)}
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {active ? "Save new ladder" : "Turn on"}
@@ -171,6 +183,18 @@ function SegmentCard({ segment, active, saving, onSave, onTurnOff, busy }) {
         </>
       }
     >
+      <div className="mb-4">
+        <ZonePicker
+          modules={segment.zoneModules}
+          value={zone.id}
+          allLabel="All zones (default ladder)"
+          disabled={saving}
+          onChange={(id, name) => setZone({ id, name })}
+        />
+        <p className="mt-1.5 text-xs text-neutral-500">
+          A zone with its own ladder counts only the rider&apos;s trips in that zone; every other trip climbs the default ladder.
+        </p>
+      </div>
       {active ? (
         <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           Live now: {(active.tiers || []).map((t) => `${t.fromOrders}-${t.toOrders} → ₹${t.rewardAmount}`).join(",  ")}
@@ -178,7 +202,9 @@ function SegmentCard({ segment, active, saving, onSave, onTurnOff, busy }) {
         </div>
       ) : (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Nothing active for this segment — riders see no incentive card until one is turned on.
+          {zone.id
+            ? `${zone.name} has no ladder of its own — trips there climb the default ladder${fallback ? ` (${ladderLine(fallback)})` : ", and there is none"}. Save one to give ${zone.name} its own.`
+            : "Nothing active for this segment — riders see no incentive card until one is turned on."}
         </div>
       )}
 
@@ -265,13 +291,13 @@ export default function DeliveryIncentives() {
     load()
   }, [load])
 
-  const activeFor = (segmentId) => active.find((r) => r.segment === segmentId) || null
-
-  const save = async (segmentId, form) => {
+  const save = async (segmentId, form, zone = { id: "", name: "" }) => {
     setSaving(segmentId)
     try {
       await incentiveRulesAPI.upsert({
         segment: segmentId,
+        zoneId: zone.id || null,
+        zoneName: zone.name || "",
         title: form.title,
         tiers: form.tiers.map((t) => ({
           fromOrders: Number(t.fromOrders),
@@ -279,7 +305,7 @@ export default function DeliveryIncentives() {
           rewardAmount: Number(t.rewardAmount),
         })),
       })
-      toast.success(`Incentive ladder saved for ${SEGMENTS.find((s) => s.id === segmentId)?.label || segmentId}`)
+      toast.success(`Incentive ladder saved for ${SEGMENTS.find((s) => s.id === segmentId)?.label || segmentId}${zone.id ? ` · ${zone.name}` : ""}`)
       await load()
     } catch (err) {
       toast.error(errText(err, "Could not save the incentive ladder"))
@@ -289,10 +315,11 @@ export default function DeliveryIncentives() {
   }
 
   const ladderText = (r) => (r.tiers || []).map((t) => `${t.fromOrders}-${t.toOrders} → ₹${t.rewardAmount}`).join(", ")
+  const zoneLabel = (r) => (r.zoneId ? r.zoneName || "one zone" : "all zones")
   const segmentLabel = (id) => SEGMENTS.find((s) => s.id === id)?.label || id
 
   const turnOff = async (rule) => {
-    if (!window.confirm(`Turn off the incentive ladder for ${segmentLabel(rule.segment)}? Riders stop seeing it straight away. It stays in Recent ladders.`)) return
+    if (!window.confirm(`Turn off the incentive ladder for ${segmentLabel(rule.segment)} (${zoneLabel(rule)})? Riders stop seeing it straight away. It stays in Recent ladders.`)) return
     setBusyId(rule._id)
     try {
       await incentiveRulesAPI.deactivate(rule._id)
@@ -307,7 +334,7 @@ export default function DeliveryIncentives() {
 
   const remove = async (rule) => {
     const warning = rule.isActive ? " It is live now, so riders stop seeing it straight away." : ""
-    if (!window.confirm(`Delete the ladder ${ladderText(rule)} for ${segmentLabel(rule.segment)}?${warning} Rewards already paid to riders are not affected.`)) return
+    if (!window.confirm(`Delete the ladder ${ladderText(rule)} for ${segmentLabel(rule.segment)} (${zoneLabel(rule)})?${warning} Rewards already paid to riders are not affected.`)) return
     setBusyId(rule._id)
     try {
       await incentiveRulesAPI.remove(rule._id)
@@ -343,11 +370,11 @@ export default function DeliveryIncentives() {
                 <SegmentCard
                   key={segment.id}
                   segment={segment}
-                  active={activeFor(segment.id)}
+                  rules={active}
                   saving={saving === segment.id}
                   onSave={save}
                   onTurnOff={turnOff}
-                  busy={Boolean(activeFor(segment.id)) && busyId === activeFor(segment.id)._id}
+                  busyId={busyId}
                 />
               ))}
             </div>
@@ -355,10 +382,11 @@ export default function DeliveryIncentives() {
             {recent.length > 0 && (
               <Card title="Recent ladders" description="Every version saved for either segment, newest first." icon={History}>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[560px] text-sm">
+                  <table className="w-full min-w-[640px] text-sm">
                     <thead>
                       <tr className="border-b border-neutral-200 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
                         <th className="pb-2 pr-2">Segment</th>
+                        <th className="pb-2 pr-2">Zone</th>
                         <th className="pb-2 pr-2">Tiers</th>
                         <th className="pb-2 pr-2">Status</th>
                         <th className="pb-2 pr-2">Saved</th>
@@ -369,6 +397,7 @@ export default function DeliveryIncentives() {
                       {recent.map((r) => (
                         <tr key={r._id} className="border-b border-neutral-100 last:border-0">
                           <td className="py-2 pr-2 align-top">{SEGMENTS.find((s) => s.id === r.segment)?.label || r.segment}</td>
+                          <td className="py-2 pr-2 align-top text-neutral-600">{r.zoneId ? r.zoneName || "Zone" : "All zones"}</td>
                           <td className="py-2 pr-2">
                             {(r.tiers || []).map((t) => `${t.fromOrders}-${t.toOrders} → ₹${t.rewardAmount}`).join(",  ")}
                           </td>

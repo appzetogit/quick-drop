@@ -41,6 +41,13 @@ const driverIncentiveRuleSchema = new mongoose.Schema(
             required: true,
             index: true,
         },
+        /*
+         * The zone this ladder is for; null is the default ladder, used for
+         * orders in every zone without one of its own. A food, quick, medical
+         * or taxi zone id, whichever the order or ride belongs to.
+         */
+        zoneId: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
+        zoneName: { type: String, trim: true, default: '' },
         /** Admin-authored headline shown as-is on the rider's card. */
         title: { type: String, trim: true, default: '' },
         /** Ascending by toOrders — validated on write, see incentiveRule.validator.js. */
@@ -62,6 +69,7 @@ const driverIncentiveRuleSchema = new mongoose.Schema(
 );
 
 driverIncentiveRuleSchema.index({ segment: 1, isActive: 1, createdAt: -1 });
+driverIncentiveRuleSchema.index({ segment: 1, zoneId: 1, isActive: 1, createdAt: -1 });
 
 export const DriverIncentiveRule =
     mongoose.models.DriverIncentiveRule || mongoose.model('DriverIncentiveRule', driverIncentiveRuleSchema);

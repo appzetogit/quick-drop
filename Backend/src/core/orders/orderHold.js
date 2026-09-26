@@ -34,10 +34,10 @@ export const RELEASED_TO_RESTAURANT = Object.freeze({
 /** True while an order is on hold (the restaurant must not act on it yet). */
 export const isHeld = (order) => Boolean(order?.restaurantReleaseAt) && !order?.restaurantReleasedAt;
 
-export async function holdSecondsFor(vertical) {
+export async function holdSecondsFor(vertical, zoneId) {
     try {
         const { get } = await import('../config/resolver.service.js');
-        const row = await get(HOLD_KEY, { vertical: vertical || undefined });
+        const row = await get(HOLD_KEY, { vertical: vertical || undefined, zoneId: zoneId ? String(zoneId) : undefined });
         const n = Number(row?.value);
         return Number.isFinite(n) && n > 0 ? Math.min(600, Math.round(n)) : 0;
     } catch (err) {
@@ -75,7 +75,7 @@ export async function holdIfConfigured({ name, order, vertical, shiftAcceptanceD
     let releaseAt = order.restaurantReleaseAt ? new Date(order.restaurantReleaseAt) : null;
 
     if (!releaseAt) {
-        const seconds = await holdSecondsFor(vertical);
+        const seconds = await holdSecondsFor(vertical, order.zoneId);
         if (!(seconds > 0)) return false;
         releaseAt = new Date(now + seconds * 1000);
         const set = { restaurantReleaseAt: releaseAt };

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { platformSettingsAPI } from "@food/api"
 import { toast } from "sonner"
 import { Loader2, Ban, Info } from "lucide-react"
+import ZonePicker from "./ZonePicker"
 
 /**
  * Master > Cancellation Policy: how long a customer may cancel after the
@@ -26,6 +27,8 @@ const SCOPES = [
   { id: "quickCommerce", level: "vertical", label: "Quick & Medical" },
 ]
 const SERVICE_LABEL = { food: "Food", quickCommerce: "Quick & Medical" }
+// Whose zones each tab's zone picker lists. A pharmacy order carries a Medical zone.
+const ZONE_MODULES = { "*": [], food: ["food"], quickCommerce: ["quickCommerce", "medical"] }
 
 const btnCls =
   "inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
@@ -93,25 +96,34 @@ export default function MasterCancellation() {
   const [overview, setOverview] = useState(null)
 
   const scope = SCOPES.find((s) => s.id === scopeId) || SCOPES[0]
-  const ownLabel = scope.id === "*" ? "Each service's own" : `${scope.label}'s own`
+  // A zone of the current service, or none: the service's own value.
+  const [zone, setZone] = useState({ id: "", name: "" })
+  const target = zone.id
+    ? { level: "zone", scopeId: zone.id, label: `${scope.label} · ${zone.name}` }
+    : { level: scope.level, scopeId: scope.level === "global" ? "*" : scopeId, label: scope.label }
+  const ownLabel = zone.id ? `${scope.label}'s value` : scope.id === "*" ? "Each service's own" : `${scope.label}'s own`
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const context = scopeId === "*" ? {} : { vertical: scopeId }
+      const context = {
+        ...(scopeId === "*" ? {} : { vertical: scopeId }),
+        ...(zone.id ? { zoneId: zone.id } : {}),
+      }
       const names = Object.keys(KEYS)
       const [ov, ...explained] = await Promise.all([
         platformSettingsAPI.cancellationOverview(),
         ...names.map((n) => platformSettingsAPI.explain(KEYS[n], context)),
       ])
       setOverview(ov?.data?.data || null)
-      setValues(Object.fromEntries(names.map((n, i) => [n, savedAt(explained[i]?.data?.data, scope.level, scopeId)])))
+      setValues(Object.fromEntries(names.map((n, i) => [n, savedAt(explained[i]?.data?.data, target.level, target.scopeId)])))
     } catch (err) {
       toast.error(errText(err, "Could not load the cancellation policy"))
     } finally {
       setLoading(false)
     }
-  }, [scopeId, scope.level])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeId, scope.level, zone.id])
 
   useEffect(() => {
     load()
@@ -134,9 +146,8 @@ export default function MasterCancellation() {
     if (!holdOk) return toast.error("The hold can be at most 10 minutes (600 seconds)")
     setSaving(true)
     try {
-      const id = scope.level === "global" ? "*" : scopeId
-      await Promise.all(Object.keys(KEYS).map((n) => platformSettingsAPI.set(KEYS[n], { level: scope.level, scopeId: id, value: values[n] })))
-      toast.success(`Cancellation policy saved for ${scope.label}. It applies to orders straight away.`)
+      await Promise.all(Object.keys(KEYS).map((n) => platformSettingsAPI.set(KEYS[n], { level: target.level, scopeId: target.scopeId, value: values[n] })))
+      toast.success(`Cancellation policy saved for ${target.label}. It applies to orders straight away.`)
       await load()
     } catch (err) {
       toast.error(errText(err, "Could not save the cancellation policy"))
@@ -188,7 +199,10 @@ export default function MasterCancellation() {
             <button
               key={s.id}
               type="button"
-              onClick={() => setScopeId(s.id)}
+              onClick={() => {
+                setScopeId(s.id)
+                setZone({ id: "", name: "" })
+              }}
               className={`min-w-0 flex-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium ${scopeId === s.id ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100"}`}
             >
               {s.label}
@@ -196,15 +210,27 @@ export default function MasterCancellation() {
           ))}
         </div>
 
+        {scopeId !== "*" && (
+          <ZonePicker
+            modules={ZONE_MODULES[scopeId] || []}
+            value={zone.id}
+            allLabel={`All zones (${scope.label} default)`}
+            disabled={saving}
+            onChange={(id, name) => setZone({ id, name })}
+          />
+        )}
+
         <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
           <div className="flex items-start gap-3 border-b border-neutral-100 px-5 py-4">
             <Ban className="mt-0.5 h-5 w-5 shrink-0 text-neutral-400" />
             <div className="min-w-0">
-              <h2 className="font-semibold text-neutral-900">{scope.id === "*" ? "For every service" : `Only for ${scope.label}`}</h2>
+              <h2 className="font-semibold text-neutral-900">{scope.id === "*" ? "For every service" : `Only for ${target.label}`}</h2>
               <p className="mt-0.5 text-sm text-neutral-500">
                 {scope.id === "*"
-                  ? "Applies to Food and Quick & Medical unless a service has its own value in its tab."
-                  : `Overrides the "All services" value for ${scope.label}.`}
+                  ? "Applies to Food and Quick & Medical unless a service or zone has its own value."
+                  : zone.id
+                    ? `Overrides ${scope.label}'s value for orders in ${zone.name} only. Empty fields keep ${scope.label}'s value.`
+                    : `Overrides the "All services" value for ${scope.label}.`}
               </p>
             </div>
           </div>
@@ -288,7 +314,7 @@ export default function MasterCancellation() {
           <div className="flex items-center justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-5 py-3">
             <button type="button" className={btnCls} disabled={saving || loading || !minutesOk || !holdOk} onClick={save}>
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-              Save for {scope.label}
+              Save for {target.label}
             </button>
           </div>
         </section>

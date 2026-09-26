@@ -1034,7 +1034,7 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
   // per rider/rule/day — never fails the delivery the driver just completed.
   import('../../../../core/incentives/services/incentiveService.js')
     .then(({ onFoodOrQuickCommerceOrderCompleted }) =>
-      onFoodOrQuickCommerceOrderCompleted({ deliveryPartnerId, vertical: 'food' }))
+      onFoodOrQuickCommerceOrderCompleted({ deliveryPartnerId, vertical: 'food', zoneId: order.zoneId || null }))
     .catch((err) => logger.warn(`Incentive progress hook skipped for ${order._id}: ${err?.message || err}`));
 
   return sanitizeOrderForExternal(order);

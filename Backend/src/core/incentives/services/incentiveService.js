@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { FoodDeliveryPartner } from '../../../modules/food/delivery/models/deliveryPartner.model.js';
 import { FoodDeliveryPartner as QCDeliveryPartner } from '../../../modules/quickCommerce/modules/food/delivery/models/deliveryPartner.model.js';
 import { FoodOrder } from '../../../modules/food/orders/models/order.model.js';
@@ -90,8 +91,54 @@ async function resolveDriverContext({ startFrom, id }) {
     };
 }
 
-async function getActiveRule(segment) {
-    return DriverIncentiveRule.findOne({ segment, isActive: true }).sort({ createdAt: -1 }).lean();
+const asId = (v) => (v && mongoose.Types.ObjectId.isValid(String(v)) ? new mongoose.Types.ObjectId(String(v)) : null);
+
+/** The live ladder for a segment: one zone's own, or (zoneId null) the default. */
+async function getActiveRule(segment, zoneId = null) {
+    return DriverIncentiveRule.findOne({ segment, zoneId: asId(zoneId), isActive: true })
+        .sort({ createdAt: -1 })
+        .lean();
+}
+
+/**
+ * Which ladder an order or ride in `zoneId` climbs, and which of the rider's
+ * trips count toward it.
+ *
+ * A zone with its own ladder counts only that zone's trips: six orders in
+ * Indore climb Indore's ladder, three in Dewas climb Dewas's. Every other trip
+ * climbs the default ladder, which counts trips outside the zones that have
+ * their own -- so no trip counts twice and none is lost.
+ *
+ * @returns {Promise<{rule: object|null, scope: {onlyZone?: ObjectId, excludeZones?: ObjectId[]}}>}
+ */
+async function ladderFor(segment, zoneId) {
+    const own = await DriverIncentiveRule.distinct('zoneId', { segment, isActive: true, zoneId: { $ne: null } });
+    const id = asId(zoneId);
+    if (id && own.some((z) => String(z) === String(id))) {
+        return { rule: await getActiveRule(segment, id), scope: { onlyZone: id } };
+    }
+    return { rule: await getActiveRule(segment, null), scope: { excludeZones: own } };
+}
+
+/** Mongo filter narrowing a food/quick order count to the ladder's zones. */
+function orderZoneFilter(scope = {}) {
+    if (scope.onlyZone) return { zoneId: scope.onlyZone };
+    if (scope.excludeZones?.length) return { zoneId: { $nin: scope.excludeZones } };
+    return {};
+}
+
+/** The same for rides: taxi rides store no zone, so their pickup is tested against it. */
+async function rideZoneFilter(scope = {}) {
+    const ids = scope.onlyZone ? [scope.onlyZone] : scope.excludeZones || [];
+    if (!ids.length) return {};
+    const { Zone } = await import('../../../modules/taxi/driver/models/Zone.js');
+    const zones = await Zone.find({ _id: { $in: ids } }).select('geometry').lean();
+    const within = zones
+        .filter((z) => z?.geometry?.coordinates?.length)
+        .map((z) => ({ pickupLocation: { $geoWithin: { $geometry: z.geometry } } }));
+    // A zone ladder whose zone has no shape matches nothing.
+    if (scope.onlyZone) return within.length ? within[0] : { _id: null };
+    return within.length ? { $nor: within } : {};
 }
 
 /**
@@ -111,22 +158,25 @@ function sortedTiersOf(rule) {
     return [...tiersOfRule(rule)].sort((a, b) => a.toOrders - b.toOrders);
 }
 
-async function countCompletedToday(ctx, segment, { start, end }) {
+async function countCompletedToday(ctx, segment, { start, end }, scope = {}) {
     if (segment === 'taxiAndPorter') {
         if (!ctx.taxiDriverId) return 0;
         return Ride.countDocuments({
             driverId: ctx.taxiDriverId,
             liveStatus: 'completed',
             completedAt: { $gte: start, $lte: end },
+            ...(await rideZoneFilter(scope)),
         });
     }
 
+    const zone = orderZoneFilter(scope);
     let total = 0;
     if (ctx.foodPartnerId) {
         total += await FoodOrder.countDocuments({
             'dispatch.deliveryPartnerId': ctx.foodPartnerId,
             orderStatus: 'delivered',
             'deliveryState.deliveredAt': { $gte: start, $lte: end },
+            ...zone,
         });
     }
     if (ctx.qcPartnerId) {
@@ -134,6 +184,7 @@ async function countCompletedToday(ctx, segment, { start, end }) {
             'dispatch.deliveryPartnerId': ctx.qcPartnerId,
             orderStatus: 'delivered',
             'deliveryState.deliveredAt': { $gte: start, $lte: end },
+            ...zone,
         });
     }
     return total;
@@ -202,17 +253,18 @@ async function payTierReward({ ctx, rule, tier, completedOrders, periodKey }) {
  * fire this with `.catch(logger.warn)`, matching the cashback/referral hooks
  * it sits alongside.
  */
-async function maybeCreditIncentive({ startFrom, id, segment }) {
+async function maybeCreditIncentive({ startFrom, id, segment, zoneId = null }) {
     try {
         const ctx = await resolveDriverContext({ startFrom, id });
         if (!ctx) return;
 
-        const rule = await getActiveRule(segment);
+        // The zone's own ladder when it has one, else the default (ladderFor).
+        const { rule, scope } = await ladderFor(segment, zoneId);
         const tiers = sortedTiersOf(rule);
         if (tiers.length === 0) return;
 
         const { start, end, periodKey } = istDayBounds();
-        const completedOrders = await countCompletedToday(ctx, segment, { start, end });
+        const completedOrders = await countCompletedToday(ctx, segment, { start, end }, scope);
 
         const dueTiers = tiers.filter((t) => completedOrders >= t.toOrders);
         if (dueTiers.length === 0) return;
@@ -266,17 +318,44 @@ async function maybeCreditIncentive({ startFrom, id, segment }) {
 }
 
 /** Called after a food or quick-commerce order is marked delivered. */
-export function onFoodOrQuickCommerceOrderCompleted({ deliveryPartnerId, vertical }) {
+export function onFoodOrQuickCommerceOrderCompleted({ deliveryPartnerId, vertical, zoneId = null }) {
     return maybeCreditIncentive({
         startFrom: vertical === 'quickCommerce' ? 'qcPartner' : 'foodPartner',
         id: deliveryPartnerId,
         segment: 'foodAndQuick',
+        zoneId,
     });
 }
 
 /** Called after a taxi ride (including a parcel/porter job) is completed. */
-export function onTaxiRideCompleted({ driverId }) {
-    return maybeCreditIncentive({ startFrom: 'taxiDriver', id: driverId, segment: 'taxiAndPorter' });
+export async function onTaxiRideCompleted({ driverId, ride = null }) {
+    const { taxiZoneIdOfRide } = await import('../../zones/taxiZone.js');
+    const zoneId = ride ? await taxiZoneIdOfRide(ride) : null;
+    return maybeCreditIncentive({ startFrom: 'taxiDriver', id: driverId, segment: 'taxiAndPorter', zoneId });
+}
+
+/**
+ * The zone the rider is working in now, for the home-screen card: the zone of
+ * their latest trip. Null when they have none, which shows the default ladder.
+ */
+async function currentZoneOf(ctx, segment) {
+    if (segment === 'taxiAndPorter') {
+        if (!ctx.taxiDriverId) return null;
+        const last = await Ride.findOne({ driverId: ctx.taxiDriverId }).sort({ createdAt: -1 }).select('pickupLocation').lean();
+        if (!last) return null;
+        const { taxiZoneIdOfRide } = await import('../../zones/taxiZone.js');
+        return taxiZoneIdOfRide(last);
+    }
+    const latest = await Promise.all([
+        ctx.foodPartnerId
+            ? FoodOrder.findOne({ 'dispatch.deliveryPartnerId': ctx.foodPartnerId }).sort({ updatedAt: -1 }).select('zoneId updatedAt').lean()
+            : null,
+        ctx.qcPartnerId
+            ? QCOrder.findOne({ 'dispatch.deliveryPartnerId': ctx.qcPartnerId }).sort({ updatedAt: -1 }).select('zoneId updatedAt').lean()
+            : null,
+    ]);
+    const newest = latest.filter(Boolean).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0];
+    return newest?.zoneId || null;
 }
 
 /**
@@ -294,12 +373,12 @@ export async function getCurrentIncentiveForFoodPartner(foodPartnerId) {
     if (!ctx) return null;
 
     const segment = ctx.workMode === 'taxi' || ctx.workMode === 'all' ? 'taxiAndPorter' : 'foodAndQuick';
-    const rule = await getActiveRule(segment);
+    const { rule, scope } = await ladderFor(segment, await currentZoneOf(ctx, segment));
     const tiers = sortedTiersOf(rule);
     if (tiers.length === 0) return null;
 
     const { start, end, periodKey } = istDayBounds();
-    const completedOrders = await countCompletedToday(ctx, segment, { start, end });
+    const completedOrders = await countCompletedToday(ctx, segment, { start, end }, scope);
 
     const creditedRows = await DriverIncentiveCredit.find({ driverKey: ctx.driverKey, ruleId: rule._id, periodKey })
         .select('tierId')
@@ -329,4 +408,4 @@ export async function getCurrentIncentiveForFoodPartner(foodPartnerId) {
     };
 }
 
-export const __testables = { istDayBounds, resolveDriverContext, sortedTiersOf };
+export const __testables = { istDayBounds, resolveDriverContext, sortedTiersOf, ladderFor, countCompletedToday };

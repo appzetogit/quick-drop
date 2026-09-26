@@ -1303,7 +1303,7 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
   // idempotent per rider/rule/day, never throws.
   import('../../../../../../core/incentives/services/incentiveService.js')
     .then(({ onFoodOrQuickCommerceOrderCompleted }) =>
-      onFoodOrQuickCommerceOrderCompleted({ deliveryPartnerId, vertical: 'quickCommerce' }))
+      onFoodOrQuickCommerceOrderCompleted({ deliveryPartnerId, vertical: 'quickCommerce', zoneId: order.zoneId || null }))
     .catch((e) => logger.warn(`incentive progress hook failed: ${e?.message || e}`));
 
   const ledgerKind =

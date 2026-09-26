@@ -29,10 +29,14 @@ const num = (v) => {
 };
 
 /** Master's values for one service; null where not set. Fails open to "not set". */
-export async function resolveMasterFees(vertical) {
+export async function resolveMasterFees(vertical, zoneId) {
   try {
     const { getMany } = await import('../config/resolver.service.js');
-    const rows = await getMany([FEE_KEY, GST_KEY], { vertical: vertical || undefined });
+    const rows = await getMany([FEE_KEY, GST_KEY], {
+      vertical: vertical || undefined,
+      // A zone's own fee beats the service's (Master > Platform fee & GST, zone picker).
+      zoneId: zoneId ? String(zoneId) : undefined,
+    });
     const pick = (key) => (rows[key] && !rows[key].isDefault ? num(rows[key].value) : null);
     return { platformFee: pick(FEE_KEY), platformFeeGstRate: pick(GST_KEY) };
   } catch (err) {
@@ -50,8 +54,8 @@ export async function resolveMasterFees(vertical) {
  * @param {'food'|'quickCommerce'} vertical
  * @param {object} settings  that service's fee settings (or its defaults)
  */
-export async function withMasterFees(vertical, settings) {
-  const master = await resolveMasterFees(vertical);
+export async function withMasterFees(vertical, settings, { zoneId } = {}) {
+  const master = await resolveMasterFees(vertical, zoneId);
   if (master.platformFee === null && master.platformFeeGstRate === null) return settings;
   const out = { ...(settings || {}) };
   if (master.platformFee !== null) out.platformFee = master.platformFee;

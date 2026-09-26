@@ -21,6 +21,7 @@ import { resolveOrderCartItems } from '../helpers/order-cart-items.helper.js';
 import { AVG_SPEED_KMPH, PACKING_MINUTES } from './order.helpers.js';
 import { withMasterFees } from '../../../../../../core/finance/platformFees.service.js';
 import { isMedicalStore } from '../../shared/storeType.js';
+import { findZoneForPoint, readAddressPoint, ZONE_VERTICALS } from '../../shared/zoneServiceability.js';
 
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
@@ -224,18 +225,42 @@ const asQcRanges = (slabs) =>
  * why the Master table is overlaid HERE: order pricing, order creation and
  * prescription orders all pick it up without each being rewired.
  */
+/**
+ * The zone an order to this address falls in -- the same answer order creation
+ * stores (order.service.js resolveServiceableZone), else the store's own zone --
+ * so a quote and the placed order read the same zone-level settings.
+ */
+async function zoneIdForPricing(restaurant, deliveryAddress, vertical) {
+  try {
+    const point = readAddressPoint(deliveryAddress);
+    if (point) {
+      const zone = await findZoneForPoint(
+        point.lat,
+        point.lng,
+        vertical === 'medical' ? ZONE_VERTICALS.MEDICAL : ZONE_VERTICALS.QUICK,
+      );
+      if (zone?._id) return String(zone._id);
+    }
+  } catch {
+    /* fall back to the store's zone */
+  }
+  return restaurant?.zoneId ? String(restaurant.zoneId) : undefined;
+}
+
 export async function loadActiveFeeSettings({ zoneId, vertical = 'quickCommerce' } = {}) {
   const feeDoc = await FoodFeeSettings.findOne({ isActive: { $ne: false } })
     .sort({ createdAt: -1 })
     .lean();
 
   // Master's platform fee when set (core/finance/platformFees).
+  // Fees stay on the Quick & Medical setting (Master's fee screen has no
+  // separate Medical tab); a zone's own fee still applies.
   const settings = await withMasterFees('quickCommerce', feeDoc || {
     deliveryFee: 0,
     deliveryFeeRanges: [],
     platformFee: 0,
     gstRate: 0,
-  });
+  }, { zoneId });
 
   // Master > Delivery earnings formula, when one is saved: it prices the fee
   // and the rider's pay from here on (resolveUserDeliveryFee, calculateRiderEarning).
@@ -451,9 +476,12 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
     ),
   );
 
-  // A pharmacy is priced by the Medical formula when one is set there.
+  // A pharmacy is priced by the Medical formula when one is set there, and
+  // any zone-level setting for the zone this address is in.
+  const orderVertical = isMedicalStore(restaurant?.storeType) ? 'medical' : 'quickCommerce';
   const feeSettings = await loadActiveFeeSettings({
-    vertical: isMedicalStore(restaurant?.storeType) ? 'medical' : 'quickCommerce',
+    vertical: orderVertical,
+    zoneId: await zoneIdForPricing(restaurant, deliveryAddress, orderVertical),
   });
 
   const packagingFee = 0;
