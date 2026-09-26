@@ -480,7 +480,7 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
               zones={meta.foodZones}
               value={form.foodZoneIds}
               onChange={(foodZoneIds) => set({ foodZoneIds })}
-              note="Food shows this admin only the restaurants, orders and dashboard of these zones. With Zone settings below, they set earnings, incentives, cancellation and fees for these zones only."
+              note="Food shows this admin only the restaurants, orders, delivery partners and dashboard of these zones. With Zone settings below, they set earnings, incentives, cancellation and fees for these zones only."
             />
           )}
           {showQcZones && (
@@ -489,7 +489,7 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
               zones={meta.qcZones}
               value={form.qcZoneIds}
               onChange={(qcZoneIds) => set({ qcZoneIds })}
-              note="Quick Commerce and Medical show this admin only the stores, orders and dashboard of these zones. With Zone settings below, they set earnings, incentives, cancellation and fees for these zones only."
+              note="Quick Commerce and Medical show this admin only the stores, orders, delivery partners and dashboard of these zones. With Zone settings below, they set earnings, incentives, cancellation and fees for these zones only."
             />
           )}
           {showTaxiZones && (

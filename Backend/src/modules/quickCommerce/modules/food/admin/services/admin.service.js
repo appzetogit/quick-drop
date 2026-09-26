@@ -1,3 +1,4 @@
+import { safeRiderZoneFilter } from '../../../../../../core/zones/riderZones.js';
 import mongoose from 'mongoose';
 // NotFoundError was already used further down this file (deleteDeliveryPartner)
 // without ever being imported — that path threw a ReferenceError instead of a 404
@@ -4672,6 +4673,10 @@ export async function getDeliveryJoinRequests(query) {
     const skip = Math.max(0, (Number(page) || 1) - 1) * Math.max(1, Math.min(1000, Number(limit) || 100));
     const limitNum = Math.max(1, Math.min(1000, Number(limit) || 100));
 
+    // A zone-limited sub-admin sees only riders in their zones (core/zones/riderZones.js).
+    const riderZone = await safeRiderZoneFilter('quickCommerce', query.scopeZoneIds, FoodDeliveryPartner);
+    if (riderZone) filter.$and = [...(filter.$and || []), riderZone];
+
     const list = await FoodDeliveryPartner.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -5020,6 +5025,9 @@ export async function getDeliveryPartners(query) {
 
     const skip = Math.max(0, (Number(page) || 1) - 1) * Math.max(1, Math.min(1000, Number(limit) || 100));
     const limitNum = Math.max(1, Math.min(1000, Number(limit) || 100));
+
+    const riderZone = await safeRiderZoneFilter('quickCommerce', query.scopeZoneIds, FoodDeliveryPartner);
+    if (riderZone) filter.$and = [...(filter.$and || []), riderZone];
 
     const [list, total] = await Promise.all([
         FoodDeliveryPartner.find(filter)

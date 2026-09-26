@@ -1298,6 +1298,15 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     .then(({ awardOrderCashback }) => awardOrderCashback(String(order._id)))
     .catch((e) => logger.warn(`cashback award hook failed: ${e?.message || e}`));
 
+  // The rider now works in this order's zone: what shows them to that zone's
+  // sub-admin (core/zones/riderZones.js). Idempotent, never throws.
+  import('../../../../../../core/zones/riderZones.js')
+    .then(async ({ addRiderZone }) => {
+      const { FoodDeliveryPartner } = await import('../../delivery/models/deliveryPartner.model.js');
+      return addRiderZone(FoodDeliveryPartner, deliveryPartnerId, order.zoneId);
+    })
+    .catch(() => {});
+
   // Daily order-target incentive progress (shared with the food vertical —
   // both count toward the same foodAndQuick target). Fire-and-forget and
   // idempotent per rider/rule/day, never throws.

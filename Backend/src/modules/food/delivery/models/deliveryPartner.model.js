@@ -146,6 +146,9 @@ const deliveryPartnerSchema = new mongoose.Schema(
         },
         lastLat: { type: Number },
         lastLng: { type: Number },
+        // Zones the rider has delivered in (core/zones/riderZones.js): with their
+        // last location, what shows them to a zone-limited sub-admin.
+        zoneIds: { type: [mongoose.Schema.Types.ObjectId], default: [], index: true },
         lastLocationAt: { type: Date },
         referralCode: { type: String, index: true },
         referredBy: {

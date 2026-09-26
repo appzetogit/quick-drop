@@ -1,3 +1,8 @@
+import { riderInZoneGuard } from '../../../../core/zones/riderZones.js';
+// A zone-limited sub-admin reaches only riders in their zones (core/zones/riderZones.js).
+const foodRiderModel = async () => (await import('../../delivery/models/deliveryPartner.model.js')).FoodDeliveryPartner;
+const inZone = riderInZoneGuard('food', foodRiderModel);
+const bonusInZone = riderInZoneGuard('food', foodRiderModel, { idFrom: (req) => req.body?.deliveryPartnerId });
 import express from 'express';
 import { AuthError } from '../../../../core/auth/errors.js';
 import * as adminController from '../controllers/admin.controller.js';
@@ -233,7 +238,7 @@ router.get('/delivery/join-requests', adminController.getDeliveryJoinRequests);
 router.get('/delivery/wallets', adminController.getDeliveryWallets);
 router.get('/delivery/bonus-transactions', adminController.getDeliveryPartnerBonusTransactions);
 router.get('/delivery/earnings', adminController.getDeliveryEarnings);
-router.post('/delivery/bonus', requireFinancePermission('PARTNER_BONUS_GRANT'), adminController.addDeliveryPartnerBonus);
+router.post('/delivery/bonus', bonusInZone, requireFinancePermission('PARTNER_BONUS_GRANT'), adminController.addDeliveryPartnerBonus);
 router.get('/delivery/commission-rules', adminController.getDeliveryCommissionRules);
 router.post('/delivery/commission-rules', adminController.createDeliveryCommissionRule);
 router.patch('/delivery/commission-rules/:id', adminController.updateDeliveryCommissionRule);
@@ -257,10 +262,10 @@ router.get('/delivery/support-tickets/stats', adminController.getSupportTicketSt
 router.get('/delivery/support-tickets', adminController.getSupportTickets);
 router.patch('/delivery/support-tickets/:id', adminController.updateSupportTicket);
 router.get('/delivery/partners', adminController.getDeliveryPartners);
-router.get('/delivery/:id', adminController.getDeliveryPartnerById);
-router.patch('/delivery/:id/approve', adminController.approveDeliveryPartner);
-router.patch('/delivery/:id/reject', adminController.rejectDeliveryPartner);
-router.patch('/delivery/:id/capabilities', adminController.updateDeliveryPartnerCapabilities);
+router.get('/delivery/:id', inZone, adminController.getDeliveryPartnerById);
+router.patch('/delivery/:id/approve', inZone, adminController.approveDeliveryPartner);
+router.patch('/delivery/:id/reject', inZone, adminController.rejectDeliveryPartner);
+router.patch('/delivery/:id/capabilities', inZone, adminController.updateDeliveryPartnerCapabilities);
 
 // ----- Zones -----
 router.get('/zones', adminController.getZones);
