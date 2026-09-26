@@ -15,6 +15,9 @@ const DEFAULT_COUNTRY_CODE = "+91"
 
 export default function RestaurantLogin() {
   const companyName = useCompanyName()
+  // How this site writes its own name ("Quick Drops"), set per build; the
+  // business-settings name ("QuickDrop") otherwise.
+  const brandName = import.meta.env.VITE_BRAND_NAME || companyName
   const navigate = useNavigate()
   const phoneInputRef = useRef(null)
   const { activeLogo, settings: appSettings } = useSettings() || {}
@@ -157,7 +160,7 @@ export default function RestaurantLogin() {
           </div>
           <div className="text-center text-white">
             <h1 className="font-black text-3xl lg:text-4xl tracking-tight leading-none mb-1">
-              {companyName.toUpperCase()} <span className="italic text-white">STORE</span>
+              {brandName} <span className="italic text-white">Store</span>
             </h1>
             <div className="h-0.5 w-10 bg-white/40 mx-auto rounded-full" />
           </div>
@@ -242,7 +245,7 @@ export default function RestaurantLogin() {
           <footer className="mt-auto pt-10 text-center">
             <p className="text-xs text-gray-400 font-medium leading-relaxed">
               Secure store login powered by<br />
-              <span className="text-[#1A1A1A] font-bold">{companyName} Network</span>
+              <span className="text-[#1A1A1A] font-bold">{brandName} Network</span>
             </p>
             <div className="mt-4 flex justify-center gap-4 text-xs font-bold text-[#1A1A1A]">
               <Link to="/terms?role=restaurant" className="hover:underline">Terms</Link>
