@@ -23,7 +23,7 @@ const SCOPES = [
 ]
 const SERVICE_LABEL = { food: "Food", quickCommerce: "Quick & Medical" }
 // Whose zones each tab's zone picker lists. A pharmacy order carries a Medical zone.
-const ZONE_MODULES = { "*": [], food: ["food"], quickCommerce: ["quickCommerce", "medical"] }
+const ZONE_MODULES = { "*": ["food", "quickCommerce", "medical"], food: ["food"], quickCommerce: ["quickCommerce", "medical"] }
 
 const OWN_SCREENS = [
   { label: "Food fee settings", path: "/admin/food/fee-settings" },
@@ -216,11 +216,11 @@ export default function MasterFees() {
           ))}
         </div>
 
-        {scopeId !== "*" && (
+        {(
           <ZonePicker
             modules={ZONE_MODULES[scopeId] || []}
             value={zone.id}
-            allLabel={`All zones (${scope.label} default)`}
+            allLabel={scopeId === "*" ? "All zones" : `All zones (${scope.label} default)`}
             disabled={saving}
             onChange={(id, name) => setZone({ id, name })}
           />

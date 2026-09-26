@@ -28,7 +28,7 @@ const SCOPES = [
 ]
 const SERVICE_LABEL = { food: "Food", quickCommerce: "Quick & Medical" }
 // Whose zones each tab's zone picker lists. A pharmacy order carries a Medical zone.
-const ZONE_MODULES = { "*": [], food: ["food"], quickCommerce: ["quickCommerce", "medical"] }
+const ZONE_MODULES = { "*": ["food", "quickCommerce", "medical"], food: ["food"], quickCommerce: ["quickCommerce", "medical"] }
 
 const btnCls =
   "inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
@@ -210,11 +210,11 @@ export default function MasterCancellation() {
           ))}
         </div>
 
-        {scopeId !== "*" && (
+        {(
           <ZonePicker
             modules={ZONE_MODULES[scopeId] || []}
             value={zone.id}
-            allLabel={`All zones (${scope.label} default)`}
+            allLabel={scopeId === "*" ? "All zones" : `All zones (${scope.label} default)`}
             disabled={saving}
             onChange={(id, name) => setZone({ id, name })}
           />

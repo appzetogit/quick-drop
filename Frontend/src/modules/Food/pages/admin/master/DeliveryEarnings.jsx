@@ -39,8 +39,11 @@ const MODULES = [
   { id: "taxi", level: "vertical", label: "Taxi", hint: "Driver incentive only — ride fares are set in the Taxi panel", incentiveOnly: true },
 ]
 
-/** Whose zones the zone picker lists for each tab (none for All modules). */
-const ZONE_MODULES = { "*": [], food: ["food"], quickCommerce: ["quickCommerce"], medical: ["medical"], taxi: ["taxi"] }
+/**
+ * Whose zones the zone picker lists for each tab. A zone value is keyed by the
+ * zone alone, so on All modules every delivery zone is listed, by module.
+ */
+const ZONE_MODULES = { "*": ["food", "quickCommerce", "medical"], food: ["food"], quickCommerce: ["quickCommerce"], medical: ["medical"], taxi: ["taxi"] }
 
 /** Which module's figures to READ when showing "what is charged today". */
 const readVertical = (moduleId) => (moduleId === "*" ? "food" : moduleId)
@@ -349,11 +352,11 @@ export default function DeliveryEarnings() {
             ))}
           </div>
           <p className="-mt-3 px-1 text-xs text-neutral-500">{mod.hint}</p>
-          {moduleId !== "*" && (
+          {(
             <ZonePicker
               modules={ZONE_MODULES[moduleId] || []}
               value={zone.id}
-              allLabel={`All zones (${mod.label} default)`}
+              allLabel={moduleId === "*" ? "All zones" : `All zones (${mod.label} default)`}
               disabled={saving}
               onChange={(id, name) => setZone({ id, name })}
             />
