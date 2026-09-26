@@ -216,6 +216,7 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
     serviceLocationIds: editing?.serviceLocationIds || [],
     foodZoneIds: editing?.foodZoneIds || [],
     qcZoneIds: editing?.qcZoneIds || [],
+    taxiZoneIds: editing?.taxiZoneIds || [],
     isActive: editing ? editing.isActive : true,
     // New sub-admins start without delete access; it is granted on purpose.
     canDelete: editing ? editing.canDelete !== false : false,
@@ -276,6 +277,7 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
     form.role !== "owner" &&
     (form.servicesAccess.includes("quickCommerce") || form.servicesAccess.includes("medical")) &&
     (meta.qcZones || []).length > 0
+  const showTaxiZones = form.role !== "owner" && form.servicesAccess.includes("taxi") && (meta.taxiZones || []).length > 0
 
   const submit = async (e) => {
     e.preventDefault()
@@ -301,6 +303,7 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
       serviceLocationIds: needsLocations ? form.serviceLocationIds : [],
       foodZoneIds: showFoodZones ? form.foodZoneIds : [],
       qcZoneIds: showQcZones ? form.qcZoneIds : [],
+      taxiZoneIds: showTaxiZones ? form.taxiZoneIds : [],
       isActive: form.isActive,
       ...(form.role !== "owner" ? { canDelete: form.canDelete } : {}),
       ...(form.password ? { password: form.password, password_confirmation: form.confirm } : {}),
@@ -477,7 +480,7 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
               zones={meta.foodZones}
               value={form.foodZoneIds}
               onChange={(foodZoneIds) => set({ foodZoneIds })}
-              note="Food shows this admin only the restaurants, orders and dashboard of these zones."
+              note="Food shows this admin only the restaurants, orders and dashboard of these zones. With Zone settings below, they set earnings, incentives, cancellation and fees for these zones only."
             />
           )}
           {showQcZones && (
@@ -486,7 +489,16 @@ function AdminForm({ meta, editing, onClose, onSaved }) {
               zones={meta.qcZones}
               value={form.qcZoneIds}
               onChange={(qcZoneIds) => set({ qcZoneIds })}
-              note="Quick Commerce and Medical show this admin only the stores, orders and dashboard of these zones."
+              note="Quick Commerce and Medical show this admin only the stores, orders and dashboard of these zones. With Zone settings below, they set earnings, incentives, cancellation and fees for these zones only."
+            />
+          )}
+          {showTaxiZones && (
+            <ZonePicker
+              title="Taxi zones"
+              zones={meta.taxiZones}
+              value={form.taxiZoneIds}
+              onChange={(taxiZoneIds) => set({ taxiZoneIds })}
+              note="With Zone settings below, this admin sets driver incentives for these taxi zones only. Taxi lists are still limited by the service locations above."
             />
           )}
 
