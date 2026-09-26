@@ -93,6 +93,11 @@ const adminSchema = new mongoose.Schema(
             type: [mongoose.Schema.Types.ObjectId],
             default: []
         },
+        // Taxi zones (taxi_zones) a sub-admin runs in Master > zone settings; empty = all.
+        taxi_zone_ids: {
+            type: [mongoose.Schema.Types.ObjectId],
+            default: []
+        },
         // taxi compatibility fields
         service_location_ids: {
             type: [mongoose.Schema.Types.ObjectId],

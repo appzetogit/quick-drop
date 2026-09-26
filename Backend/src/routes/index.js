@@ -37,6 +37,7 @@ import qcRouter from '../modules/quickCommerce/routes/index.js';
 // restarting the process the other three share.
 import platformModuleRoutes from '../core/modules/module.routes.js';
 import platformSettingRoutes from '../core/config/config.routes.js';
+import { zoneSettingsWriteGuard } from '../core/admin/zoneAdminSettings.js';
 import appServicesRoutes from '../core/appServices/appServices.routes.js';
 import platformAdminRoutes from '../core/admin/platformAdmins.routes.js';
 import supportInboxRoutes from '../core/support/supportInbox.routes.js';
@@ -47,7 +48,6 @@ import commissionOverviewRoutes from '../core/finance/commissionOverview.routes.
 import myOrdersRoutes from '../core/orders/myOrders.routes.js';
 import { getPublicAppLegal } from '../core/settings/appLegal.js';
 import { adminZoneScope } from '../core/admin/adminZoneScope.js';
-import { refuseRestrictedAdminWrites } from '../core/admin/enforceAdminAccess.middleware.js';
 import { requireModuleEnabled } from '../middleware/moduleEnabled.js';
 import { MODULES } from '../core/modules/moduleRegistry.js';
 
@@ -108,7 +108,8 @@ router.use('/v1/platform/modules', platformModuleRoutes);
  * Authenticated admins only. Writes additionally require `settings.write`,
  * enforced inside the router.
  */
-router.use('/v1/platform/settings', authMiddleware, requireRoles('ADMIN'), refuseRestrictedAdminWrites, platformSettingRoutes);
+// Sub-admins may change only zone-level values for their own zones (core/admin/zoneAdminSettings.js).
+router.use('/v1/platform/settings', authMiddleware, requireRoles('ADMIN'), zoneSettingsWriteGuard, platformSettingRoutes);
 
 /*
  * Which services the customer app shows, platform-wide and per zone. The read

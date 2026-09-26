@@ -3,6 +3,7 @@ import { incentiveRulesAPI } from "@food/api"
 import { toast } from "sonner"
 import { Loader2, Target, History, Plus, Trash2 } from "lucide-react"
 import ZonePicker from "./ZonePicker"
+import { useAdminAccess, isRestricted, can } from "@food/utils/adminAccess"
 
 /**
  * Master > Delivery Incentives: an order-count LADDER per duty segment —
@@ -126,13 +127,15 @@ function TierRow({ tier, onChange, onRemove, disabled }) {
 
 const ladderLine = (rule) => (rule?.tiers || []).map((t) => `${t.fromOrders}-${t.toOrders} → ₹${t.rewardAmount}`).join(",  ")
 
-function SegmentCard({ segment, rules, saving, onSave, onTurnOff, busyId }) {
+function SegmentCard({ segment, rules, saving, onSave, onTurnOff, busyId, limited = false, canWrite = true }) {
   // A zone's own ladder, or (no zone) the default one every other zone uses.
   const [zone, setZone] = useState({ id: "", name: "" })
   const mine = (r) => r.segment === segment.id
   const active = rules.find((r) => mine(r) && String(r.zoneId || "") === zone.id) || null
   const fallback = zone.id ? rules.find((r) => mine(r) && !r.zoneId) || null : null
   const busy = Boolean(active) && busyId === active._id
+  // A zone sub-admin changes only their own zones' ladders; the default is head office's.
+  const canEdit = canWrite && (!limited || Boolean(zone.id))
   const [form, setForm] = useState(() => ({ title: active?.title || "", tiers: tiersFromRule(active) }))
 
   // Re-seed the form whenever the active rule for THIS segment changes (a
@@ -164,7 +167,7 @@ function SegmentCard({ segment, rules, saving, onSave, onTurnOff, busyId }) {
             <button
               type="button"
               className={`${ghostCls} ${invalidReason ? "" : "mr-auto"}`}
-              disabled={saving || busy}
+              disabled={saving || busy || !canEdit}
               onClick={() => onTurnOff(active)}
             >
               {busy && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -174,7 +177,7 @@ function SegmentCard({ segment, rules, saving, onSave, onTurnOff, busyId }) {
           <button
             type="button"
             className={btnCls}
-            disabled={saving || !dirty || Boolean(invalidReason)}
+            disabled={saving || !dirty || Boolean(invalidReason) || !canEdit}
             onClick={() => onSave(segment.id, form, zone)}
           >
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -187,6 +190,7 @@ function SegmentCard({ segment, rules, saving, onSave, onTurnOff, busyId }) {
         <ZonePicker
           modules={segment.zoneModules}
           value={zone.id}
+          required={limited}
           allLabel="All zones (default ladder)"
           disabled={saving}
           onChange={(id, name) => setZone({ id, name })}
@@ -272,6 +276,9 @@ export default function DeliveryIncentives() {
   const [active, setActive] = useState([])
   const [recent, setRecent] = useState([])
   const [busyId, setBusyId] = useState(null) // rule being turned off or deleted
+  const access = useAdminAccess()
+  const limited = isRestricted(access)
+  const canWrite = !limited || can(access, "zone_incentives", "write")
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -375,6 +382,8 @@ export default function DeliveryIncentives() {
                   onSave={save}
                   onTurnOff={turnOff}
                   busyId={busyId}
+                  limited={limited}
+                  canWrite={canWrite}
                 />
               ))}
             </div>
@@ -419,7 +428,7 @@ export default function DeliveryIncentives() {
                             <button
                               type="button"
                               onClick={() => remove(r)}
-                              disabled={busyId === r._id}
+                              disabled={busyId === r._id || (limited && (!canWrite || !r.zoneId))}
                               className="rounded-lg p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
                               aria-label={`Delete ladder ${ladderText(r)}`}
                               title="Delete"

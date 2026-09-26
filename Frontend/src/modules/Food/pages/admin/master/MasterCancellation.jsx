@@ -3,6 +3,7 @@ import { platformSettingsAPI } from "@food/api"
 import { toast } from "sonner"
 import { Loader2, Ban, Info } from "lucide-react"
 import ZonePicker from "./ZonePicker"
+import { useAdminAccess, isRestricted, can, hasPanel } from "@food/utils/adminAccess"
 
 /**
  * Master > Cancellation Policy: how long a customer may cancel after the
@@ -95,12 +96,25 @@ export default function MasterCancellation() {
   const [holdUnit, setHoldUnit] = useState("sec")
   const [overview, setOverview] = useState(null)
 
+  // A zone sub-admin works only in their zones: no All services tab, only the
+  // services they have, and saving only with Manage on this section.
+  const access = useAdminAccess()
+  const limited = isRestricted(access)
+  const visibleScopes = limited
+    ? SCOPES.filter((s) => s.id !== "*" && (s.id === "quickCommerce" ? hasPanel(access, "quickCommerce") || hasPanel(access, "medical") : hasPanel(access, s.id)))
+    : SCOPES
+  useEffect(() => {
+    if (limited && visibleScopes.length && !visibleScopes.some((s) => s.id === scopeId)) setScopeId(visibleScopes[0].id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [limited, visibleScopes.length, scopeId])
+
   const scope = SCOPES.find((s) => s.id === scopeId) || SCOPES[0]
   // A zone of the current service, or none: the service's own value.
   const [zone, setZone] = useState({ id: "", name: "" })
   const target = zone.id
     ? { level: "zone", scopeId: zone.id, label: `${scope.label} · ${zone.name}` }
     : { level: scope.level, scopeId: scope.level === "global" ? "*" : scopeId, label: scope.label }
+  const canEdit = !limited || (Boolean(zone.id) && can(access, "zone_orders", "write"))
   const ownLabel = zone.id ? `${scope.label}'s value` : scope.id === "*" ? "Each service's own" : `${scope.label}'s own`
 
   const load = useCallback(async () => {
@@ -195,7 +209,7 @@ export default function MasterCancellation() {
         </section>
 
         <div className="flex gap-1 overflow-x-auto rounded-xl border border-neutral-200 bg-white p-1">
-          {SCOPES.map((s) => (
+          {visibleScopes.map((s) => (
             <button
               key={s.id}
               type="button"
@@ -210,10 +224,17 @@ export default function MasterCancellation() {
           ))}
         </div>
 
+        {limited && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              You manage your zones only. Values head office sets for a whole module or all modules apply wherever your
+              zone has none of its own; you can see them here but not change them.
+            </p>
+          )}
         {(
           <ZonePicker
             modules={ZONE_MODULES[scopeId] || []}
             value={zone.id}
+            required={limited}
             allLabel={scopeId === "*" ? "All zones" : `All zones (${scope.label} default)`}
             disabled={saving}
             onChange={(id, name) => setZone({ id, name })}
@@ -312,7 +333,7 @@ export default function MasterCancellation() {
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-5 py-3">
-            <button type="button" className={btnCls} disabled={saving || loading || !minutesOk || !holdOk} onClick={save}>
+            <button type="button" className={btnCls} disabled={saving || loading || !minutesOk || !holdOk || !canEdit} onClick={save}>
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               Save for {target.label}
             </button>

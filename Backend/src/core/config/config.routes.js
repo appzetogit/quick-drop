@@ -99,9 +99,83 @@ router.get('/cancellation/overview', async (req, res, next) => {
 router.get('/zones/:module', async (req, res, next) => {
     try {
         const { listZonesFor } = await import('../appServices/appServices.service.js');
-        const zones = await listZonesFor(String(req.params.module || ''));
+        const { zoneAdminContext } = await import('../admin/zoneAdminSettings.js');
+        const module = String(req.params.module || '');
+        const zones = await listZonesFor(module);
         if (!zones) return res.status(400).json({ success: false, message: 'Unknown module' });
-        return res.json({ success: true, data: { zones } });
+        // A zone sub-admin sees only their zones; `limited` tells the page to
+        // drop "All zones" and the module-wide options.
+        const ctx = await zoneAdminContext(req);
+        if (!ctx.restricted) return res.json({ success: true, data: { zones, limited: false } });
+        const mine = await ctx.zoneIdsFor(module);
+        const visible = mine === null ? zones : zones.filter((z) => mine.includes(z.id));
+        return res.json({ success: true, data: { zones: visible, limited: true } });
+    } catch (err) {
+        return next(err);
+    }
+});
+/*
+ * Incentive ladders, reachable from Master by zone sub-admins too (the food
+ * admin routes need the Food panel). A sub-admin sees their zones' ladders and
+ * the default one (read-only), and may save, turn off or delete only their own.
+ */
+router.get('/incentive-rules', async (req, res, next) => {
+    try {
+        const { zoneAdminContext } = await import('../admin/zoneAdminSettings.js');
+        const { listIncentiveRulesController } = await import('../incentives/controllers/incentiveController.js');
+        const ctx = await zoneAdminContext(req);
+        if (!ctx.restricted) return listIncentiveRulesController(req, res, next);
+        const originalJson = res.json.bind(res);
+        res.json = async (body) => {
+            const keep = async (list) => {
+                const out = [];
+                for (const r of list || []) {
+                    // eslint-disable-next-line no-await-in-loop
+                    if (!r.zoneId || (await ctx.zoneAllowed(r.zoneId))) out.push(r);
+                }
+                return out;
+            };
+            if (body?.data) {
+                body.data.active = await keep(body.data.active);
+                body.data.recent = await keep(body.data.recent);
+                body.data.limited = true;
+            }
+            return originalJson(body);
+        };
+        return listIncentiveRulesController(req, res, next);
+    } catch (err) {
+        return next(err);
+    }
+});
+router.put('/incentive-rules', async (req, res, next) => {
+    try {
+        const { zoneAdminContext, LADDER_RESOURCE } = await import('../admin/zoneAdminSettings.js');
+        const { upsertIncentiveRuleController } = await import('../incentives/controllers/incentiveController.js');
+        const ctx = req.zoneAdmin || (await zoneAdminContext(req));
+        if (ctx.restricted) {
+            if (!ctx.can(LADDER_RESOURCE, 'write')) return res.status(403).json({ success: false, message: 'You do not have permission to change incentive ladders' });
+            if (!req.body?.zoneId) return res.status(403).json({ success: false, message: 'The default ladder is head office only. Pick one of your zones.' });
+            if (!(await ctx.zoneAllowed(req.body.zoneId))) return res.status(403).json({ success: false, message: 'That zone is not one of yours' });
+        }
+        return upsertIncentiveRuleController(req, res, next);
+    } catch (err) {
+        return next(err);
+    }
+});
+router.delete('/incentive-rules/:id', async (req, res, next) => {
+    try {
+        const { zoneAdminContext, LADDER_RESOURCE, canDeleteLadder } = await import('../admin/zoneAdminSettings.js');
+        const { deactivateIncentiveRuleController } = await import('../incentives/controllers/incentiveController.js');
+        const ctx = req.zoneAdmin || (await zoneAdminContext(req));
+        if (ctx.restricted) {
+            const { DriverIncentiveRule } = await import('../incentives/models/driverIncentiveRule.model.js');
+            const rule = await DriverIncentiveRule.findById(req.params.id).select('zoneId').lean();
+            if (!rule) return res.status(404).json({ success: false, message: 'Incentive rule not found' });
+            if (!ctx.can(LADDER_RESOURCE, 'write')) return res.status(403).json({ success: false, message: 'You do not have permission to change incentive ladders' });
+            if (!rule.zoneId || !(await ctx.zoneAllowed(rule.zoneId))) return res.status(403).json({ success: false, message: 'That ladder is not for one of your zones' });
+            if (!canDeleteLadder(ctx)) return res.status(403).json({ success: false, message: 'You do not have delete access' });
+        }
+        return deactivateIncentiveRuleController(req, res, next);
     } catch (err) {
         return next(err);
     }

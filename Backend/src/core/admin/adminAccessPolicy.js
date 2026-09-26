@@ -70,6 +70,19 @@ export const ADMIN_PERMISSION_CATALOG = [
     ],
   },
   {
+    /*
+     * Master settings for the admin's own zones only (core/admin/zoneAdminSettings.js):
+     * zone-level values, never the module-wide or all-modules ones.
+     */
+    group: 'Zone settings (their zones only)',
+    resources: [
+      { key: 'zone_earnings', label: 'Delivery earnings', hint: 'Delivery fee and rider pay, large-order incentive', services: ALL },
+      { key: 'zone_incentives', label: 'Incentive ladders', hint: 'Daily order-count rewards for riders', services: ALL },
+      { key: 'zone_orders', label: 'Cancellation & order hold', hint: 'Cancel window, hold before the restaurant sees it', services: STORES },
+      { key: 'zone_fees', label: 'Platform fee & GST', hint: 'Platform fee on orders in their zones', services: STORES },
+    ],
+  },
+  {
     group: 'Settings',
     resources: [
       { key: 'cms', label: 'Banners & pages', hint: 'Banners, broadcast notifications, legal pages', services: ALL },

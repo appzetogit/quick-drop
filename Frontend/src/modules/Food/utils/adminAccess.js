@@ -226,6 +226,12 @@ export function resourceForPath(pathname = "") {
   if (pathname.startsWith("/admin/master/home-screen")) return "cms"
   // And the commission overview, under the permission that sets seller rates.
   if (pathname.startsWith("/admin/master/commission")) return "restaurants"
+  // Zone settings: a sub-admin sets these for their own zones only (the server
+  // refuses anything wider -- core/admin/zoneAdminSettings.js).
+  if (pathname.startsWith("/admin/master/delivery-earnings")) return "zone_earnings"
+  if (pathname.startsWith("/admin/master/delivery-incentives")) return "zone_incentives"
+  if (pathname.startsWith("/admin/master/cancellation")) return "zone_orders"
+  if (pathname.startsWith("/admin/master/fees")) return "zone_fees"
   if (pathname.startsWith("/admin/master")) return "__owner__"
   const panel = panelOfPath(pathname)
   if (!panel) return null

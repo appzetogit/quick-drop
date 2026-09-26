@@ -4,6 +4,7 @@ import { platformSettingsAPI } from "@food/api"
 import { toast } from "sonner"
 import { Loader2, Plus, Trash2, RotateCcw, Bike, Gift, Calculator } from "lucide-react"
 import ZonePicker from "./ZonePicker"
+import { useAdminAccess, isRestricted, can, hasPanel } from "@food/utils/adminAccess"
 
 /**
  * Master > Delivery earnings: what the customer pays for delivery and what the
@@ -229,6 +230,19 @@ export default function DeliveryEarnings() {
   // A zone of the current module, or none: the module's own default.
   const [zone, setZone] = useState({ id: "", name: "" })
 
+  // A zone sub-admin works only in their zones: no All modules tab, only the
+  // modules they have, and saving only with Manage on zone earnings.
+  const access = useAdminAccess()
+  const limited = isRestricted(access)
+  const visibleModules = limited
+    ? MODULES.filter((m) => m.id !== "*" && (m.id === "medical" ? hasPanel(access, "medical") || hasPanel(access, "quickCommerce") : hasPanel(access, m.id)))
+    : MODULES
+  useEffect(() => {
+    if (limited && visibleModules.length && !visibleModules.some((m) => m.id === moduleId)) setModuleId(visibleModules[0].id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [limited, visibleModules.length, moduleId])
+  const canEdit = !limited || (Boolean(zone.id) && can(access, "zone_earnings", "write"))
+
   const mod = MODULES.find((m) => m.id === moduleId) || MODULES[0]
   // Where a save goes: this zone, else the module, else all modules.
   const target = zone.id
@@ -337,7 +351,7 @@ export default function DeliveryEarnings() {
 
         <div className="space-y-5">
           <div className="flex gap-1 overflow-x-auto rounded-xl border border-neutral-200 bg-white p-1">
-            {MODULES.map((m) => (
+            {visibleModules.map((m) => (
               <button
                 key={m.id}
                 type="button"
@@ -356,12 +370,19 @@ export default function DeliveryEarnings() {
             <ZonePicker
               modules={ZONE_MODULES[moduleId] || []}
               value={zone.id}
+              required={limited}
               allLabel={moduleId === "*" ? "All zones" : `All zones (${mod.label} default)`}
               disabled={saving}
               onChange={(id, name) => setZone({ id, name })}
             />
           )}
 
+          {limited && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              You manage your zones only. Values head office sets for a whole module or all modules apply wherever your
+              zone has none of its own; you can see them here but not change them.
+            </p>
+          )}
           {loading ? (
             <div className="flex items-center gap-2 py-10 text-neutral-500">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading
@@ -383,7 +404,7 @@ export default function DeliveryEarnings() {
                   footer={
                     <>
                       {savedAtThisLevel && (
-                        <button type="button" className={ghostCls} disabled={saving} onClick={() => save(FORMULA_KEY, null, "Delivery formula")}>
+                        <button type="button" className={ghostCls} disabled={saving || !canEdit} onClick={() => save(FORMULA_KEY, null, "Delivery formula")}>
                           <RotateCcw className="h-4 w-4" />
                           {zone.id ? `Reset to ${mod.label} default` : mod.level === "global" ? "Clear formula" : "Reset to all modules"}
                         </button>
@@ -397,7 +418,7 @@ export default function DeliveryEarnings() {
                       >
                         Start from today&apos;s pricing
                       </button>
-                      <button type="button" className={btnCls} disabled={saving} onClick={saveFormula}>
+                      <button type="button" className={btnCls} disabled={saving || !canEdit} onClick={saveFormula}>
                         {saving && <Loader2 className="h-4 w-4 animate-spin" />}
                         Save formula
                       </button>
@@ -592,11 +613,11 @@ export default function DeliveryEarnings() {
                 description="An extra percentage of the order value, paid to the rider on orders at or above the minimum."
                 footer={
                   <>
-                    <button type="button" className={ghostCls} disabled={saving} onClick={() => save(INCENTIVE_KEY, null, "Incentive")}>
+                    <button type="button" className={ghostCls} disabled={saving || !canEdit} onClick={() => save(INCENTIVE_KEY, null, "Incentive")}>
                       <RotateCcw className="h-4 w-4" />
                       Clear
                     </button>
-                    <button type="button" className={btnCls} disabled={saving} onClick={() => save(INCENTIVE_KEY, incentive, "Incentive")}>
+                    <button type="button" className={btnCls} disabled={saving || !canEdit} onClick={() => save(INCENTIVE_KEY, incentive, "Incentive")}>
                       {saving && <Loader2 className="h-4 w-4 animate-spin" />}
                       Save incentive
                     </button>

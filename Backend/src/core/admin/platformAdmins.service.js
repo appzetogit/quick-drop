@@ -52,6 +52,7 @@ export function describeCaller(admin) {
     serviceLocationIds: (admin.service_location_ids || []).map(String),
     foodZoneIds: (admin.food_zone_ids || []).map(String),
     qcZoneIds: (admin.qc_zone_ids || []).map(String),
+    taxiZoneIds: (admin.taxi_zone_ids || []).map(String),
   };
 }
 
@@ -101,6 +102,7 @@ function serialize(doc, names = {}) {
     serviceLocationIds: (doc.service_location_ids || []).map(String),
     foodZoneIds: (doc.food_zone_ids || []).map(String),
     qcZoneIds: (doc.qc_zone_ids || []).map(String),
+    taxiZoneIds: (doc.taxi_zone_ids || []).map(String),
     canDelete: role === ROLE.OWNER ? true : doc.canDelete !== false,
     isActive: active,
     createdBy: doc.parentAdminId ? (names[String(doc.parentAdminId)] || 'Another admin') : null,
@@ -153,8 +155,19 @@ export async function getMeta(admin) {
   const foodZones = caller.servicesAccess.includes('food')
     ? await zonesOf(async () => (await import('../../modules/food/admin/models/zone.model.js')).FoodZone, caller.foodZoneIds)
     : [];
+  // Quick and Medical draw separate zones; one list covers both, labelled.
   const qcZones = caller.servicesAccess.some((s) => s === 'quickCommerce' || s === 'medical')
-    ? await zonesOf(async () => (await import('../../modules/quickCommerce/modules/food/admin/models/zone.model.js')).QCZone, caller.qcZoneIds)
+    ? [
+      ...(await zonesOf(async () => (await import('../../modules/quickCommerce/modules/food/admin/models/zone.model.js')).QCZone, caller.qcZoneIds))
+        .map((z) => ({ ...z, name: `${z.name} · Quick` })),
+      ...(await zonesOf(async () => {
+        const { zoneModelFor } = await import('../../modules/quickCommerce/modules/food/shared/zoneServiceability.js');
+        return zoneModelFor('medical');
+      }, caller.qcZoneIds)).map((z) => ({ ...z, name: `${z.name} · Medical` })),
+    ]
+    : [];
+  const taxiZones = caller.servicesAccess.includes('taxi')
+    ? await zonesOf(async () => (await import('../../modules/taxi/driver/models/Zone.js')).Zone, caller.taxiZoneIds || [])
     : [];
 
   return {
@@ -164,6 +177,7 @@ export async function getMeta(admin) {
     serviceLocations,
     foodZones,
     qcZones,
+    taxiZones,
     roles: [
       ...(caller.isOwner ? [{ key: ROLE.OWNER, label: 'Owner', hint: 'Everything, in every panel, including platform settings' }] : []),
       ...(caller.permissions.includes('*') ? [{ key: ROLE.FULL, label: 'Full access', hint: 'Everything inside the panels you pick' }] : []),
@@ -309,6 +323,7 @@ async function validatePayload(admin, caller, body, { creating }) {
   };
   out.foodZoneIds = zonesFor(body.foodZoneIds, caller.foodZoneIds, services.includes('food'), 'food');
   out.qcZoneIds = zonesFor(body.qcZoneIds, caller.qcZoneIds, services.includes('quickCommerce') || services.includes('medical'), 'quick commerce');
+  out.taxiZoneIds = zonesFor(body.taxiZoneIds, caller.taxiZoneIds || [], services.includes('taxi'), 'taxi');
   return out;
 }
 
@@ -337,6 +352,7 @@ function applyTo(doc, data, admin) {
     doc.service_location_ids = data.serviceLocationIds;
     doc.food_zone_ids = data.foodZoneIds || [];
     doc.qc_zone_ids = data.qcZoneIds || [];
+    doc.taxi_zone_ids = data.taxiZoneIds || [];
     // A sub-admin without a parent reads as a legacy owner (resolveAdminLevel),
     // so every restricted account records who manages it.
     if (!doc.parentAdminId) doc.parentAdminId = admin._id;

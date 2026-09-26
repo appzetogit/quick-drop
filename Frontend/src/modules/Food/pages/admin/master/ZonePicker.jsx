@@ -16,23 +16,37 @@ import { MapPin } from "lucide-react"
 const MODULE_LABEL = { food: "Food", quickCommerce: "Quick", medical: "Medical", taxi: "Taxi" }
 const cache = new Map()
 
+// Per signed-in admin: a zone sub-admin's list is only their zones.
+const sessionKey = () => {
+  try {
+    return String(localStorage.getItem("admin_accessToken") || "").slice(-16)
+  } catch {
+    return ""
+  }
+}
+
 async function zonesOf(module) {
-  if (!cache.has(module)) {
+  const key = `${sessionKey()}:${module}`
+  if (!cache.has(key)) {
     cache.set(
-      module,
+      key,
       platformSettingsAPI
         .zones(module)
         .then((res) => res?.data?.data?.zones || [])
         .catch(() => {
-          cache.delete(module)
+          cache.delete(key)
           return []
         }),
     )
   }
-  return cache.get(module)
+  return cache.get(key)
 }
 
-export default function ZonePicker({ modules = [], value = "", onChange, disabled = false, allLabel = "All zones (default)" }) {
+/**
+ * `required`: a zone sub-admin must work in one of their zones, so there is no
+ * "All zones" option and the picker selects their first zone by itself.
+ */
+export default function ZonePicker({ modules = [], value = "", onChange, disabled = false, allLabel = "All zones (default)", required = false }) {
   const [options, setOptions] = useState([])
   const [loading, setLoading] = useState(false)
   const key = modules.join(",")
@@ -57,6 +71,12 @@ export default function ZonePicker({ modules = [], value = "", onChange, disable
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 
+  // A required picker never sits on "All zones": take the first zone offered.
+  useEffect(() => {
+    if (required && !value && options.length) onChange?.(options[0].id, options[0].name)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [required, value, options])
+
   const labelOf = (z) => `${z.name}${modules.length > 1 ? ` · ${MODULE_LABEL[z.module] || z.module}` : ""}${z.active ? "" : " (inactive)"}`
 
   return (
@@ -73,7 +93,8 @@ export default function ZonePicker({ modules = [], value = "", onChange, disable
           onChange?.(id, zone ? zone.name : "")
         }}
       >
-        <option value="">{modules.length ? allLabel : "Pick a module first to set a zone"}</option>
+        {!required && <option value="">{modules.length ? allLabel : "Pick a module first to set a zone"}</option>}
+        {required && !options.length && <option value="">{loading ? "Loading your zones…" : "No zones assigned to you here"}</option>}
         {options.map((z) => (
           <option key={`${z.module}:${z.id}`} value={z.id}>
             {labelOf(z)}

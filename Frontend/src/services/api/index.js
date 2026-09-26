@@ -300,20 +300,22 @@ export const stockAPI = {
  * per-vertical admin screen would be.
  */
 export const incentiveRulesAPI = {
-  list: () => apiClient.get("/food/admin/incentive-rules", { contextModule: "admin" }),
+  // Under /platform/settings so zone sub-admins can use it from Master too;
+  // the server limits them to their own zones.
+  list: () => apiClient.get("/platform/settings/incentive-rules", { contextModule: "admin" }),
   /** tiers: [{ fromOrders, toOrders, rewardAmount }, ...], e.g. 1-5 → ₹100, 5-10 → ₹150. */
   /** zoneId empty = the default ladder; set = that zone's own ladder. */
   upsert: ({ segment, title, tiers, zoneId = null, zoneName = "" }) =>
     apiClient.put(
-      "/food/admin/incentive-rules",
+      "/platform/settings/incentive-rules",
       { segment, title, tiers, zoneId, zoneName },
       { contextModule: "admin" },
     ),
   deactivate: (id) =>
-    apiClient.delete(`/food/admin/incentive-rules/${encodeURIComponent(id)}`, { contextModule: "admin" }),
+    apiClient.delete(`/platform/settings/incentive-rules/${encodeURIComponent(id)}`, { contextModule: "admin" }),
   /** Removes the ladder from the list for good; credits already paid stay. */
   remove: (id) =>
-    apiClient.delete(`/food/admin/incentive-rules/${encodeURIComponent(id)}?permanent=1`, { contextModule: "admin" }),
+    apiClient.delete(`/platform/settings/incentive-rules/${encodeURIComponent(id)}?permanent=1`, { contextModule: "admin" }),
 };
 
 export const adminAccountsAPI = {
