@@ -417,6 +417,22 @@ export default function DeliveryEarnings() {
                     </SourceLine>
                   )}
 
+                  {zone.id && (
+                    <p className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                      {savedAtThisLevel ? (
+                        <>
+                          <span className="font-medium">{zone.name}</span> has its own formula. Saving changes it for this zone
+                          only; &ldquo;Reset to {mod.label} default&rdquo; removes it.
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-medium">{zone.name}</span> has no formula of its own yet. The numbers below are
+                          the ones in force there now, as a starting point. Saving creates {zone.name}&apos;s own formula and
+                          leaves every other zone and the {mod.label} formula unchanged.
+                        </>
+                      )}
+                    </p>
+                  )}
                   <label className="mb-3 flex items-center gap-2">
                     <input
                       type="checkbox"
