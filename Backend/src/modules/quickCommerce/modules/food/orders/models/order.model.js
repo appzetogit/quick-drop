@@ -486,6 +486,10 @@ const orderSchema = new mongoose.Schema(
         deliveryFleet: { type: String, default: 'standard', trim: true },
         scheduledAt: { type: Date, default: null },
         riderEarning: { type: Number, default: 0, min: 0 },
+        // The hold before the restaurant sees a new order (core/orders/orderHold.js):
+        // when it ends, and when the order was actually released to the restaurant.
+        restaurantReleaseAt: { type: Date, default: null },
+        restaurantReleasedAt: { type: Date, default: null },
         // Can be negative when discounts/rider pay exceed platform income; keep the real value visible.
         platformProfit: { type: Number, default: 0 },
         /** Restaurant ↔ customer driving distance (km) for delivery-partner offer UI */

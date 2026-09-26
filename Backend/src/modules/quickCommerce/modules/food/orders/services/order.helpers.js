@@ -8,6 +8,8 @@ import {
   sendNotificationToOwners,
 } from "../../../../core/notifications/firebase.service.js";
 import { getIO, rooms } from '../../../../config/socket.js';
+import { holdIfConfigured, registerHoldTarget } from '../../../../../../core/orders/orderHold.js';
+import { isMedicalStore } from '../../shared/storeType.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
 
 export function enqueueOrderEvent(action, payload = {}) {
@@ -508,9 +510,17 @@ export function canExposeOrderToRestaurant(orderLike) {
   return ["paid", "authorized", "captured", "settled"].includes(status);
 }
 
-export async function notifyRestaurantNewOrder(orderDoc) {
+export async function notifyRestaurantNewOrder(orderDoc, { released = false } = {}) {
   try {
     if (!orderDoc || !canExposeOrderToRestaurant(orderDoc)) return;
+    // Master > Cancellation policy may hold new orders for a few seconds first;
+    // the store is then alerted when the hold ends (core/orders/orderHold.js).
+    if (!released && (await holdIfConfigured({
+      name: 'quickCommerce',
+      order: orderDoc,
+      vertical: await verticalOfOrder(orderDoc),
+      shiftAcceptanceDeadline: true,
+    }))) return;
 
     const io = getIO();
     if (io) {
@@ -679,3 +689,18 @@ export function isStatusAdvance(current, next) {
 
   return nextPrio > currentPrio;
 }
+
+/** 'medical' for a pharmacy's order, else 'quickCommerce' -- which hold setting applies. */
+async function verticalOfOrder(order) {
+  if (order?.prescriptionOnly === true) return 'medical';
+  try {
+    const { FoodRestaurant } = await import('../../restaurant/models/restaurant.model.js');
+    const store = await FoodRestaurant.findById(order?.restaurantId).select('storeType').lean();
+    return isMedicalStore(store?.storeType) ? 'medical' : 'quickCommerce';
+  } catch {
+    return 'quickCommerce';
+  }
+}
+
+// Lets the hold sweeper (core/orders/orderHold.js) alert the store when a held order is due.
+registerHoldTarget('quickCommerce', FoodOrder, (order) => notifyRestaurantNewOrder(order, { released: true }));

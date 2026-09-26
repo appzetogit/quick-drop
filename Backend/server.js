@@ -329,6 +329,18 @@ const startServer = async () => {
                 .then(({ startLedgerNightly }) => { ledgerNightlyInterval = startLedgerNightly(); })
                 .catch((err) => logger.error(`Ledger nightly failed to start: ${err.message}`));
 
+            // Releases new orders to the restaurant when their cancellation hold ends.
+            // Not tied to BACKGROUND_JOBS_ENABLED: a held order must always reach the
+            // restaurant, and each release is claimed in the database, so a second
+            // instance cannot alert twice. See core/orders/orderHold.js.
+            Promise.all([
+                import('./src/modules/food/orders/services/order.helpers.js'),
+                import('./src/modules/quickCommerce/modules/food/orders/services/order.helpers.js'),
+            ])
+                .then(() => import('./src/core/orders/orderHold.js'))
+                .then(({ startOrderHoldSweeper }) => startOrderHoldSweeper())
+                .catch((err) => logger.error(`Order hold sweeper failed to start: ${err.message}`));
+
             if (!config.backgroundJobsEnabled) {
                 logger.warn('BACKGROUND_JOBS_ENABLED=false — skipping offer expiry and FSSAI sync (read-mostly instance)');
                 return;

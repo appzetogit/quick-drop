@@ -8,6 +8,8 @@ import {
   sendNotificationToOwners,
 } from "../../../../core/notifications/firebase.service.js";
 import { getIO, rooms } from '../../../../config/socket.js';
+import { FoodOrder } from '../models/order.model.js';
+import { holdIfConfigured, registerHoldTarget } from '../../../../core/orders/orderHold.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
 import { STATUS_PRIORITY } from '../../../../constants/orderStatus.js';
 
@@ -303,9 +305,12 @@ export function canExposeOrderToRestaurant(orderLike) {
   return ["paid", "authorized", "captured", "settled"].includes(status);
 }
 
-export async function notifyRestaurantNewOrder(orderDoc) {
+export async function notifyRestaurantNewOrder(orderDoc, { released = false } = {}) {
   try {
     if (!orderDoc || !canExposeOrderToRestaurant(orderDoc)) return;
+    // Master > Cancellation policy may hold new orders for a few seconds first;
+    // the restaurant is then alerted when the hold ends (core/orders/orderHold.js).
+    if (!released && (await holdIfConfigured({ name: 'food', order: orderDoc, vertical: 'food' }))) return;
 
     const io = getIO();
     if (io) {
@@ -438,3 +443,6 @@ export function isStatusAdvance(current, next) {
 
   return nextPrio > currentPrio;
 }
+
+// Lets the hold sweeper (core/orders/orderHold.js) alert the restaurant when a held order is due.
+registerHoldTarget('food', FoodOrder, (order) => notifyRestaurantNewOrder(order, { released: true }));

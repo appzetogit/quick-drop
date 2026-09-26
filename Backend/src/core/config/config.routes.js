@@ -82,8 +82,15 @@ router.get('/fees/overview', async (req, res, next) => {
 router.get('/cancellation/overview', async (req, res, next) => {
     try {
         const { getCancelRules } = await import('../../modules/food/orders/services/cancellationPolicy.js');
-        const [food, quickCommerce] = await Promise.all([getCancelRules('food'), getCancelRules('quickCommerce')]);
-        res.json({ success: true, data: { services: [{ vertical: 'food', ...food }, { vertical: 'quickCommerce', ...quickCommerce }] } });
+        const { holdSecondsFor } = await import('../orders/orderHold.js');
+        const [food, quickCommerce, foodHold, quickHold] = await Promise.all([
+            getCancelRules('food'), getCancelRules('quickCommerce'),
+            holdSecondsFor('food'), holdSecondsFor('quickCommerce'),
+        ]);
+        res.json({ success: true, data: { services: [
+            { vertical: 'food', ...food, holdSeconds: foodHold },
+            { vertical: 'quickCommerce', ...quickCommerce, holdSeconds: quickHold },
+        ] } });
     } catch (err) {
         next(err);
     }

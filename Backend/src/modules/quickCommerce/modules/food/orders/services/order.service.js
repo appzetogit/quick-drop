@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { zoneMatchFrom } from '../../../../../../core/admin/adminZoneScope.js';
+import { RELEASED_TO_RESTAURANT, isHeld } from '../../../../../../core/orders/orderHold.js';
 import { FoodOrder, FoodSettings } from '../models/order.model.js';
 // import { paymentSnapshotFromOrder } from './foodOrderPayment.service.js';
 import { logger } from '../../../../utils/logger.js';
@@ -1898,6 +1899,8 @@ export async function listOrdersRestaurant(restaurantId, query) {
       { "payment.method": { $in: ["cash", "wallet", "razorpay_qr"] } },
       { "payment.status": { $in: ["paid", "authorized", "captured", "settled", "refunded"] } },
     ],
+    // Not while the order is in its cancellation hold (core/orders/orderHold.js).
+    $and: [RELEASED_TO_RESTAURANT],
   };
 
   const startDateRaw = query?.startDate || query?.from;
@@ -2035,6 +2038,7 @@ export async function updateOrderStatusRestaurant(
     restaurantId: new mongoose.Types.ObjectId(restaurantId),
   });
   if (!order) throw new NotFoundError("Order not found");
+  if (isHeld(order)) throw new ValidationError("This order is still in its cancellation hold and reaches you in a few seconds.");
 
   // An unpaid order must never be actionable by the restaurant. pending_payment is absent
   // from STATUS_PRIORITY, so isStatusAdvance() treats it as 0 and lets ANY target status

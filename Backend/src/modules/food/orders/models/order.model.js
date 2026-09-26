@@ -497,6 +497,10 @@ const orderSchema = new mongoose.Schema(
         riderIncentivePay: { type: Number, default: 0, min: 0 },
         riderTotalPayout: { type: Number, default: 0, min: 0 },
         riderEarning: { type: Number, default: 0, min: 0 },
+        // The hold before the restaurant sees a new order (core/orders/orderHold.js):
+        // when it ends, and when the order was actually released to the restaurant.
+        restaurantReleaseAt: { type: Date, default: null },
+        restaurantReleasedAt: { type: Date, default: null },
         // Mirrors the ledger's platformNetProfit and, like it, can be negative:
         // an order on free delivery or a platform-funded coupon costs the
         // platform money, and a floor at 0 only stopped that being recorded.

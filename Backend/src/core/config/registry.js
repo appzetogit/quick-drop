@@ -254,6 +254,20 @@ export const SETTINGS = Object.freeze({
         label: 'Stop as soon as preparing starts',
         help: 'On: cancelling closes when the kitchen or store marks it preparing, even inside the window.',
     },
+    /*
+     * A short hold before a new order reaches the restaurant or store, so a
+     * customer who changes their mind can cancel before anyone starts on it
+     * (core/orders/orderHold.js). 0 sends it straight away, as before.
+     */
+    'orders.holdSeconds': {
+        type: 'number',
+        default: 0,
+        min: 0,
+        max: 600,
+        scopes: GLOBAL_AND_VERTICAL,
+        label: 'Seconds to hold a new order before the restaurant sees it',
+        help: 'The customer can cancel free during the hold. 0 sends orders straight away.',
+    },
 
     // --- referral ------------------------------------------------------------
     /*

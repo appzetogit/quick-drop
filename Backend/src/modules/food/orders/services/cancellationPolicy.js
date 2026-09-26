@@ -179,5 +179,16 @@ export function cancellationForClient(order, rules, now = new Date()) {
     until: verdict.until ? verdict.until.toISOString() : null,
     secondsLeft: verdict.allowed && verdict.until ? Math.max(0, Math.floor((verdict.until - now) / 1000)) : null,
     reason: verdict.reason,
+    /*
+     * The cancellation hold (core/orders/orderHold.js): while it runs the order
+     * has not reached the restaurant yet, so the app can say "Sending to the
+     * restaurant in 45s" next to Cancel. Null when there is no hold.
+     */
+    hold: order?.restaurantReleaseAt && !order?.restaurantReleasedAt
+      ? {
+        releasesAt: new Date(order.restaurantReleaseAt).toISOString(),
+        secondsLeft: Math.max(0, Math.ceil((new Date(order.restaurantReleaseAt) - now) / 1000)),
+      }
+      : null,
   };
 }

@@ -14,6 +14,7 @@ import { Loader2, Ban, Info } from "lucide-react"
  */
 
 const KEYS = {
+  holdSeconds: "orders.holdSeconds",
   allowAfterAccept: "orders.cancelAfterAccept",
   windowMinutes: "orders.cancelWindowMinutes",
   stopWhenPreparing: "orders.cancelStopWhenPreparing",
@@ -35,9 +36,13 @@ const savedAt = (setting, level, scopeId) => {
   return link?.set ? link.value : null
 }
 
+/** 90 -> "90 sec", 120 -> "2 min". */
+const holdText = (sec) => (sec % 60 === 0 && sec >= 60 ? `${sec / 60} min` : `${sec} sec`)
+
 function describe(r) {
-  if (!r.allowAfterAccept) return "Only before it is accepted"
-  return `Up to ${r.windowMinutes} min after acceptance${r.stopWhenPreparing ? ", until preparing starts" : ""}`
+  const hold = r.holdSeconds > 0 ? `Held ${holdText(r.holdSeconds)} before the restaurant sees it. ` : ""
+  if (!r.allowAfterAccept) return `${hold}Cancel only before it is accepted`
+  return `${hold}Cancel up to ${r.windowMinutes} min after acceptance${r.stopWhenPreparing ? ", until preparing starts" : ""}`
 }
 
 /** Service's own / On / Off. `null` is "not set here". */
@@ -82,7 +87,9 @@ export default function MasterCancellation() {
   const [scopeId, setScopeId] = useState("*")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [values, setValues] = useState({ allowAfterAccept: null, windowMinutes: null, stopWhenPreparing: null })
+  const [values, setValues] = useState({ holdSeconds: null, allowAfterAccept: null, windowMinutes: null, stopWhenPreparing: null })
+  // The hold is stored in seconds; the admin may type it in minutes.
+  const [holdUnit, setHoldUnit] = useState("sec")
   const [overview, setOverview] = useState(null)
 
   const scope = SCOPES.find((s) => s.id === scopeId) || SCOPES[0]
@@ -113,9 +120,18 @@ export default function MasterCancellation() {
   const set = (name) => (v) => setValues((c) => ({ ...c, [name]: v }))
   const minutes = values.windowMinutes
   const minutesOk = minutes === null || (Number.isInteger(Number(minutes)) && minutes >= 1 && minutes <= 120)
+  const hold = values.holdSeconds
+  const holdOk = hold === null || (Number.isInteger(Number(hold)) && hold >= 0 && hold <= 600)
+  const holdShown = hold === null ? "" : holdUnit === "min" ? Math.round((hold / 60) * 100) / 100 : hold
+  const setHold = (raw) => {
+    if (raw === "") return set("holdSeconds")(null)
+    const n = Number(raw)
+    set("holdSeconds")(Math.round(holdUnit === "min" ? n * 60 : n))
+  }
 
   const save = async () => {
     if (!minutesOk) return toast.error("Choose between 1 and 120 minutes")
+    if (!holdOk) return toast.error("The hold can be at most 10 minutes (600 seconds)")
     setSaving(true)
     try {
       const id = scope.level === "global" ? "*" : scopeId
@@ -134,7 +150,7 @@ export default function MasterCancellation() {
       <div className="mx-auto max-w-3xl space-y-5">
         <div>
           <h1 className="text-2xl font-semibold text-neutral-900">Cancellation policy</h1>
-          <p className="mt-1 text-sm text-neutral-600">How long a customer can still cancel after the restaurant or store accepts the order.</p>
+          <p className="mt-1 text-sm text-neutral-600">How long new orders wait before reaching the restaurant, and how long a customer can still cancel after it accepts.</p>
         </div>
 
         <section className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
@@ -209,6 +225,37 @@ export default function MasterCancellation() {
               </div>
             ) : (
               <div className="space-y-5">
+                <Setting
+                  label="Hold new orders before they reach the restaurant"
+                  hint="The order waits this long before the restaurant or store is alerted; the customer can cancel free meanwhile. 0 sends orders straight away. Empty keeps the all-services value."
+                >
+                  <div className="flex w-56 gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max={holdUnit === "min" ? 10 : 600}
+                      step={holdUnit === "min" ? 0.5 : 5}
+                      inputMode="decimal"
+                      placeholder={scope.id === "*" ? "0" : "All services"}
+                      aria-label="Hold before the restaurant sees the order"
+                      aria-invalid={!holdOk}
+                      value={holdShown}
+                      disabled={saving}
+                      onChange={(e) => setHold(e.target.value)}
+                      className={`w-full rounded-lg border bg-white px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-neutral-900/10 ${holdOk ? "border-neutral-300 focus:border-neutral-900" : "border-red-400"}`}
+                    />
+                    <select
+                      aria-label="Unit"
+                      value={holdUnit}
+                      disabled={saving}
+                      onChange={(e) => setHoldUnit(e.target.value)}
+                      className="rounded-lg border border-neutral-300 bg-white px-2 py-2 text-sm"
+                    >
+                      <option value="sec">seconds</option>
+                      <option value="min">minutes</option>
+                    </select>
+                  </div>
+                </Setting>
                 <Setting label="Allow cancelling after acceptance" hint="Off: the Cancel option disappears the moment the order is accepted.">
                   <TriState value={values.allowAfterAccept} onChange={set("allowAfterAccept")} label="Allow cancelling after acceptance" disabled={saving} ownLabel={ownLabel} />
                 </Setting>
@@ -239,7 +286,7 @@ export default function MasterCancellation() {
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-neutral-100 bg-neutral-50 px-5 py-3">
-            <button type="button" className={btnCls} disabled={saving || loading || !minutesOk} onClick={save}>
+            <button type="button" className={btnCls} disabled={saving || loading || !minutesOk || !holdOk} onClick={save}>
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               Save for {scope.label}
             </button>
