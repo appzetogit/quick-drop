@@ -281,33 +281,57 @@ export default function RestaurantFreebieOffers() {
                 </div>
               )}
 
-              {tiers.map((tier) => (
-                <div key={tier.localId} className="flex items-start gap-3 rounded-lg border border-slate-200 p-3">
-                  <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div>
-                      <label className="mb-1 block text-xs text-slate-600">On orders over</label>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={tier.minOrderValue}
-                        onChange={(e) => updateTier(tier.localId, "minOrderValue", e.target.value)}
-                        placeholder="200"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      />
+              {tiers.map((tier) => {
+                const REWARD_MODES = [
+                  { value: "item", label: "A dish" },
+                  { value: "addon", label: "An add-on" },
+                  { value: "manual", label: "Type manually" },
+                ]
+                return (
+                  <div key={tier.localId} className="space-y-3 rounded-lg border border-slate-200 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="w-40 shrink-0">
+                        <label className="mb-1 block text-xs text-slate-600">On orders over</label>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={tier.minOrderValue}
+                          onChange={(e) => updateTier(tier.localId, "minOrderValue", e.target.value)}
+                          placeholder="200"
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTiers((prev) => prev.filter((t) => t.localId !== tier.localId))}
+                        className="mt-5 shrink-0 rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-red-500"
+                        aria-label="Remove tier"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
+
                     <div>
                       <label className="mb-1 block text-xs text-slate-600">Give away</label>
-                      <select
-                        value={tier.rewardType}
-                        onChange={(e) => updateTier(tier.localId, "rewardType", e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      >
-                        <option value="item">A dish</option>
-                        <option value="addon">An add-on</option>
-                        <option value="manual">Type a name</option>
-                      </select>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {REWARD_MODES.map((mode) => (
+                          <button
+                            key={mode.value}
+                            type="button"
+                            onClick={() => updateTier(tier.localId, "rewardType", mode.value)}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                              tier.rewardType === mode.value
+                                ? "bg-orange-500 text-white"
+                                : "border border-slate-300 bg-white text-slate-600 hover:text-slate-900"
+                            }`}
+                          >
+                            {mode.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+
                     <div>
                       <label className="mb-1 block text-xs text-slate-600">
                         {tier.rewardType === "addon"
@@ -323,13 +347,13 @@ export default function RestaurantFreebieOffers() {
                           onChange={(e) => updateTier(tier.localId, "rewardName", e.target.value)}
                           placeholder="e.g. Cold Drink"
                           maxLength={120}
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                          className="w-full max-w-sm rounded-lg border border-slate-300 px-3 py-2 text-sm"
                         />
                       ) : (
                         <select
                           value={tier.rewardId}
                           onChange={(e) => updateTier(tier.localId, "rewardId", e.target.value)}
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                          className="w-full max-w-sm rounded-lg border border-slate-300 px-3 py-2 text-sm"
                         >
                           <option value="">Select…</option>
                           {(rewardOptions[tier.rewardType] || []).map((o) => (
@@ -341,16 +365,8 @@ export default function RestaurantFreebieOffers() {
                       )}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setTiers((prev) => prev.filter((t) => t.localId !== tier.localId))}
-                    className="mt-6 rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-red-500"
-                    aria-label="Remove tier"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+                )
+              })}
 
               <div className="flex flex-wrap items-center gap-3">
                 <button
