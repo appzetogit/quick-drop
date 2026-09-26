@@ -1,5 +1,9 @@
 import { DriverIncentiveRule } from '../models/driverIncentiveRule.model.js';
-import { getCurrentIncentiveForFoodPartner, tiersOfRule } from '../services/incentiveService.js';
+import {
+    getCurrentIncentiveForFoodPartner,
+    getCurrentIncentiveForDriver,
+    tiersOfRule,
+} from '../services/incentiveService.js';
 import { validateIncentiveRuleUpsertDto } from '../validators/incentiveRule.validator.js';
 import { sendResponse, sendError } from '../../../utils/response.js';
 
@@ -7,6 +11,20 @@ import { sendResponse, sendError } from '../../../utils/response.js';
 export async function getCurrentIncentiveController(req, res, next) {
     try {
         const data = await getCurrentIncentiveForFoodPartner(req.user?.userId);
+        return sendResponse(res, 200, 'Incentive progress fetched', data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * GET /taxi/drivers/incentives/ladder/current — same card, for a taxi
+ * driver, including one with no linked food/QC partner at all (the food
+ * route above has no id to start from for them).
+ */
+export async function getCurrentDriverIncentiveController(req, res, next) {
+    try {
+        const data = await getCurrentIncentiveForDriver(req.auth?.sub);
         return sendResponse(res, 200, 'Incentive progress fetched', data);
     } catch (error) {
         next(error);
@@ -35,9 +53,18 @@ export async function listIncentiveRulesController(req, res, next) {
 export async function upsertIncentiveRuleController(req, res, next) {
     try {
         const body = validateIncentiveRuleUpsertDto(req.body || {});
-        // One live ladder per segment AND zone: the zone's own, or the default.
+        // One live ladder per segment, zone, vehicle type AND window: daily
+        // and weekly are independent ladders for the same (zone, vehicleType)
+        // rather than alternatives, so saving one must never deactivate the
+        // other.
         await DriverIncentiveRule.updateMany(
-            { segment: body.segment, zoneId: body.zoneId, isActive: true },
+            {
+                segment: body.segment,
+                zoneId: body.zoneId,
+                vehicleTypeId: body.vehicleTypeId,
+                windowType: body.windowType,
+                isActive: true,
+            },
             { $set: { isActive: false } },
         );
         const created = await DriverIncentiveRule.create({ ...body, createdByAdminId: req.user?._id || null });
