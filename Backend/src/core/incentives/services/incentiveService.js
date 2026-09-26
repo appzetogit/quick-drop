@@ -520,10 +520,24 @@ async function buildCurrentIncentive(ctx, { forceSegment } = {}) {
     };
 }
 
-/** Entry point for a food/QC delivery partner opening their home screen. */
+/**
+ * Entry point for a food/QC delivery partner opening their home screen.
+ * Always the foodAndQuick segment: the endpoint itself already says which
+ * card is being asked for, so this must not re-guess from the driver's
+ * CURRENT workMode the way buildCurrentIncentive's fallback does.
+ *
+ * Without forceSegment here, a driver approved for both food and taxi who
+ * flips Food -> Taxi -> Food back saw their food ladder vanish: if this
+ * request lands before the driver document's workMode has actually settled
+ * back to a non-taxi value (or while it briefly reads 'all'), the fallback
+ * at line ~484 resolves to 'taxiAndPorter' instead, computes a taxi ladder
+ * for a request that has nothing to do with taxi, and returns null the
+ * moment that ladder has no active rule in scope -- even though a perfectly
+ * valid food ladder exists.
+ */
 export async function getCurrentIncentiveForFoodPartner(foodPartnerId) {
     const ctx = await resolveDriverContext({ startFrom: 'foodPartner', id: foodPartnerId });
-    return buildCurrentIncentive(ctx);
+    return buildCurrentIncentive(ctx, { forceSegment: 'foodAndQuick' });
 }
 
 /**
