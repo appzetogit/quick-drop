@@ -29,8 +29,14 @@ const rupees = (value) => {
 
 const emptyRow = () => ({
     localId: `row-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    // "catalog" picks a dish the restaurant already sells; "manual" is a typed
+    // name and price for something with no menu entry of its own. The server
+    // treats both the same way once saved -- see combo.js on the backend.
+    mode: "catalog",
     itemId: "",
     variantId: "",
+    manualName: "",
+    manualPrice: "",
     quantity: 1,
 })
 
@@ -50,12 +56,18 @@ const draftFromCombo = (combo) => ({
     description: combo.description || "",
     image: combo.image || "",
     comboPrice: combo.price != null ? String(combo.price) : "",
-    rows: (combo.comboComponents || []).map((c, index) => ({
-        localId: `row-${index}-${String(c.itemId)}`,
-        itemId: String(c.itemId || ""),
-        variantId: c.variantId ? String(c.variantId) : "",
-        quantity: Number(c.quantity) || 1,
-    })),
+    rows: (combo.comboComponents || []).map((c, index) => {
+        const isManual = !c.itemId
+        return {
+            localId: `row-${index}-${String(c.itemId || c.nameSnapshot)}`,
+            mode: isManual ? "manual" : "catalog",
+            itemId: String(c.itemId || ""),
+            variantId: c.variantId ? String(c.variantId) : "",
+            manualName: isManual ? c.nameSnapshot || "" : "",
+            manualPrice: isManual && c.listUnitPrice != null ? String(c.listUnitPrice) : "",
+            quantity: Number(c.quantity) || 1,
+        }
+    }),
 })
 
 export default function RestaurantCombos() {
@@ -145,6 +157,7 @@ export default function RestaurantCombos() {
 
     const unitPrice = useCallback(
         (row) => {
+            if (row.mode === "manual") return Number(row.manualPrice) || 0
             const dish = dishesById.get(row.itemId)
             if (!dish) return 0
             if (row.variantId) {
@@ -155,6 +168,15 @@ export default function RestaurantCombos() {
         },
         [dishesById],
     )
+
+    /** What makes a row "filled in" -- a picked dish, or a typed manual name. */
+    const isRowFilled = (row) => (row.mode === "manual" ? Boolean(row.manualName.trim()) : Boolean(row.itemId))
+
+    /** What counts as "a different dish" for the 2-dish minimum -- mirrors the
+     *  server's dishIdentity in combo.js, so the inline count and the eventual
+     *  save error never disagree. */
+    const rowIdentity = (row) =>
+        row.mode === "manual" ? `manual::${row.manualName.trim().toLowerCase()}` : row.itemId
 
     const componentTotal = useMemo(() => {
         if (!draft) return 0
@@ -192,12 +214,16 @@ export default function RestaurantCombos() {
         const name = draft.name.trim()
         if (!name) return toast.error("Give the combo a name.")
 
-        const rows = draft.rows.filter((row) => row.itemId)
+        const rows = draft.rows.filter(isRowFilled)
         if (rows.length < MIN_COMPONENTS) {
-            return toast.error(`Pick at least ${MIN_COMPONENTS} different dishes for a combo.`)
+            return toast.error(`Pick or type at least ${MIN_COMPONENTS} different dishes for a combo.`)
         }
-        if (new Set(rows.map((row) => row.itemId)).size < MIN_COMPONENTS) {
+        if (new Set(rows.map(rowIdentity)).size < MIN_COMPONENTS) {
             return toast.error("A combo needs at least two different dishes.")
+        }
+        const unpriced = rows.find((row) => row.mode === "manual" && !(Number(row.manualPrice) > 0))
+        if (unpriced) {
+            return toast.error(`Set a price for "${unpriced.manualName.trim()}".`)
         }
         if (!Number.isFinite(comboPriceNumber) || comboPriceNumber <= 0) {
             return toast.error("Set a combo price above zero.")
@@ -212,11 +238,19 @@ export default function RestaurantCombos() {
             name,
             description: draft.description.trim(),
             comboPrice: comboPriceNumber,
-            components: rows.map((row) => ({
-                itemId: row.itemId,
-                variantId: row.variantId || null,
-                quantity: Number(row.quantity) || 1,
-            })),
+            components: rows.map((row) =>
+                row.mode === "manual"
+                    ? {
+                          manualName: row.manualName.trim(),
+                          manualPrice: Number(row.manualPrice) || 0,
+                          quantity: Number(row.quantity) || 1,
+                      }
+                    : {
+                          itemId: row.itemId,
+                          variantId: row.variantId || null,
+                          quantity: Number(row.quantity) || 1,
+                      },
+            ),
         }
 
         setSaving(true)
@@ -422,82 +456,143 @@ export default function RestaurantCombos() {
 
                             <div className="space-y-2">
                                 <span className="text-xs font-semibold text-gray-700">
-                                    Dishes in this combo ({draft.rows.filter((r) => r.itemId).length})
+                                    Dishes in this combo ({draft.rows.filter(isRowFilled).length})
                                 </span>
 
                                 {draft.rows.map((row) => {
                                     const dish = dishesById.get(row.itemId)
                                     const variants = dish?.variants || []
+                                    const isManual = row.mode === "manual"
                                     return (
                                         <div
                                             key={row.localId}
-                                            className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-gray-50/60 p-2"
+                                            className="space-y-2 rounded-xl border border-gray-200 bg-gray-50/60 p-2"
                                         >
-                                            <select
-                                                value={row.itemId}
-                                                onChange={(e) =>
-                                                    patchRow(row.localId, {
-                                                        itemId: e.target.value,
-                                                        variantId: "",
-                                                    })
-                                                }
-                                                className="min-w-[10rem] flex-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-primary-orange"
-                                            >
-                                                <option value="">Choose a dish...</option>
-                                                {dishes.map((d) => (
-                                                    <option key={d.id} value={d.id}>
-                                                        {d.name} - {rupees(d.price)}
-                                                    </option>
-                                                ))}
-                                            </select>
-
-                                            {variants.length > 0 && (
-                                                <select
-                                                    value={row.variantId}
-                                                    onChange={(e) =>
-                                                        patchRow(row.localId, { variantId: e.target.value })
-                                                    }
-                                                    className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-primary-orange"
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => patchRow(row.localId, { mode: "catalog" })}
+                                                    className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                                                        !isManual
+                                                            ? "bg-primary-orange text-white"
+                                                            : "bg-white text-gray-500 border border-gray-200 hover:text-gray-700"
+                                                    }`}
                                                 >
-                                                    <option value="">Any size</option>
-                                                    {variants.map((v) => (
-                                                        <option key={String(v._id)} value={String(v._id)}>
-                                                            {v.name} - {rupees(v.price)}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            )}
+                                                    From the menu
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => patchRow(row.localId, { mode: "manual" })}
+                                                    className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                                                        isManual
+                                                            ? "bg-primary-orange text-white"
+                                                            : "bg-white text-gray-500 border border-gray-200 hover:text-gray-700"
+                                                    }`}
+                                                >
+                                                    Type manually
+                                                </button>
+                                            </div>
 
-                                            <input
-                                                type="text"
-                                                inputMode="numeric"
-                                                value={row.quantity}
-                                                onChange={(e) =>
-                                                    patchRow(row.localId, {
-                                                        quantity: e.target.value.replace(/[^0-9]/g, "") || "",
-                                                    })
-                                                }
-                                                className="w-16 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-center text-sm outline-none focus:border-primary-orange"
-                                                aria-label="Quantity"
-                                            />
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                {isManual ? (
+                                                    <>
+                                                        <input
+                                                            type="text"
+                                                            value={row.manualName}
+                                                            onChange={(e) =>
+                                                                patchRow(row.localId, { manualName: e.target.value })
+                                                            }
+                                                            placeholder="Item name, e.g. Cold Drink"
+                                                            className="min-w-[10rem] flex-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-primary-orange"
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            inputMode="decimal"
+                                                            value={row.manualPrice}
+                                                            onChange={(e) =>
+                                                                patchRow(row.localId, {
+                                                                    manualPrice: e.target.value.replace(
+                                                                        /[^0-9.]/g,
+                                                                        "",
+                                                                    ),
+                                                                })
+                                                            }
+                                                            placeholder="Price"
+                                                            className="w-24 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-primary-orange"
+                                                        />
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <select
+                                                            value={row.itemId}
+                                                            onChange={(e) =>
+                                                                patchRow(row.localId, {
+                                                                    itemId: e.target.value,
+                                                                    variantId: "",
+                                                                })
+                                                            }
+                                                            className="min-w-[10rem] flex-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-primary-orange"
+                                                        >
+                                                            <option value="">Choose a dish...</option>
+                                                            {dishes.map((d) => (
+                                                                <option key={d.id} value={d.id}>
+                                                                    {d.name} - {rupees(d.price)}
+                                                                </option>
+                                                            ))}
+                                                        </select>
 
-                                            <span className="w-20 text-right text-sm font-semibold text-gray-700">
-                                                {rupees(unitPrice(row) * (Number(row.quantity) || 1))}
-                                            </span>
+                                                        {variants.length > 0 && (
+                                                            <select
+                                                                value={row.variantId}
+                                                                onChange={(e) =>
+                                                                    patchRow(row.localId, {
+                                                                        variantId: e.target.value,
+                                                                    })
+                                                                }
+                                                                className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-primary-orange"
+                                                            >
+                                                                <option value="">Any size</option>
+                                                                {variants.map((v) => (
+                                                                    <option key={String(v._id)} value={String(v._id)}>
+                                                                        {v.name} - {rupees(v.price)}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        )}
+                                                    </>
+                                                )}
 
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    setDraft({
-                                                        ...draft,
-                                                        rows: draft.rows.filter((r) => r.localId !== row.localId),
-                                                    })
-                                                }
-                                                className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                                                aria-label="Remove dish"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </button>
+                                                <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    value={row.quantity}
+                                                    onChange={(e) =>
+                                                        patchRow(row.localId, {
+                                                            quantity: e.target.value.replace(/[^0-9]/g, "") || "",
+                                                        })
+                                                    }
+                                                    className="w-16 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-center text-sm outline-none focus:border-primary-orange"
+                                                    aria-label="Quantity"
+                                                />
+
+                                                <span className="w-20 text-right text-sm font-semibold text-gray-700">
+                                                    {rupees(unitPrice(row) * (Number(row.quantity) || 1))}
+                                                </span>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setDraft({
+                                                            ...draft,
+                                                            rows: draft.rows.filter((r) => r.localId !== row.localId),
+                                                        })
+                                                    }
+                                                    className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                                    aria-label="Remove dish"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </button>
+                                            </div>
                                         </div>
                                     )
                                 })}

@@ -50,12 +50,28 @@ const toMoney = (value) => {
 const idOf = (value) => (value == null ? '' : String(value));
 
 /**
+ * A component identifies a dish that may not exist in the catalogue at all --
+ * a manually-typed name has no itemId to key off, so it is keyed by its own
+ * name and price instead. Two manual rows with the same name and price are
+ * the same "dish" for merge purposes, same as picking a real one twice.
+ */
+const manualKeyOf = (component = {}) =>
+    String(component.manualName || '').trim().toLowerCase() + '::' + (Number(component.manualPrice) || 0);
+
+/**
  * A component is identified by dish AND variant: "Pizza (Small)" and
  * "Pizza (Large)" are different things to buy, so they are different rows and a
- * combo may legitimately contain both.
+ * combo may legitimately contain both. A manual row has no variant, so it is
+ * keyed by name and price alone.
  */
 export const componentKey = (component = {}) =>
-    idOf(component.itemId) + '::' + idOf(component.variantId);
+    component.itemId
+        ? idOf(component.itemId) + '::' + idOf(component.variantId)
+        : 'manual::' + manualKeyOf(component);
+
+/** What "different dishes" counts for the composition rules -- a manual row
+ *  counts as its own dish, same as a catalogue one. */
+const dishIdentity = (component = {}) => (component.itemId ? idOf(component.itemId) : componentKey(component));
 
 const readMap = (source, key) => {
     if (!source) return undefined;
@@ -64,22 +80,40 @@ const readMap = (source, key) => {
 };
 
 /**
- * Clean up whatever the panel sent: coerce quantities, drop rows with no dish, and
- * merge duplicates by adding their quantities rather than rejecting them. Someone
- * adding the same dish twice means "two of these", not a mistake.
+ * Clean up whatever the panel sent: coerce quantities, drop rows with neither a
+ * dish nor a manual name, and merge duplicates by adding their quantities rather
+ * than rejecting them. Someone adding the same dish twice means "two of these",
+ * not a mistake.
+ *
+ * A row is either a catalogue pick (itemId) or a manually-typed one (manualName
+ * + manualPrice) -- never both. Manual rows exist for a giveaway or a one-off
+ * that never got a menu entry of its own; they carry their own price rather
+ * than looking one up, and are always available (see resolveComboAvailability).
  */
 export function normalizeComboComponents(rows = []) {
     if (!Array.isArray(rows)) return [];
     const merged = new Map();
     for (const row of rows) {
         const itemId = idOf(row?.itemId ?? row?._id ?? row?.foodId).trim();
-        if (!itemId) continue;
-        const variantIdRaw = idOf(row?.variantId).trim();
-        const component = {
-            itemId,
-            variantId: variantIdRaw || null,
-            quantity: toPositiveInt(row?.quantity, 1),
-        };
+        const manualName = itemId ? '' : String(row?.manualName || '').trim();
+        let component;
+        if (itemId) {
+            component = {
+                itemId,
+                variantId: idOf(row?.variantId).trim() || null,
+                quantity: toPositiveInt(row?.quantity, 1),
+            };
+        } else if (manualName) {
+            component = {
+                itemId: null,
+                variantId: null,
+                manualName,
+                manualPrice: toMoney(row?.manualPrice),
+                quantity: toPositiveInt(row?.quantity, 1),
+            };
+        } else {
+            continue;
+        }
         const key = componentKey(component);
         const existing = merged.get(key);
         if (existing) existing.quantity += component.quantity;
@@ -96,7 +130,7 @@ export function normalizeComboComponents(rows = []) {
  * checks can assert on it.
  */
 export function validateComboComposition(components = []) {
-    const distinctDishes = new Set(components.map((c) => idOf(c.itemId))).size;
+    const distinctDishes = new Set(components.map(dishIdentity)).size;
 
     // Distinct dishes first, and the word "different" is doing real work here.
     // normalizeComboComponents merges duplicate rows, so picking the same dish
@@ -119,11 +153,14 @@ export function validateComboComposition(components = []) {
     return { ok: true, reason: '' };
 }
 
-/** What the same dishes would cost bought separately. */
+/** What the same dishes would cost bought separately. A manual row's price is
+ *  whatever was typed for it -- there is no catalogue lookup to fall back on. */
 export function computeComponentTotal(components = [], priceByKey = new Map()) {
     let total = 0;
     for (const component of components) {
-        const unit = Number(readMap(priceByKey, componentKey(component)) ?? 0);
+        const unit = component.itemId
+            ? Number(readMap(priceByKey, componentKey(component)) ?? 0)
+            : Number(component.manualPrice) || 0;
         if (!Number.isFinite(unit) || unit < 0) continue;
         total += unit * toPositiveInt(component.quantity, 1);
     }
@@ -168,10 +205,14 @@ export function computeComboSaving(componentTotal, comboPrice) {
  * `stateByKey` maps a component key to { isAvailable, approvalStatus, name }. A
  * component the menu has never heard of counts as missing, not as available: a
  * deleted dish must not silently drop out of a combo the customer is paying for.
+ *
+ * A manual row is exempt: it has no catalogue entry that can sell out, go
+ * unapproved, or be deleted out from under the combo, so it can never block one.
  */
 export function resolveComboAvailability(components = [], stateByKey = new Map()) {
     const blockedBy = [];
     for (const component of components) {
+        if (!component.itemId) continue;
         const key = componentKey(component);
         const state = readMap(stateByKey, key);
         if (!state) {
@@ -207,7 +248,9 @@ export function allocateComboPrice(components = [], priceByKey = new Map(), comb
     const rows = components.map((component) => {
         const key = componentKey(component);
         const quantity = toPositiveInt(component.quantity, 1);
-        const raw = Number(readMap(priceByKey, key) ?? 0);
+        const raw = component.itemId
+            ? Number(readMap(priceByKey, key) ?? 0)
+            : Number(component.manualPrice) || 0;
         const unit = Number.isFinite(raw) && raw > 0 ? raw : 0;
         return { component, key, quantity, unit, lineList: toMoney(unit * quantity), paise: 0 };
     });
@@ -234,8 +277,12 @@ export function allocateComboPrice(components = [], priceByKey = new Map(), comb
     }
 
     return rows.map((row) => ({
+        // Carried through rather than re-derived: a manual row's key depends on
+        // manualName/manualPrice, which this output shape does not otherwise keep.
+        key: row.key,
         itemId: row.component.itemId,
         variantId: row.component.variantId,
+        manualName: row.component.itemId ? '' : row.component.manualName || '',
         quantity: row.quantity,
         listUnitPrice: toMoney(row.unit),
         listLineTotal: row.lineList,

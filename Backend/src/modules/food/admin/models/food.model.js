@@ -295,7 +295,9 @@ const foodSchema = new mongoose.Schema(
         comboComponents: {
             type: [new mongoose.Schema(
                 {
-                    itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodItem', required: true },
+                    // Null for a manually-typed component (no catalogue dish backs it) --
+                    // nameSnapshot/listUnitPrice below carry what was typed either way.
+                    itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodItem', default: null },
                     variantId: { type: mongoose.Schema.Types.ObjectId, default: null },
                     quantity: { type: Number, min: 1, default: 1 },
                     nameSnapshot: { type: String, trim: true, default: '' },

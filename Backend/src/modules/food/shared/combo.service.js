@@ -62,9 +62,14 @@ const unitPriceFor = (doc, variantId) => {
  *
  * A combo may not contain another combo. Nesting would make the pro-rata split
  * recursive and the kitchen ticket unreadable, and there is no case for it.
+ *
+ * A manual component (no itemId, just a typed name and price) never touches the
+ * database here -- its price and availability are exactly what was typed, so it
+ * is priced and marked available without a lookup.
  */
 export async function resolveComboComponentContext(restaurantId, components = []) {
-    const ids = [...new Set(components.map((c) => String(c.itemId)))].filter(isObjectId);
+    const realComponents = components.filter((c) => c.itemId);
+    const ids = [...new Set(realComponents.map((c) => String(c.itemId)))].filter(isObjectId);
     const docs = ids.length
         ? await FoodItem.find({ _id: { $in: ids }, restaurantId })
             .select('name price variants variantsEnabled isAvailable approvalStatus isCombo categoryId categoryName foodType image')
@@ -77,6 +82,11 @@ export async function resolveComboComponentContext(restaurantId, components = []
 
     for (const component of components) {
         const key = componentKey(component);
+        if (!component.itemId) {
+            priceByKey.set(key, Number(component.manualPrice) || 0);
+            stateByKey.set(key, { name: component.manualName, isAvailable: true, approvalStatus: 'approved' });
+            continue;
+        }
         const doc = docsById.get(String(component.itemId));
         if (!doc) continue;
         if (doc.isCombo) {
@@ -94,7 +104,7 @@ export async function resolveComboComponentContext(restaurantId, components = []
         });
     }
 
-    const missing = components.filter((c) => !docsById.has(String(c.itemId)));
+    const missing = realComponents.filter((c) => !docsById.has(String(c.itemId)));
     if (missing.length) {
         throw new ValidationError('One of the chosen dishes is no longer on your menu. Remove it and try again.');
     }
@@ -132,20 +142,24 @@ export async function buildComboPricing(restaurantId, rawComponents, comboPrice)
 }
 
 /** Snapshot the component names onto the stored rows, so a kitchen ticket and an
- *  old order stay readable even after a dish is renamed or removed. */
+ *  old order stay readable even after a dish is renamed or removed. A manual
+ *  row has no doc to read a name from -- it snapshots the typed name instead. */
 const stampComponentNames = (components, docsById, allocation) => {
-    const shareByKey = new Map(allocation.map((row) => [componentKey(row), row]));
+    // Keyed by the allocation row's own `key`, not a re-derived componentKey:
+    // the allocation row does not carry manualPrice, so recomputing the key from
+    // it would collide every manual row with an empty one.
+    const shareByKey = new Map(allocation.map((row) => [row.key, row]));
     return components.map((component) => {
-        const doc = docsById.get(String(component.itemId));
+        const doc = component.itemId ? docsById.get(String(component.itemId)) : null;
         const variant = doc && component.variantId
             ? (doc.variants || []).find((v) => String(v._id) === String(component.variantId))
             : null;
         const share = shareByKey.get(componentKey(component));
         return {
-            itemId: component.itemId,
+            itemId: component.itemId || null,
             variantId: component.variantId || null,
             quantity: component.quantity,
-            nameSnapshot: doc?.name || '',
+            nameSnapshot: doc?.name || component.manualName || '',
             variantNameSnapshot: variant?.name || '',
             listUnitPrice: share?.listUnitPrice ?? 0,
             allocatedLineTotal: share?.comboLineTotal ?? 0,
@@ -187,9 +201,11 @@ export async function saveCombo(restaurantId, payload = {}, { comboId = null, up
 
     const built = await buildComboPricing(restaurantId, payload.components, payload.comboPrice);
 
-    // Category: whatever was chosen, else inherit the first component's, so a
-    // combo never lands in an unnamed section of the menu.
-    const firstDoc = built.docsById.get(String(built.components[0].itemId));
+    // Category: whatever was chosen, else inherit the first REAL component's --
+    // a manual component has no category of its own to give. A fully manual
+    // combo (no catalogue dish at all) falls through to payload.categoryId only.
+    const firstRealComponent = built.components.find((c) => c.itemId);
+    const firstDoc = firstRealComponent ? built.docsById.get(String(firstRealComponent.itemId)) : null;
     const categoryId = payload.categoryId && isObjectId(payload.categoryId)
         ? payload.categoryId
         : firstDoc?.categoryId || null;
@@ -281,9 +297,13 @@ export async function syncComboAvailability(restaurantId) {
     let changed = 0;
     for (const combo of combos) {
         const components = (combo.comboComponents || []).map((c) => ({
-            itemId: String(c.itemId),
+            itemId: c.itemId ? String(c.itemId) : null,
             variantId: c.variantId ? String(c.variantId) : null,
             quantity: c.quantity,
+            // Only meaningful for a manual row (itemId null); resolveComboComponentContext
+            // never looks these up in the database, so re-reading the snapshot is enough.
+            manualName: c.nameSnapshot || '',
+            manualPrice: Number(c.listUnitPrice) || 0,
         }));
         if (!components.length) continue;
 
