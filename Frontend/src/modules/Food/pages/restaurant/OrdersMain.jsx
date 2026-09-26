@@ -853,6 +853,14 @@ export default function OrdersMain() {
   const [orderToCancel, setOrderToCancel] = useState(null);
   const [acceptSwipeProgress, setAcceptSwipeProgress] = useState(0);
   const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
+  const [isVerifyingPrescription, setIsVerifyingPrescription] = useState(false);
+  // A medical order the pharmacy hasn't reviewed yet: the popup shows only the
+  // prescription photo and the customer's contact until this is resolved --
+  // everything else (items, bill, prep time) stays hidden so nobody accepts
+  // an order on a prescription they never actually looked at.
+  const needsPrescriptionReview = (orderLike) =>
+    orderLike?.prescription?.required === true &&
+    orderLike?.prescription?.status === "pending_review";
   const audioRef = useRef(null);
   const shownOrdersRef = useRef(new Set()); // Track orders already shown in popup
   const acceptSliderRef = useRef(null);
@@ -1454,6 +1462,34 @@ export default function OrdersMain() {
     // No need to manually refresh here as the component polls every 10 seconds
   };
 
+  /**
+   * Pharmacy approves the uploaded prescription. This only unlocks the order
+   * for acceptance (see prescriptionRules.js's canAcceptOrder) -- it does not
+   * accept it by itself, so it immediately chains into the normal accept flow.
+   */
+  const handleVerifyPrescription = async () => {
+    if (isVerifyingPrescription || isAcceptingOrder) return;
+    const orderToVerify = popupOrder || newOrder;
+    const orderId = orderToVerify?.orderMongoId || orderToVerify?.orderId;
+    if (!orderId) return;
+
+    setIsVerifyingPrescription(true);
+    try {
+      await restaurantAPI.reviewPrescription(orderId, "approved");
+      debugLog("? Prescription approved:", orderId);
+    } catch (error) {
+      debugError("? Error approving prescription:", error);
+      toast.error(
+        error.response?.data?.message ||
+          "Could not verify the prescription. Please try again.",
+      );
+      setIsVerifyingPrescription(false);
+      return;
+    }
+    setIsVerifyingPrescription(false);
+    await handleAcceptOrder();
+  };
+
   // Handle reject order
   const handleRejectClick = () => {
     setShowRejectPopup(true);
@@ -1469,6 +1505,12 @@ export default function OrdersMain() {
     if (orderToReject?.orderMongoId || orderToReject?.orderId) {
       try {
         const orderId = orderToReject.orderMongoId || orderToReject.orderId;
+        // A medical order still awaiting review: record the prescription's
+        // own rejection first (it needs its own reason, for the customer's
+        // record), then cancel the order the normal way.
+        if (needsPrescriptionReview(orderToReject)) {
+          await restaurantAPI.reviewPrescription(orderId, "rejected", rejectReason);
+        }
         await restaurantAPI.rejectOrder(orderId, rejectReason);
         debugLog("? Order rejected:", orderId);
         requestOrdersRefresh();
@@ -2204,6 +2246,57 @@ export default function OrdersMain() {
 
                 {/* Content */}
                 <div className="px-4 pt-4 pb-4 flex-1 overflow-y-auto min-h-0">
+                  {needsPrescriptionReview(popupOrder || newOrder) ? (
+                    /*
+                     * A pharmacy sees only this until the prescription is
+                     * reviewed -- no items, address or bill. Showing the rest
+                     * before a decision is made is exactly what this gate
+                     * exists to prevent (see prescriptionRules.js).
+                     */
+                    <div className="space-y-4">
+                      <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
+                        <p className="text-sm font-semibold text-amber-800">
+                          Prescription needs your review
+                        </p>
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          Order details unlock once you verify it.
+                        </p>
+                      </div>
+
+                      {(popupOrder || newOrder)?.prescription?.imageUrl ? (
+                        <a
+                          href={(popupOrder || newOrder).prescription.imageUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block rounded-lg overflow-hidden border border-gray-200">
+                          <img
+                            src={(popupOrder || newOrder).prescription.imageUrl}
+                            alt="Prescription"
+                            className="w-full max-h-96 object-contain bg-gray-50"
+                          />
+                        </a>
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
+                          No prescription photo was attached
+                        </div>
+                      )}
+
+                      <div className="rounded-lg bg-gray-50 p-3">
+                        <p className="text-xs text-gray-500">Customer contact</p>
+                        <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                          {(popupOrder || newOrder)?.customerName || "Customer"}
+                        </p>
+                        {(popupOrder || newOrder)?.customerPhone && (
+                          <a
+                            href={`tel:${(popupOrder || newOrder).customerPhone}`}
+                            className="text-sm text-blue-600 font-medium">
+                            {(popupOrder || newOrder).customerPhone}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   {/* Scheduled Indicator */}
                   {(popupOrder || newOrder)?.scheduledAt && (
                     <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-3">
@@ -2456,9 +2549,27 @@ export default function OrdersMain() {
                       </div>
                     </div>
                   </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="px-4 pb-4 pt-3 border-t border-gray-200 bg-white">
+                  {needsPrescriptionReview(popupOrder || newOrder) ? (
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleRejectClick}
+                        disabled={isVerifyingPrescription}
+                        className="flex-1 bg-white border-2 border-red-500 text-red-600 py-3 rounded-lg font-semibold text-sm hover:bg-red-50 transition-colors disabled:opacity-60">
+                        Reject
+                      </button>
+                      <button
+                        onClick={handleVerifyPrescription}
+                        disabled={isVerifyingPrescription}
+                        className="flex-1 bg-green-600 text-white py-3 rounded-lg font-semibold text-sm hover:bg-green-700 transition-colors disabled:opacity-60">
+                        {isVerifyingPrescription ? "Verifying..." : "Verified"}
+                      </button>
+                    </div>
+                  ) : (
                   <div className="space-y-3">
                     <div
                       ref={acceptSliderRef}
@@ -2517,6 +2628,7 @@ export default function OrdersMain() {
                       Reject Order
                     </button>
                   </div>
+                  )}
                 </div>
               </motion.div>
             </motion.div>

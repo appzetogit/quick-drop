@@ -1739,6 +1739,18 @@ export const restaurantAPI = {
       orderStatus: "cancelled_by_restaurant",
       note: reason,
     }),
+  /**
+   * Approve or reject a medical order's prescription (pharmacy only).
+   * Separate from the order's own accept/reject -- see
+   * Backend/.../food/shared/prescriptionRules.js. A rejection reason is
+   * required by the server when decision is "rejected".
+   */
+  reviewPrescription: (orderId, decision, reason = "") =>
+    apiClient.patch(
+      `/food/restaurant/orders/${String(orderId)}/prescription`,
+      { decision, reason },
+      { contextModule: "restaurant" },
+    ),
   /** Mark order ready (restaurant handoff). */
   markOrderReady: (orderId) =>
     restaurantAPI.updateOrderStatus(orderId, {
