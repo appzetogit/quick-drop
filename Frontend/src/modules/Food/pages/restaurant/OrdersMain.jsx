@@ -99,6 +99,7 @@ const transformOrderForList = (order) => ({
     : new Date(order.createdAt || Date.now()),
   initialETA: order.estimatedDeliveryTime || 30,
   sortTimestamp: new Date(getAllOrdersTimestamp(order)).getTime(),
+  prescriptionOnly: Boolean(order.prescriptionOnly),
 });
 
 // Completed Orders List Component
@@ -1253,6 +1254,15 @@ export default function OrdersMain() {
             const orderId = orderToPopup.orderId || orderToPopup._id;
 
             // Transform order to match newOrder format (include payment so COD shows correctly)
+            //
+            // prescription/customerName/customerPhone are included alongside
+            // the rest: needsPrescriptionReview/rejectReasonsFor/the contact
+            // block all read them off (popupOrder || newOrder) directly.
+            // Without them, a medical order that reached the popup through
+            // this REST-poll path (rather than the socket "new_order" push,
+            // which already sends the full document) silently fell back to
+            // the normal items/Accept-swipe UI and generic reject reasons --
+            // exactly as if it were never a prescription order at all.
             const orderForPopup = {
               orderId: orderToPopup.orderId,
               orderMongoId: orderToPopup._id,
@@ -1261,6 +1271,9 @@ export default function OrdersMain() {
               items: orderToPopup.items || [],
               total: orderToPopup.pricing?.total || 0,
               customerAddress: orderToPopup.address,
+              customerName: orderToPopup.customerName,
+              customerPhone: orderToPopup.customerPhone,
+              prescription: orderToPopup.prescription,
               status: orderToPopup.status,
               createdAt: orderToPopup.createdAt,
               scheduledAt: orderToPopup.scheduledAt,
@@ -2977,6 +2990,7 @@ function OrderCard({
   photoAlt,
   deliveryPartnerId,
   dispatchStatus,
+  prescriptionOnly = false,
   onSelect,
   onCancel,
   onMarkReady,
@@ -3001,9 +3015,17 @@ function OrderCard({
         normalizedStatus === "ready" ||
         normalizedStatus === "preparing"),
   );
-  const statusLabel = String(status || "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  // A pharmacy doesn't "prepare" a prescription the way a kitchen prepares a
+  // dish -- what actually happens at this stage is the pharmacist dispensing
+  // against the prescription they already verified to accept the order.
+  // Every other stage (accepted, ready to pickup, picked up, delivered)
+  // reads the same for both, so only this one label needs a medical variant.
+  const statusLabel =
+    prescriptionOnly && normalizedStatus === "preparing"
+      ? "Verified"
+      : String(status || "")
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <div className="w-full bg-white rounded-2xl border border-gray-200 mb-3 overflow-hidden shadow-sm">
@@ -3181,6 +3203,7 @@ function PreparingOrders({
               dispatchStatus: order.dispatch?.status || null,
               paymentMethod:
                 order.paymentMethod || order.payment?.method || null,
+              prescriptionOnly: Boolean(order.prescriptionOnly),
             };
           });
 
@@ -3427,6 +3450,7 @@ function PreparingOrders({
                 paymentMethod={order.paymentMethod}
                 deliveryPartnerId={order.deliveryPartnerId}
                 dispatchStatus={order.dispatchStatus}
+                prescriptionOnly={order.prescriptionOnly}
                 onSelect={onSelectOrder}
                 onCancel={onCancel}
                 onMarkReady={handleMarkReady}
@@ -3487,6 +3511,7 @@ function ReadyOrders({ onSelectOrder, refreshToken = 0 }) {
             paymentMethod: order.paymentMethod || order.payment?.method || null,
             deliveryPartnerId: order.deliveryPartnerId || null,
             dispatchStatus: order.dispatch?.status || null,
+            prescriptionOnly: Boolean(order.prescriptionOnly),
           }));
 
           if (isMounted) {
@@ -3605,6 +3630,7 @@ const OutForDeliveryOrders = ({ onSelectOrder, refreshToken = 0 }) => {
             paymentMethod: order.paymentMethod || order.payment?.method || null,
             deliveryPartnerId: order.deliveryPartnerId || null,
             dispatchStatus: order.dispatch?.status || null,
+            prescriptionOnly: Boolean(order.prescriptionOnly),
           }));
 
           if (isMounted) {
