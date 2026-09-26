@@ -25,9 +25,14 @@ export async function getFreebieOffer(restaurantId) {
  *
  * @param {string} restaurantId
  * @param {number} subtotal  paid item subtotal, excluding fees and any freebie
+ * @param {boolean} [claimed]  the customer tapped Add on the earned reward.
+ *   `tier`/`nextTier` are always resolved (they drive the progress banner
+ *   whether or not anything has been claimed yet); `line` -- the actual free
+ *   order line -- is only ever built when this is true, so simply crossing
+ *   the threshold never adds anything to the order by itself.
  * @returns {{ line: object|null, tier: object|null, nextTier: object|null }}
  */
-export async function resolveFreebieForOrder(restaurantId, subtotal) {
+export async function resolveFreebieForOrder(restaurantId, subtotal, claimed = false) {
     const empty = { line: null, tier: null, nextTier: null };
 
     const offer = await getFreebieOffer(restaurantId);
@@ -45,8 +50,14 @@ export async function resolveFreebieForOrder(restaurantId, subtotal) {
 
     if (!tier) return { ...empty, nextTier };
 
+    // Resolved either way: the app needs the reward's name to show "Free Cold
+    // Drink unlocked!" the instant the threshold is crossed, not only after
+    // it's been claimed.
     const reward = await loadReward(restaurantId, tier);
-    return { line: buildFreebieLine(tier, reward), tier, nextTier };
+    const earnedTier = { ...tier, rewardName: reward?.name || '' };
+    if (!claimed) return { line: null, tier: earnedTier, nextTier };
+
+    return { line: buildFreebieLine(tier, reward), tier: earnedTier, nextTier };
 }
 
 /**
@@ -60,6 +71,14 @@ export async function resolveFreebieForOrder(restaurantId, subtotal) {
  */
 async function loadReward(restaurantId, tier) {
     if (!tier) return null;
+
+    if (tier.rewardType === 'manual') {
+        // No catalogue row to look up -- whatever the admin typed IS the
+        // reward. No id: buildFreebieLine's line has nothing to link back to
+        // a FoodItem/FoodAddon for this type.
+        const name = String(tier.rewardName || '').trim();
+        return name ? { _id: null, name } : null;
+    }
 
     if (tier.rewardType === 'addon') {
         if (!tier.rewardAddonId) return null;

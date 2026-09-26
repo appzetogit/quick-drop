@@ -17,10 +17,18 @@ const freebieTierSchema = new mongoose.Schema(
     {
         /** Item subtotal, before fees and before the reward itself, that earns this tier. */
         minOrderValue: { type: Number, required: true, min: 0 },
-        rewardType: { type: String, enum: ['item', 'addon'], default: 'item' },
+        rewardType: { type: String, enum: ['item', 'addon', 'manual'], default: 'item' },
         /** Exactly one of these is set, per rewardType. */
         rewardItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodItem', default: null },
         rewardAddonId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodAddon', default: null },
+        /**
+         * rewardType 'manual' only: a reward that isn't one of the restaurant's
+         * own menu items/add-ons, so there's no FoodItem/FoodAddon row to point
+         * at or price from. Free-text name, and priced at 0 outright -- see
+         * resolveFreebieForOrder, which has no catalogue price to zero out for
+         * this type the way it does for 'item'/'addon'.
+         */
+        rewardName: { type: String, trim: true, default: '' },
     },
     { _id: true }
 );

@@ -368,11 +368,13 @@ export async function calculateOrderPricing(userId, dto) {
   // the same rule stated the other way round: the threshold is measured on what
   // the customer PAYS for, and a free second pizza is not paid for.
   //
-  // Server-side because the reward is earned, not chosen -- a client asking for
-  // a freebie, or for a costlier one than its order earned, gets what the
-  // subtotal actually entitles it to.
+  // Server-side because WHETHER a tier is earned is never chosen by the client
+  // -- a client asking for a freebie its order hasn't reached gets nothing. But
+  // reaching a tier only unlocks it; `dto.claimFreebie` is the customer's own
+  // choice to actually take it (the app's Add button on the now-unlocked
+  // reward), same as any other line they add to their own cart.
   const { line: freebieLine, tier: freebieTier, nextTier: freebieNextTier } =
-    await resolveFreebieForOrder(dto.restaurantId, subtotal);
+    await resolveFreebieForOrder(dto.restaurantId, subtotal, Boolean(dto.claimFreebie));
   if (freebieLine) {
     items.push(freebieLine);
     dto.items = items;
@@ -1040,7 +1042,10 @@ export async function calculateOrderPricing(userId, dto) {
           ? {
               minOrderValue: freebieTier.minOrderValue,
               rewardType: freebieTier.rewardType,
-              name: freebieLine?.name || '',
+              name: freebieTier.rewardName || '',
+              // Whether this tap of calculate actually added the free line --
+              // earning it only unlocks the Add button, see resolveFreebieForOrder.
+              claimed: Boolean(freebieLine),
             }
           : null,
         next: freebieNextTier

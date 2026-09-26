@@ -362,6 +362,102 @@ const attachFreeDeliveryOffer = async (restaurants = []) => {
     });
 };
 
+/**
+ * "Spend ₹X, get a free Y" ladder, batch-attached the same way
+ * attachFreeDeliveryOffer is -- one query for the whole page rather than one
+ * per restaurant card.
+ *
+ * Unlike free delivery there is no platform-level fallback: a freebie ladder
+ * is a restaurant's own choice, one document per restaurant (see
+ * shared/freebieOffer.service.js), so a restaurant with none configured
+ * simply reports `freebieOffer: null` rather than falling back to anything.
+ *
+ * Reward names are resolved here too (same lookup shape as
+ * freebieOffer.service.js's loadReward, batched instead of per-tier) so the
+ * app can show "add ₹40 more for a free Cold Drink" before checkout, not only
+ * once a cart is being priced. Whether each tier is currently EARNED/claimed
+ * is not this endpoint's job -- that depends on the customer's live cart
+ * total, which only /orders/calculate knows.
+ */
+const attachFreebieOffer = async (restaurants = []) => {
+    const list = Array.isArray(restaurants) ? restaurants : [];
+    if (!list.length) return list;
+
+    const ids = list.map((r) => r?._id).filter(Boolean);
+    if (!ids.length) return list;
+
+    let offersByRestaurant = new Map();
+    try {
+        const { FoodFreebieOffer } = await import('../../admin/models/freebieOffer.model.js');
+        const offers = await FoodFreebieOffer.find({ restaurantId: { $in: ids } }).lean();
+        offersByRestaurant = new Map(offers.map((o) => [String(o.restaurantId), o]));
+    } catch (err) {
+        // A missing/broken freebie collection must not break the restaurant
+        // list; every restaurant simply reports no offer.
+        console.error('Freebie badge: offers unavailable:', err?.message || err);
+        return list;
+    }
+    if (!offersByRestaurant.size) return list;
+
+    // Every item/addon id any active offer's tiers reference, across the
+    // whole page, fetched in two queries total rather than one per tier.
+    const itemIds = new Set();
+    const addonIds = new Set();
+    for (const offer of offersByRestaurant.values()) {
+        if (offer.isActive === false) continue;
+        for (const tier of offer.tiers || []) {
+            if (tier.rewardType === 'item' && tier.rewardItemId) itemIds.add(String(tier.rewardItemId));
+            if (tier.rewardType === 'addon' && tier.rewardAddonId) addonIds.add(String(tier.rewardAddonId));
+        }
+    }
+
+    const itemNames = new Map();
+    const addonNames = new Map();
+    try {
+        if (itemIds.size) {
+            const { FoodItem } = await import('../../admin/models/food.model.js');
+            const docs = await FoodItem.find({ _id: { $in: [...itemIds] }, isActive: { $ne: false }, isAvailable: { $ne: false } })
+                .select('_id name')
+                .lean();
+            for (const d of docs) itemNames.set(String(d._id), d.name || '');
+        }
+        if (addonIds.size) {
+            const { FoodAddon } = await import('../models/foodAddon.model.js');
+            const docs = await FoodAddon.find({ _id: { $in: [...addonIds] }, isDeleted: { $ne: true } }).lean();
+            for (const d of docs) addonNames.set(String(d._id), d.published?.name || d.name || '');
+        }
+    } catch (err) {
+        // Names best-effort -- a tier whose reward vanished just shows no name
+        // rather than breaking the whole list's freebie badges.
+        console.error('Freebie badge: reward name lookup failed:', err?.message || err);
+    }
+
+    const rewardNameOf = (tier) => {
+        if (tier.rewardType === 'manual') return tier.rewardName || '';
+        if (tier.rewardType === 'addon') return addonNames.get(String(tier.rewardAddonId)) || '';
+        return itemNames.get(String(tier.rewardItemId)) || '';
+    };
+
+    return list.map((r) => {
+        const offer = offersByRestaurant.get(String(r._id));
+        if (!offer || offer.isActive === false) return { ...r, freebieOffer: null };
+
+        const tiers = (offer.tiers || [])
+            .map((tier) => ({
+                minOrderValue: tier.minOrderValue,
+                rewardType: tier.rewardType,
+                rewardName: rewardNameOf(tier),
+            }))
+            // A reward that no longer names anything (withdrawn item/add-on)
+            // is not advertised -- same "quietly stop offering it" rule
+            // buildFreebieLine follows at order time.
+            .filter((tier) => tier.rewardName)
+            .sort((a, b) => a.minOrderValue - b.minOrderValue);
+
+        return { ...r, freebieOffer: tiers.length ? { isActive: true, tiers } : null };
+    });
+};
+
 const attachRecommendedImagesToRestaurants = async (restaurants = []) => {
     if (!Array.isArray(restaurants) || restaurants.length === 0) return [];
 
@@ -1774,7 +1870,8 @@ export const listApprovedRestaurants = async (query = {}) => {
 
         const total = totalDocs?.[0]?.count || 0;
         const restaurantsWithRecommendedImages = await attachRecommendedImagesToRestaurants(pageDocs);
-        const withOffers = await attachFreeDeliveryOffer(restaurantsWithRecommendedImages);
+        const withDeliveryOffers = await attachFreeDeliveryOffer(restaurantsWithRecommendedImages);
+        const withOffers = await attachFreebieOffer(withDeliveryOffers);
         // Trading hours, in one query for the page. See shared/outletHours.js.
         const withHours = await attachOutletOpenState(withOffers);
         return { restaurants: withHours, total, page, limit };
@@ -1801,7 +1898,8 @@ export const listApprovedRestaurants = async (query = {}) => {
     ]);
 
     const restaurantsWithRecommendedImages = await attachRecommendedImagesToRestaurants(restaurantsRaw || []);
-    const withOffersOnly = await attachFreeDeliveryOffer(restaurantsWithRecommendedImages);
+    const withDeliveryOffersOnly = await attachFreeDeliveryOffer(restaurantsWithRecommendedImages);
+    const withOffersOnly = await attachFreebieOffer(withDeliveryOffersOnly);
     // Trading hours, in one query for the page. See shared/outletHours.js.
     const withOffers = await attachOutletOpenState(withOffersOnly);
     const restaurants = withOffers.map((r) => ({
@@ -1859,7 +1957,8 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug) => {
     if (/^[0-9a-fA-F]{24}$/.test(value)) {
         const doc = await FoodRestaurant.findOne({ _id: value, status: 'approved' }, PUBLIC_RESTAURANT_EXCLUDE).lean();
         if (!doc) return null;
-        const [withOffer] = await attachFreeDeliveryOffer([doc]);
+        const [withDeliveryOffer] = await attachFreeDeliveryOffer([doc]);
+        const [withOffer] = await attachFreebieOffer([withDeliveryOffer]);
         const decorated = await attachMenuCategories(withOffer);
         // The detail screen has to agree with the listing badge, or a customer
         // taps a restaurant marked closed and finds an ordinary open shop.
@@ -1880,7 +1979,8 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug) => {
         restaurantNameNormalized
     }, PUBLIC_RESTAURANT_EXCLUDE).lean();
     if (!doc) return null;
-    const [withOffer] = await attachFreeDeliveryOffer([doc]);
+    const [withDeliveryOffer] = await attachFreeDeliveryOffer([doc]);
+    const [withOffer] = await attachFreebieOffer([withDeliveryOffer]);
     const decorated = await attachMenuCategories(withOffer);
     const [withHours] = await attachOutletOpenState([decorated]);
     return {
