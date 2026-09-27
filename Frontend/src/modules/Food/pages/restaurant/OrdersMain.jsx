@@ -2355,11 +2355,28 @@ export default function OrdersMain() {
 
                   {/* Customer info */}
                   <div className="mb-4">
-                    <h4 className="text-sm font-semibold text-gray-900">
-                      {(popupOrder || newOrder)?.items?.[0]?.name ||
-                        "New Order"}
-                    </h4>
+                    <div className="flex items-center justify-between gap-3">
+                      <h4 className="text-sm font-semibold text-gray-900 truncate">
+                        {(popupOrder || newOrder)?.items?.[0]?.name ||
+                          "New Order"}
+                      </h4>
+                      {/* Pulled straight off the order the same way the
+                          medical popup's contact block does — never a
+                          placeholder, so this is exactly the customer who
+                          placed THIS order, not a stale or hardcoded number. */}
+                      {(popupOrder || newOrder)?.customerPhone && (
+                        <a
+                          href={`tel:${(popupOrder || newOrder).customerPhone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors">
+                          <Phone className="w-3.5 h-3.5" />
+                          {(popupOrder || newOrder).customerPhone}
+                        </a>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-500 mt-1">
+                      {(popupOrder || newOrder)?.customerName || "Customer"}
+                      {" · "}
                       {(popupOrder || newOrder)?.createdAt
                         ? new Date(
                           (popupOrder || newOrder).createdAt,
