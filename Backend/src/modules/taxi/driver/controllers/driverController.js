@@ -2332,6 +2332,14 @@ export const setWorkMode = async (req, res) => {
       workMode: driver.workMode,
       serviceCapabilities: caps,
       driverClass: driver.driverClass || '',
+      // The app's duty-toggle fallback needs this alongside driverClass: on a
+      // record where driverClass was never populated, vehicleType is often
+      // the only reliable signal for which vehicle this driver actually
+      // has. Omitting it here (unlike /taxi/drivers/me, which already
+      // includes it) meant the toggle's label reverted to a generic guess
+      // the moment a driver switched modes, even though the initial load
+      // had shown it correctly.
+      vehicleType: driver.vehicleType || '',
       serviceIntents: Array.isArray(driver.serviceIntents) ? driver.serviceIntents : [],
     },
   });

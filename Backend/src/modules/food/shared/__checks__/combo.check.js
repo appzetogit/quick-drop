@@ -189,4 +189,69 @@ assert.equal(computeComboSaving(100, 150).amount, 0, 'a negative saving reads as
     assert.equal(describeCombo(components, null), '3 items', 'no saving, no saving text');
 }
 
+// --- manual components --------------------------------------------------------
+{
+    // A manual row (no itemId, just a typed name and price) normalizes like a
+    // real one and merges on name+price, same as a real dish merges on itemId.
+    const rows = normalizeComboComponents([
+        { manualName: 'Cold Drink', manualPrice: 40 },
+        { manualName: 'cold drink', manualPrice: 40, quantity: 1 },
+        { manualName: 'Ice Cream', manualPrice: 60 },
+        { manualName: '', manualPrice: 10 }, // no name: dropped
+    ]);
+    assert.equal(rows.length, 2, 'blank-named row dropped, matching manual rows merged');
+    assert.equal(rows[0].manualName, 'Cold Drink');
+    assert.equal(rows[0].quantity, 2, 'case-insensitive name+price match merges quantities');
+    assert.equal(rows[0].itemId, null);
+}
+{
+    // A real dish and a manual one together are two DIFFERENT dishes.
+    const mixed = normalizeComboComponents([
+        { itemId: 'burger' },
+        { manualName: 'Cold Drink', manualPrice: 40 },
+    ]);
+    assert.equal(validateComboComposition(mixed).ok, true, 'one real + one manual clears the minimum');
+}
+{
+    // Two manual rows alone are a valid pair too.
+    const bothManual = normalizeComboComponents([
+        { manualName: 'A', manualPrice: 10 },
+        { manualName: 'B', manualPrice: 20 },
+    ]);
+    assert.equal(validateComboComposition(bothManual).ok, true, 'a fully manual combo is still a combo');
+}
+{
+    // Manual price is used directly -- there is no priceByKey lookup for it.
+    const components = [
+        { itemId: 'burger', variantId: null, quantity: 1 },
+        { itemId: null, variantId: null, manualName: 'Cold Drink', manualPrice: 40, quantity: 2 },
+    ];
+    const prices = new Map([[key('burger'), 150]]);
+    assert.equal(computeComponentTotal(components, prices), 230, '150 + 2x40, the manual price used as-is');
+}
+{
+    // A manual row can never block a combo -- it has no catalogue state to check.
+    const components = [
+        { itemId: 'a', variantId: null, quantity: 1 },
+        { itemId: null, variantId: null, manualName: 'Gift', manualPrice: 10, quantity: 1 },
+    ];
+    // Deliberately empty: a manual row has nothing in stateByKey and must not
+    // be read as "a removed dish", the way a real one with no entry would be.
+    const result = resolveComboAvailability(components, new Map([[key('a'), { isAvailable: true, approvalStatus: 'approved', name: 'A' }]]));
+    assert.equal(result.available, true, 'the manual row is silently skipped, not treated as missing');
+}
+{
+    // Mixed real + manual still sums to exactly the combo price.
+    const components = [
+        { itemId: 'burger', variantId: null, quantity: 1 },
+        { itemId: null, variantId: null, manualName: 'Cold Drink', manualPrice: 40, quantity: 1 },
+    ];
+    const prices = new Map([[key('burger'), 160]]);
+    const rows = allocateComboPrice(components, prices, 149);
+    const paise = rows.reduce((t, r) => t + Math.round(r.comboLineTotal * 100), 0);
+    assert.equal(paise, 14900, 'a manual component still allocates its share exactly');
+    const manualRow = rows.find((r) => r.itemId === null);
+    assert.equal(manualRow.manualName, 'Cold Drink', 'the allocation row keeps the manual name for the caller');
+}
+
 console.log('All combo checks passed.');

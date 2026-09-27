@@ -52,7 +52,8 @@ import {
   reviewPrescription,
 } from '../../shared/prescriptionRules.js';
 import { assertBillApproved,
-  assertPrescriptionOrderPriced } from '../../shared/prescriptionOrder.js';
+  assertPrescriptionOrderPriced,
+  assertDeliveryPartnerAssignable } from '../../shared/prescriptionOrder.js';
 import * as dispatchService from './order-dispatch.service.js';
 import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
@@ -775,23 +776,35 @@ export async function createOrder(userId, dto) {
       restaurantCommission -
       riderEarning;
 
+    // Medicine may not be dispensed against nothing: an order with a medical seller
+    // must carry a prescription, and this refuses it at creation rather than letting
+    // it reach the seller's queue looking like any other order.
+    const prescription = buildOrderPrescription(restaurant, dto, orderAt);
+
     const isAwaitingOnlinePayment = isAwaitingOnlinePaymentMethod(paymentMethod);
     // A trusted seller's order is confirmed on arrival: no window, no timeout
     // job, and the rider hunt starts now rather than after somebody taps a
     // tablet. Orders still awaiting payment are never auto-confirmed -- money
     // first, always.
-    const autoAccept = restaurant?.autoAcceptOrders === true && !isAwaitingOnlinePayment;
+    //
+    // A medical order is never auto-accepted, no matter what the pharmacy's
+    // own autoAcceptOrders setting says: it still needs the pharmacist to
+    // review the prescription, price it and get the customer's bill approval
+    // (COD click or verified payment) before a rider can be sent for it --
+    // see assertBillApproved/assertDeliveryPartnerAssignable. Without this
+    // check, a pharmacy with auto-accept on would jump straight to
+    // orderStatus 'confirmed' and dispatch a rider at the same instant the
+    // order was placed, skipping every one of those steps.
+    const autoAccept =
+      restaurant?.autoAcceptOrders === true &&
+      !isAwaitingOnlinePayment &&
+      !prescription.required;
     const initialStatus = isAwaitingOnlinePayment
       ? "pending_payment"
       : autoAccept
         ? "confirmed"
         : "created";
     const acceptanceWindowSeconds = await getOrderAcceptanceWindowSeconds();
-
-    // Medicine may not be dispensed against nothing: an order with a medical seller
-    // must carry a prescription, and this refuses it at creation rather than letting
-    // it reach the seller's queue looking like any other order.
-    const prescription = buildOrderPrescription(restaurant, dto, orderAt);
 
     const order = new FoodOrder({
       userId: toObjectId(userId, 'User ID'),
@@ -2716,6 +2729,12 @@ export async function assignDeliveryPartnerAdmin(
   if (!order) throw new NotFoundError("Order not found");
   if (order.dispatch.status === "accepted")
     throw new ValidationError("Order already accepted by partner");
+  // The one path in the order lifecycle that doesn't run through the
+  // generic status-update function -- assigning a rider here changes only
+  // dispatch.status, not orderStatus, so it needs its own gate against
+  // handing a medical order to a driver before the customer has paid or
+  // approved the pharmacist's bill.
+  assertDeliveryPartnerAssignable(order);
 
   const partner = await FoodDeliveryPartner.findById(deliveryPartnerId)
     .select("status")

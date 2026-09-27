@@ -2,9 +2,13 @@
  * "Spend ₹200, get a free dish."
  *
  * A restaurant sets one or more thresholds, each with something given away when
- * the order reaches it -- either a menu item or an add-on. The reward is applied
- * by the server at order time, not chosen by the client, so a customer cannot
- * ask for a freebie they have not earned or swap it for a costlier dish.
+ * the order reaches it -- a menu item, an add-on, or a manual, free-text name
+ * for a reward that isn't one of the restaurant's own catalogue rows. Whether a
+ * tier is EARNED is always resolved by the server from the order's own subtotal,
+ * never chosen by the client -- a customer cannot claim a threshold they have
+ * not reached. Claiming an earned one is the customer's own choice, though (see
+ * resolveFreebieForOrder's `claimed` argument): earning it only unlocks an Add
+ * button, it does not add the item for them.
  *
  * Two rules do most of the work here:
  *
@@ -27,7 +31,7 @@ const toFiniteNumber = (value) => {
     return Number.isFinite(parsed) ? parsed : null;
 };
 
-export const FREEBIE_REWARD_TYPES = Object.freeze(['item', 'addon']);
+export const FREEBIE_REWARD_TYPES = Object.freeze(['item', 'addon', 'manual']);
 
 /** Max tiers a restaurant may configure. A ladder longer than this is a menu, not an offer. */
 export const MAX_FREEBIE_TIERS = 10;
@@ -62,7 +66,30 @@ export function normalizeFreebieTiersInput(body = {}) {
 
         const rewardType = String(entry?.rewardType || 'item').trim().toLowerCase();
         if (!FREEBIE_REWARD_TYPES.includes(rewardType)) {
-            throw new Error('A reward must be either a menu item or an add-on');
+            throw new Error('A reward must be a menu item, an add-on, or a manual name');
+        }
+
+        const key = round2(minOrderValue);
+        if (seen.has(key)) {
+            throw new Error(`Two rewards are set for orders over ${key}. Use one reward per amount.`);
+        }
+        seen.add(key);
+
+        if (rewardType === 'manual') {
+            // No FoodItem/FoodAddon backs this one -- it's whatever the admin
+            // typed, for a reward that isn't (yet, or ever) a real menu row.
+            const rewardName = String(entry?.rewardName || '').trim();
+            if (!rewardName) {
+                throw new Error('A manual reward needs a name');
+            }
+            tiers.push({
+                minOrderValue: key,
+                rewardType,
+                rewardItemId: null,
+                rewardAddonId: null,
+                rewardName: rewardName.slice(0, 120),
+            });
+            continue;
         }
 
         const rewardId = String(
@@ -72,17 +99,12 @@ export function normalizeFreebieTiersInput(body = {}) {
             throw new Error('Each reward tier needs an item or add-on to give away');
         }
 
-        const key = round2(minOrderValue);
-        if (seen.has(key)) {
-            throw new Error(`Two rewards are set for orders over ${key}. Use one reward per amount.`);
-        }
-        seen.add(key);
-
         tiers.push({
             minOrderValue: key,
             rewardType,
             rewardItemId: rewardType === 'item' ? rewardId : null,
             rewardAddonId: rewardType === 'addon' ? rewardId : null,
+            rewardName: '',
         });
     }
 

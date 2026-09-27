@@ -110,7 +110,13 @@ export function validateCalculateOrderDto(body) {
         // zero however much the client sent. Bounds are enforced server-side in
         // shared/billing.js; this only has to let the number through.
         tip: z.number().min(0).optional(),
-        deliveryFleet: z.string().optional()
+        deliveryFleet: z.string().optional(),
+        // Same failure mode as tip above, and just as silent: undeclared here,
+        // zod strips it before order-pricing.service.js ever sees it, so
+        // `Boolean(dto.claimFreebie)` is always false and the Add button's
+        // request never lands — no error, just a claim that quietly never
+        // took, indistinguishable from the button "not working".
+        claimFreebie: z.boolean().optional()
     });
     const result = schema.safeParse(body);
     if (!result.success) {
@@ -147,7 +153,12 @@ export function validateCreateOrderDto(body) {
         // See the note on the calculate schema: without this the tip is stripped
         // and the order is placed without the one the customer just agreed to.
         tip: z.number().min(0).optional(),
-        zoneId: z.string().nullable().optional()
+        zoneId: z.string().nullable().optional(),
+        // See the note on the calculate schema: without this, an order placed
+        // right after claiming a free item drops the claim silently and
+        // re-prices without it, since order-pricing.service.js re-runs the
+        // same freebie resolution at placement time.
+        claimFreebie: z.boolean().optional()
     });
     const result = schema.safeParse(body);
     if (!result.success) {

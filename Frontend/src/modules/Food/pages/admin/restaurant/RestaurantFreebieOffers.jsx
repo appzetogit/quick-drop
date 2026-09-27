@@ -11,8 +11,10 @@ import { adminAPI } from "@food/api"
  * than an admin-side copy: two ladders for one restaurant would mean the order
  * path picks one, and whichever it picked would surprise somebody.
  *
- * Nothing here decides what a customer receives. The reward is resolved by the
- * server from the order subtotal at checkout; this only configures the ladder.
+ * Nothing here decides what a customer receives. WHETHER a tier is earned is
+ * resolved by the server from the order subtotal; the customer then claims it
+ * themselves with their own Add tap, same as any other line in their cart --
+ * this page only configures the ladder.
  */
 
 const emptyTier = () => ({
@@ -20,13 +22,15 @@ const emptyTier = () => ({
   minOrderValue: "",
   rewardType: "item",
   rewardId: "",
+  rewardName: "",
 })
 
 const toTierDraft = (tier = {}) => ({
   localId: String(tier._id || `tier-${Math.random().toString(36).slice(2, 8)}`),
   minOrderValue: tier.minOrderValue != null ? String(tier.minOrderValue) : "",
-  rewardType: tier.rewardType === "addon" ? "addon" : "item",
+  rewardType: tier.rewardType === "addon" ? "addon" : tier.rewardType === "manual" ? "manual" : "item",
   rewardId: String(tier.rewardAddonId || tier.rewardItemId || ""),
+  rewardName: tier.rewardName || "",
 })
 
 export default function RestaurantFreebieOffers() {
@@ -122,13 +126,15 @@ export default function RestaurantFreebieOffers() {
     setTiers((prev) =>
       prev.map((t) =>
         t.localId === localId
-          ? { ...t, [field]: value, ...(field === "rewardType" ? { rewardId: "" } : {}) }
+          ? { ...t, [field]: value, ...(field === "rewardType" ? { rewardId: "", rewardName: "" } : {}) }
           : t,
       ),
     )
 
   const handleSave = async () => {
-    const cleaned = tiers.filter((t) => String(t.minOrderValue).trim() || t.rewardId)
+    const cleaned = tiers.filter(
+      (t) => String(t.minOrderValue).trim() || t.rewardId || t.rewardName.trim(),
+    )
 
     for (const tier of cleaned) {
       const amount = Number(tier.minOrderValue)
@@ -136,7 +142,12 @@ export default function RestaurantFreebieOffers() {
         toast.error("Every tier needs an order amount greater than 0")
         return
       }
-      if (!tier.rewardId) {
+      if (tier.rewardType === "manual") {
+        if (!tier.rewardName.trim()) {
+          toast.error(`Name the reward for orders over ${amount}`)
+          return
+        }
+      } else if (!tier.rewardId) {
         toast.error(`Choose what customers get free on orders over ${amount}`)
         return
       }
@@ -155,9 +166,11 @@ export default function RestaurantFreebieOffers() {
         tiers: cleaned.map((t) => ({
           minOrderValue: Number(t.minOrderValue),
           rewardType: t.rewardType,
-          ...(t.rewardType === "addon"
-            ? { rewardAddonId: t.rewardId }
-            : { rewardItemId: t.rewardId }),
+          ...(t.rewardType === "manual"
+            ? { rewardName: t.rewardName.trim() }
+            : t.rewardType === "addon"
+              ? { rewardAddonId: t.rewardId }
+              : { rewardItemId: t.rewardId }),
         })),
       })
       toast.success("Free-item offers saved")
@@ -173,7 +186,8 @@ export default function RestaurantFreebieOffers() {
       <div className="mb-5">
         <h1 className="text-xl font-semibold text-slate-900">Free Item Offers</h1>
         <p className="text-sm text-slate-500">
-          Give a dish or add-on free once an order reaches an amount. Applied automatically at checkout.
+          Unlock a dish, add-on, or a custom reward once an order reaches an amount. The customer adds it
+          themselves once it's unlocked.
         </p>
       </div>
 
@@ -267,60 +281,92 @@ export default function RestaurantFreebieOffers() {
                 </div>
               )}
 
-              {tiers.map((tier) => (
-                <div key={tier.localId} className="flex items-start gap-3 rounded-lg border border-slate-200 p-3">
-                  <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div>
-                      <label className="mb-1 block text-xs text-slate-600">On orders over</label>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={tier.minOrderValue}
-                        onChange={(e) => updateTier(tier.localId, "minOrderValue", e.target.value)}
-                        placeholder="200"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      />
+              {tiers.map((tier) => {
+                const REWARD_MODES = [
+                  { value: "item", label: "A dish" },
+                  { value: "addon", label: "An add-on" },
+                  { value: "manual", label: "Type manually" },
+                ]
+                return (
+                  <div key={tier.localId} className="space-y-3 rounded-lg border border-slate-200 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="w-40 shrink-0">
+                        <label className="mb-1 block text-xs text-slate-600">On orders over</label>
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={tier.minOrderValue}
+                          onChange={(e) => updateTier(tier.localId, "minOrderValue", e.target.value)}
+                          placeholder="200"
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTiers((prev) => prev.filter((t) => t.localId !== tier.localId))}
+                        className="mt-5 shrink-0 rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-red-500"
+                        aria-label="Remove tier"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
+
                     <div>
                       <label className="mb-1 block text-xs text-slate-600">Give away</label>
-                      <select
-                        value={tier.rewardType}
-                        onChange={(e) => updateTier(tier.localId, "rewardType", e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      >
-                        <option value="item">A dish</option>
-                        <option value="addon">An add-on</option>
-                      </select>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {REWARD_MODES.map((mode) => (
+                          <button
+                            key={mode.value}
+                            type="button"
+                            onClick={() => updateTier(tier.localId, "rewardType", mode.value)}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                              tier.rewardType === mode.value
+                                ? "bg-orange-500 text-white"
+                                : "border border-slate-300 bg-white text-slate-600 hover:text-slate-900"
+                            }`}
+                          >
+                            {mode.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+
                     <div>
                       <label className="mb-1 block text-xs text-slate-600">
-                        {tier.rewardType === "addon" ? "Which add-on" : "Which dish"}
+                        {tier.rewardType === "addon"
+                          ? "Which add-on"
+                          : tier.rewardType === "manual"
+                            ? "Reward name"
+                            : "Which dish"}
                       </label>
-                      <select
-                        value={tier.rewardId}
-                        onChange={(e) => updateTier(tier.localId, "rewardId", e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      >
-                        <option value="">Select…</option>
-                        {(rewardOptions[tier.rewardType] || []).map((o) => (
-                          <option key={o.id} value={o.id}>
-                            {o.name}
-                          </option>
-                        ))}
-                      </select>
+                      {tier.rewardType === "manual" ? (
+                        <input
+                          type="text"
+                          value={tier.rewardName}
+                          onChange={(e) => updateTier(tier.localId, "rewardName", e.target.value)}
+                          placeholder="e.g. Cold Drink"
+                          maxLength={120}
+                          className="w-full max-w-sm rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        />
+                      ) : (
+                        <select
+                          value={tier.rewardId}
+                          onChange={(e) => updateTier(tier.localId, "rewardId", e.target.value)}
+                          className="w-full max-w-sm rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        >
+                          <option value="">Select…</option>
+                          {(rewardOptions[tier.rewardType] || []).map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setTiers((prev) => prev.filter((t) => t.localId !== tier.localId))}
-                    className="mt-6 rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-red-500"
-                    aria-label="Remove tier"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+                )
+              })}
 
               <div className="flex flex-wrap items-center gap-3">
                 <button
@@ -342,8 +388,9 @@ export default function RestaurantFreebieOffers() {
               </div>
 
               <p className="text-xs text-slate-500">
-                If an order clears more than one tier the customer gets the highest one only. The free item is
-                added by the server at checkout and does not count towards the amount that earned it.
+                If an order clears more than one tier only the highest one unlocks. The customer sees an Add
+                button once they've earned it — it's their choice to take it, and does not count towards the
+                amount that earned it.
               </p>
             </div>
           )}

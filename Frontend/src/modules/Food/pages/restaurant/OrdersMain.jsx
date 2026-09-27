@@ -99,6 +99,7 @@ const transformOrderForList = (order) => ({
     : new Date(order.createdAt || Date.now()),
   initialETA: order.estimatedDeliveryTime || 30,
   sortTimestamp: new Date(getAllOrdersTimestamp(order)).getTime(),
+  prescriptionOnly: Boolean(order.prescriptionOnly),
 });
 
 // Completed Orders List Component
@@ -853,6 +854,14 @@ export default function OrdersMain() {
   const [orderToCancel, setOrderToCancel] = useState(null);
   const [acceptSwipeProgress, setAcceptSwipeProgress] = useState(0);
   const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
+  const [isVerifyingPrescription, setIsVerifyingPrescription] = useState(false);
+  // A medical order the pharmacy hasn't reviewed yet: the popup shows only the
+  // prescription photo and the customer's contact until this is resolved --
+  // everything else (items, bill, prep time) stays hidden so nobody accepts
+  // an order on a prescription they never actually looked at.
+  const needsPrescriptionReview = (orderLike) =>
+    orderLike?.prescription?.required === true &&
+    orderLike?.prescription?.status === "pending_review";
   const audioRef = useRef(null);
   const shownOrdersRef = useRef(new Set()); // Track orders already shown in popup
   const acceptSliderRef = useRef(null);
@@ -937,6 +946,23 @@ export default function OrdersMain() {
     "Technical issue",
     "Other reason",
   ];
+
+  // A medical order is rejected for pharmacy-shaped reasons, not "kitchen
+  // closing soon" -- these apply whether the order was ever reviewed
+  // (isMedicalOrder) or is still sitting in prescription review.
+  const medicalRejectReasons = [
+    "Prescription is unclear or unreadable",
+    "Prescription is invalid or expired",
+    "Medicine out of stock",
+    "Prescription doesn't match the medicine ordered",
+    "Pharmacy is too busy",
+    "Technical issue",
+    "Other reason",
+  ];
+
+  const isMedicalOrder = (orderLike) => orderLike?.prescription?.required === true;
+  const rejectReasonsFor = (orderLike) =>
+    isMedicalOrder(orderLike) ? medicalRejectReasons : rejectReasons;
 
   // Fetch restaurant verification status
   useEffect(() => {
@@ -1228,6 +1254,15 @@ export default function OrdersMain() {
             const orderId = orderToPopup.orderId || orderToPopup._id;
 
             // Transform order to match newOrder format (include payment so COD shows correctly)
+            //
+            // prescription/customerName/customerPhone are included alongside
+            // the rest: needsPrescriptionReview/rejectReasonsFor/the contact
+            // block all read them off (popupOrder || newOrder) directly.
+            // Without them, a medical order that reached the popup through
+            // this REST-poll path (rather than the socket "new_order" push,
+            // which already sends the full document) silently fell back to
+            // the normal items/Accept-swipe UI and generic reject reasons --
+            // exactly as if it were never a prescription order at all.
             const orderForPopup = {
               orderId: orderToPopup.orderId,
               orderMongoId: orderToPopup._id,
@@ -1236,6 +1271,9 @@ export default function OrdersMain() {
               items: orderToPopup.items || [],
               total: orderToPopup.pricing?.total || 0,
               customerAddress: orderToPopup.address,
+              customerName: orderToPopup.customerName,
+              customerPhone: orderToPopup.customerPhone,
+              prescription: orderToPopup.prescription,
               status: orderToPopup.status,
               createdAt: orderToPopup.createdAt,
               scheduledAt: orderToPopup.scheduledAt,
@@ -1454,6 +1492,34 @@ export default function OrdersMain() {
     // No need to manually refresh here as the component polls every 10 seconds
   };
 
+  /**
+   * Pharmacy approves the uploaded prescription. This only unlocks the order
+   * for acceptance (see prescriptionRules.js's canAcceptOrder) -- it does not
+   * accept it by itself, so it immediately chains into the normal accept flow.
+   */
+  const handleVerifyPrescription = async () => {
+    if (isVerifyingPrescription || isAcceptingOrder) return;
+    const orderToVerify = popupOrder || newOrder;
+    const orderId = orderToVerify?.orderMongoId || orderToVerify?.orderId;
+    if (!orderId) return;
+
+    setIsVerifyingPrescription(true);
+    try {
+      await restaurantAPI.reviewPrescription(orderId, "approved");
+      debugLog("? Prescription approved:", orderId);
+    } catch (error) {
+      debugError("? Error approving prescription:", error);
+      toast.error(
+        error.response?.data?.message ||
+          "Could not verify the prescription. Please try again.",
+      );
+      setIsVerifyingPrescription(false);
+      return;
+    }
+    setIsVerifyingPrescription(false);
+    await handleAcceptOrder();
+  };
+
   // Handle reject order
   const handleRejectClick = () => {
     setShowRejectPopup(true);
@@ -1469,6 +1535,12 @@ export default function OrdersMain() {
     if (orderToReject?.orderMongoId || orderToReject?.orderId) {
       try {
         const orderId = orderToReject.orderMongoId || orderToReject.orderId;
+        // A medical order still awaiting review: record the prescription's
+        // own rejection first (it needs its own reason, for the customer's
+        // record), then cancel the order the normal way.
+        if (needsPrescriptionReview(orderToReject)) {
+          await restaurantAPI.reviewPrescription(orderId, "rejected", rejectReason);
+        }
         await restaurantAPI.rejectOrder(orderId, rejectReason);
         debugLog("? Order rejected:", orderId);
         requestOrdersRefresh();
@@ -2204,6 +2276,57 @@ export default function OrdersMain() {
 
                 {/* Content */}
                 <div className="px-4 pt-4 pb-4 flex-1 overflow-y-auto min-h-0">
+                  {needsPrescriptionReview(popupOrder || newOrder) ? (
+                    /*
+                     * A pharmacy sees only this until the prescription is
+                     * reviewed -- no items, address or bill. Showing the rest
+                     * before a decision is made is exactly what this gate
+                     * exists to prevent (see prescriptionRules.js).
+                     */
+                    <div className="space-y-4">
+                      <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
+                        <p className="text-sm font-semibold text-amber-800">
+                          Prescription needs your review
+                        </p>
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          Order details unlock once you verify it.
+                        </p>
+                      </div>
+
+                      {(popupOrder || newOrder)?.prescription?.imageUrl ? (
+                        <a
+                          href={(popupOrder || newOrder).prescription.imageUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block rounded-lg overflow-hidden border border-gray-200">
+                          <img
+                            src={(popupOrder || newOrder).prescription.imageUrl}
+                            alt="Prescription"
+                            className="w-full max-h-96 object-contain bg-gray-50"
+                          />
+                        </a>
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
+                          No prescription photo was attached
+                        </div>
+                      )}
+
+                      <div className="rounded-lg bg-gray-50 p-3">
+                        <p className="text-xs text-gray-500">Customer contact</p>
+                        <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                          {(popupOrder || newOrder)?.customerName || "Customer"}
+                        </p>
+                        {(popupOrder || newOrder)?.customerPhone && (
+                          <a
+                            href={`tel:${(popupOrder || newOrder).customerPhone}`}
+                            className="text-sm text-blue-600 font-medium">
+                            {(popupOrder || newOrder).customerPhone}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                   {/* Scheduled Indicator */}
                   {(popupOrder || newOrder)?.scheduledAt && (
                     <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-3">
@@ -2456,9 +2579,27 @@ export default function OrdersMain() {
                       </div>
                     </div>
                   </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="px-4 pb-4 pt-3 border-t border-gray-200 bg-white">
+                  {needsPrescriptionReview(popupOrder || newOrder) ? (
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleRejectClick}
+                        disabled={isVerifyingPrescription}
+                        className="flex-1 bg-white border-2 border-red-500 text-red-600 py-3 rounded-lg font-semibold text-sm hover:bg-red-50 transition-colors disabled:opacity-60">
+                        Reject
+                      </button>
+                      <button
+                        onClick={handleVerifyPrescription}
+                        disabled={isVerifyingPrescription}
+                        className="flex-1 bg-green-600 text-white py-3 rounded-lg font-semibold text-sm hover:bg-green-700 transition-colors disabled:opacity-60">
+                        {isVerifyingPrescription ? "Verifying..." : "Verified"}
+                      </button>
+                    </div>
+                  ) : (
                   <div className="space-y-3">
                     <div
                       ref={acceptSliderRef}
@@ -2517,6 +2658,7 @@ export default function OrdersMain() {
                       Reject Order
                     </button>
                   </div>
+                  )}
                 </div>
               </motion.div>
             </motion.div>
@@ -2554,7 +2696,7 @@ export default function OrdersMain() {
                 {/* Content */}
                 <div className="px-4 py-4 max-h-[60vh] overflow-y-auto">
                   <div className="space-y-2">
-                    {rejectReasons.map((reason) => (
+                    {rejectReasonsFor(popupOrder || newOrder).map((reason) => (
                       <button
                         key={reason}
                         onClick={() => setRejectReason(reason)}
@@ -2645,7 +2787,7 @@ export default function OrdersMain() {
                 {/* Content */}
                 <div className="px-4 py-4">
                   <div className="space-y-3">
-                    {rejectReasons.map((reason) => (
+                    {rejectReasonsFor(orderToCancel).map((reason) => (
                       <button
                         key={reason}
                         type="button"
@@ -2848,6 +2990,7 @@ function OrderCard({
   photoAlt,
   deliveryPartnerId,
   dispatchStatus,
+  prescriptionOnly = false,
   onSelect,
   onCancel,
   onMarkReady,
@@ -2872,9 +3015,17 @@ function OrderCard({
         normalizedStatus === "ready" ||
         normalizedStatus === "preparing"),
   );
-  const statusLabel = String(status || "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  // A pharmacy doesn't "prepare" a prescription the way a kitchen prepares a
+  // dish -- what actually happens at this stage is the pharmacist dispensing
+  // against the prescription they already verified to accept the order.
+  // Every other stage (accepted, ready to pickup, picked up, delivered)
+  // reads the same for both, so only this one label needs a medical variant.
+  const statusLabel =
+    prescriptionOnly && normalizedStatus === "preparing"
+      ? "Verified"
+      : String(status || "")
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <div className="w-full bg-white rounded-2xl border border-gray-200 mb-3 overflow-hidden shadow-sm">
@@ -3052,6 +3203,7 @@ function PreparingOrders({
               dispatchStatus: order.dispatch?.status || null,
               paymentMethod:
                 order.paymentMethod || order.payment?.method || null,
+              prescriptionOnly: Boolean(order.prescriptionOnly),
             };
           });
 
@@ -3298,6 +3450,7 @@ function PreparingOrders({
                 paymentMethod={order.paymentMethod}
                 deliveryPartnerId={order.deliveryPartnerId}
                 dispatchStatus={order.dispatchStatus}
+                prescriptionOnly={order.prescriptionOnly}
                 onSelect={onSelectOrder}
                 onCancel={onCancel}
                 onMarkReady={handleMarkReady}
@@ -3358,6 +3511,7 @@ function ReadyOrders({ onSelectOrder, refreshToken = 0 }) {
             paymentMethod: order.paymentMethod || order.payment?.method || null,
             deliveryPartnerId: order.deliveryPartnerId || null,
             dispatchStatus: order.dispatch?.status || null,
+            prescriptionOnly: Boolean(order.prescriptionOnly),
           }));
 
           if (isMounted) {
@@ -3476,6 +3630,7 @@ const OutForDeliveryOrders = ({ onSelectOrder, refreshToken = 0 }) => {
             paymentMethod: order.paymentMethod || order.payment?.method || null,
             deliveryPartnerId: order.deliveryPartnerId || null,
             dispatchStatus: order.dispatch?.status || null,
+            prescriptionOnly: Boolean(order.prescriptionOnly),
           }));
 
           if (isMounted) {

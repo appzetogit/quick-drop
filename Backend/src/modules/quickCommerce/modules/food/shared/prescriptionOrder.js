@@ -213,6 +213,35 @@ export function assertBillApproved(order, nextStatus) {
 }
 
 /**
+ * May a delivery partner be handed this order yet?
+ *
+ * Unlike [assertBillApproved]/[assertPrescriptionOrderPriced], this has no
+ * `nextStatus` to gate on: assigning a rider doesn't move `orderStatus` by
+ * itself (see `assignDeliveryPartnerAdmin`), so it has to run unconditionally
+ * for a prescription order rather than only when a status transition happens
+ * to be one of [ACCEPTANCE_STATUSES]. Without this, an admin's manual "assign
+ * a rider" action was the one path in the whole order lifecycle that could
+ * hand a medical order to a driver before the customer had actually agreed
+ * to pay for it — every other path already runs through the generic
+ * status-update function these two guards are wired into.
+ */
+export function assertDeliveryPartnerAssignable(order) {
+    if (!order?.prescriptionOnly) return;
+    if (!isPriced(order)) {
+        throw new ValidationError(
+            'This prescription order has not been priced yet.',
+        );
+    }
+    const status = String(order?.prescription?.bill?.status || BILL_STATUS.NONE);
+    if (status === BILL_STATUS.APPROVED || status === BILL_STATUS.NONE) return;
+    throw new ValidationError(
+        status === BILL_STATUS.SUBMITTED
+            ? 'The customer has not approved the bill for this order yet.'
+            : 'The customer declined the bill for this order.',
+    );
+}
+
+/**
  * A prescription order may not be accepted until it has been priced.
  *
  * Without this the pharmacist could accept an empty order, and the customer
