@@ -145,7 +145,7 @@ export const requestUserOtp = async (phone) => {
   const otp = await createOrUpdateOtp(phone, "qc:user", { service: OTP_SERVICES.QUICK_COMMERCE });
   // TODO: integrate SMS provider here
   const shouldExposeOtp =
-    config.nodeEnv !== "production" || config.useDefaultOtp;
+    config.nodeEnv !== "production";
   return shouldExposeOtp ? { otp } : {};
 };
 
@@ -372,7 +372,7 @@ export const requestRestaurantOtp = async (phone) => {
   const otp = await createOrUpdateOtp(phone, "qc:restaurant", { service: OTP_SERVICES.QUICK_COMMERCE });
   // Only expose OTP in response when in default/dev mode — never in production with real SMS
   const shouldExposeOtp =
-    config.nodeEnv !== "production" || config.useDefaultOtp;
+    config.nodeEnv !== "production";
   return shouldExposeOtp ? { otp } : {};
 };
 
@@ -497,7 +497,7 @@ export const requestDeliveryOtp = async (phone) => {
   const otp = await createOrUpdateOtp(phone, "qc:delivery", { service: OTP_SERVICES.QUICK_COMMERCE });
   // Only expose OTP in response when in default/dev mode — never in production with real SMS
   const shouldExposeOtp =
-    config.nodeEnv !== "production" || config.useDefaultOtp;
+    config.nodeEnv !== "production";
   return shouldExposeOtp ? { otp } : {};
 };
 

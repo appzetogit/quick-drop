@@ -66,7 +66,7 @@ export const requestUserOtp = async (phone) => {
   const otp = await createOrUpdateOtp(phone, "user");
   // TODO: integrate SMS provider here
   const shouldExposeOtp =
-    config.nodeEnv !== "production" || config.useDefaultOtp;
+    config.nodeEnv !== "production";
   return {
     ...(shouldExposeOtp ? { otp } : {}),
     isExistingUser: Boolean(existingUser?._id),
@@ -343,7 +343,7 @@ export const requestRestaurantOtp = async (phone) => {
   const otp = await createOrUpdateOtp(phone, "restaurant");
   // Only expose OTP in response when in default/dev mode — never in production with real SMS
   const shouldExposeOtp =
-    config.nodeEnv !== "production" || config.useDefaultOtp;
+    config.nodeEnv !== "production";
   return shouldExposeOtp ? { otp } : {};
 };
 
@@ -459,7 +459,7 @@ export const requestDeliveryOtp = async (phone) => {
   const otp = await createOrUpdateOtp(phone, "delivery");
   // Only expose OTP in response when in default/dev mode — never in production with real SMS
   const shouldExposeOtp =
-    config.nodeEnv !== "production" || config.useDefaultOtp;
+    config.nodeEnv !== "production";
   return shouldExposeOtp ? { otp } : {};
 };
 

@@ -64,7 +64,9 @@ const errorHandler = (err, req, res, next) => {
     //
     // Development keeps the real text, or debugging every 500 means tailing the log.
     const isClientError = statusCode >= 400 && statusCode < 500;
-    const publicMessage = isClientError || config.nodeEnv === 'development'
+    // `expose` marks a 5xx whose text we wrote for the user ("could not send the OTP
+    // SMS"), as opposed to whatever a library threw.
+    const publicMessage = isClientError || err.expose === true || config.nodeEnv === 'development'
         ? message
         : 'Internal server error';
 

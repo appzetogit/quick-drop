@@ -7,9 +7,39 @@ import { logger } from '../../utils/logger.js';
 import { ValidationError } from '../auth/errors.js';
 import { consumeOtpQuota, otpRateLimitMessage, OTP_SERVICES } from './otpRateLimit.service.js';
 
+/**
+ * OTP length. 4 today because every shipped app (customer, restaurant, rider)
+ * draws four boxes and the DTOs require length 4. Raise OTP_LENGTH to 6 only
+ * together with an app release that accepts six digits.
+ */
+export const otpLength = () => (Number(process.env.OTP_LENGTH) === 6 ? 6 : 4);
+
 const generateOtpCode = () => {
-    const code = crypto.randomInt(1000, 9999);
-    return String(code);
+    const len = otpLength();
+    // Uniform over the whole space, leading zeros included.
+    return String(crypto.randomInt(0, 10 ** len)).padStart(len, '0');
+};
+
+/**
+ * What is stored instead of the code: an HMAC bound to the phone and scope, so a
+ * read of food_otps (a backup, a support query, a logged document) is not a
+ * sign-in credential, and a code issued for one phone cannot match another.
+ * Rows written before this change hold the plain code and still verify until
+ * they expire (minutes).
+ */
+const OTP_HASH_PREFIX = 'h1:';
+const otpPepper = () => String(process.env.OTP_HASH_SECRET || config.jwtAccessSecret || 'otp');
+export const hashOtp = (phone, scope, code) => OTP_HASH_PREFIX + crypto
+    .createHmac('sha256', otpPepper())
+    .update(`${phone}|${scope}|${String(code)}`)
+    .digest('hex');
+
+const otpMatches = (stored, phone, scope, code) => {
+    const s = String(stored || '');
+    const candidate = s.startsWith(OTP_HASH_PREFIX) ? hashOtp(phone, scope, code) : String(code);
+    const a = Buffer.from(s);
+    const b = Buffer.from(candidate);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
 };
 
 const normalizeOtpPhone = (phone) => {
@@ -81,7 +111,7 @@ const sendSmsViaIndiaHub = async (phone, otp) => {
                 '[SMS] SMS_INDIA_HUB_TEMPLATE_TEXT has no {{OTP}} placeholder, so the message '
                 + 'would carry no code. Not sending — fix the template.',
             );
-            return;
+            return { sent: false, error: 'template has no {{OTP}}' };
         }
 
         // SMS India Hub HTTP GET API — query param names are case-sensitive per SOP
@@ -124,16 +154,32 @@ const sendSmsViaIndiaHub = async (phone, otp) => {
                 // eslint-disable-next-line no-console
                 console.error('❌ [SMS ERROR] ErrorCode 006 = DLT Template mismatch. The message text must EXACTLY match your registered TRAI DLT template. Login to https://cloud.smsindiahub.in and verify the approved template text.');
             }
-        } else if (!response.ok) {
-            logger.error(`SMS API HTTP error for ${phone}: ${response.status} – ${resultText}`);
-        } else {
-            logger.info(`✅ SMS sent successfully to ${msisdn}`);
+            return { sent: false, error: `provider ErrorCode ${parsed.ErrorCode}` };
         }
+        if (!response.ok) {
+            logger.error(`SMS API HTTP error for ${phone}: ${response.status} – ${resultText}`);
+            return { sent: false, error: `HTTP ${response.status}` };
+        }
+        logger.info(`✅ SMS sent successfully to ${msisdn}`);
+        return { sent: true };
     } catch (error) {
         logger.error(`Error sending SMS to ${phone}: ${error.message}`);
-        // Do NOT throw — OTP is already stored in DB; SMS failure should not block the flow
+        return { sent: false, error: error.message };
     }
 };
+
+/** Thrown when the code was stored but the SMS never left: the user must not be
+ *  told "OTP sent" and left waiting for a message that is not coming. */
+export class OtpDeliveryError extends Error {
+    constructor(message = 'We could not send the OTP SMS. Please try again in a minute.') {
+        super(message);
+        this.name = 'OtpDeliveryError';
+        this.statusCode = 503;
+        this.status = 503;
+        this.isOperational = true;
+        this.expose = true;
+    }
+}
 
 /**
  * @param {string} phone
@@ -209,17 +255,18 @@ export const createOrUpdateOtp = async (phone, scope = 'default', { service = OT
     }
     const expiresAt = new Date(now.getTime() + ttlMs);
 
+    const stored = hashOtp(normalizedPhone, normalizedScope, otp);
     if (existing) {
-        existing.otp = otp;
+        existing.otp = stored;
         existing.expiresAt = expiresAt;
         existing.attempts = 0;
         existing.lastRequestAt = now;
         await existing.save();
     } else {
         await FoodOtp.create({
-            phone: normalizedPhone, 
+            phone: normalizedPhone,
             scope: normalizedScope,
-            otp, 
+            otp: stored,
             expiresAt,
             requestCount: 1,
             lastRequestAt: now
@@ -228,7 +275,12 @@ export const createOrUpdateOtp = async (phone, scope = 'default', { service = OT
 
     // Only send SMS if not in default OTP mode
     if (!config.useDefaultOtp) {
-        await sendSmsViaIndiaHub(normalizedPhone, otp);
+        const delivery = await sendSmsViaIndiaHub(normalizedPhone, otp);
+        // In production an undelivered code is a failed request, not a silent one.
+        // Elsewhere the code is logged above, so local sign-in still works.
+        if (!delivery?.sent && config.nodeEnv === 'production') {
+            throw new OtpDeliveryError();
+        }
     }
 
     return otp;
@@ -288,36 +340,41 @@ export const verifyOtp = async (phone, otp, scope = 'default') => {
         }
     }
 
-    const record = await FoodOtp.findOne({
-        phone: normalizedPhone,
-        $or: [{ scope: normalizedScope }, { scope: { $exists: false } }]
-    }).sort({ createdAt: -1 });
+    const now = new Date();
+    const scopeFilter = { $or: [{ scope: normalizedScope }, { scope: { $exists: false } }] };
+
+    // Count the attempt BEFORE comparing, in one atomic step that also refuses
+    // expired and exhausted codes. Parallel guesses each consume an attempt, so
+    // OTP_MAX_ATTEMPTS bounds the guesses however they are timed.
+    const record = await FoodOtp.findOneAndUpdate(
+        {
+            phone: normalizedPhone,
+            ...scopeFilter,
+            expiresAt: { $gt: now },
+            attempts: { $lt: config.otpMaxAttempts },
+        },
+        { $inc: { attempts: 1 } },
+        { new: true, sort: { createdAt: -1 } },
+    );
     if (!record) {
-        return { valid: false, reason: 'OTP not found' };
-    }
-
-    if (record.expiresAt < new Date()) {
-        return { valid: false, reason: 'OTP expired' };
-    }
-
-    if (record.attempts >= config.otpMaxAttempts) {
+        const any = await FoodOtp.findOne({ phone: normalizedPhone, ...scopeFilter })
+            .sort({ createdAt: -1 }).select('expiresAt attempts').lean();
+        if (!any) return { valid: false, reason: 'OTP not found' };
+        if (any.expiresAt <= now) return { valid: false, reason: 'OTP expired' };
         return { valid: false, reason: 'Max attempts exceeded' };
     }
 
-    record.attempts += 1;
-
-    if (record.otp !== otpStr) {
-        // Do not block auth response on attempts write.
-        void record.save().catch((err) => {
-            logger.warn(`[OTP VERIFY] Failed to persist attempts for ${normalizedPhone}: ${err.message}`);
-        });
+    if (!otpMatches(record.otp, normalizedPhone, String(record.scope || normalizedScope), otpStr)) {
         return { valid: false, reason: 'Invalid OTP' };
     }
 
-    // OTP is valid - return immediately and delete in background.
-    void record.deleteOne().catch((err) => {
-        logger.warn(`[OTP VERIFY] Failed to delete OTP record for ${normalizedPhone}: ${err.message}`);
-    });
+    // Consume: exactly one verification can delete this code. A second request
+    // carrying the same correct code finds nothing and is refused, so a code
+    // cannot be replayed while a delete is still in flight.
+    const consumed = await FoodOtp.findOneAndDelete({ _id: record._id, otp: record.otp });
+    if (!consumed) {
+        return { valid: false, reason: 'OTP already used' };
+    }
     return { valid: true };
 };
 
