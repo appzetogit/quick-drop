@@ -258,10 +258,12 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
       restaurantLocation?.formattedAddress ||
       restaurant?.addressLine1 ||
       "",
+    // The restaurant's own contact number first: ownerPhone is the owner's
+    // login number, which riders were ringing instead of the outlet.
     restaurantPhone:
+      restaurant?.primaryContactNumber ||
       restaurant?.phone ||
       restaurant?.ownerPhone ||
-      restaurant?.primaryContactNumber ||
       "",
     restaurantLocation: {
       latitude: restaurantLocation?.latitude,

@@ -588,11 +588,12 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
     }
   }
 
-  // GST is charged on the post-discount item value for a SELLER-funded coupon,
-  // and on the full value for a platform-funded one -- see computeItemsTax.
+  // GST is charged on the post-coupon item value, whoever funded the coupon:
+  // the customer is taxed on what they pay (same rule as food, shared/billing.js).
   const gstFallbackRate = Number(feeSettings.gstRate || 0);
+  const gstOnPreDiscountValue = false;
   const tax = computeItemsTax(items, {
-    discountFundedByPlatform,
+    discountFundedByPlatform: gstOnPreDiscountValue,
     subtotal,
     discount,
     fallbackRate: gstFallbackRate,
@@ -625,6 +626,8 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
      * before this existed, which read back as the older treatment.
      */
     discountFundedByPlatform,
+    // Which base the GST above was charged on; a return refunds on the same one.
+    gstOnPreDiscountValue,
     total,
     currency: "INR",
     couponCode: appliedCoupon?.code || codeRaw || null,

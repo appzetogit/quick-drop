@@ -700,6 +700,7 @@ export async function createOrder(userId, dto) {
        * dropped -- and a return would then refund a tax the order never charged.
        */
       discountFundedByPlatform: pricingResult.pricing?.discountFundedByPlatform === true,
+      gstOnPreDiscountValue: pricingResult.pricing?.gstOnPreDiscountValue === true,
       couponCode: pricingResult.pricing?.couponCode
         ? String(pricingResult.pricing.couponCode).trim().toUpperCase()
         : null,
@@ -2708,7 +2709,7 @@ export async function listOrdersAdmin(query) {
     FoodOrder.find(filter)
       .select("+deliveryOtp")
       .populate("userId", "name phone email")
-      .populate("restaurantId", "restaurantName area city ownerPhone zoneId")
+      .populate("restaurantId", "restaurantName area city ownerPhone primaryContactNumber zoneId")
       .populate("dispatch.deliveryPartnerId", "name fullName phone phoneNumber rating totalRatings profilePhoto vehicleType vehicleName vehicleNumber totalDeliveries")
       .sort({ createdAt: -1 })
       .skip(skip)

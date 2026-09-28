@@ -436,9 +436,10 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
       restaurantLocation?.formattedAddress ||
       restaurant?.addressLine1 ||
       "",
-    restaurantPhone: restaurant?.phone || restaurant?.ownerPhone || "",
+    // The store's contact number first; ownerPhone is the owner's login number.
+    restaurantPhone: restaurant?.primaryContactNumber || restaurant?.phone || restaurant?.ownerPhone || "",
     // Ready-to-launch dialer URI — the app can pass this straight to url_launcher.
-    restaurantCallUri: buildTelUri(restaurant?.phone || restaurant?.ownerPhone),
+    restaurantCallUri: buildTelUri(restaurant?.primaryContactNumber || restaurant?.phone || restaurant?.ownerPhone),
     // Photos of the premises so the rider can recognise the shop on arrival.
     restaurantCoverImage:
       restaurant?.coverImage || (Array.isArray(restaurant?.coverImages) ? restaurant.coverImages[0] : '') || '',

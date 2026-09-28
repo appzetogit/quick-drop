@@ -978,6 +978,8 @@ export default function Cart() {
   // so the cart cannot promise a free unit the order would refuse to grant.
   const bogoNext = Array.isArray(pricing?.bogo?.next) ? pricing.bogo.next : []
   const surgeAmount = Number(pricing?.surgeAmount || 0)
+  // Shown as part of the delivery fee, one line, not a separate "Surge" row.
+  const deliveryFeeShown = Number((deliveryFee + surgeAmount).toFixed(2))
   const gstCharges = Number(pricing?.tax ?? 0)
 
   /*
@@ -2738,8 +2740,8 @@ export default function Cart() {
                     )}
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600 dark:text-gray-400">Delivery Fee</span>
-                      <span className={isPricingAvailable && deliveryFee === 0 ? "text-[#EB590E] font-medium" : "text-gray-800 dark:text-gray-200 font-medium"}>
-                        {isPricingAvailable ? (deliveryFee === 0 ? "FREE" : `${RUPEE_SYMBOL}${deliveryFee.toFixed(2)}`) : ""}
+                      <span className={isPricingAvailable && deliveryFeeShown === 0 ? "text-[#EB590E] font-medium" : "text-gray-800 dark:text-gray-200 font-medium"}>
+                        {isPricingAvailable ? (deliveryFeeShown === 0 ? "FREE" : `${RUPEE_SYMBOL}${deliveryFeeShown.toFixed(2)}`) : ""}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
@@ -2751,7 +2753,7 @@ export default function Cart() {
                       </span>
                       <span className="text-gray-800 dark:text-gray-200 font-medium">{isPricingAvailable ? `${RUPEE_SYMBOL}${billPlatformFeeShown.toFixed(2)}` : "-"}</span>
                     </div>
-                    {surgeAmount > 0 && (
+                    {false && surgeAmount > 0 && (
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-600 dark:text-gray-400">Surge Amount</span>
                         <span className="text-gray-800 dark:text-gray-200 font-medium">{RUPEE_SYMBOL}{surgeAmount.toFixed(2)}</span>

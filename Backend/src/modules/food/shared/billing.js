@@ -227,7 +227,16 @@ export function computeBill({
      * worth the whole amount; post-coupon when the restaurant funded it, which
      * is a supplier discount and comes out of the taxable value.
      */
-    const platformFundedDiscount = discountFundedByPlatform === true && appliedDiscount > 0;
+    /*
+     * GST is charged on what the customer pays after the coupon, whoever funded
+     * it. Taxing the pre-coupon value for platform coupons left the GST line
+     * unchanged when a coupon was applied, which customers and the ops team
+     * read as a wrong bill (reported 2026-09-28), and for dishes priced
+     * inclusive of GST it charged tax on money nobody paid. `discountFundedByPlatform`
+     * is still accepted and recorded for settlement, it just no longer moves the
+     * tax base.
+     */
+    const platformFundedDiscount = false;
     const inclusiveTaxBase = platformFundedDiscount ? inclusiveItems : inclusiveAfterDiscount;
     const exclusiveTaxBase = platformFundedDiscount ? exclusiveItems : exclusiveAfterDiscount;
     const packagingTaxBase = platformFundedDiscount ? round2(packaging) : packagingAfterDiscount;
@@ -309,8 +318,16 @@ export function computeBill({
          * restaurant that prices net, which is every restaurant by default.
          */
         commissionBase: netItemAmountBeforeDiscount,
-        deliveryFee: round2(delivery),
-        surgeAmount: round2(surge),
+        /*
+         * The customer sees one "Delivery fee" line with the zone surge inside
+         * it (ops request 2026-09-28), so surgeAmount here is 0 and the split is
+         * kept in the two fields below. The order's top-level pricing.deliveryFee
+         * / pricing.surgeAmount stay separate: rider pay and the P&L read those.
+         */
+        deliveryFee: round2(delivery + surge),
+        surgeAmount: 0,
+        deliveryFeeBeforeSurge: round2(delivery),
+        surgeIncludedInDeliveryFee: round2(surge),
         platformFee: round2(platform),
         platformFeeGstRate: rate(platformFeeGstRate),
         platformFeeGst,

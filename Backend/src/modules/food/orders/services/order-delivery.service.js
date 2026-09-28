@@ -216,7 +216,7 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
       .populate('userId', 'name phone email')
       .populate(
         'restaurantId',
-        'restaurantName name address phone ownerPhone location profileImage',
+        'restaurantName name address phone ownerPhone primaryContactNumber location profileImage',
       )
       .lean(),
     FoodOrder.countDocuments(filter),

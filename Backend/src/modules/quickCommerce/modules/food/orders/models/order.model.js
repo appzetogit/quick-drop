@@ -108,6 +108,9 @@ const pricingSchema = new mongoose.Schema(
          * but the model does not name is dropped on every save.
          */
         discountFundedByPlatform: { type: Boolean },
+        /** Whether GST was charged on the pre-coupon value. Absent on older orders, which
+         *  were taxed pre-coupon whenever discountFundedByPlatform was true. */
+        gstOnPreDiscountValue: { type: Boolean },
         couponCode: { type: String, default: null, trim: true, uppercase: true },
         total: { type: Number, required: true, min: 0 },
         currency: { type: String, default: 'INR' },

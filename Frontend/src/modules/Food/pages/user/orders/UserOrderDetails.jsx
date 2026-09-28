@@ -527,13 +527,13 @@ export default function UserOrderDetails() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-400 dark:text-gray-500 font-medium">Delivery fee</span>
-              {pricing.deliveryFee === 0 && (
+              {(Number(pricing.deliveryFee || 0) + Number(pricing.surgeAmount || 0)) === 0 && (
                 <span className="text-[#EB590E] text-[10px] font-bold border border-[#EB590E] px-1 rounded ml-1">
                   FREE
                 </span>
               )}
               <span className="text-[#EB590E] font-medium uppercase">
-                {pricing.deliveryFee ? `₹${Number(pricing.deliveryFee).toFixed(2)}` : "Free"}
+                {(Number(pricing.deliveryFee || 0) + Number(pricing.surgeAmount || 0)) ? `₹${(Number(pricing.deliveryFee || 0) + Number(pricing.surgeAmount || 0)).toFixed(2)}` : "Free"}
               </span>
             </div>
             <div className="flex justify-between">
@@ -545,7 +545,7 @@ export default function UserOrderDetails() {
                 ₹{receiptPlatformFee.toFixed(2)}
               </span>
             </div>
-            {Number(pricing.surgeAmount || 0) > 0 && (
+            {/* surge is included in the delivery fee line above */ false && Number(pricing.surgeAmount || 0) > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-500 dark:text-gray-400">Surge Amount</span>
                 <span className="text-gray-800 dark:text-gray-200">

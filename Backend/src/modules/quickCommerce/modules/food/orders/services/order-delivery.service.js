@@ -83,7 +83,7 @@ const DELIVERY_RESTAURANT_POPULATE = {
   // arrays. Selecting only one pair returns empty for restaurants that filled the other.
   // phone/ownerPhone back the tap-to-call button; location gives the exact pin.
   select:
-    'restaurantName name phone ownerPhone location addressLine1 area city state pincode landmark profileImage coverImage coverImages galleryImages menuImages',
+    'restaurantName name phone ownerPhone primaryContactNumber location addressLine1 area city state pincode landmark profileImage coverImage coverImages galleryImages menuImages',
 };
 
 const DELIVERY_TRANSACTION_SELECT = 'orderId payment paymentMethod pricing amounts status';

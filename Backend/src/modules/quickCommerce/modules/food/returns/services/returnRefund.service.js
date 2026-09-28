@@ -163,7 +163,11 @@ export const calculateReturnRefund = ({
     // seller was paid in full and the supply was worth the whole basket. The
     // refund has to use that same base: taking the discount off here would
     // return less tax than was collected, and the order would never reconcile.
-    const taxedOnFullValue = pricing?.discountFundedByPlatform === true;
+    // Orders since 2026-09-28 record the base explicitly (always post-coupon);
+    // older ones were taxed pre-coupon whenever the platform funded the coupon.
+    const taxedOnFullValue = typeof pricing?.gstOnPreDiscountValue === 'boolean'
+        ? pricing.gstOnPreDiscountValue
+        : pricing?.discountFundedByPlatform === true;
     const fallbackRate = untaggedLineRate(items, pricing, orderSubtotalPaise);
     let taxPaise = 0;
     for (const line of matched) {
