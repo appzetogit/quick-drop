@@ -25,6 +25,13 @@ export const connectDB = async () => {
             family: 4, // Prefer IPv4 where local resolvers have IPv6/SRV issues.
         });
         logger.info(`MongoDB connected: ${conn.connection.host}`);
+        // A standalone server cannot run transactions; see standaloneTransactions.js.
+        try {
+            const { adaptTransactionsToTopology } = await import('./standaloneTransactions.js');
+            await adaptTransactionsToTopology(conn.connection);
+        } catch (err) {
+            logger.warn(`[db] topology check failed: ${err.message}`);
+        }
     } catch (error) {
         logger.error(`MongoDB connection error: ${error.message}`);
         if (config.nodeEnv === 'production') {
