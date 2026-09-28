@@ -10,10 +10,9 @@ import { logger } from '../../utils/logger.js';
  * is what that service's checkout charges; unset keeps the service's own, so
  * nothing changes until an admin saves one.
  *
- * GST on the platform fee applies to Food only. Quick & Medical's bill has no
- * GST line for its platform fee (it adds GST to the delivery fee only), and
- * starting to charge one changes what its customers pay -- a tax decision for
- * the business, not a side effect of this screen. The overview says so.
+ * GST on the platform fee: Food always charges it (18% unless set). Quick &
+ * Medical charge it at Master's rate when Master sets one (since 2026-09-28,
+ * on the business's request); with no Master rate it is not charged there.
  *
  * Taxi's platform fee is a different thing -- a percentage or flat amount on
  * each vehicle's price row (taxi/common/platformFee.js) -- and stays there.
@@ -59,8 +58,7 @@ export async function withMasterFees(vertical, settings, { zoneId } = {}) {
   if (master.platformFee === null && master.platformFeeGstRate === null) return settings;
   const out = { ...(settings || {}) };
   if (master.platformFee !== null) out.platformFee = master.platformFee;
-  // Only Food has a platform-fee GST line; see the note at the top.
-  if (vertical === 'food' && master.platformFeeGstRate !== null) out.platformFeeGstRate = master.platformFeeGstRate;
+  if (master.platformFeeGstRate !== null) out.platformFeeGstRate = master.platformFeeGstRate;
   return out;
 }
 
@@ -88,7 +86,9 @@ export async function platformFeesOverview() {
       {
         vertical: 'quickCommerce',
         platformFee: field(quickMaster.platformFee, quickOwn?.platformFee),
-        platformFeeGstRate: { value: null, from: 'not_charged' },
+        platformFeeGstRate: quickMaster.platformFeeGstRate !== null
+          ? { value: quickMaster.platformFeeGstRate, from: 'master' }
+          : { value: null, from: 'not_charged' },
       },
     ],
   };

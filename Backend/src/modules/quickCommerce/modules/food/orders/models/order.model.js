@@ -94,6 +94,9 @@ const pricingSchema = new mongoose.Schema(
         packagingFee: { type: Number, default: 0, min: 0 },
         deliveryFee: { type: Number, default: 0, min: 0 },
         deliveryFeeGst: { type: Number, default: 0, min: 0 },
+        /** GST on the platform fee (Master rate), collected for the government. */
+        platformFeeGst: { type: Number, default: 0, min: 0 },
+        platformFeeGstRate: { type: Number, default: 0, min: 0 },
         platformFee: { type: Number, default: 0, min: 0 },
         /** Extra surcharge when user selects Quick Mode (also included in platformFee). */
         quickDeliveryFee: { type: Number, default: 0, min: 0 },

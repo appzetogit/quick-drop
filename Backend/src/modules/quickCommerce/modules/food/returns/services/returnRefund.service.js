@@ -194,7 +194,8 @@ export const calculateReturnRefund = ({
     const sellerAtFault = fault === FAULT.SELLER;
     const refundFees = isFullReturn || sellerAtFault;
     const deliveryPaise = refundFees ? toPaise(pricing.deliveryFee) + toPaise(pricing.deliveryFeeGst) : 0;
-    const platformPaise = refundFees ? toPaise(pricing.platformFee) : 0;
+    // The platform fee goes back with its GST, the way the delivery fee does.
+    const platformPaise = refundFees ? toPaise(pricing.platformFee) + toPaise(pricing.platformFeeGst) : 0;
 
     // ── Total, capped at what is left to give back ────────────────────────────
     let totalPaise = goodsPaise - discountSharePaise + taxPaise + deliveryPaise + platformPaise;

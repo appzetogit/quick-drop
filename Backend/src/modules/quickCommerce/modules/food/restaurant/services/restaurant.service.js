@@ -2546,11 +2546,25 @@ export const listPublicOffers = async (query = {}) => {
 
     const list = await FoodOffer.find(filter)
         .sort({ createdAt: -1 })
-        .populate({ path: 'restaurantId', select: 'restaurantName restaurantNameNormalized profileImage estimatedDeliveryTime rating' })
-        .populate({ path: 'restaurantIds', select: 'restaurantName restaurantNameNormalized profileImage estimatedDeliveryTime rating' })
+        .populate({ path: 'restaurantId', select: 'restaurantName restaurantNameNormalized profileImage estimatedDeliveryTime rating storeType' })
+        .populate({ path: 'restaurantIds', select: 'restaurantName restaurantNameNormalized profileImage estimatedDeliveryTime rating storeType' })
         .lean();
 
-    let allOffers = list.map((o) => {
+    // Pharmacies have their own Medical tab: a store-specific offer shows in the
+    // Quick list only if it covers at least one non-pharmacy store, and in the
+    // Medical list (?storeType=pharmacy) only if it covers a pharmacy.
+    const wantPharmacy = isMedicalStore(query.storeType);
+    const offersForThisList = list.filter((o) => {
+        if (o.restaurantScope !== 'selected') return true;
+        const stores = Array.isArray(o.restaurantIds) && o.restaurantIds.length > 0
+            ? o.restaurantIds
+            : (o.restaurantId ? [o.restaurantId] : []);
+        const known = stores.filter((s) => s && typeof s === 'object');
+        if (known.length === 0) return true;
+        return known.some((s) => isMedicalStore(s.storeType) === wantPharmacy);
+    });
+
+    let allOffers = offersForThisList.map((o) => {
         const selectedRestaurants = Array.isArray(o.restaurantIds) && o.restaurantIds.length > 0
             ? o.restaurantIds
             : (o.restaurantId ? [o.restaurantId] : []);

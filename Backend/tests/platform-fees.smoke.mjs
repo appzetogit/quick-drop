@@ -64,8 +64,8 @@ await check('a Master GST rate reaches Food\'s bill', async () => {
   assert.ok(near(p.platformFeeGst, 0.75), `gst ${p.platformFeeGst}`);
   assert.equal(p.platformFeeGstRate, 5);
 });
-await check('Quick has no platform-fee GST line, so the rate is not put on it', async () => {
-  assert.equal((await loadActiveFeeSettings()).platformFeeGstRate, undefined);
+await check('Quick gets the Master GST rate on its platform fee too', async () => {
+  assert.equal((await loadActiveFeeSettings()).platformFeeGstRate, 5);
 });
 
 console.log('\nPer service');
@@ -86,7 +86,7 @@ await check('the overview says what each charges and who set it', async () => {
   assert.deepEqual(by.food.platformFee, { value: 0, from: 'master' });
   assert.deepEqual(by.food.platformFeeGstRate, { value: 5, from: 'master' });
   assert.deepEqual(by.quickCommerce.platformFee, { value: 7, from: 'master' });
-  assert.deepEqual(by.quickCommerce.platformFeeGstRate, { value: null, from: 'not_charged' });
+  assert.deepEqual(by.quickCommerce.platformFeeGstRate, { value: 5, from: 'master' });
 });
 
 console.log('\nClearing');

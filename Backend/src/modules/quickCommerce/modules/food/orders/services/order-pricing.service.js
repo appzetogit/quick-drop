@@ -345,6 +345,20 @@ export function computeItemsTax(
   return round2(tax);
 }
 
+/**
+ * GST on the platform fee. Charged at the rate Master > Platform fee & GST sets
+ * (withMasterFees puts it on the settings as platformFeeGstRate); absent means
+ * not charged, which is how Quick & Medical always worked before one was set.
+ * A separate line, never folded into `tax`: `tax` is the goods' GST, and returns
+ * and seller figures read it as such.
+ */
+export function platformFeeGstFor(feeSettings = {}, platformFee = 0) {
+  const r = Number(feeSettings?.platformFeeGstRate);
+  const platformFeeGstRate = feeSettings?.platformFeeGstRate != null && Number.isFinite(r) && r > 0 ? r : 0;
+  const platformFeeGst = round2((Number(platformFee) || 0) * (platformFeeGstRate / 100));
+  return { platformFeeGstRate, platformFeeGst };
+}
+
 export function resolveUserDeliveryFee(feeSettings = {}, { subtotal = 0, distanceKm = null } = {}) {
   if (feeSettings.deliveryFormula) {
     // An unmeasured trip is charged the base fee, as the band table did.
@@ -600,11 +614,13 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
   });
 
   const deliveryFeeGst = computeDeliveryFeeGst(deliveryFee);
+  // GST on the platform fee, at Master's rate when one is set (not charged otherwise).
+  const { platformFeeGstRate, platformFeeGst } = platformFeeGstFor(feeSettings, platformFee);
 
   const total = round2(
     Math.max(
       0,
-      subtotal + packagingFee + deliveryFee + deliveryFeeGst + platformFee + tax - discount,
+      subtotal + packagingFee + deliveryFee + deliveryFeeGst + platformFee + platformFeeGst + tax - discount,
     ),
   );
 
@@ -619,6 +635,8 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
     deliveryFee,
     deliveryFeeGst,
     platformFee,
+    platformFeeGst,
+    platformFeeGstRate,
     discount,
     /*
      * Carried so the saved order records which base its GST was charged on, and

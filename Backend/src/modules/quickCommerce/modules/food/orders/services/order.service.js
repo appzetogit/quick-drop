@@ -688,6 +688,8 @@ export async function createOrder(userId, dto) {
       deliveryFee: Number(pricingResult.pricing?.deliveryFee) || 0,
       deliveryFeeGst: Number(pricingResult.pricing?.deliveryFeeGst) || 0,
       platformFee: Number(pricingResult.pricing?.platformFee) || 0,
+      platformFeeGst: Number(pricingResult.pricing?.platformFeeGst) || 0,
+      platformFeeGstRate: Number(pricingResult.pricing?.platformFeeGstRate) || 0,
       quickDeliveryFee: Number(pricingResult.pricing?.quickDeliveryFee) || 0,
       deliveryMode:
         pricingResult.pricing?.deliveryMode === "quick" || dto.deliveryMode === "quick"

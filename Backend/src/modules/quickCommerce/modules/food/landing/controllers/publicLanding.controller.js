@@ -10,6 +10,7 @@ import { getPublicHomePromotionBanners } from '../services/homePromotionBanner.s
 import TopBanner from '../models/topBanner.model.js';
 import { sendResponse } from '../../../../utils/response.js';
 import mongoose from 'mongoose';
+import { QUICK_SHOP_SELLER_FILTER } from '../../shared/storeType.js';
 
 /** Public hero banners for user home: active only, sorted, with linkedRestaurants populated for click-through */
 export const getPublicHeroBannersController = async (req, res, next) => {
@@ -107,7 +108,8 @@ export const getPublicLandingSettingsController = async (req, res, next) => {
         const ids = settings?.recommendedRestaurantIds || [];
         let recommendedRestaurants = [];
         if (Array.isArray(ids) && ids.length > 0) {
-            const query = { _id: { $in: ids }, status: 'approved' };
+            // Quick Shop's home: pharmacies are listed on the Medical tab instead.
+            const query = { _id: { $in: ids }, status: 'approved', ...QUICK_SHOP_SELLER_FILTER };
             if (zoneId && mongoose.Types.ObjectId.isValid(zoneId)) {
                 query.zoneId = new mongoose.Types.ObjectId(zoneId);
             }

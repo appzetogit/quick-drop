@@ -11,6 +11,7 @@ import {
     resolveUserDeliveryFee,
     computeDeliveryFeeGst,
     computeItemsTax,
+    platformFeeGstFor,
     calculateRiderEarning,
     estimateDeliveryPromiseMinutes,
 } from './order-pricing.service.js';
@@ -228,6 +229,7 @@ export async function fillPrescriptionOrder(orderId, restaurantId, dto = {}) {
     const deliveryFee = round2(resolvedFee);
     const deliveryFeeGst = computeDeliveryFeeGst(deliveryFee);
     const platformFee = Number(feeSettings?.platformFee) || 0;
+    const { platformFeeGstRate, platformFeeGst } = platformFeeGstFor(feeSettings, platformFee);
 
     // Item GST and seller commission, exactly as the catalogue path charges them
     // (calculateOrderPricing / createOrder). Left at 0 here, a medicine sold on a
@@ -247,7 +249,7 @@ export async function fillPrescriptionOrder(orderId, restaurantId, dto = {}) {
         logger.error(`Commission calculation failed for prescription order ${order._id}: ${err?.message || err}`);
     }
 
-    const total = round2(subtotal + tax + deliveryFee + deliveryFeeGst + platformFee);
+    const total = round2(subtotal + tax + deliveryFee + deliveryFeeGst + platformFee + platformFeeGst);
 
     order.items = items;
     order.pricing = {
@@ -258,6 +260,8 @@ export async function fillPrescriptionOrder(orderId, restaurantId, dto = {}) {
         deliveryFee,
         deliveryFeeGst,
         platformFee,
+        platformFeeGst,
+        platformFeeGstRate,
         restaurantCommission,
         total,
         distanceKm: Number.isFinite(distanceKm) ? distanceKm : null,
@@ -370,6 +374,7 @@ export async function submitPrescriptionBill(orderId, restaurantId, dto = {}) {
     const deliveryFee = round2(resolvedFee);
     const deliveryFeeGst = computeDeliveryFeeGst(deliveryFee);
     const platformFee = Number(feeSettings?.platformFee) || 0;
+    const { platformFeeGstRate, platformFeeGst } = platformFeeGstFor(feeSettings, platformFee);
     const gstFallbackRate = Number(feeSettings?.gstRate || 0);
     const tax = computeItemsTax(items, { subtotal, discount: 0, fallbackRate: gstFallbackRate });
 
@@ -384,7 +389,7 @@ export async function submitPrescriptionBill(orderId, restaurantId, dto = {}) {
         logger.error(`Commission calculation failed for prescription order ${order._id}: ${err?.message || err}`);
     }
 
-    const total = round2(subtotal + tax + deliveryFee + deliveryFeeGst + platformFee);
+    const total = round2(subtotal + tax + deliveryFee + deliveryFeeGst + platformFee + platformFeeGst);
 
     order.items = items;
     order.pricing = {
@@ -395,6 +400,8 @@ export async function submitPrescriptionBill(orderId, restaurantId, dto = {}) {
         deliveryFee,
         deliveryFeeGst,
         platformFee,
+        platformFeeGst,
+        platformFeeGstRate,
         restaurantCommission,
         total,
         distanceKm: Number.isFinite(distanceKm) ? distanceKm : null,
