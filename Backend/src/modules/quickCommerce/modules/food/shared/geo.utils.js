@@ -162,6 +162,24 @@ export function normalizeDeliveryAddress(address) {
   };
 }
 
+/**
+ * The order address requires a city and state, and the app does not always send
+ * them (an address picked on the map, or saved before those fields existed).
+ * Taken from the address's own fields first, then the store's -- it only
+ * delivers locally -- so the order is placed instead of failing with a 500.
+ */
+export function fillAddressLocality(address, restaurant) {
+  if (!address || typeof address !== 'object') return address;
+  const text = (v) => (typeof v === 'string' ? v.trim() : '');
+  const loc = restaurant?.location || {};
+  const city = text(address.city)
+    || text(address.area) || text(address.locality) || text(address.district)
+    || text(loc.city) || text(restaurant?.city) || text(loc.area) || text(restaurant?.area);
+  const state = text(address.state)
+    || text(loc.state) || text(restaurant?.state);
+  return { ...address, city: city || 'NA', state: state || 'NA' };
+}
+
 export function normalizeRestaurantLocation(location) {
   if (!location || typeof location !== 'object') return location;
 

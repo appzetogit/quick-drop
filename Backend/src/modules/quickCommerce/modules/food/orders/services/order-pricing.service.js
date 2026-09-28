@@ -69,7 +69,7 @@ export async function loadRestaurantForOrdering(restaurantId) {
       // projection it is undefined, every seller reads as non-medical, and a pharmacy
       // order goes through with nothing attached -- the same failure the comment
       // above describes for autoAcceptOrders.
-      'status restaurantName zoneId location isAcceptingOrders autoAcceptOrders outsideHoursOverride openingTime closingTime openDays deliveryTimings isActive storeType drugLicenseExpiry',
+      'status restaurantName zoneId location city state area isAcceptingOrders autoAcceptOrders outsideHoursOverride openingTime closingTime openDays deliveryTimings isActive storeType drugLicenseExpiry',
     )
     .lean();
 

@@ -18,7 +18,7 @@ import {
 import { getRestaurantCommissionSnapshot } from './foodTransaction.service.js';
 
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
-import { normalizeDeliveryAddress } from '../../shared/geo.utils.js';
+import { normalizeDeliveryAddress, fillAddressLocality } from '../../shared/geo.utils.js';
 import { findZoneForPoint, readAddressPoint, ZONE_VERTICALS } from '../../shared/zoneServiceability.js';
 import { buildOrderPrescription, PRESCRIPTION_STATUS } from '../../shared/prescriptionRules.js';
 import {
@@ -118,7 +118,7 @@ export async function createPrescriptionOrder(userId, dto = {}) {
     const orderAt = new Date();
     assertRestaurantOpenForOrdering(restaurant, orderAt);
 
-    const deliveryAddress = normalizeDeliveryAddress({
+    const deliveryAddress = fillAddressLocality(normalizeDeliveryAddress({
         label: dto.address?.label || 'Home',
         name: dto.address?.name || dto.address?.fullName || dto.customerName || '',
         fullName: dto.address?.fullName || dto.address?.name || dto.customerName || '',
@@ -129,7 +129,7 @@ export async function createPrescriptionOrder(userId, dto = {}) {
         zipCode: dto.address?.zipCode || '',
         phone: dto.address?.phone || '',
         ...(dto.address || {}),
-    });
+    }), restaurant);
 
     const point = readAddressPoint(deliveryAddress);
     if (!point) {

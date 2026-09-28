@@ -45,7 +45,7 @@ import {
   loadRestaurantForOrdering,
   assertRestaurantOpenForOrdering,
 } from './order-pricing.service.js';
-import { normalizeDeliveryAddress } from '../../shared/geo.utils.js';
+import { normalizeDeliveryAddress, fillAddressLocality } from '../../shared/geo.utils.js';
 import {
   assertCanAcceptOrder,
   buildOrderPrescription,
@@ -623,7 +623,7 @@ export async function createOrder(userId, dto) {
     const settings = await getDispatchSettings();
     const dispatchMode = settings.dispatchMode;
 
-    const deliveryAddress = normalizeDeliveryAddress({
+    const deliveryAddress = fillAddressLocality(normalizeDeliveryAddress({
       label: dto.address?.label || "Home",
       name: dto.address?.name || dto.address?.fullName || dto.customerName || "",
       fullName: dto.address?.fullName || dto.address?.name || dto.customerName || "",
@@ -634,7 +634,7 @@ export async function createOrder(userId, dto) {
       zipCode: dto.address?.zipCode || "",
       phone: dto.address?.phone || "",
       ...(dto.address || {}),
-    });
+    }), restaurant);
 
     // Without coordinates the row cannot be written at all: the 2dsphere index
     // on the address rejects a Point with no position, and the driver's error

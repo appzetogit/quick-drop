@@ -110,9 +110,13 @@ export function reviewPrescription(order, decision, opts = {}) {
     }
 
     const now = opts.now || new Date();
+    // Spread the plain fields. `{...subdoc}` on a Mongoose subdocument copies its
+    // internals, not bill/packet, and the save then failed with "Cast to Object
+    // failed for value undefined at path prescription.bill" (a 500 to the store).
+    const plain = typeof rx.toObject === 'function' ? rx.toObject() : rx;
     if (decision === PRESCRIPTION_STATUS.APPROVED) {
         return {
-            ...rx,
+            ...plain,
             status: PRESCRIPTION_STATUS.APPROVED,
             reviewedAt: now,
             reviewedBy: opts.reviewerId || null,
@@ -125,7 +129,7 @@ export function reviewPrescription(order, decision, opts = {}) {
             throw new ValidationError('Give a reason when rejecting a prescription, so the customer can fix it');
         }
         return {
-            ...rx,
+            ...plain,
             status: PRESCRIPTION_STATUS.REJECTED,
             reviewedAt: now,
             reviewedBy: opts.reviewerId || null,

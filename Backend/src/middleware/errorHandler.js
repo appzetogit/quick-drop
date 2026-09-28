@@ -44,6 +44,18 @@ const errorHandler = (err, req, res, next) => {
         message = `That upload is too large for one request. The limit is ${config.requestJsonLimit} of encoded data, and images sent this way grow by about a third. Try fewer or smaller images at once.`;
     }
 
+    /*
+     * A Mongoose schema validation error (a required field the request did not
+     * carry) is the caller's data, not a broken server: answer 400 naming the
+     * fields instead of a masked "Internal server error" nobody can act on.
+     * Our own ValidationError already carries a statusCode and is left alone.
+     */
+    if (!err.statusCode && err.name === 'ValidationError' && err.errors && typeof err.errors === 'object') {
+        statusCode = 400;
+        const fields = Object.keys(err.errors).map((k) => k.split('.').pop());
+        message = `Some details are missing or invalid: ${[...new Set(fields)].join(', ')}`;
+    }
+
     const requestId = req.requestId || '-';
 
     logger.error(
