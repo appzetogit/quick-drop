@@ -11,8 +11,8 @@ import { useAdminAccess, isRestricted, can, hasPanel } from "@food/utils/adminAc
  * set once for Food and Quick & Medical (core/finance/platformFees.service.js).
  *
  * Empty keeps each service's own fee setting, which is how it worked before.
- * GST on the platform fee reaches Food's bill only: Quick & Medical's bill has
- * no such line today, and the page says so rather than implying otherwise.
+ * GST on the platform fee is charged by Food and, since 2026-09-28, by Quick &
+ * Medical too, at the rate set here (unset for Quick & Medical = not charged).
  */
 
 const KEYS = { platformFee: "fees.platformFee", platformFeeGstRate: "fees.platformFeeGstRate" }
@@ -139,8 +139,7 @@ export default function MasterFees() {
     setSaving(true)
     try {
       const writes = [platformSettingsAPI.set(KEYS.platformFee, { level: target.level, scopeId: target.scopeId, value: values.platformFee })]
-      // Quick has no platform-fee GST line, so its tab never writes a rate.
-      if (!isQuick) writes.push(platformSettingsAPI.set(KEYS.platformFeeGstRate, { level: target.level, scopeId: target.scopeId, value: values.platformFeeGstRate }))
+      writes.push(platformSettingsAPI.set(KEYS.platformFeeGstRate, { level: target.level, scopeId: target.scopeId, value: values.platformFeeGstRate }))
       await Promise.all(writes)
       toast.success(`Platform fee saved for ${target.label}`)
       await load()
@@ -288,13 +287,13 @@ export default function MasterFees() {
                 />
                 <Row
                   label="GST on the platform fee"
-                  hint="Added on top of the platform fee. Applies to Food; Quick & Medical doesn't add GST to its platform fee."
-                  value={isQuick ? null : values.platformFeeGstRate}
+                  hint="Added on top of the platform fee, on Food and Quick & Medical orders."
+                  value={values.platformFeeGstRate}
                   onChange={(v) => setValues((c) => ({ ...c, platformFeeGstRate: v }))}
                   suffix="%"
                   max={100}
-                  disabled={saving || isQuick}
-                  note={isQuick ? "Quick & Medical doesn't add GST to its platform fee today." : ""}
+                  disabled={saving}
+                  note={isQuick ? "Also applies to Medical (pharmacy) orders." : ""}
                 />
               </div>
             )}
