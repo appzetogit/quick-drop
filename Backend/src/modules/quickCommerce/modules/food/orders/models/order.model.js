@@ -478,6 +478,9 @@ const orderSchema = new mongoose.Schema(
             default: () => ({})
         },
         note: { type: String, default: '', trim: true },
+        /** Why the order was cancelled, as shown to the customer. Set by the pharmacy/store
+         *  rejection and by a declined pharmacy bill; the schema is strict, so it must be declared. */
+        cancellationReason: { type: String, default: '', trim: true },
         deliveryInstructions: { type: String, default: '', trim: true },
         acceptanceWindowSeconds: { type: Number, default: 240, min: 1 },
         acceptanceDeadlineAt: { type: Date, default: null },

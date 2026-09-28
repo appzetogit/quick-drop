@@ -364,13 +364,29 @@ function buildAcceptanceDeadline(date = new Date(), windowSeconds = ORDER_ACCEPT
   return new Date(date.getTime() + (Number.isFinite(seconds) && seconds > 0 ? seconds : ORDER_ACCEPTANCE_WINDOW_SECONDS) * 1000);
 }
 
+/**
+ * Who the customer's order is with, in words they recognise. Quick & Medical
+ * sell through stores and pharmacies; the messages below were copied from Food
+ * and said "restaurant", which a customer who ordered medicine read as wrong.
+ */
+function sellerNoun(order) {
+  return order?.prescription?.required === true ? 'pharmacy' : 'store';
+}
+
+/** The reason shown to the customer when the seller rejects without giving one. */
+function defaultSellerCancelReason(order) {
+  return sellerNoun(order) === 'pharmacy'
+    ? 'The pharmacy could not fulfil this order (prescription or medicine unavailable).'
+    : 'The store could not fulfil this order.';
+}
+
 function buildCancellationRefundDescription(order, cancelledBy = 'system') {
   const orderReadableId = order?.order_id || order?._id;
   switch (String(cancelledBy || '').toLowerCase()) {
     case 'user':
       return `Refund for cancelled order #${orderReadableId}`;
     case 'restaurant':
-      return `Refund for order #${orderReadableId} cancelled by restaurant`;
+      return `Refund for order #${orderReadableId} cancelled by the ${sellerNoun(order)}`;
     case 'admin':
       return `Refund for order #${orderReadableId} cancelled by admin`;
     case 'auto_cancel':
@@ -483,7 +499,7 @@ async function expireUnacceptedOrders(filter = {}) {
       {
         $set: {
           orderStatus: "cancelled_by_restaurant",
-          note: "Not accepted by restaurant",
+          note: "Not accepted by the seller in time",
         },
         $push: {
           statusHistory: {
@@ -491,7 +507,7 @@ async function expireUnacceptedOrders(filter = {}) {
             byRole: "SYSTEM",
             from,
             to: "cancelled_by_restaurant",
-            note: "Not accepted by restaurant",
+            note: "Not accepted by the seller in time",
           },
         },
       },
@@ -521,8 +537,8 @@ async function expireUnacceptedOrders(filter = {}) {
       await foodTransactionService.updateTransactionStatus(updated._id, 'cancelled_by_restaurant', {
         ...(refunded ? { status: 'refunded' } : stillHeld ? {} : { status: 'failed' }),
         note: stillHeld
-          ? 'Not accepted by restaurant in time; auto-cancelled, refund NOT processed'
-          : 'Not accepted by restaurant in time; auto-cancelled',
+          ? `Not accepted by the ${sellerNoun(updated)} in time; auto-cancelled, refund NOT processed`
+          : `Not accepted by the ${sellerNoun(updated)} in time; auto-cancelled`,
         recordedByRole: 'SYSTEM',
       });
     } catch (err) {
@@ -536,8 +552,8 @@ async function expireUnacceptedOrders(filter = {}) {
           orderMongoId: updated._id?.toString?.(),
           orderId: updated._id.toString(),
           orderStatus: updated.orderStatus,
-          note: "Not accepted by restaurant",
-          message: "Order was not accepted by restaurant in time.",
+          note: `Not accepted by the ${sellerNoun(updated)} in time`,
+          message: `The ${sellerNoun(updated)} did not accept your order in time.`,
         };
         io.to(rooms.user(updated.userId)).emit("order_status_update", payload);
         io.to(rooms.restaurant(updated.restaurantId)).emit("order_status_update", payload);
@@ -2109,15 +2125,23 @@ export async function updateOrderStatusRestaurant(
     order.payment.status = "paid";
   }
 
+  // A seller who rejects without a reason still leaves the customer one, in
+  // the seller's own terms (pharmacy / store), rather than an empty line.
+  const isSellerCancel = String(orderStatus).includes("cancel");
+  const sellerNote = String(note || "").trim() || (isSellerCancel ? defaultSellerCancelReason(order) : "");
+  if (isSellerCancel && !String(order.cancellationReason || "").trim()) {
+    order.cancellationReason = sellerNote;
+  }
+
   pushStatusHistory(order, {
     byRole: "RESTAURANT",
     byId: restaurantId,
     from,
     to: orderStatus,
-    note: note || "",
+    note: sellerNote,
   });
 
-  if (String(orderStatus).includes("cancel")) {
+  if (isSellerCancel) {
     await restoreOrderStock(order);
   }
 
@@ -2144,21 +2168,29 @@ export async function updateOrderStatusRestaurant(
   let title = `Order ${order._id.toString()} updated`;
   let body = `Status changed to ${String(orderStatus).replace(/_/g, " ")}`;
 
+  const seller = sellerNoun(order);
+  const isPharmacy = seller === 'pharmacy';
   if (orderStatus === "confirmed") {
-    title = "Order Accepted! 🧑‍🍳";
-    body = "The restaurant has accepted your order and is starting to prepare it.";
+    title = "Order Accepted!";
+    body = isPharmacy
+      ? "The pharmacy has accepted your order and is preparing your medicines."
+      : "The store has accepted your order and is packing it.";
   } else if (orderStatus === "preparing") {
-    title = "Food is being prepared! 🍳";
-    body = "Your food is currently being prepared by the restaurant.";
+    title = isPharmacy ? "Preparing your medicines" : "Packing your order";
+    body = isPharmacy
+      ? "The pharmacy is preparing your medicines."
+      : "The store is packing your order.";
   } else if (orderStatus === "ready_for_pickup") {
-    title = "Food is ready! 🛍️";
+    title = "Order is ready!";
     body = "Your order is ready and waiting to be picked up.";
   } else if (String(orderStatus).includes("cancel")) {
     const isOnlinePaid = order.payment.method === "razorpay" && (order.payment.status === "paid" || order.payment.status === "refunded");
     const refundDetail = isOnlinePaid ? ` Your refund of ₹${order.pricing.total} is being processed and will be credited to your original payment method within 5-7 working days.` : "";
     
     title = "Order Cancelled ❌";
-    body = (note && String(note).trim()) ? note : `Unfortunately, your order has been cancelled by the restaurant.${refundDetail}`;
+    body = (note && String(note).trim())
+      ? note
+      : `${defaultSellerCancelReason(order)}${refundDetail}`;
   }
 
   // Real-time: status update to restaurant room.
@@ -2239,7 +2271,7 @@ export async function updateOrderStatusRestaurant(
         const isOnlinePaid = order.payment.method === "razorpay" && (order.payment.status === "paid" || order.payment.status === "refunded");
         await foodTransactionService.updateTransactionStatus(order._id, 'cancelled_by_restaurant', {
             status: isOnlinePaid ? 'refunded' : 'failed',
-            note: `Order cancelled by restaurant/admin`,
+            note: `Order cancelled by the ${seller}/admin`,
             recordedByRole: 'RESTAURANT',
             recordedById: restaurantId
         });
