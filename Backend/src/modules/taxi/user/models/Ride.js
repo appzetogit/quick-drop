@@ -28,6 +28,10 @@ const rideMessageSchema = new mongoose.Schema(
 
 const rideSchema = new mongoose.Schema(
   {
+    /** Removed from the admin trips list by an admin. The ride itself is kept
+     *  (earnings, payments and reports still read it). */
+    adminHiddenAt: { type: Date, default: null },
+    adminHiddenBy: { type: String, default: '' },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'TaxiUser',

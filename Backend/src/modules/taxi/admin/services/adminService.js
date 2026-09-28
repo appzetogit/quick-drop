@@ -5725,6 +5725,7 @@ export const listRideRequests = async (query = {}) => {
 
   const rides = await Ride.find({
     serviceType: { $nin: ['parcel', 'intercity'] },
+    adminHiddenAt: null,
   })
     .sort({ createdAt: -1 })
     .populate('userId', 'name phone')
@@ -5853,6 +5854,30 @@ export const listIntercityTrips = async (query = {}) => {
   }
 
   return buildPaginator(rows, page, limit);
+};
+
+/**
+ * Delete a trip from the admin trips list.
+ *
+ * A ride still searching or under way is cancelled first (the same admin cancel
+ * the ongoing-rides screen uses, which releases the driver). Then the ride is
+ * hidden from the list; it stays in the database because the driver's earnings,
+ * payments and reports refer to it.
+ */
+export const removeRideFromTrips = async (rideId, adminId = '') => {
+  if (!mongoose.Types.ObjectId.isValid(String(rideId))) {
+    throw new ApiError(400, 'Invalid ride id');
+  }
+  const ride = await Ride.findById(rideId).select('status adminHiddenAt').lean();
+  if (!ride || ride.adminHiddenAt) throw new ApiError(404, 'Ride not found');
+  const live = ['searching', 'accepted', 'ongoing', 'arriving', 'started', 'arrived']
+    .includes(String(ride.status || '').toLowerCase());
+  if (live) await cancelRideByAdmin(rideId);
+  await Ride.updateOne(
+    { _id: rideId, adminHiddenAt: null },
+    { $set: { adminHiddenAt: new Date(), adminHiddenBy: String(adminId || '') } },
+  );
+  return { id: String(rideId), deleted: true, cancelledFirst: live };
 };
 
 export const deleteOngoingRide = async (rideId) => {

@@ -392,6 +392,10 @@ const orderSchema = new mongoose.Schema(
             reviewedAt: { type: Date, default: null },
             reviewedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
             rejectionReason: { type: String, trim: true, default: '' },
+            /** Removed from the admin prescription queue (the order itself is kept). */
+            adminRemovedAt: { type: Date, default: null },
+            adminRemovedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
+            adminRemovedReason: { type: String, trim: true, default: '' },
             /**
              * The pharmacy's own bill, and the customer's answer to it.
              *

@@ -4,13 +4,15 @@ import {
     listPrescriptionOrdersController,
     getPrescriptionOrderCountsController,
     getPrescriptionOrderController,
+    removePrescriptionOrderController,
 } from '../controllers/prescriptionAdmin.controller.js';
 
 /**
  * The prescription queue, for mounting under the admin router.
  *
- * Read-only by design: the pharmacist reviews, the admin observes. There is no
- * approve or reject here, so every route asks for `view` and none for `edit`.
+ * The pharmacist reviews, the admin observes: there is no approve or reject
+ * here. The one write is removing a finished order from the queue (kept in
+ * the database), which asks for `edit` on orders.
  *
  * Mounted rather than declared in admin.routes.js so the admin guard, the
  * adminAccess hydration and the section resolver in that file all still run --
@@ -27,5 +29,10 @@ const canViewOrders = requireAnyAdminPermission([
 router.get('/', canViewOrders, listPrescriptionOrdersController);
 router.get('/counts', canViewOrders, getPrescriptionOrderCountsController);
 router.get('/:orderId', canViewOrders, getPrescriptionOrderController);
+router.delete(
+    '/:orderId',
+    requireAnyAdminPermission([{ section: 'order_management', action: 'edit' }]),
+    removePrescriptionOrderController,
+);
 
 export default router;

@@ -196,6 +196,8 @@ export const adminService = {
   getTrips: ({ page = 1, limit = 10, tab = 'all', search = '' } = {}) =>
     api.get(`/admin/trips?page=${page}&limit=${limit}&tab=${encodeURIComponent(tab)}&search=${encodeURIComponent(search)}`),
   deleteOngoingRide: (id) => api.delete(`/admin/ongoing-rides/${id}`),
+  // Removes a trip from the trips list (a live ride is cancelled first; the ride is kept).
+  deleteTripRequest: (id) => api.delete(`/admin/ride-requests/${id}`),
 
   /**
    * Wallet & Financials

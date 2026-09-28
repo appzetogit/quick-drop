@@ -808,6 +808,9 @@ export const adminAPI = {
     apiClient.get("/food/admin/prescriptions/counts", { params, contextModule: "admin" }),
   getPrescriptionOrder: (orderId) =>
     apiClient.get(`/food/admin/prescriptions/${String(orderId)}`, { contextModule: "admin" }),
+  // Takes a finished order off the queue; the order itself is kept.
+  removePrescriptionOrder: (orderId, reason = "") =>
+    apiClient.delete(`/food/admin/prescriptions/${String(orderId)}`, { data: { reason }, contextModule: "admin" }),
   getDrugLicences: (params = {}) =>
     apiClient.get("/food/admin/drug-licences", { params, contextModule: "admin" }),
   getDrugLicenceSummary: (params = {}) =>

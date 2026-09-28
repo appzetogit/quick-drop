@@ -43,6 +43,7 @@ import {
   deleteRentalPackageType,
   deleteLanguage,
   deleteOngoingRide,
+  deleteTripRequest,
   deleteOwner,
   deleteOwnerBooking,
   deleteOwnerNeededDocument,
@@ -452,6 +453,7 @@ adminRouter.patch('/admin/safety/alerts/:id/resolve', authenticate(['admin']), r
 adminRouter.get('/admin/ongoing-rides', getOngoingRides);
 adminRouter.get('/admin/ride-requests', getRideRequests);
 adminRouter.delete('/admin/ongoing-rides/:id', deleteOngoingRide);
+adminRouter.delete('/admin/ride-requests/:id', deleteTripRequest);
 adminRouter.get('/admin/deliveries', getDeliveries);
 adminRouter.get('/admin/trips', getIntercityTrips);
 

@@ -52,7 +52,9 @@ async function buildQueueFilter(query = {}) {
     // Only orders that actually carry a prescription. `required` is stamped at
     // creation from the seller's store type, so this is the order's own record of
     // having needed one -- not a re-read of what the shop is today.
-    const filter = { 'prescription.required': true };
+    // Rows an admin removed from the queue stay in the database (money, refunds
+    // and reports still reference them) but no longer show here.
+    const filter = { 'prescription.required': true, 'prescription.adminRemovedAt': null };
 
     const restaurantIdRaw = typeof query.restaurantId === 'string' ? query.restaurantId.trim() : '';
     if (restaurantIdRaw && mongoose.Types.ObjectId.isValid(restaurantIdRaw)) {
@@ -249,4 +251,48 @@ export async function getPrescriptionOrderCounts(query = {}) {
         counts.all += row.count;
     }
     return { counts };
+}
+
+/** Order states where the order is still being worked: removing it would hide live work. */
+const IN_PROGRESS = new Set([
+    'created', 'confirmed', 'preparing', 'ready_for_pickup', 'reached_pickup', 'picked_up', 'reached_drop',
+]);
+
+/**
+ * Take an order out of the prescription queue.
+ *
+ * A soft removal: the order and its payment record are kept (settlements,
+ * refunds and reports read them), only this queue stops listing it. Refused
+ * while the order is still being prepared or delivered, so live work cannot be
+ * hidden from the pharmacist's supervisors by accident.
+ */
+export async function removePrescriptionOrder(orderId, { adminId = null, reason = '' } = {}) {
+    const raw = String(orderId || '').trim();
+    if (!raw) throw new ValidationError('Order id required');
+    const scope = await buildQueueFilter({});
+    const idFilter = mongoose.Types.ObjectId.isValid(raw)
+        ? { $or: [{ _id: new mongoose.Types.ObjectId(raw) }, { order_id: raw }, { orderId: raw }] }
+        : { $or: [{ order_id: raw }, { orderId: raw }] };
+
+    const doc = await FoodOrder.findOne({ ...scope, ...idFilter }).select('orderStatus').lean();
+    if (!doc) throw new NotFoundError('Order not found');
+    if (IN_PROGRESS.has(String(doc.orderStatus))) {
+        throw new ValidationError('This order is still in progress. Cancel it first, then remove it.');
+    }
+
+    // Conditional, so a status change between the read and the write is honoured.
+    const updated = await FoodOrder.findOneAndUpdate(
+        { _id: doc._id, 'prescription.adminRemovedAt': null, orderStatus: { $nin: [...IN_PROGRESS] } },
+        {
+            $set: {
+                'prescription.adminRemovedAt': new Date(),
+                'prescription.adminRemovedBy': adminId && mongoose.Types.ObjectId.isValid(String(adminId))
+                    ? new mongoose.Types.ObjectId(String(adminId)) : null,
+                'prescription.adminRemovedReason': String(reason || '').trim().slice(0, 300),
+            },
+        },
+        { new: true, projection: { _id: 1 } },
+    );
+    if (!updated) throw new ValidationError('This order changed while you were removing it. Refresh and try again.');
+    return { orderId: String(updated._id), removed: true };
 }

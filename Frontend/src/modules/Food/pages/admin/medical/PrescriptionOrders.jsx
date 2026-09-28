@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
-import { FileText, Loader2, Search, X } from "lucide-react"
+import { FileText, Loader2, Search, Trash2, X } from "lucide-react"
 import { adminAPI } from "@food/api"
 
 /**
@@ -72,6 +72,7 @@ export default function PrescriptionOrders() {
   const [counts, setCounts] = useState({ all: 0, pending_review: 0, approved: 0, rejected: 0 })
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
+  const [removingId, setRemovingId] = useState(null)
 
   const load = useCallback(async () => {
     try {
@@ -91,6 +92,23 @@ export default function PrescriptionOrders() {
     }
   }, [activeTab, search])
 
+
+  // Removes a finished order from this list. The server keeps the order (and
+  // its payment) and refuses one that is still being prepared or delivered.
+  const removeOrder = async (order) => {
+    if (!window.confirm(`Remove order ${order.orderId} from the prescription list? The order record is kept.`)) return
+    setRemovingId(order.id)
+    try {
+      await adminAPI.removePrescriptionOrder(order.id)
+      toast.success("Removed from the list")
+      if (selected?.id === order.id) setSelected(null)
+      await load()
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Could not remove this order")
+    } finally {
+      setRemovingId(null)
+    }
+  }
   useEffect(() => {
     // Typing in the search box should not fire a request per keystroke.
     const timer = setTimeout(load, 300)
@@ -156,7 +174,7 @@ export default function PrescriptionOrders() {
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {["Order", "Pharmacy", "Customer", "Prescription", "Waiting on", "Amount"].map((heading) => (
+                  {["Order", "Pharmacy", "Customer", "Prescription", "Waiting on", "Amount", ""].map((heading) => (
                     <th
                       key={heading}
                       className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider"
@@ -192,6 +210,21 @@ export default function PrescriptionOrders() {
                       <td className="px-4 py-3 text-sm text-slate-600">{waitingOn(order)}</td>
                       <td className="px-4 py-3 text-sm font-medium text-slate-900">
                         {order.total > 0 ? rupees(order.total) : "Not priced"}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          title="Remove from this list"
+                          aria-label={`Remove order ${order.orderId} from this list`}
+                          disabled={removingId === order.id}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            removeOrder(order)
+                          }}
+                          className="p-1.5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40"
+                        >
+                          {removingId === order.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                        </button>
                       </td>
                     </tr>
                   )

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Filter, MoreVertical, Search, Loader2, ChevronRight, Menu } from 'lucide-react';
+import { Filter, Search, Loader2, ChevronRight, Menu, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { adminService } from '../../services/adminService';
 
@@ -55,6 +55,7 @@ const Trips = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
   const [expandedRow, setExpandedRow] = React.useState(null);
+  const [deletingId, setDeletingId] = React.useState(null);
 
   const loadRows = React.useCallback(async () => {
     setLoading(true);
@@ -77,6 +78,25 @@ const Trips = () => {
     }
   }, [activeTab, limit, search]);
 
+
+  // A ride still searching or on its way is cancelled first; the ride record is
+  // kept for earnings and reports, it just leaves this list.
+  const deleteTrip = async (row) => {
+    const live = ['UPCOMING', 'ACCEPTED', 'ONGOING', 'SEARCHING'].includes(String(row.tripStatus || '').toUpperCase());
+    const question = live
+      ? `Trip ${row.requestId} is still active. Cancel it and delete it from the list?`
+      : `Delete trip ${row.requestId} from the list?`;
+    if (!window.confirm(question)) return;
+    setDeletingId(row.id);
+    try {
+      await adminService.deleteTripRequest(row.id);
+      setRows((current) => current.filter((r) => r.id !== row.id));
+    } catch (err) {
+      window.alert(err?.response?.data?.message || err?.message || 'Could not delete this trip');
+    } finally {
+      setDeletingId(null);
+    }
+  };
   React.useEffect(() => {
     loadRows();
   }, [loadRows]);
@@ -197,13 +217,17 @@ const Trips = () => {
                         </td>
                         <td className="px-6 py-5">
                           <button
-                            className="text-slate-400 hover:text-slate-800"
+                            type="button"
+                            title="Delete trip"
+                            aria-label={`Delete trip ${row.requestId}`}
+                            disabled={deletingId === row.id}
+                            className="text-slate-400 hover:text-red-600 disabled:opacity-40"
                             onClick={(e) => {
                               e.stopPropagation();
-                              // Open context menu (placeholder)
+                              deleteTrip(row);
                             }}
                           >
-                            <MoreVertical size={18} />
+                            {deletingId === row.id ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
                           </button>
                         </td>
                       </tr>
