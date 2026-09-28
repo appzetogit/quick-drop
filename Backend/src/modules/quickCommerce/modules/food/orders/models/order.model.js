@@ -536,6 +536,11 @@ orderSchema.index({ 'dispatch.deliveryPartnerId': 1, 'dispatch.status': 1, updat
 orderSchema.index({ 'payment.status': 1, createdAt: -1 });
 orderSchema.index({ 'payment.method': 1, createdAt: -1 });
 
+// Numbers an order used to carry (FOD- before medical orders became MED-), so a
+// link or message with the old number still finds it.
+orderSchema.add({ previousOrderIds: { type: [String], default: undefined } });
+orderSchema.index({ previousOrderIds: 1 }, { sparse: true });
+
 orderSchema.pre('save', async function (next) {
     try {
         if (!this.order_id) {

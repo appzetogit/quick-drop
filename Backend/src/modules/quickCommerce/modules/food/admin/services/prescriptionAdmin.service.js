@@ -213,8 +213,8 @@ export async function getPrescriptionOrder(orderId) {
     // re-applying them would 404 an order the operator is looking at.
     const filter = await buildQueueFilter({});
     filter.$or = mongoose.Types.ObjectId.isValid(raw)
-        ? [{ _id: new mongoose.Types.ObjectId(raw) }, { order_id: raw }, { orderId: raw }]
-        : [{ order_id: raw }, { orderId: raw }];
+        ? [{ _id: new mongoose.Types.ObjectId(raw) }, { order_id: raw }, { orderId: raw }, { previousOrderIds: raw }]
+        : [{ order_id: raw }, { orderId: raw }, { previousOrderIds: raw }];
 
     const doc = await FoodOrder.findOne(filter)
         .populate('userId', 'name phone email')

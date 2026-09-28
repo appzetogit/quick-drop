@@ -150,7 +150,9 @@ export function buildOrderIdentityFilter(orderIdOrMongoId) {
   return { 
     $or: [
         { order_id: raw },
-        { orderId: raw }
+        { orderId: raw },
+        // A medical order renumbered FOD- -> MED- still answers to its old number.
+        { previousOrderIds: raw }
     ]
   };
 }
