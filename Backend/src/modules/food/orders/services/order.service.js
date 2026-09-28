@@ -452,6 +452,9 @@ export async function createOrder(userId, dto) {
         },
       ],
       note: String(dto.note || ""),
+      deliveryInstructions: Array.isArray(dto.deliveryInstructions)
+        ? dto.deliveryInstructions.map(v => String(v || "").trim()).filter(Boolean)
+        : [],
       sendCutlery: dto.sendCutlery !== false,
       deliveryFleet: String(dto.deliveryFleet || "standard"),
       scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,

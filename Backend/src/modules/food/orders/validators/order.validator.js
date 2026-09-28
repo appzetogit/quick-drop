@@ -143,6 +143,11 @@ export function validateCreateOrderDto(body) {
         pricing: pricingSchema,
         deliveryFleet: z.string().optional(),
         note: z.string().optional(),
+        // Same failure mode as tip/claimFreebie above: undeclared here, zod
+        // stripped it before the order was ever built, so a customer's chip
+        // selection ("Leave at door", "Don't ring bell") never reached the
+        // order or the rider. See order.service.js and order.helpers.js.
+        deliveryInstructions: z.array(z.string()).optional(),
         sendCutlery: z.boolean().optional(),
         // 'razorpay_qr' means COD-style flow, but payment is collected via Razorpay QR at delivery.
         paymentMethod: z.preprocess(

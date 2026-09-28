@@ -168,6 +168,7 @@ export const adminSidebarMenu = [
       { type: "link", label: "Delivery boy Wallet", path: "/admin/food/delivery-boy-wallet", icon: "PiggyBank" },
       { type: "link", label: "Delivery Emergency Help", path: "/admin/food/delivery-emergency-help", icon: "Phone" },
       { type: "link", label: "Delivery Support Tickets", path: "/admin/food/delivery-support-tickets", icon: "MessageSquare" },
+      { type: "link", label: "Delivery Instructions", path: "/admin/food/delivery-instructions", icon: "ClipboardList" },
       {
         type: "expandable",
         label: "Deliveryman",

@@ -488,6 +488,11 @@ const orderSchema = new mongoose.Schema(
             default: () => ({})
         },
         note: { type: String, default: '', trim: true },
+        // The customer's selection off the admin-configured chip list
+        // (`FoodDeliveryInstruction`) — free text picked from that list, not a
+        // reference to it, so a later edit/removal of an option never rewrites
+        // history on orders already placed with it.
+        deliveryInstructions: { type: [String], default: [] },
         sendCutlery: { type: Boolean, default: true },
         deliveryFleet: { type: String, default: 'standard', trim: true },
         scheduledAt: { type: Date, default: null },

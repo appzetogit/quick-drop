@@ -30,7 +30,7 @@ import {
     createSupportTicketController,
     listMySupportTicketsController
 } from '../controllers/supportTicket.controller.js';
-import { getPublicFeeSettingsController } from '../controllers/userSettings.controller.js';
+import { getPublicFeeSettingsController, getDeliveryInstructionsController } from '../controllers/userSettings.controller.js';
 import { syncUserCartController } from '../controllers/userCart.controller.js';
 import {
     getFavoritesController,
@@ -47,6 +47,7 @@ import {
 const router = express.Router();
 
 router.get('/fee-settings', getPublicFeeSettingsController);
+router.get('/delivery-instructions', getDeliveryInstructionsController);
 
 router.get('/profile', getCurrentUserProfileController);
 router.patch('/profile', updateCurrentUserProfileController);

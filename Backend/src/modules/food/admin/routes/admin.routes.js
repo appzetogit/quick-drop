@@ -302,6 +302,32 @@ router.put('/order-cancellation', async (req, res, next) => {
     } catch (err) { return next(err); }
 });
 
+// ----- Delivery instructions (checkout chip options, e.g. "Leave at door") -----
+router.get('/delivery-instructions', async (_req, res, next) => {
+    try {
+        const { listDeliveryInstructionsForAdmin } = await import('../../orders/services/deliveryInstructions.service.js');
+        return res.status(200).json({ success: true, message: 'OK', data: await listDeliveryInstructionsForAdmin() });
+    } catch (err) { return next(err); }
+});
+router.post('/delivery-instructions', async (req, res, next) => {
+    try {
+        const { createDeliveryInstruction } = await import('../../orders/services/deliveryInstructions.service.js');
+        return res.status(201).json({ success: true, message: 'Created', data: await createDeliveryInstruction(req.body) });
+    } catch (err) { return next(err); }
+});
+router.patch('/delivery-instructions/:id', async (req, res, next) => {
+    try {
+        const { updateDeliveryInstruction } = await import('../../orders/services/deliveryInstructions.service.js');
+        return res.status(200).json({ success: true, message: 'Saved', data: await updateDeliveryInstruction(req.params.id, req.body) });
+    } catch (err) { return next(err); }
+});
+router.delete('/delivery-instructions/:id', async (req, res, next) => {
+    try {
+        const { deleteDeliveryInstruction } = await import('../../orders/services/deliveryInstructions.service.js');
+        return res.status(200).json({ success: true, message: 'Deleted', data: await deleteDeliveryInstruction(req.params.id) });
+    } catch (err) { return next(err); }
+});
+
 // ----- Petpooja Settings & Sync Logs -----
 router.get('/petpooja/settings', businessSettingsController.getPetpoojaSettings);
 router.put('/petpooja/settings', businessSettingsController.updatePetpoojaSettings);

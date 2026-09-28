@@ -1,4 +1,5 @@
 import { FoodFeeSettings } from '../../admin/models/feeSettings.model.js';
+import { listActiveDeliveryInstructions } from '../../orders/services/deliveryInstructions.service.js';
 import { sendResponse } from '../../../../utils/response.js';
 
 export const getPublicFeeSettingsController = async (req, res, next) => {
@@ -33,6 +34,15 @@ export const getPublicFeeSettingsController = async (req, res, next) => {
             codOrderLimit: codOrderLimit,
             maxAvailableCashLimit: maxAvailableCashLimit
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/** The checkout chip list (Food admin panel -> Delivery Management -> Delivery Instructions). */
+export const getDeliveryInstructionsController = async (req, res, next) => {
+    try {
+        return sendResponse(res, 200, 'Delivery instructions fetched', await listActiveDeliveryInstructions());
     } catch (error) {
         next(error);
     }

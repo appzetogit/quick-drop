@@ -314,7 +314,7 @@ const STORE_ADMIN_RULES = [
   rule(/^\/referral-settings(\/|$)/, 'referrals'),
   rule(/^\/(customers|users|user-carts)(\/|$)/, 'customers'),
 
-  rule(/^\/(delivery|delivery-cash-limit|delivery-emergency-help|driver-registration-fields)(\/|$)/, 'delivery'),
+  rule(/^\/(delivery|delivery-cash-limit|delivery-emergency-help|delivery-instructions|driver-registration-fields)(\/|$)/, 'delivery'),
   rule(/^\/zones(\/|$)/, 'zones'),
   rule(/^\/(fee-settings|packaging-charges)(\/|$)/, 'fee_settings'),
   rule(/^\/dining(\/|$)/, 'dining'),
