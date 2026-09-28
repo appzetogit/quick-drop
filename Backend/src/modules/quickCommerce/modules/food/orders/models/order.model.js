@@ -539,13 +539,16 @@ orderSchema.index({ 'payment.method': 1, createdAt: -1 });
 orderSchema.pre('save', async function (next) {
     try {
         if (!this.order_id) {
+            // Medical (pharmacy) orders read MED-, everything else FOD- as before.
+            // Only new orders: an existing number is never rewritten.
+            const prefix = this.prescription?.required === true ? 'MED' : 'FOD';
             // 6 timestamp digits + 4 random digits, verified against the collection.
             // The old 4+3 format collided after a few thousand orders (birthday paradox),
             // which made display-id lookups match the wrong order.
             for (let attempt = 0; attempt < 5 && !this.order_id; attempt += 1) {
                 const timestamp = Date.now().toString().slice(-6);
                 const random = Math.floor(1000 + Math.random() * 9000);
-                const candidate = `FOD-${timestamp}${random}`;
+                const candidate = `${prefix}-${timestamp}${random}`;
                 const exists = await this.constructor.exists({
                     $or: [{ order_id: candidate }, { orderId: candidate }],
                 });
@@ -553,7 +556,7 @@ orderSchema.pre('save', async function (next) {
             }
             if (!this.order_id) {
                 // Guaranteed unique: derived from this document's own ObjectId.
-                this.order_id = `FOD-${this._id.toString().slice(-10).toUpperCase()}`;
+                this.order_id = `${prefix}-${this._id.toString().slice(-10).toUpperCase()}`;
             }
         }
         // Synchronize camelCase alias to satisfy unique index 'orderId_1'

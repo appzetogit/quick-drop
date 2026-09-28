@@ -16,3 +16,24 @@ assert.equal(out.bill.status, 'none');
 doc.prescription = out;
 assert.equal(doc.validateSync(), undefined);
 console.log('rx + address checks passed');
+
+// A medical order gets a MED- number; a grocery order keeps FOD-.
+{
+  const { MongoMemoryServer } = await import('mongodb-memory-server');
+  const server = await MongoMemoryServer.create();
+  const conn = await mongoose.connect(server.getUri(), { dbName: 'med_prefix' });
+  const { FoodOrder } = await import('../src/modules/quickCommerce/modules/food/orders/models/order.model.js');
+  const base = { userId: new mongoose.Types.ObjectId(), restaurantId: new mongoose.Types.ObjectId(), items: [], pricing: { subtotal: 0, total: 0 } };
+  const med = new FoodOrder({ ...base, prescription: { required: true, status: 'pending_review' } });
+  const qc = new FoodOrder({ ...base });
+  await med.validate().catch(() => {});
+  // pre('save') assigns the number; run it without the rest of the schema's required fields.
+  const pre = FoodOrder.schema.s.hooks._pres.get('save').find((h) => /order_id/.test(String(h.fn)));
+  await new Promise((r, j) => pre.fn.call(med, (e) => (e ? j(e) : r())));
+  await new Promise((r, j) => pre.fn.call(qc, (e) => (e ? j(e) : r())));
+  assert.match(med.order_id, /^MED-/);
+  assert.match(qc.order_id, /^FOD-/);
+  console.log('order number prefix checks passed');
+  await conn.disconnect();
+  await server.stop();
+}
