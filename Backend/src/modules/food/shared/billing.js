@@ -324,10 +324,13 @@ export function computeBill({
          * kept in the two fields below. The order's top-level pricing.deliveryFee
          * / pricing.surgeAmount stay separate: rider pay and the P&L read those.
          */
-        deliveryFee: round2(delivery + surge),
-        surgeAmount: 0,
+        // Except when delivery itself is free: the apps print "FREE" for a
+        // free-delivery order whatever the amount, so a surge folded in there
+        // would be charged but never shown. It keeps its own line then.
+        deliveryFee: delivery > 0 ? round2(delivery + surge) : round2(delivery),
+        surgeAmount: delivery > 0 ? 0 : round2(surge),
         deliveryFeeBeforeSurge: round2(delivery),
-        surgeIncludedInDeliveryFee: round2(surge),
+        surgeIncludedInDeliveryFee: delivery > 0 ? round2(surge) : 0,
         platformFee: round2(platform),
         platformFeeGstRate: rate(platformFeeGstRate),
         platformFeeGst,

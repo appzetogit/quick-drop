@@ -73,5 +73,13 @@ check('delivery, surge and tip are never taxed', () => {
   assert.ok(billAddsUp(b));
 });
 
+check('free delivery keeps the surge on its own line so it is not hidden behind FREE', () => {
+  const b = computeBill({ ...base, deliveryFee: 0, surgeAmount: 15, discountFundedByPlatform: true });
+  assert.equal(b.deliveryFee, 0);
+  assert.equal(b.surgeAmount, 15);
+  assert.equal(b.grandTotal, 400 + 20 + 15);
+  assert.ok(billAddsUp(b));
+});
+
 console.log(failed ? `\n${failed} FAILED` : '\nall passed');
 process.exit(failed ? 1 : 0);
