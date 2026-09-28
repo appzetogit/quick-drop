@@ -161,7 +161,7 @@ export default function DeliveryInstructions() {
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addRow()}
-              placeholder='e.g. "🔔 Don\'t ring bell"'
+              placeholder={'e.g. "🔔 Don\'t ring bell"'}
               className="min-w-0 flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900/10"
             />
             <button
