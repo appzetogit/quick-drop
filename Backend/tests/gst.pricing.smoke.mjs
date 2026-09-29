@@ -189,10 +189,12 @@ try {
   await setPackaging({ isEnabled: true, mode: "ADMIN", adminChargePerOrder: 21 });
   const ap = await priceIt("INCLUSIVE restaurant, ADMIN packaging", incPack);
   console.log("");
-  check("an admin-set charge is not the restaurant's to call inclusive",
-    ap.bill.netPackagingFee === 21, `${ap.bill.netPackagingFee}`);
-  check("so the tax is extracted from the food and added to the packaging",
-    near(ap.bill.gstOnItems, 9.52 + 1.05), `${ap.bill.gstOnItems}`);
+  // Business rule 2026-09-29: an inclusive restaurant's packaging -- whoever
+  // set it -- has no GST added on top; the tax is inside it, like the food's.
+  check("packaging on an inclusive restaurant has its GST inside it",
+    near(ap.bill.netPackagingFee, 20), `${ap.bill.netPackagingFee}`);
+  check("so the tax is extracted from both the food and the packaging",
+    near(ap.bill.gstOnItems, 9.52 + 1), `${ap.bill.gstOnItems}`);
   check("a bill that mixes the two still reconciles", billAddsUp(ap.bill));
 
   // =====================================================================

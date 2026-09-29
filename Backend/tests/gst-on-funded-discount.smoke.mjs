@@ -49,9 +49,10 @@ check('the GST does not change when a coupon is applied', () => {
   assert.equal(without.gstOnPreDiscountValue, false, 'no coupon, nothing pre-discount');
 });
 
-check('inclusive menu: tax extracted from the full Rs 500', () => {
+check('inclusive menu: nothing added, tax is the part inside the Rs 400 paid', () => {
   const b = computeBill({ ...base, pricesIncludeGst: true });
-  assert.ok(Math.abs(b.gstOnItems - (500 - 500 / 1.05)) < 0.02);
+  assert.ok(Math.abs(b.gstOnItems - (400 - 400 / 1.05)) < 0.02);
+  assert.equal(b.grandTotal, 400);
   assert.ok(billAddsUp(b));
 });
 
@@ -71,6 +72,28 @@ check('free delivery keeps the surge on its own line so it is not hidden behind 
   assert.equal(b.deliveryFee, 0);
   assert.equal(b.surgeAmount, 15);
   assert.equal(b.grandTotal, 400 + 25 + 15);
+  assert.ok(billAddsUp(b));
+});
+
+// The client's worked examples (2026-09-29): food 200, packaging 5, GST 5%,
+// platform fee 10 + 18% = 11.80, delivery 25, coupon 50.
+const clientCase = {
+  itemAmount: 200, packagingFee: 5, gstRate: 5, platformFee: 10, platformFeeGstRate: 18,
+  deliveryFee: 25, discount: 50, tip: 0, packagingBelongsToRestaurant: true,
+};
+check('client example, prices EXCLUDE GST: 252.05 - 50 = 202.05, rounds to 202', () => {
+  const b = computeBill({ ...clientCase, pricesIncludeGst: false });
+  assert.equal(b.gstOnItems, 10.25);
+  assert.equal(b.platformFee + b.platformFeeGst, 11.8);
+  assert.equal(b.payableBeforeRounding, 202.05);
+  assert.equal(b.grandTotal, 202);
+  assert.ok(billAddsUp(b));
+});
+check('client example, prices INCLUDE GST: no GST added, 241.80 - 50 = 191.80, rounds to 192', () => {
+  const b = computeBill({ ...clientCase, pricesIncludeGst: true });
+  assert.equal(Math.round((b.netItemAmount + b.netPackagingFee + b.gstOnItems) * 100) / 100, 155, 'food + packaging = listed - coupon');
+  assert.equal(b.payableBeforeRounding, 191.8);
+  assert.equal(b.grandTotal, 192);
   assert.ok(billAddsUp(b));
 });
 

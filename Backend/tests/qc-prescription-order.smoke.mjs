@@ -138,22 +138,23 @@ await check('pricing the order saves', async () => {
     assert.ok(priced.items.length === 2, 'items not saved');
 });
 
-await check('the delivery fee is a number, and its GST is charged', async () => {
+// Medical orders carry no GST (business rule, 2026-09-29): not on the
+// medicines, not on delivery.
+await check('the delivery fee is a number, and no GST is charged on it', async () => {
     assert.equal(priced?.pricing?.deliveryFee, 30, JSON.stringify(priced?.pricing?.deliveryFee));
-    assert.equal(priced.pricing.deliveryFeeGst, 5.4);
+    assert.equal(priced.pricing.deliveryFeeGst, 0);
 });
 
-await check('item GST is charged: 200 at the 5% fallback + 50 at its own 12% = 16', async () => {
-    assert.equal(priced?.pricing?.tax, 16);
-    assert.equal(priced.pricing.gstFallbackRate, 5);
+await check('no GST on the medicines', async () => {
+    assert.equal(priced?.pricing?.tax, 0);
 });
 
 await check('the seller commission is booked: 10% of 250', async () => {
     assert.equal(priced?.pricing?.restaurantCommission, 25);
 });
 
-await check('the total is 250 + 16 + 30 + 5.40 + 10 = 311.40', async () => {
-    assert.equal(priced?.pricing?.total, 311.4);
+await check('the total is medicines 250 + delivery 30 + platform fee 10 = 290', async () => {
+    assert.equal(priced?.pricing?.total, 290);
 });
 
 await mongoose.disconnect();

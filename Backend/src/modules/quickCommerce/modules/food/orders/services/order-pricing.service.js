@@ -607,14 +607,17 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
   // same tax it charged.
   const gstFallbackRate = Number(feeSettings.gstRate || 0);
   const gstOnPreDiscountValue = Number(discount) > 0;
-  const tax = computeItemsTax(items, {
+  // Medical orders carry no GST at all -- not on medicines, not on delivery
+  // (business rule, 2026-09-29). The platform fee and its GST still apply.
+  const isMedicalOrder = orderVertical === 'medical';
+  const tax = isMedicalOrder ? 0 : computeItemsTax(items, {
     discountFundedByPlatform: gstOnPreDiscountValue,
     subtotal,
     discount,
     fallbackRate: gstFallbackRate,
   });
 
-  const deliveryFeeGst = computeDeliveryFeeGst(deliveryFee);
+  const deliveryFeeGst = isMedicalOrder ? 0 : computeDeliveryFeeGst(deliveryFee);
   // GST on the platform fee, at Master's rate when one is set (not charged otherwise).
   const { platformFeeGstRate, platformFeeGst } = platformFeeGstFor(feeSettings, platformFee);
 

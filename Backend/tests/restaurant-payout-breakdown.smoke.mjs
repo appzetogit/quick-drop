@@ -153,7 +153,8 @@ console.log('\nthe same Rs 100, prices INCLUDE GST');
     check('taxable food value is Rs 95.24', () => assert.equal(b.taxableFoodValue, 95.24));
     check('commission is 10% of that, Rs 9.52 -- never a cut of the tax', () =>
         assert.equal(b.commissionAmount, 9.52));
-    check('PAY TO YOU is Rs 90.72', () => assert.equal(b.payout, 90.72));
+    // The Rs 5 packaging has its GST inside it on an inclusive menu (4.76 net).
+    check('PAY TO YOU is Rs 90.48', () => assert.equal(b.payout, 90.48));
     check('  and that is exactly what the ledger credits', () => assert.equal(b.payout, ledgerPayout(order)));
     check('the customer paid the same Rs 100 either way', () =>
         assert.equal(order.pricing.subtotal, 100));

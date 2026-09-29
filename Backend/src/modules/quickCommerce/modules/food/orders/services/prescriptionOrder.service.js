@@ -9,8 +9,6 @@ import {
     getDeliveryDistanceKm,
     loadActiveFeeSettings,
     resolveUserDeliveryFee,
-    computeDeliveryFeeGst,
-    computeItemsTax,
     platformFeeGstFor,
     calculateRiderEarning,
     estimateDeliveryPromiseMinutes,
@@ -227,7 +225,8 @@ export async function fillPrescriptionOrder(orderId, restaurantId, dto = {}) {
     // failed -- no prescription order could be priced.
     const { deliveryFee: resolvedFee } = resolveUserDeliveryFee(feeSettings, { subtotal, distanceKm });
     const deliveryFee = round2(resolvedFee);
-    const deliveryFeeGst = computeDeliveryFeeGst(deliveryFee);
+    // A prescription order is a medical order: no GST on delivery or medicines.
+    const deliveryFeeGst = 0;
     const platformFee = Number(feeSettings?.platformFee) || 0;
     const { platformFeeGstRate, platformFeeGst } = platformFeeGstFor(feeSettings, platformFee);
 
@@ -236,7 +235,7 @@ export async function fillPrescriptionOrder(orderId, restaurantId, dto = {}) {
     // prescription paid no GST and earned the platform nothing, where the same box
     // bought from the catalogue pays both. No coupon applies, so nothing is discounted.
     const gstFallbackRate = Number(feeSettings?.gstRate || 0);
-    const tax = computeItemsTax(items, { subtotal, discount: 0, fallbackRate: gstFallbackRate });
+    const tax = 0;
 
     let restaurantCommission = 0;
     try {
@@ -372,11 +371,12 @@ export async function submitPrescriptionBill(orderId, restaurantId, dto = {}) {
 
     const { deliveryFee: resolvedFee } = resolveUserDeliveryFee(feeSettings, { subtotal, distanceKm });
     const deliveryFee = round2(resolvedFee);
-    const deliveryFeeGst = computeDeliveryFeeGst(deliveryFee);
+    // A prescription order is a medical order: no GST on delivery or medicines.
+    const deliveryFeeGst = 0;
     const platformFee = Number(feeSettings?.platformFee) || 0;
     const { platformFeeGstRate, platformFeeGst } = platformFeeGstFor(feeSettings, platformFee);
     const gstFallbackRate = Number(feeSettings?.gstRate || 0);
-    const tax = computeItemsTax(items, { subtotal, discount: 0, fallbackRate: gstFallbackRate });
+    const tax = 0;
 
     let restaurantCommission = 0;
     try {
