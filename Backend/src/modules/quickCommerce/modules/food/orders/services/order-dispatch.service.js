@@ -284,7 +284,7 @@ function orderCollectsCash(order) {
  * Partners with no driverId are kept, so the pool keeps working for anyone not
  * yet linked. No-op, and no extra query, while UNIFIED_DISPATCH_ENABLED is off.
  */
-async function filterByUnifiedWorkMode(partners) {
+async function filterByUnifiedWorkMode(partners, { isMedical = false } = {}) {
   if (!config.unifiedDispatchEnabled || !partners?.length) return partners || [];
 
   const ids = partners.map((p) => p._id);
@@ -303,10 +303,12 @@ async function filterByUnifiedWorkMode(partners) {
     // know which app a job came from. 'quickCommerce' is still accepted so a
     // driver who stored that mode before the toggle was collapsed keeps working.
     workMode: { $in: ['all', 'delivery', 'quickCommerce'] },
-    // The capability is unchanged and still separate: it is what puts the driver
-    // in the grocery pool at all, and a driver can be set up for one vertical
-    // and not the other.
-    serviceCapabilities: 'quickCommerce',
+    // Ordinary grocery orders stay exclusive to riders actually set up for
+    // quick-commerce (a driver can be approved for one vertical and not the
+    // other). Medical is the one exception, by explicit request: a rider the
+    // admin approved for Food delivery should also see pharmacy orders, not
+    // only ones separately approved for quick-commerce.
+    serviceCapabilities: isMedical ? { $in: ['quickCommerce', 'delivery'] } : 'quickCommerce',
   })
     .select('_id')
     .lean();
@@ -315,7 +317,7 @@ async function filterByUnifiedWorkMode(partners) {
   return partners.filter((p) => {
     const linked = driverIdByPartner.get(String(p._id));
     if (!linked) return true;           // not linked yet — don't block
-    return freeIds.has(String(linked)); // linked — must be free + accepting grocery
+    return freeIds.has(String(linked)); // linked — must be free + accepting this order's vertical
   });
 }
 
@@ -432,6 +434,7 @@ async function listNearbyOnlineDeliveryPartners(
   // query over a handful of candidates rather than the whole online pool.
   const final = await filterByUnifiedWorkMode(
     approved.map((p) => ({ ...p, _id: p.partnerId })),
+    { isMedical: isMedicalStore(restaurant.storeType) },
   );
 
   return { partners: final };
@@ -489,6 +492,16 @@ export async function tryAutoAssign(orderId, options = {}) {
   const DISPATCHABLE_STATUSES = ['confirmed', 'preparing', 'ready_for_pickup', 'ready', 'reached_pickup', 'picked_up', 'reached_drop'];
   if (!DISPATCHABLE_STATUSES.includes(order.orderStatus)) {
     logger.info(`tryAutoAssign: Skip for ${orderId} (status ${order.orderStatus} not dispatchable yet).`);
+    // The findOneAndUpdate above already set dispatch.dispatchingAt to claim the
+    // lock before this status check ran. Leaving it set here would permanently
+    // block every future call for this order: the lock filter above requires
+    // dispatchingAt to NOT exist, so once set here it can never be re-claimed
+    // once the order actually becomes dispatchable. Clear it so a later call
+    // (e.g. right after the restaurant accepts) can proceed normally.
+    await FoodOrder.updateOne(
+      { _id: order._id },
+      { $unset: { 'dispatch.dispatchingAt': '' } }
+    ).catch((err) => logger.warn(`tryAutoAssign: Failed to release premature lock for ${orderId}: ${err.message}`));
     return order;
   }
 
