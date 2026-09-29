@@ -14,8 +14,9 @@ import { getIO, rooms } from '../../../../config/socket.js';
 /*
  * Zone matching, shared with food so the two verticals cannot drift apart on what
  * "same zone" means. The zone MAP is not shared: quick commerce keys off
- * qc_zones, food off food_zones, and the ids do not overlap -- hence passing the
- * QC model in explicitly.
+ * qc_zones, food off food_zones, medical off medical_zones, and none of the
+ * ids overlap -- hence passing the right model in explicitly, picked per
+ * order by the restaurant's own storeType (see listNearbyOnlineDeliveryPartners).
  *
  * The worldwide fallback was already removed here. What was still missing is the
  * zone test itself: distance alone lets an order cross into a neighbouring zone
@@ -23,6 +24,8 @@ import { getIO, rooms } from '../../../../config/socket.js';
  */
 import { loadActiveZones, filterCandidatesToZone, resolveZoneIdForPoint } from '../../../../../food/shared/zoneMatching.js';
 import { FoodZone as QCZone } from '../../admin/models/zone.model.js';
+import { MedicalZone } from '../../admin/models/medicalZone.model.js';
+import { isMedicalStore } from '../../shared/storeType.js';
 import { addOrderJob } from '../../../../queues/producers/order.producer.js';
 import {
   buildDeliverySocketPayload,
@@ -322,7 +325,7 @@ async function listNearbyOnlineDeliveryPartners(
 ) {
   const rId = (restaurantId?._id || restaurantId).toString();
   const restaurant = await FoodRestaurant.findById(rId)
-    .select("location zoneId")
+    .select("location zoneId storeType")
     .lean();
 
   if (!restaurant?.location?.coordinates?.length) {
@@ -330,7 +333,17 @@ async function listNearbyOnlineDeliveryPartners(
     return { restaurant: null, partners: [] };
   }
 
-  const zones = await loadActiveZones({ model: QCZone });
+  // A pharmacy's zone was resolved against medical_zones at order-placement
+  // time (resolveServiceableZone in order.service.js) -- zones created after
+  // the medical/quick-commerce split exist only there, not in qc_zones. This
+  // used to always load QCZone regardless of storeType, so a pharmacy whose
+  // zoneId only exists in medical_zones matched against the wrong map: every
+  // rider resolved to a different (or no) zone id, filterCandidatesToZone
+  // dropped them all, and the order was never offered to anyone -- riders
+  // approved for Food/Quick-commerce got grocery offers fine, but medical
+  // ones silently never arrived.
+  const zoneModel = isMedicalStore(restaurant.storeType) ? MedicalZone : QCZone;
+  const zones = await loadActiveZones({ model: zoneModel });
   // A store saved without a zone is placed by its own location.
   const orderZoneId = restaurant?.zoneId
     ? String(restaurant.zoneId)
