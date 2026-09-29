@@ -49,11 +49,25 @@ check('the GST does not change when a coupon is applied', () => {
   assert.equal(without.gstOnPreDiscountValue, false, 'no coupon, nothing pre-discount');
 });
 
-check('inclusive menu: nothing added, tax is the part inside the Rs 400 paid', () => {
+check('inclusive menu: nothing added, tax is the part inside the full Rs 500 listed, before the coupon', () => {
   const b = computeBill({ ...base, pricesIncludeGst: true });
-  assert.ok(Math.abs(b.gstOnItems - (400 - 400 / 1.05)) < 0.02);
+  // Client rule 2026-09-29: the coupon comes off last. 500 incl. 5% holds 23.81
+  // of GST whatever the coupon; the customer still pays 500 - 100.
+  assert.ok(Math.abs(b.gstOnItems - (500 - 500 / 1.05)) < 0.02);
+  assert.equal(b.discountOnNet, 100, 'the whole coupon comes off, none of it off the tax');
   assert.equal(b.grandTotal, 400);
   assert.ok(billAddsUp(b));
+});
+
+check('Rainbow Restro cart: Rs 600 incl. GST, Rs 100 coupon -> GST 28.57 (not 23.81), pay 639', () => {
+  const args = { itemAmount: 600, deliveryFee: 127.30, platformFee: 10, platformFeeGstRate: 18, gstRate: 5, pricesIncludeGst: true };
+  const withCoupon = computeBill({ ...args, discount: 100 });
+  const without = computeBill(args);
+  assert.equal(withCoupon.gstOnItems, 28.57);
+  assert.equal(without.gstOnItems, 28.57, 'same GST with or without the coupon');
+  assert.equal(withCoupon.grandTotal, 639);
+  assert.equal(without.grandTotal, 739);
+  assert.ok(billAddsUp(withCoupon));
 });
 
 check('delivery, surge and tip are never taxed', () => {

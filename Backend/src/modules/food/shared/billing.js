@@ -193,11 +193,25 @@ export function computeBill({
     const inclusiveAfterDiscount = round2(Math.max(0, inclusiveItems - discountOnInclusive));
     const exclusiveAfterDiscount = round2(Math.max(0, exclusiveItems - discountOnExclusive));
 
-    // Extracting a tax is not the same sum as adding one -- see the note above.
-    // The inclusive half has it taken out; the exclusive half keeps its price
-    // and the tax is added below.
-    const netItemAmount = round2(deTax(inclusiveAfterDiscount) + exclusiveAfterDiscount);
-    const netPackagingFee = packagingIsInclusive ? deTax(packagingAfterDiscount) : packagingAfterDiscount;
+    /*
+     * GST inside a GST-inclusive price, worked out on the price BEFORE the
+     * coupon (client rule, 2026-09-29: the coupon comes off last, as on the
+     * exclusive side). Rs 600 incl. 5% holds 28.57 of GST whatever the coupon;
+     * the customer still pays 600 - coupon, so the net line takes the coupon.
+     * Never more than what is left to pay for that line, so a coupon that
+     * covers the whole price cannot leave a negative net line.
+     */
+    const inclusiveItemsTax = round2(Math.min(inclusiveItems - deTax(inclusiveItems), inclusiveAfterDiscount));
+    const inclusivePackagingTax = packagingIsInclusive
+        ? round2(Math.min(packaging - deTax(packaging), packagingAfterDiscount))
+        : 0;
+
+    // The inclusive half has its tax taken out; the exclusive half keeps its
+    // price and the tax is added below.
+    const netItemAmount = round2(inclusiveAfterDiscount - inclusiveItemsTax + exclusiveAfterDiscount);
+    const netPackagingFee = packagingIsInclusive
+        ? round2(packagingAfterDiscount - inclusivePackagingTax)
+        : packagingAfterDiscount;
 
     /*
      * The same two lines before the coupon, and what the coupon actually took
@@ -241,20 +255,20 @@ export function computeBill({
      * Prices that EXCLUDE GST: GST is added on the full price, before the coupon
      * (food 200 + packaging 5 -> GST 10.25 whatever the coupon).
      * Prices that INCLUDE GST: nothing is added. The GST shown is the part
-     * already inside what the customer pays, so food + packaging costs exactly
-     * the listed price minus the coupon (200 + 5 - 50 = 155).
+     * inside the full listed price, before the coupon (600 -> 28.57 whatever
+     * the coupon), and food + packaging costs exactly the listed price minus
+     * the coupon (200 + 5 - 50 = 155).
      */
-    const inclusiveTaxBase = inclusiveAfterDiscount;
     const exclusiveTaxBase = exclusiveItems;
-    const packagingTaxBase = packagingIsInclusive ? packagingAfterDiscount : round2(packaging);
+    const packagingTaxBase = round2(packaging);
 
     const taxOnItems =
         // taken out of the prices that already contained it...
-        (inclusiveTaxBase - deTax(inclusiveTaxBase))
+        inclusiveItemsTax
         // ...and added to the prices that did not.
         + (exclusiveTaxBase * gstFraction);
     const taxOnPackaging = packagingIsInclusive
-        ? packagingTaxBase - deTax(packagingTaxBase)
+        ? inclusivePackagingTax
         : packagingTaxBase * gstFraction;
 
     /*
@@ -267,7 +281,7 @@ export function computeBill({
     const chargedFoodNet = round2(netItemAmount + netPackagingFee);
     const taxableAmount = round2(
         exclusiveTaxBase
-        + deTax(inclusiveTaxBase)
+        + deTax(inclusiveItems)
         + (packagingIsInclusive ? deTax(packagingTaxBase) : packagingTaxBase),
     );
     const gstOnItems = round2(taxOnItems + taxOnPackaging);
@@ -318,9 +332,8 @@ export function computeBill({
          */
         taxableAmount,
         /** True when the base above is the pre-coupon value. Recorded so an invoice can say why. */
-        // True when some GST was worked out on the pre-coupon price (the
-        // GST-exclusive part of the order); inclusive prices never are.
-        gstOnPreDiscountValue: platformFundedDiscount && (exclusiveItems > 0 || (!packagingIsInclusive && packaging > 0)),
+        // GST is always worked out on the pre-coupon price now, inclusive or not.
+        gstOnPreDiscountValue: platformFundedDiscount && (items > 0 || packaging > 0),
         gstRate: rate(gstRate),
         gstOnItems,
         /**
