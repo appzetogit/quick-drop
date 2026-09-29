@@ -139,16 +139,24 @@ const isWebhookPath = (req) => (req.originalUrl || req.url || '').includes('/pay
  * The cost is one HMAC check per request, which authMiddleware performs again
  * moments later -- cheap next to the Redis round trip already happening here.
  */
-const verifiedAdminId = (req) => {
+/** The signature-checked identity on the request, or null. Every vertical signs
+ *  with the same access secret (userId for food/quick, sub for taxi). */
+const verifiedIdentity = (req) => {
     const header = req.headers?.authorization || '';
     if (!header.startsWith('Bearer ')) return null;
     try {
         const claims = verifyAccessToken(header.slice(7).trim());
-        if (String(claims?.role || '').toUpperCase() !== 'ADMIN') return null;
-        return claims.userId || claims.id || claims.sub || null;
+        const id = claims?.userId || claims?.id || claims?.sub || null;
+        if (!id) return null;
+        return { id: String(id), role: String(claims?.role || '').toUpperCase() };
     } catch {
         return null;
     }
+};
+
+const verifiedAdminId = (req) => {
+    const who = verifiedIdentity(req);
+    return who && who.role === 'ADMIN' ? who.id : null;
 };
 
 /*
@@ -163,7 +171,16 @@ const verifiedAdminId = (req) => {
  */
 const ADMIN_MAX = Number(process.env.RATE_LIMIT_ADMIN_MAX) || 5000;
 
-export const __testables = { verifiedAdminId, ADMIN_MAX };
+/*
+ * The same for every signed-in user -- rider, store, customer. The apps poll
+ * (a rider going online checks its orders every few seconds), and a team or a
+ * household on one Wi-Fi shares one public IP: on the shared IP bucket they
+ * locked each other out with "Too many requests". Each verified user now has
+ * their own bucket; only anonymous traffic is counted per IP.
+ */
+const USER_MAX = Number(process.env.RATE_LIMIT_USER_MAX) || 3000;
+
+export const __testables = { verifiedAdminId, verifiedIdentity, ADMIN_MAX, USER_MAX };
 
 const windowMs = config.rateLimitWindowMinutes * 60 * 1000;
 
@@ -173,7 +190,9 @@ export const apiRateLimiter = rateLimit({
     // Keep production strict, but avoid blocking local development.
     max: (req) => {
         if (config.nodeEnv === 'development') return Math.max(config.rateLimitMaxRequests, 2000);
-        return req.__rlAdminId ? ADMIN_MAX : config.rateLimitMaxRequests;
+        if (req.__rlAdminId) return ADMIN_MAX;
+        if (req.__rlUserId) return USER_MAX;
+        return config.rateLimitMaxRequests;
     },
     standardHeaders: true,
     legacyHeaders: false,
@@ -187,9 +206,12 @@ export const apiRateLimiter = rateLimit({
      * another's ceiling.
      */
     keyGenerator: (req) => {
-        const adminId = verifiedAdminId(req);
-        req.__rlAdminId = adminId;
-        return adminId ? `admin:${adminId}` : normaliseIp(req.ip);
+        const who = verifiedIdentity(req);
+        req.__rlAdminId = who && who.role === 'ADMIN' ? who.id : null;
+        req.__rlUserId = who && who.role !== 'ADMIN' ? `${who.role || 'user'}:${who.id}` : null;
+        if (req.__rlAdminId) return `admin:${req.__rlAdminId}`;
+        if (req.__rlUserId) return `user:${req.__rlUserId}`;
+        return normaliseIp(req.ip);
     },
     skip: isWebhookPath,
     message: {
