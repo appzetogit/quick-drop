@@ -96,11 +96,16 @@ export default function PrescriptionOrders() {
   // Removes a finished order from this list. The server keeps the order (and
   // its payment) and refuses one that is still being prepared or delivered.
   const removeOrder = async (order) => {
-    if (!window.confirm(`Remove order ${order.orderId} from the prescription list? The order record is kept.`)) return
+    const status = String(order.orderStatus || order.status || "").toLowerCase()
+    const active = ["created", "confirmed", "preparing", "ready_for_pickup", "reached_pickup"].includes(status)
+    const question = active
+      ? `Order ${order.orderId} is still active. Cancel it (the customer is told and any online payment refunded) and remove it from the list?`
+      : `Remove order ${order.orderId} from the prescription list? The order record is kept.`
+    if (!window.confirm(question)) return
     setRemovingId(order.id)
     try {
       await adminAPI.removePrescriptionOrder(order.id)
-      toast.success("Removed from the list")
+      toast.success(active ? "Order cancelled and removed from the list" : "Removed from the list")
       if (selected?.id === order.id) setSelected(null)
       await load()
     } catch (error) {

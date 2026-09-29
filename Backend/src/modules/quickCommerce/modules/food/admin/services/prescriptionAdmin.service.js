@@ -253,10 +253,11 @@ export async function getPrescriptionOrderCounts(query = {}) {
     return { counts };
 }
 
-/** Order states where the order is still being worked: removing it would hide live work. */
-const IN_PROGRESS = new Set([
-    'created', 'confirmed', 'preparing', 'ready_for_pickup', 'reached_pickup', 'picked_up', 'reached_drop',
-]);
+/** A rider is carrying it: never removed from here. */
+const WITH_RIDER = new Set(['picked_up', 'reached_drop']);
+/** Still at the pharmacy: cancelled as admin first (refund, stock, customer told), then removed. */
+const BEFORE_PICKUP = new Set(['created', 'confirmed', 'preparing', 'ready_for_pickup', 'reached_pickup']);
+const IN_PROGRESS = new Set([...WITH_RIDER, ...BEFORE_PICKUP]);
 
 /**
  * Take an order out of the prescription queue.
@@ -276,8 +277,16 @@ export async function removePrescriptionOrder(orderId, { adminId = null, reason 
 
     const doc = await FoodOrder.findOne({ ...scope, ...idFilter }).select('orderStatus').lean();
     if (!doc) throw new NotFoundError('Order not found');
-    if (IN_PROGRESS.has(String(doc.orderStatus))) {
-        throw new ValidationError('This order is still in progress. Cancel it first, then remove it.');
+    if (WITH_RIDER.has(String(doc.orderStatus))) {
+        throw new ValidationError('A rider is delivering this order. It can be removed once it is delivered or cancelled.');
+    }
+    let cancelledFirst = false;
+    if (BEFORE_PICKUP.has(String(doc.orderStatus))) {
+        // The same admin cancel the orders screen uses: refunds an online payment,
+        // puts the stock back and tells the customer.
+        const { updateOrderStatusAdmin } = await import('../../orders/services/order.service.js');
+        await updateOrderStatusAdmin(String(doc._id), 'cancelled_by_admin', String(reason || '').trim() || 'Cancelled by admin', adminId);
+        cancelledFirst = true;
     }
 
     // Conditional, so a status change between the read and the write is honoured.
@@ -294,5 +303,5 @@ export async function removePrescriptionOrder(orderId, { adminId = null, reason 
         { new: true, projection: { _id: 1 } },
     );
     if (!updated) throw new ValidationError('This order changed while you were removing it. Refresh and try again.');
-    return { orderId: String(updated._id), removed: true };
+    return { orderId: String(updated._id), removed: true, cancelledFirst };
 }
