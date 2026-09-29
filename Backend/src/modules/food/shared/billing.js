@@ -228,15 +228,13 @@ export function computeBill({
      * is a supplier discount and comes out of the taxable value.
      */
     /*
-     * GST is charged on what the customer pays after the coupon, whoever funded
-     * it. Taxing the pre-coupon value for platform coupons left the GST line
-     * unchanged when a coupon was applied, which customers and the ops team
-     * read as a wrong bill (reported 2026-09-28), and for dishes priced
-     * inclusive of GST it charged tax on money nobody paid. `discountFundedByPlatform`
-     * is still accepted and recorded for settlement, it just no longer moves the
-     * tax base.
+     * GST is charged on the full price before any coupon, whoever funded it
+     * (business decision, 2026-09-29: the tax base is the listed value of the
+     * supply). The customer still pays the discounted food price; only the base
+     * the tax is worked out on is the pre-coupon one. `discountFundedByPlatform`
+     * is still accepted and recorded for settlement.
      */
-    const platformFundedDiscount = false;
+    const platformFundedDiscount = appliedDiscount > 0;
     const inclusiveTaxBase = platformFundedDiscount ? inclusiveItems : inclusiveAfterDiscount;
     const exclusiveTaxBase = platformFundedDiscount ? exclusiveItems : exclusiveAfterDiscount;
     const packagingTaxBase = platformFundedDiscount ? round2(packaging) : packagingAfterDiscount;

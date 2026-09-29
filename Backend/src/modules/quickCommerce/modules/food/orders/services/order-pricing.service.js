@@ -602,10 +602,11 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
     }
   }
 
-  // GST is charged on the post-coupon item value, whoever funded the coupon:
-  // the customer is taxed on what they pay (same rule as food, shared/billing.js).
+  // GST is charged on the full item value before any coupon, whoever funded it
+  // (same rule as food, shared/billing.js). Recorded so a return refunds the
+  // same tax it charged.
   const gstFallbackRate = Number(feeSettings.gstRate || 0);
-  const gstOnPreDiscountValue = false;
+  const gstOnPreDiscountValue = Number(discount) > 0;
   const tax = computeItemsTax(items, {
     discountFundedByPlatform: gstOnPreDiscountValue,
     subtotal,

@@ -3,10 +3,9 @@
  *
  * Run: node tests/gst-on-funded-discount.smoke.mjs
  *
- * GST is charged on what the customer pays for the food after the coupon,
- * whoever funded the coupon. (Until 2026-09-28 a platform-funded coupon was
- * taxed on the pre-coupon value; the GST line then did not move when a coupon
- * was applied, which was reported as a wrong bill.)
+ * GST is charged on the full food price before any coupon, whoever funded the
+ * coupon (business decision, 2026-09-29). The customer still pays the
+ * discounted food price; only the tax base is the pre-coupon value.
  */
 import assert from 'node:assert/strict';
 import { computeBill, billAddsUp } from '../src/modules/food/shared/billing.js';
@@ -31,41 +30,35 @@ const base = {
 
 for (const funded of [false, true]) {
   const who = funded ? 'platform' : 'restaurant';
-  check(`a ${who}-funded coupon is taxed on what the customer pays`, () => {
+  check(`a ${who}-funded coupon: GST on the full price, food at the discounted price`, () => {
     const b = computeBill({ ...base, discountFundedByPlatform: funded });
-    assert.equal(b.taxableAmount, 400);
-    assert.equal(b.gstOnItems, 20);
-    assert.equal(b.gstOnPreDiscountValue, false);
-    assert.equal(b.grandTotal, 420);
+    assert.equal(b.taxableAmount, 500);
+    assert.equal(b.gstOnItems, 25);
+    assert.equal(b.gstOnPreDiscountValue, true);
+    assert.equal(b.netItemAmount, 400);
+    assert.equal(b.grandTotal, 425);
     assert.ok(billAddsUp(b));
   });
 }
 
-check('the GST goes down when a coupon is applied', () => {
-  const without = computeBill({ ...base, discount: 0, discountFundedByPlatform: true });
-  const withCoupon = computeBill({ ...base, discountFundedByPlatform: true });
+check('the GST does not change when a coupon is applied', () => {
+  const without = computeBill({ ...base, discount: 0 });
+  const withCoupon = computeBill({ ...base });
   assert.equal(without.gstOnItems, 25);
-  assert.equal(withCoupon.gstOnItems, 20);
+  assert.equal(withCoupon.gstOnItems, 25);
+  assert.equal(without.gstOnPreDiscountValue, false, 'no coupon, nothing pre-discount');
 });
 
-check('inclusive menu: a Rs 100 coupon on Rs 500 means the customer pays Rs 400, tax extracted from it', () => {
-  const b = computeBill({ ...base, pricesIncludeGst: true, discountFundedByPlatform: true });
-  assert.equal(b.grandTotal, 400);
-  assert.ok(Math.abs(b.gstOnItems - (400 - 400 / 1.05)) < 0.02);
-  assert.ok(billAddsUp(b));
-});
-
-check('a coupon larger than the food leaves no food tax', () => {
-  const b = computeBill({ ...base, discount: 900, discountFundedByPlatform: true });
-  assert.equal(b.netItemAmount, 0);
-  assert.equal(b.gstOnItems, 0);
+check('inclusive menu: tax extracted from the full Rs 500', () => {
+  const b = computeBill({ ...base, pricesIncludeGst: true });
+  assert.ok(Math.abs(b.gstOnItems - (500 - 500 / 1.05)) < 0.02);
   assert.ok(billAddsUp(b));
 });
 
 check('delivery, surge and tip are never taxed', () => {
-  const b = computeBill({ ...base, deliveryFee: 40, surgeAmount: 15, tip: 30, discountFundedByPlatform: true });
-  assert.equal(b.gstOnItems, 20);
-  assert.equal(b.grandTotal, 400 + 20 + 40 + 15 + 30);
+  const b = computeBill({ ...base, deliveryFee: 40, surgeAmount: 15, tip: 30 });
+  assert.equal(b.gstOnItems, 25);
+  assert.equal(b.grandTotal, 400 + 25 + 40 + 15 + 30);
   // The surge is printed inside the delivery fee, not as its own line.
   assert.equal(b.deliveryFee, 55);
   assert.equal(b.surgeAmount, 0);
@@ -74,10 +67,10 @@ check('delivery, surge and tip are never taxed', () => {
 });
 
 check('free delivery keeps the surge on its own line so it is not hidden behind FREE', () => {
-  const b = computeBill({ ...base, deliveryFee: 0, surgeAmount: 15, discountFundedByPlatform: true });
+  const b = computeBill({ ...base, deliveryFee: 0, surgeAmount: 15 });
   assert.equal(b.deliveryFee, 0);
   assert.equal(b.surgeAmount, 15);
-  assert.equal(b.grandTotal, 400 + 20 + 15);
+  assert.equal(b.grandTotal, 400 + 25 + 15);
   assert.ok(billAddsUp(b));
 });
 
