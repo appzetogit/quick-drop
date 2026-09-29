@@ -131,6 +131,29 @@ export const buildDriverMatchFilters = ({ zoneId, vehicleTypeId, vehicleTypeIds,
   return baseFilters;
 };
 
+/**
+ * Whether [lng, lat] lies inside a GeoJSON Polygon / MultiPolygon (outer rings;
+ * ray casting). Used to keep ride requests with drivers who are physically in
+ * the pickup's zone, not merely registered to it.
+ */
+export const pointInZoneGeometry = (point, geometry) => {
+  const [x, y] = Array.isArray(point) ? point.map(Number) : [NaN, NaN];
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !geometry) return false;
+  const polygons = geometry.type === 'MultiPolygon'
+    ? geometry.coordinates
+    : geometry.type === 'Polygon' ? [geometry.coordinates] : [];
+  return polygons.some((rings) => {
+    const ring = Array.isArray(rings?.[0]) ? rings[0] : [];
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+      const [xi, yi] = ring[i].map(Number);
+      const [xj, yj] = ring[j].map(Number);
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  });
+};
+
 export const findZoneByPickup = async (pickupCoords) => {
   const coordinates = normalizePoint(pickupCoords, 'pickupCoords');
 
@@ -466,6 +489,16 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
       );
       drivers = drivers.filter((driver) => !fallbackBlockedDriverIds.has(String(driver?._id || '')));
     }
+  }
+
+  /*
+   * Only drivers standing inside the pickup's zone right now. The queries above
+   * match on the driver's registered zone and a radius around the pickup, and a
+   * radius is a circle: near a boundary it reaches into the next zone, and a
+   * driver registered here but parked across the line was offered the ride.
+   */
+  if (zone?.geometry) {
+    drivers = drivers.filter((driver) => pointInZoneGeometry(driver?.location?.coordinates, zone.geometry));
   }
 
   /*

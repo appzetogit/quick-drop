@@ -1151,6 +1151,20 @@ export const createRideRecord = async ({
    * any trip. Measured the way the app measures it (common/tripMeasure.js), so
    * an honest booking is priced exactly as before.
    */
+  /*
+   * A ride can only start inside a service zone. Without this a pickup in no
+   * zone was accepted and dispatched with no zone filter at all -- the request
+   * went to any driver in range. Skipped while no zone exists, so a server not
+   * yet set up keeps working.
+   */
+  {
+    const { findZoneByPickup } = await import('./matchingService.js');
+    const { Zone } = await import('../driver/models/Zone.js');
+    if ((await Zone.estimatedDocumentCount()) > 0 && !(await findZoneByPickup(pickupCoords))) {
+      throw new ApiError(400, 'Rides are not available at this pickup location yet. Please choose a pickup inside our service area.');
+    }
+  }
+
   const measuredTrip = await measureTripRoad({ pickup: pickupCoords, drop: dropCoords, stops });
   const safeEstimatedDistanceMeters = measuredTrip ? measuredTrip.distanceMeters : 0;
   const safeEstimatedDurationMinutes = measuredTrip ? measuredTrip.durationMinutes : 0;

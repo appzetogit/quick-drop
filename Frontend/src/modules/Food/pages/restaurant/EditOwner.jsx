@@ -191,7 +191,9 @@ export default function EditOwner() {
       const updatePayload = {
         ownerName: formData.name.trim(),
         ownerEmail: formData.email.trim(),
-        ownerPhone: formData.phone.trim(),
+        // The phone is read-only here and is the login number. It is not sent:
+        // this form fills it from primaryContactNumber when ownerPhone is empty,
+        // which silently replaced the login number with the contact number.
       }
 
       // If profile image was uploaded, include it
