@@ -85,6 +85,10 @@ await check('accepting the Medical order through the FOOD accept endpoint assign
   const row = await QcOrder.collection.findOne({ _id: new mongoose.Types.ObjectId(medId) });
   assert.equal(row.dispatch.status, 'accepted');
   assert.equal(String(row.dispatch.deliveryPartnerId), qcRiderId);
+  // The app knows only its Food id: the response names the rider by it.
+  const sent = JSON.stringify(out.body);
+  assert.ok(!sent.includes(qcRiderId), 'response still carries the Quick rider id');
+  assert.ok(sent.includes(foodId), 'response should name the Food rider');
 });
 
 await mongoose.disconnect();

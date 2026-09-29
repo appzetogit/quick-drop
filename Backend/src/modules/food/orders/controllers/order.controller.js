@@ -11,6 +11,16 @@ import * as foodOrderPaymentService from '../services/foodOrderPayment.service.j
  * (core/delivery/qcRiderLink.js). Returns undefined for a Food order, so the
  * Food path runs unchanged.
  */
+/**
+ * A Quick order names the rider by their Quick rider id (offeredTo,
+ * deliveryPartnerId). The app only knows its Food rider id and skips orders
+ * that are not offered to it, so hand them over with the Food id in place.
+ */
+const asFoodRider = (value, qcRiderId, foodRiderId) => {
+    if (value == null || !qcRiderId || !foodRiderId) return value;
+    return JSON.parse(JSON.stringify(value).split(String(qcRiderId)).join(String(foodRiderId)));
+};
+
 const viaQuickOrder = async (req, run) => {
     const orderId = req.params?.orderId;
     if (!orderId) return undefined;
@@ -20,7 +30,7 @@ const viaQuickOrder = async (req, run) => {
     if (!qcRiderId) return undefined;
     const qcService = await import('../../../quickCommerce/modules/food/orders/services/order.service.js');
     const qcDelivery = await import('../../../quickCommerce/modules/food/orders/services/order-delivery.service.js');
-    return { result: await run({ ...qcService, ...qcDelivery }, qcRiderId, orderId) };
+    return { result: asFoodRider(await run({ ...qcService, ...qcDelivery }, qcRiderId, orderId), qcRiderId, req.user?.userId) };
 };
 
 /** The rider's Quick / Medical orders, for merging into the Food lists. */
@@ -30,7 +40,7 @@ const quickOrdersForRider = async (req, run) => {
         const qcRiderId = await qcRiderIdForFoodRider(req.user?.userId);
         if (!qcRiderId) return null;
         const qcService = await import('../../../quickCommerce/modules/food/orders/services/order.service.js');
-        return await run(qcService, qcRiderId);
+        return asFoodRider(await run(qcService, qcRiderId), qcRiderId, req.user?.userId);
     } catch {
         return null;
     }

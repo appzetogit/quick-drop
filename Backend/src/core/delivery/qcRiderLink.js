@@ -140,7 +140,10 @@ export async function mirrorQcOfferToFoodRider(qcRiderId, { event, payload, push
     if (!foodRiderId) return false;
     const { getIO, rooms } = await import('../../config/socket.js');
     const io = getIO?.();
-    if (io && event) io.to(rooms?.delivery ? rooms.delivery(foodRiderId) : `delivery:${foodRiderId}`).emit(event, payload);
+    // The app knows only its Food rider id: name the rider by that in the offer.
+    const forApp = payload == null ? payload
+      : JSON.parse(JSON.stringify(payload).split(String(qcRiderId)).join(String(foodRiderId)));
+    if (io && event) io.to(rooms?.delivery ? rooms.delivery(foodRiderId) : `delivery:${foodRiderId}`).emit(event, forApp);
     if (push) {
       const { notifyOwnersActionableAlert } = await import('../notifications/firebase.service.js');
       await notifyOwnersActionableAlert([{ ownerType: 'DELIVERY_PARTNER', ownerId: foodRiderId }], push);
