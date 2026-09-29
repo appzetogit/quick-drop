@@ -174,7 +174,7 @@ ${itemsListText}
 
 *Breakdown:*
 • Item Subtotal: ₹${subtotal.toFixed(2)}
-${tax > 0 ? `• Taxes & Charges: ₹${tax.toFixed(2)}\n` : ''}${packagingFee > 0 ? `• Packaging Fee: ₹${packagingFee.toFixed(2)}\n` : ''}${deliveryFee > 0 ? `• Delivery Fee: ₹${deliveryFee.toFixed(2)}\n` : ''}${platformFee > 0 ? `• Platform Fee: ₹${platformFee.toFixed(2)}\n` : ''}${discount > 0 ? `• Discount: -₹${discount.toFixed(2)}\n` : ''}---------------------------------------------
+${tax > 0 ? `• ${Number(order.pricing?.bill?.gstRate) > 0 ? `GST @ ${Number(order.pricing.bill.gstRate)}%${Number(order.pricing?.bill?.taxableAmount) > 0 ? ` on ₹${Number(order.pricing.bill.taxableAmount).toFixed(2)}` : ''}` : 'GST'}: ₹${tax.toFixed(2)}\n` : ''}${packagingFee > 0 ? `• Packaging Fee: ₹${packagingFee.toFixed(2)}\n` : ''}${deliveryFee > 0 ? `• Delivery Fee: ₹${deliveryFee.toFixed(2)}\n` : ''}${platformFee > 0 ? `• Platform Fee: ₹${platformFee.toFixed(2)}\n` : ''}${discount > 0 ? `• Discount: -₹${discount.toFixed(2)}\n` : ''}---------------------------------------------
 *Total Paid: ₹${total.toFixed(2)}*
 
 If you have any questions, reach out to our customer support.`;

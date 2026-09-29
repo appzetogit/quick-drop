@@ -162,7 +162,31 @@ export default function OrderInvoice() {
     handlePrint()
   }
   const pricing = order.pricing || {}
-  const surgeAmount = Number(pricing.surgeAmount || order.surgeAmount || 0)
+  const bill = pricing.bill || {}
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+  const rupee = (v) => `₹${num(v).toFixed(2)}`
+  const surgeAmount = num(pricing.surgeAmount ?? order.surgeAmount)
+  const subtotal = num(pricing.subtotal ?? order.subtotal)
+  const discount = num(pricing.discount ?? order.discount)
+  const gst = num(bill.gstOnItems ?? pricing.tax ?? order.tax)
+  const gstRate = num(bill.gstRate)
+  // GST is charged on the price before any coupon; the line says so, so the
+  // invoice explains why GST did not fall with the discount.
+  const gstLabel = gstRate > 0
+    ? `GST @ ${gstRate}%${num(bill.taxableAmount) > 0 ? ` on ${rupee(bill.taxableAmount)}` : ""}:`
+    : "GST:"
+  const invoiceLines = [
+    { label: "Item total:", amount: subtotal },
+    discount > 0 && { label: `Coupon${pricing.couponCode ? ` (${pricing.couponCode})` : ""}:`, amount: discount, discount: true },
+    num(pricing.packagingFee) > 0 && { label: "Packaging:", amount: pricing.packagingFee },
+    { label: gstLabel, amount: gst },
+    { label: "Delivery fee:", amount: num(pricing.deliveryFee ?? order.deliveryFee) + surgeAmount },
+    num(pricing.platformFee) > 0 && { label: "Platform fee:", amount: pricing.platformFee },
+    num(bill.platformFeeGst ?? pricing.platformFeeGst) > 0 && { label: "GST on platform fee:", amount: bill.platformFeeGst ?? pricing.platformFeeGst },
+    num(bill.tip ?? pricing.tip) > 0 && { label: "Tip:", amount: bill.tip ?? pricing.tip },
+    num(bill.roundOff) !== 0 && { label: "Round off:", amount: bill.roundOff },
+  ].filter(Boolean)
+  const invoiceTotal = num(pricing.total ?? order.total)
 
   return (
     <AnimatedPage className="min-h-screen bg-gradient-to-b from-yellow-50/30 via-white to-primary-orange/5/20 dark:from-[#0a0a0a] dark:via-[#1a1a1a] dark:to-[#0a0a0a] p-3 sm:p-4 md:p-6 lg:p-8">
@@ -287,27 +311,15 @@ export default function OrderInvoice() {
 
               {/* Total Section */}
               <div className="total-section mt-4 sm:mt-6">
-                <div className="total-row flex justify-between text-xs sm:text-sm sm:text-base py-1 sm:py-2">
-                  <span>Subtotal:</span>
-                  <span>${order.subtotal.toFixed(2)}</span>
-                </div>
-                <div className="total-row flex justify-between text-xs sm:text-sm sm:text-base py-1 sm:py-2">
-                  <span>Delivery Fee:</span>
-                  <span>${order.deliveryFee.toFixed(2)}</span>
-                </div>
-                <div className="total-row flex justify-between text-xs sm:text-sm sm:text-base py-1 sm:py-2">
-                  <span>Tax:</span>
-                  <span>${order.tax.toFixed(2)}</span>
-                </div>
-                {surgeAmount > 0 && (
-                  <div className="total-row flex justify-between text-xs sm:text-sm sm:text-base py-1 sm:py-2">
-                    <span>Surge Amount:</span>
-                    <span>${surgeAmount.toFixed(2)}</span>
+                {invoiceLines.map((line) => (
+                  <div key={line.label} className={`total-row flex justify-between text-xs sm:text-sm sm:text-base py-1 sm:py-2 ${line.discount ? "text-emerald-600" : ""}`}>
+                    <span>{line.label}</span>
+                    <span>{line.discount ? "-" : ""}{rupee(line.amount)}</span>
                   </div>
-                )}
+                ))}
                 <div className="grand-total flex justify-between text-base sm:text-lg md:text-xl md:text-2xl pt-2 sm:pt-3 mt-2 sm:mt-3 border-t-2 border-[#EB590E]">
                   <span>Total:</span>
-                  <span>${order.total.toFixed(2)}</span>
+                  <span>{rupee(invoiceTotal)}</span>
                 </div>
               </div>
 

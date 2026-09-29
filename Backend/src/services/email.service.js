@@ -97,8 +97,18 @@ export async function sendFoodInvoiceEmail(order, user) {
   const subtotal = order.pricing?.subtotal || order.subtotal || items.reduce((sum, i) => sum + i.total, 0);
   const tax = order.pricing?.tax || 0;
   const packagingFee = order.pricing?.packagingFee || 0;
-  const deliveryFee = order.pricing?.deliveryFee || 0;
+  // The surge is part of what the customer paid for delivery.
+  const deliveryFee = (order.pricing?.deliveryFee || 0) + (order.pricing?.surgeAmount || 0);
   const platformFee = order.pricing?.platformFee || 0;
+  const invoiceBill = order.pricing?.bill || {};
+  const platformFeeGst = Number(invoiceBill.platformFeeGst ?? order.pricing?.platformFeeGst) || 0;
+  const roundOff = Number(invoiceBill.roundOff) || 0;
+  const gstRate = Number(invoiceBill.gstRate) || 0;
+  const taxBase = Number(invoiceBill.taxableAmount) || 0;
+  // GST is charged on the price before any coupon; say so on the invoice.
+  const gstLabel = gstRate > 0
+    ? `GST @ ${gstRate}%${taxBase > 0 ? ` on ₹${taxBase.toFixed(2)}` : ''}`
+    : 'GST';
   const discount = order.pricing?.discount || 0;
   const total = order.pricing?.total || order.totalAmount || order.total || (subtotal + tax + packagingFee + deliveryFee + platformFee - discount);
   const paymentMethod = String(order.payment?.method || order.paymentMethod || 'Paid').toUpperCase();
@@ -292,10 +302,12 @@ export async function sendFoodInvoiceEmail(order, user) {
             <span>Item Subtotal</span>
             <span>₹${subtotal.toFixed(2)}</span>
           </div>
-          ${tax > 0 ? `<div class="summary-row"><span>Taxes & Charges</span><span>₹${tax.toFixed(2)}</span></div>` : ''}
+          ${tax > 0 ? `<div class="summary-row"><span>${gstLabel}</span><span>₹${tax.toFixed(2)}</span></div>` : ''}
           ${packagingFee > 0 ? `<div class="summary-row"><span>Restaurant Packaging Fee</span><span>₹${packagingFee.toFixed(2)}</span></div>` : ''}
           ${deliveryFee > 0 ? `<div class="summary-row"><span>Delivery Partner Fee</span><span>₹${deliveryFee.toFixed(2)}</span></div>` : ''}
           ${platformFee > 0 ? `<div class="summary-row"><span>Platform Fee</span><span>₹${platformFee.toFixed(2)}</span></div>` : ''}
+          ${platformFeeGst > 0 ? `<div class="summary-row"><span>GST on Platform Fee</span><span>₹${platformFeeGst.toFixed(2)}</span></div>` : ''}
+          ${roundOff !== 0 ? `<div class="summary-row"><span>Round Off</span><span>₹${roundOff.toFixed(2)}</span></div>` : ''}
           ${discount > 0 ? `<div class="summary-row" style="color: #10b981; font-weight: 500;"><span>Discounts Applied</span><span>-₹${discount.toFixed(2)}</span></div>` : ''}
           
           <table style="width: 100%; border-collapse: collapse; margin-top: 16px; border-top: 1px dashed #cbd5e1; padding-top: 16px;">
