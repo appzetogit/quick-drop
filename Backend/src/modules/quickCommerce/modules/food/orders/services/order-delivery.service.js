@@ -1327,6 +1327,26 @@ export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
     note: `Delivery completed. Prev status: ${prevPayStatus}`,
   });
 
+  // Medical/pharmacy orders settle automatically on delivery rather than
+  // waiting on an admin's manual reconciliation -- explicitly requested for
+  // this vertical only. Grocery/quick-commerce orders through this same
+  // completeDelivery are unaffected and still settle the existing manual
+  // way (foodTransaction.service.js settleRestaurant, admin-triggered).
+  // Fire-and-forget and best-effort: the delivery itself must not fail if
+  // this does.
+  if (order.prescriptionOnly === true) {
+    foodTransactionService
+      .updateTransactionStatus(order._id, 'settled', {
+        status: 'captured',
+        note: 'Medical store payout settled automatically on delivery',
+        recordedByRole: 'SYSTEM',
+        recordedById: null,
+      })
+      .catch((err) => {
+        logger.warn(`Auto-settlement failed for medical order ${order._id}: ${err?.message || err}`);
+      });
+  }
+
   emitOrderUpdate(order, deliveryPartnerId);
   enqueueOrderEvent('delivery_completed', {
     orderMongoId: order._id?.toString?.(),

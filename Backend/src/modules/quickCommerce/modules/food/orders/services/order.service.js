@@ -53,7 +53,8 @@ import {
 } from '../../shared/prescriptionRules.js';
 import { assertBillApproved,
   assertPrescriptionOrderPriced,
-  assertDeliveryPartnerAssignable } from '../../shared/prescriptionOrder.js';
+  assertDeliveryPartnerAssignable,
+  isPriced as isPrescriptionOrderPriced } from '../../shared/prescriptionOrder.js';
 import * as dispatchService from './order-dispatch.service.js';
 import * as deliveryService from './order-delivery.service.js';
 import * as paymentService from './order-payment.service.js';
@@ -1105,12 +1106,32 @@ export async function verifyPayment(userId, dto) {
    * opened. Until it is stamped, assertBillApproved keeps the order out of the
    * pharmacy's preparation queue.
    */
-  if (order.prescriptionOnly && order.prescription?.bill?.status === 'submitted') {
+  const isBillPayment =
+    order.prescriptionOnly === true && order.prescription?.bill?.status === 'submitted';
+  if (isBillPayment) {
     order.prescription.bill.status = 'approved';
     order.prescription.bill.approvedAt = new Date();
   }
-  
+
   const from = order.orderStatus;
+
+  if (isBillPayment) {
+    // This order already exists, was already accepted and packed (see
+    // submitPrescriptionBill) -- paying the bill approves it, it does not
+    // place a new one. Everything below this branch (fresh 'created' status,
+    // a new acceptance deadline, "new order" notification) is for an order
+    // being paid for the FIRST time; running it here would send an
+    // already-in-progress order back to square one the moment its bill is
+    // paid.
+    pushStatusHistory(order, {
+      byRole: "USER",
+      byId: userId,
+      from,
+      to: order.orderStatus,
+      note: "Bill payment verified",
+    });
+    await order.save();
+  } else {
   const acceptanceWindowSeconds = await getOrderAcceptanceWindowSeconds();
   order.orderStatus = "created";
   order.acceptanceWindowSeconds = acceptanceWindowSeconds;
@@ -1139,6 +1160,7 @@ export async function verifyPayment(userId, dto) {
   ).catch((err) => {
     logger.warn(`Failed to enqueue acceptance timeout check: ${err?.message || err}`);
   });
+  }
 
   try {
     const transaction = await foodTransactionService.createInitialTransaction(order);
@@ -1163,8 +1185,17 @@ export async function verifyPayment(userId, dto) {
     recordedById: new mongoose.Types.ObjectId(userId)
   });
 
-  // After online payment is verified, now notify restaurant about the new order.
-  await notifyRestaurantNewOrder(order);
+  if (isBillPayment) {
+    // The pharmacy already knows about this order -- this payment approved
+    // its bill, not placed it. That approval (same as the COD branch of
+    // approvePrescriptionBill) is what should send it to a rider now.
+    void tryAutoAssign(order._id).catch((err) => {
+      logger.warn(`Auto-dispatch failed after online bill payment for ${order._id}: ${err?.message || err}`);
+    });
+  } else {
+    // After online payment is verified, now notify restaurant about the new order.
+    await notifyRestaurantNewOrder(order);
+  }
 
   // No "Payment Successful" push.
   //
@@ -2312,9 +2343,19 @@ export async function updateOrderStatusRestaurant(
     const io = getIO();
     if (io) {
       // On accept (confirmed or preparing) -> request delivery partners via central logic
+      //
+      // Skipped for a prescription-only order still unpriced: Accept no longer
+      // implies a price (see assertPrescriptionOrderPriced/FILLABLE_STATUSES),
+      // and finding a rider for a job with no known price or contents yet
+      // would offer it before the customer has agreed to anything. Once the
+      // bill is submitted and the customer approves/pays it, that approval
+      // (approvePrescriptionBill / verifyPayment) is what triggers this hunt.
+      const isUnpricedPrescriptionOrder =
+        order.prescriptionOnly === true && !isPrescriptionOrderPriced(order);
       if (
-        (String(orderStatus) === "preparing" || String(orderStatus) === "confirmed") && 
-        (String(from) !== "preparing" && String(from) !== "confirmed")
+        (String(orderStatus) === "preparing" || String(orderStatus) === "confirmed") &&
+        (String(from) !== "preparing" && String(from) !== "confirmed") &&
+        !isUnpricedPrescriptionOrder
       ) {
         console.log(
           `[DEBUG] Order ${order._id.toString()} status changed to '${orderStatus}'. Triggering central delivery dispatch.`,
@@ -2998,10 +3039,12 @@ export async function updateOrderStatusAdmin(orderId, orderStatus, note = "", ad
                 io.to(rooms.delivery(order.dispatch.deliveryPartnerId)).emit("order_status_update", payload);
             }
 
-            // On accept (confirmed or preparing) -> request delivery partners via central logic
+            // On accept (confirmed or preparing) -> request delivery partners via central logic.
+            // Same unpriced-prescription-order skip as the restaurant path (above).
             if (
-                (String(orderStatus) === "preparing" || String(orderStatus) === "confirmed") && 
-                (String(from) !== "preparing" && String(from) !== "confirmed")
+                (String(orderStatus) === "preparing" || String(orderStatus) === "confirmed") &&
+                (String(from) !== "preparing" && String(from) !== "confirmed") &&
+                !(order.prescriptionOnly === true && !isPrescriptionOrderPriced(order))
             ) {
                 console.log(
                     `[DEBUG] Order ${order._id.toString()} status changed to '${orderStatus}' by Admin. Triggering central delivery dispatch.`,

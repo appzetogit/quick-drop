@@ -27,8 +27,18 @@ import { isMedicalStore } from './storeType.js';
 /** Statuses that mean the seller has taken the order on. */
 const ACCEPTANCE_STATUSES = Object.freeze(['confirmed', 'preparing', 'ready_for_pickup']);
 
-/** Once the seller has accepted, the priced contents are fixed. */
-const FILLABLE_STATUSES = Object.freeze(['created']);
+/**
+ * Where the pharmacist may still add items and a price.
+ *
+ * Was `['created']` only -- pricing had to happen before the pharmacist could
+ * accept at all. The seller-facing flow now accepts first ("Order Receive" /
+ * Accept, no price yet -- the pharmacist is only confirming they will read
+ * and fill it), then prices and bills from the order-details screen, which
+ * is what actually moves it on to 'preparing'. `created` is kept too so an
+ * order from before this shipped, or a pharmacy still mid-review, still
+ * prices the old way.
+ */
+const FILLABLE_STATUSES = Object.freeze(['created', 'confirmed']);
 
 export const MAX_QUOTE_ITEMS = 40;
 export const MAX_QUOTE_LINE_TOTAL = 100000;
@@ -242,15 +252,28 @@ export function assertDeliveryPartnerAssignable(order) {
 }
 
 /**
- * A prescription order may not be accepted until it has been priced.
+ * Once packed ('preparing') or handed off, a prescription order must be
+ * priced -- but NOT to reach 'confirmed' itself. Accepting is now the
+ * pharmacist's "I will read and fill this", not a promise about a price;
+ * the price comes from the bill they submit afterward (submitPrescriptionOrderBill
+ * moves 'confirmed' -> 'preparing' the moment that happens), so gating
+ * 'confirmed' on a price that cannot exist yet would make Accept impossible.
+ */
+const PRICE_REQUIRED_STATUSES = Object.freeze(
+    ACCEPTANCE_STATUSES.filter((status) => status !== 'confirmed'),
+);
+
+/**
+ * A prescription order may not go past acceptance until it has been priced.
  *
- * Without this the pharmacist could accept an empty order, and the customer
- * would be committed to a delivery whose cost nobody had told them. Cancelling
- * stays available, so an unreadable prescription is never stuck.
+ * Without this the pharmacist could pack and hand off an empty order, and
+ * the customer would be committed to a delivery whose cost nobody had told
+ * them. Cancelling stays available, so an unreadable prescription is never
+ * stuck.
  */
 export function assertPrescriptionOrderPriced(order, nextStatus) {
     if (!order?.prescriptionOnly) return;
-    if (!ACCEPTANCE_STATUSES.includes(String(nextStatus || ''))) return;
+    if (!PRICE_REQUIRED_STATUSES.includes(String(nextStatus || ''))) return;
     if (!isPriced(order)) {
         throw new ValidationError(
             'Enter the medicines and price for this prescription before accepting the order.',

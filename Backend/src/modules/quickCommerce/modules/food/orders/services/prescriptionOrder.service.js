@@ -41,6 +41,7 @@ import {
     pushStatusHistory,
     sanitizeOrderForExternal,
 } from './order.helpers.js';
+import { tryAutoAssign } from './order-dispatch.service.js';
 
 /**
  * Prescription-only orders: placed from a photograph, priced by the pharmacist.
@@ -421,10 +422,21 @@ export async function submitPrescriptionBill(orderId, restaurantId, dto = {}) {
     const promiseMinutes = estimateDeliveryPromiseMinutes(distanceKm);
     if (Number.isFinite(promiseMinutes)) order.deliveryPromiseMinutes = promiseMinutes;
 
+    // Accept ('confirmed') no longer implies a price -- the pharmacist prices
+    // and bills from here, after accepting. Submitting the bill is what packs
+    // the order, so this is where 'confirmed' actually becomes 'preparing'
+    // (shown to the pharmacist as "Packed"). Only from 'confirmed': an order
+    // already further along (or re-billed under the old created-first flow)
+    // keeps whatever status it already has.
+    const statusFrom = order.orderStatus;
+    if (order.orderStatus === 'confirmed') {
+        order.orderStatus = 'preparing';
+    }
+
     pushStatusHistory(order, {
         byRole: 'RESTAURANT',
         byId: restaurantId,
-        from: order.orderStatus,
+        from: statusFrom,
         to: order.orderStatus,
         note: `Pharmacy bill Rs ${amount} submitted, payable Rs ${total}`,
     });
@@ -593,6 +605,15 @@ export async function approvePrescriptionBill(orderId, userId, dto = {}) {
             note: `Bill approved, paying cash on delivery (Rs ${order.pricing?.total})`,
         });
         await order.save();
+
+        // The customer has now agreed to a price (COD needs no payment step to
+        // wait on), so this is the moment -- not accept, which happens before
+        // any price exists -- a rider should be found. Fire-and-forget, same
+        // as every other dispatch trigger: a hunt failure must not fail the
+        // customer's approval of their own bill.
+        void tryAutoAssign(order._id).catch((err) => {
+            logger.warn(`Auto-dispatch failed after COD bill approval for ${order._id}: ${err?.message || err}`);
+        });
 
         const payload = sanitizeOrderForExternal(order);
         notifyOwnerSafely(
