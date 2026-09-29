@@ -18,13 +18,15 @@ const emptyTier = () => ({
   minOrderValue: "",
   rewardType: "item",
   rewardId: "",
+  rewardName: "",
 })
 
 const toTierDraft = (tier = {}) => ({
   localId: String(tier._id || `tier-${Math.random().toString(36).slice(2, 8)}`),
   minOrderValue: tier.minOrderValue != null ? String(tier.minOrderValue) : "",
-  rewardType: tier.rewardType === "addon" ? "addon" : "item",
+  rewardType: tier.rewardType === "addon" ? "addon" : tier.rewardType === "manual" ? "manual" : "item",
   rewardId: String(tier.rewardAddonId || tier.rewardItemId || ""),
+  rewardName: tier.rewardName || "",
 })
 
 export default function FreebieOffersPage() {
@@ -116,16 +118,19 @@ export default function FreebieOffersPage() {
           ? {
               ...t,
               [field]: value,
-              // Switching between a dish and an add-on invalidates the chosen
-              // reward, so it is cleared rather than left pointing at the other list.
-              ...(field === "rewardType" ? { rewardId: "" } : {}),
+              // Switching reward type invalidates whatever was chosen/typed
+              // for the previous one, so both are cleared rather than left
+              // pointing at the wrong kind of reward.
+              ...(field === "rewardType" ? { rewardId: "", rewardName: "" } : {}),
             }
           : t,
       ),
     )
 
   const handleSave = async () => {
-    const cleaned = tiers.filter((t) => String(t.minOrderValue).trim() || t.rewardId)
+    const cleaned = tiers.filter(
+      (t) => String(t.minOrderValue).trim() || t.rewardId || t.rewardName.trim(),
+    )
 
     for (const tier of cleaned) {
       const amount = Number(tier.minOrderValue)
@@ -133,7 +138,12 @@ export default function FreebieOffersPage() {
         toast.error("Every tier needs an order amount greater than 0")
         return
       }
-      if (!tier.rewardId) {
+      if (tier.rewardType === "manual") {
+        if (!tier.rewardName.trim()) {
+          toast.error(`Name the reward for orders over ${amount}`)
+          return
+        }
+      } else if (!tier.rewardId) {
         toast.error(`Choose what customers get free on orders over ${amount}`)
         return
       }
@@ -152,7 +162,11 @@ export default function FreebieOffersPage() {
         tiers: cleaned.map((t) => ({
           minOrderValue: Number(t.minOrderValue),
           rewardType: t.rewardType,
-          ...(t.rewardType === "addon" ? { rewardAddonId: t.rewardId } : { rewardItemId: t.rewardId }),
+          ...(t.rewardType === "manual"
+            ? { rewardName: t.rewardName.trim() }
+            : t.rewardType === "addon"
+              ? { rewardAddonId: t.rewardId }
+              : { rewardItemId: t.rewardId }),
         })),
       })
       toast.success("Free-item offers saved")
@@ -277,25 +291,41 @@ export default function FreebieOffersPage() {
                     >
                       <option value="item">Free Menu Dish</option>
                       <option value="addon">Free Add-On Item</option>
+                      <option value="manual">Type Manually</option>
                     </select>
                   </div>
 
                   <div>
                     <label className="mb-1.5 block text-xs font-semibold text-gray-700">
-                      {tier.rewardType === "addon" ? "Select Add-on Item" : "Select Menu Dish"}
+                      {tier.rewardType === "addon"
+                        ? "Select Add-on Item"
+                        : tier.rewardType === "manual"
+                          ? "Reward Name"
+                          : "Select Menu Dish"}
                     </label>
-                    <select
-                      value={tier.rewardId}
-                      onChange={(e) => updateTier(tier.localId, "rewardId", e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-gray-900 focus:outline-none"
-                    >
-                      <option value="">Choose item...</option>
-                      {(rewardOptions[tier.rewardType] || []).map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.name} {option.price ? `(₹${option.price})` : ""}
-                        </option>
-                      ))}
-                    </select>
+                    {tier.rewardType === "manual" ? (
+                      <input
+                        type="text"
+                        value={tier.rewardName}
+                        onChange={(e) => updateTier(tier.localId, "rewardName", e.target.value)}
+                        placeholder="e.g. Cold Drink"
+                        maxLength={120}
+                        className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-gray-900 focus:outline-none"
+                      />
+                    ) : (
+                      <select
+                        value={tier.rewardId}
+                        onChange={(e) => updateTier(tier.localId, "rewardId", e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-gray-900 focus:outline-none"
+                      >
+                        <option value="">Choose item...</option>
+                        {(rewardOptions[tier.rewardType] || []).map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.name} {option.price ? `(₹${option.price})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 </div>
               </div>

@@ -204,10 +204,23 @@ export function normalizeOrderForClient(orderDoc) {
   else if (String(cancellationEntry?.byRole || "").toUpperCase() === "ADMIN")
     cancelledBy = "admin";
 
+  // Present only when the caller populated restaurantId (e.g. the customer's
+  // own getOrderById) -- ownerPhone/primaryContactNumber otherwise sit
+  // unreachable inside a bare ObjectId string. Flattened here, the one place
+  // every customer-facing order response passes through, so the app can call
+  // the pharmacy/restaurant the same way it already calls the rider.
+  const restaurant =
+    order.restaurantId && typeof order.restaurantId === "object"
+      ? order.restaurantId
+      : null;
+  const restaurantPhone =
+    restaurant?.primaryContactNumber || restaurant?.ownerPhone || restaurant?.phone || "";
+
   return {
     ...order,
     orderMongoId: mongoId,
     orderId: displayId,
+    ...(restaurantPhone ? { restaurantPhone } : {}),
     status: order?.orderStatus || order?.status || "",
     cancellationReason,
     cancelledBy,
