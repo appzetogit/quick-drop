@@ -1322,11 +1322,6 @@ export default function Cart() {
   }
 
   const handleApplyCoupon = async (coupon) => {
-    if (coupon?.customerGroup === "new" && userOrderCount > 0) {
-      toast.error("This coupon is only for first-time users")
-      return
-    }
-
     if (subtotal < (Number(coupon.minOrder) || 0)) {
       toast.error(`Min order ${RUPEE_SYMBOL}${Number(coupon.minOrder || 0)}`)
       return
@@ -1358,7 +1353,7 @@ export default function Cart() {
 
         const pricingData = response?.data?.data?.pricing
         if (!pricingData || !pricingData.appliedCoupon) {
-          toast.error("Coupon not applicable")
+          toast.error(pricingData?.couponRejectedReason || "Coupon not applicable")
           return
         }
 
@@ -1390,11 +1385,6 @@ export default function Cart() {
       (coupon) => String(coupon.code || "").toUpperCase() === inputCode,
     )
 
-    // If we know this is first-time only and user already ordered, block early.
-    if (matchedCoupon?.customerGroup === "new" && userOrderCount > 0) {
-      toast.error("This coupon is only for first-time users")
-      return
-    }
 
     try {
       const items = cart.map(item => ({
@@ -1425,7 +1415,7 @@ export default function Cart() {
       }
 
       if (!pricingData.appliedCoupon) {
-        toast.error("Invalid or unavailable coupon code")
+        toast.error(pricingData.couponRejectedReason || "Invalid or unavailable coupon code")
         setCouponCode("")
         return
       }
@@ -2295,7 +2285,7 @@ export default function Cart() {
                         <button
                           className="border border-[#EB590E] text-[#EB590E] dark:hover:bg-[#EB590E]/10 rounded px-3 py-1.5 text-xs font-semibold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed ml-2 shadow-sm"
                           onClick={() => handleApplyCoupon(availableCoupons[0])}
-                          disabled={subtotal < availableCoupons[0].minOrder || (availableCoupons[0].customerGroup === "new" && userOrderCount > 0)}
+                          disabled={subtotal < availableCoupons[0].minOrder}
                         >
                           APPLY
                         </button>
@@ -2346,7 +2336,7 @@ export default function Cart() {
                             <button
                               className="border border-gray-300 text-gray-600 dark:border-gray-600 dark:text-gray-400 rounded px-3 py-1.5 text-xs font-semibold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed ml-2"
                               onClick={() => handleApplyCoupon(coupon)}
-                              disabled={subtotal < coupon.minOrder || (coupon.customerGroup === "new" && userOrderCount > 0)}
+                              disabled={subtotal < coupon.minOrder}
                             >
                               APPLY
                             </button>

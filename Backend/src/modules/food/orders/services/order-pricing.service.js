@@ -757,6 +757,10 @@ export async function calculateOrderPricing(userId, dto) {
    * platform's profit and leaves the restaurant's payout whole.
    */
   let discountFundedByPlatform = false;
+  // Why an entered coupon was not applied, in words the customer can act on.
+  // The app used to say only "not applicable", so a first-order coupon tried
+  // on an account with past orders looked like a broken coupon.
+  let couponRejectedReason = null;
   const codeRaw = dto.couponCode
     ? String(dto.couponCode).trim().toUpperCase()
     : "";
@@ -835,6 +839,15 @@ export async function calculateOrderPricing(userId, dto) {
         if (previousOrders > 0) firstOrderOk = false;
       }
 
+      const minOrder = Number(offer.minOrderValue) || 0;
+      if (!statusOk || !endOk) couponRejectedReason = 'This coupon has expired.';
+      else if (!startOk) couponRejectedReason = 'This coupon is not active yet.';
+      else if (!scopeOk) couponRejectedReason = 'This coupon is not valid for this restaurant.';
+      else if (!firstOrderOk) couponRejectedReason = 'This coupon is only for your first order.';
+      else if (!minOk) couponRejectedReason = `Add items worth Rs ${Math.ceil(minOrder - subtotal)} more to use this coupon (minimum order Rs ${minOrder}).`;
+      else if (!perUserOk) couponRejectedReason = 'You have already used this coupon the maximum number of times.';
+      else if (!usageOk) couponRejectedReason = 'This coupon has reached its usage limit.';
+
       const allowed =
         statusOk &&
         startOk &&
@@ -861,6 +874,8 @@ export async function calculateOrderPricing(userId, dto) {
         appliedCoupon = { code: codeRaw, discount };
         discountFundedByPlatform = offer.createdByRole !== 'RESTAURANT';
       }
+    } else {
+      couponRejectedReason = 'This coupon code does not exist.';
     }
   }
 
@@ -1010,6 +1025,7 @@ export async function calculateOrderPricing(userId, dto) {
       currency: "INR",
       couponCode: appliedCoupon?.code || codeRaw || null,
       appliedCoupon,
+      couponRejectedReason: appliedCoupon ? null : couponRejectedReason,
       /**
        * The spend-threshold reward, for the cart and the order summary.
        *
