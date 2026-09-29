@@ -14,6 +14,7 @@ import { reserveStockForItems, releaseReservations, restoreOrderStock } from './
 import { findZoneForPoint, readAddressPoint, ZONE_VERTICALS } from '../../shared/zoneServiceability.js';
 import { isMedicalStore } from '../../shared/storeType.js';
 import { sellerIdsOfStoreType, applySellerScope } from '../../shared/storeScope.js';
+import { attachRestaurantPayout } from '../../shared/restaurantPayout.js';
 import { buildPaginationOptions, buildPaginatedResult } from '../../../../utils/helpers.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
@@ -1396,6 +1397,7 @@ export async function getOrderById(
   if (restaurantId) {
     const out = sanitizeOrderForExternal(order);
     out.finance = await buildRestaurantFinanceView(order);
+    await attachRestaurantPayout([out]);
     return out;
   }
 
@@ -2036,6 +2038,7 @@ export async function listOrdersRestaurant(restaurantId, query) {
     out.finance = buildRestaurantFinanceViewSync(doc, txByOrderId.get(String(doc._id)) || null);
     return out;
   });
+  await attachRestaurantPayout(normalizedOrders);
 
   const paginated = buildPaginatedResult({ docs: normalizedOrders, total, page, limit });
   return {

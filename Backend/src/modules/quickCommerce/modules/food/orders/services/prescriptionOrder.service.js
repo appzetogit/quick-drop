@@ -14,6 +14,7 @@ import {
     estimateDeliveryPromiseMinutes,
 } from './order-pricing.service.js';
 import { getRestaurantCommissionSnapshot } from './foodTransaction.service.js';
+import { attachRestaurantPayout } from '../../shared/restaurantPayout.js';
 
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 import { normalizeDeliveryAddress, fillAddressLocality } from '../../shared/geo.utils.js';
@@ -308,7 +309,12 @@ export async function fillPrescriptionOrder(orderId, restaurantId, dto = {}) {
         total,
     });
 
-    return payload;
+    // The commission breakdown is the pharmacy's own money, not the customer's --
+    // attached only to what this call returns to the restaurant, never to the
+    // `payload` object already broadcast to the customer above.
+    const restaurantResponse = { ...payload };
+    await attachRestaurantPayout([restaurantResponse]);
+    return restaurantResponse;
 }
 
 /**
@@ -467,7 +473,12 @@ export async function submitPrescriptionBill(orderId, restaurantId, dto = {}) {
         total,
     });
 
-    return payload;
+    // See the same note in fillPrescriptionOrder above: the payout breakdown is
+    // the pharmacy's own money and goes only into what this call returns to it,
+    // never into `payload`, which was already broadcast to the customer.
+    const restaurantResponse = { ...payload };
+    await attachRestaurantPayout([restaurantResponse]);
+    return restaurantResponse;
 }
 
 /**
