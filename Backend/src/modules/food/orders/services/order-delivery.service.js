@@ -306,6 +306,11 @@ async function acquireDeliveryLock(deliveryPartnerId, orderId) {
   const { acquireDriverAssignment } = await import(
     '../../../taxi/driver/services/driverAssignmentService.js'
   );
+  if (await acquireDriverAssignment(driverId, 'delivery', orderId)) return true;
+  // Same as Quick: a hold on a job that already ended (deleted, or cancelled
+  // without a release) is cleared and the claim tried once more. Live jobs stay.
+  const { reconcileAssignments } = await import('../../../../core/assignment/assignment.service.js');
+  if (!(await reconcileAssignments(driverId).catch(() => 0))) return false;
   return acquireDriverAssignment(driverId, 'delivery', orderId);
 }
 

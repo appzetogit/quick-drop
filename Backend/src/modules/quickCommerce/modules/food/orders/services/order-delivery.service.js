@@ -450,7 +450,13 @@ async function acquireQcLock(deliveryPartnerId, orderId) {
   const driverId = await resolveUnifiedDriverId(deliveryPartnerId);
   if (!driverId) return true;
   const { claimed } = await claimAssignment(driverId, { vertical: 'quickCommerce', jobId: orderId });
-  return claimed;
+  if (claimed) return true;
+  // The hold may be a job that ended without letting go (deleted, or cancelled
+  // from a path that forgot to release). Clear holds on finished or missing jobs
+  // and try once more; a live job is never cleared, so a busy rider stays refused.
+  const { reconcileAssignments } = await import('../../../../../../core/assignment/assignment.service.js');
+  if (!(await reconcileAssignments(driverId).catch(() => 0))) return false;
+  return (await claimAssignment(driverId, { vertical: 'quickCommerce', jobId: orderId })).claimed;
 }
 
 /** Give the lock back. Only clears an entry that is still THIS order. */
