@@ -194,16 +194,17 @@ export function computeBill({
     const exclusiveAfterDiscount = round2(Math.max(0, exclusiveItems - discountOnExclusive));
 
     /*
-     * GST inside a GST-inclusive price, worked out on the price BEFORE the
-     * coupon (client rule, 2026-09-29: the coupon comes off last, as on the
-     * exclusive side). Rs 600 incl. 5% holds 28.57 of GST whatever the coupon;
-     * the customer still pays 600 - coupon, so the net line takes the coupon.
-     * Never more than what is left to pay for that line, so a coupon that
-     * covers the whole price cannot leave a negative net line.
+     * The GST shown on a GST-inclusive price: the rate on the full listed price,
+     * BEFORE the coupon (client rules, 2026-09-29: the coupon comes off last, as
+     * on the exclusive side, and "5% of Rs 600 is Rs 30"). Nothing is added --
+     * the customer still pays 600 - coupon; the line only says how much of it
+     * is GST, so the net line takes the coupon. Never more than what is left to
+     * pay for that line, so a coupon covering the whole price cannot leave a
+     * negative net line.
      */
-    const inclusiveItemsTax = round2(Math.min(inclusiveItems - deTax(inclusiveItems), inclusiveAfterDiscount));
+    const inclusiveItemsTax = round2(Math.min(inclusiveItems * gstFraction, inclusiveAfterDiscount));
     const inclusivePackagingTax = packagingIsInclusive
-        ? round2(Math.min(packaging - deTax(packaging), packagingAfterDiscount))
+        ? round2(Math.min(packaging * gstFraction, packagingAfterDiscount))
         : 0;
 
     // The inclusive half has its tax taken out; the exclusive half keeps its
@@ -224,8 +225,10 @@ export function computeBill({
      *     item - discount + tax
      * and land exactly on the total.
      */
-    const netItemAmountBeforeDiscount = round2(deTax(inclusiveItems) + exclusiveItems);
-    const netPackagingFeeBeforeDiscount = packagingIsInclusive ? deTax(packaging) : round2(packaging);
+    const netItemAmountBeforeDiscount = round2(inclusiveItems - round2(inclusiveItems * gstFraction) + exclusiveItems);
+    const netPackagingFeeBeforeDiscount = packagingIsInclusive
+        ? round2(packaging - round2(packaging * gstFraction))
+        : round2(packaging);
     const discountOnNet = round2(
         (netItemAmountBeforeDiscount + netPackagingFeeBeforeDiscount)
         - (netItemAmount + netPackagingFee),
@@ -279,12 +282,23 @@ export function computeBill({
      * the tax due on the supply.
      */
     const chargedFoodNet = round2(netItemAmount + netPackagingFee);
-    const taxableAmount = round2(
-        exclusiveTaxBase
-        + deTax(inclusiveItems)
-        + (packagingIsInclusive ? deTax(packagingTaxBase) : packagingTaxBase),
-    );
+    // What the rate is applied to: the listed price before the coupon, on both
+    // sides ("GST @ 5% on Rs 600").
+    const taxableAmount = round2(exclusiveTaxBase + inclusiveItems + packagingTaxBase);
     const gstOnItems = round2(taxOnItems + taxOnPackaging);
+    /*
+     * The GST actually owed, which the books and tax reports carry. On an
+     * inclusive price it is the part really inside it (600 incl. 5% -> 28.57),
+     * not the 5%-of-price figure printed above (30); exclusive prices print what
+     * is owed, so the two only differ on inclusive lines.
+     */
+    const gstCharged = round2(
+        Math.min(inclusiveItems - deTax(inclusiveItems), inclusiveAfterDiscount)
+        + (exclusiveTaxBase * gstFraction)
+        + (packagingIsInclusive
+            ? Math.min(packaging - deTax(packaging), packagingAfterDiscount)
+            : packagingTaxBase * gstFraction),
+    );
 
     const platformFeeGst = round2(platform * (rate(platformFeeGstRate) / 100));
 
@@ -336,12 +350,22 @@ export function computeBill({
         gstOnPreDiscountValue: platformFundedDiscount && (items > 0 || packaging > 0),
         gstRate: rate(gstRate),
         gstOnItems,
+        /** The GST owed, for the books and tax reports (see above). */
+        gstCharged,
         /**
          * What restaurant commission is charged on: the listed food, before any
          * coupon and net of any GST inside it. Equal to the food subtotal for a
          * restaurant that prices net, which is every restaurant by default.
          */
-        commissionBase: netItemAmountBeforeDiscount,
+        // The real pre-GST price (600 / 1.05), not the display split above, so
+        // commission and payouts do not move with how the GST line is shown.
+        commissionBase: round2(deTax(inclusiveItems) + exclusiveItems),
+        /**
+         * The packaging the restaurant is paid: after any coupon, net of the GST
+         * really inside it (5 incl. 5% -> 4.76). `netPackagingFee` is the printed
+         * line, split by the GST shown, and must not move anyone's payout.
+         */
+        packagingForPayout: packagingIsInclusive ? deTax(packagingAfterDiscount) : round2(packagingAfterDiscount),
         /*
          * The customer sees one "Delivery fee" line with the zone surge inside
          * it (ops request 2026-09-28), so surgeAmount here is 0 and the split is

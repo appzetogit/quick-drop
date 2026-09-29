@@ -49,22 +49,23 @@ check('the GST does not change when a coupon is applied', () => {
   assert.equal(without.gstOnPreDiscountValue, false, 'no coupon, nothing pre-discount');
 });
 
-check('inclusive menu: nothing added, tax is the part inside the full Rs 500 listed, before the coupon', () => {
+check('inclusive menu: nothing added, GST shown is 5% of the full Rs 500 listed, before the coupon', () => {
   const b = computeBill({ ...base, pricesIncludeGst: true });
-  // Client rule 2026-09-29: the coupon comes off last. 500 incl. 5% holds 23.81
-  // of GST whatever the coupon; the customer still pays 500 - 100.
-  assert.ok(Math.abs(b.gstOnItems - (500 - 500 / 1.05)) < 0.02);
+  // Client rules 2026-09-29: the coupon comes off last, and the GST shown is the
+  // rate on the listed price (5% of 500 = 25). The customer still pays 500 - 100.
+  assert.equal(b.gstOnItems, 25);
   assert.equal(b.discountOnNet, 100, 'the whole coupon comes off, none of it off the tax');
   assert.equal(b.grandTotal, 400);
   assert.ok(billAddsUp(b));
 });
 
-check('Rainbow Restro cart: Rs 600 incl. GST, Rs 100 coupon -> GST 28.57 (not 23.81), pay 639', () => {
+check('Rainbow Restro cart: Rs 600 incl. GST, Rs 100 coupon -> GST 30 (5% of 600), pay 639', () => {
   const args = { itemAmount: 600, deliveryFee: 127.30, platformFee: 10, platformFeeGstRate: 18, gstRate: 5, pricesIncludeGst: true };
   const withCoupon = computeBill({ ...args, discount: 100 });
   const without = computeBill(args);
-  assert.equal(withCoupon.gstOnItems, 28.57);
-  assert.equal(without.gstOnItems, 28.57, 'same GST with or without the coupon');
+  assert.equal(withCoupon.gstOnItems, 30);
+  assert.equal(without.gstOnItems, 30, 'same GST with or without the coupon');
+  assert.equal(withCoupon.commissionBase, 571.43, 'commission still on the real pre-GST price');
   assert.equal(withCoupon.grandTotal, 639);
   assert.equal(without.grandTotal, 739);
   assert.ok(billAddsUp(withCoupon));

@@ -66,7 +66,7 @@ const ledgerPayout = (order, fundedDiscount = 0) => {
     const food = Number(p.commissionableAmount ?? p.subtotal) || 0;
     const mode = String(p.packagingMode || '');
     const packaging = mode === '' || mode === 'RESTAURANT'
-        ? Number(p.netPackagingFee ?? p.packagingFee) || 0
+        ? Number(p.bill?.packagingForPayout ?? p.netPackagingFee ?? p.packagingFee) || 0
         : 0;
     return round2(food + packaging - (Number(p.restaurantCommission) || 0) - fundedDiscount);
 };
