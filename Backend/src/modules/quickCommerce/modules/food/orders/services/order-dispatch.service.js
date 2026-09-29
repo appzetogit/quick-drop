@@ -11,6 +11,7 @@ import { config } from '../../../../config/env.js';
 // themselves against ONE engine.
 import { compareInBackground } from '../../../../../../core/finance/eligibilityShadow.js';
 import { getIO, rooms } from '../../../../config/socket.js';
+import { mirrorQcOfferToFoodRider } from '../../../../../../core/delivery/qcRiderLink.js';
 /*
  * Zone matching, shared with food so the two verticals cannot drift apart on what
  * "same zone" means. The zone MAP is not shared: quick commerce keys off
@@ -352,11 +353,25 @@ async function listNearbyOnlineDeliveryPartners(
     : resolveZoneIdForPoint(restaurant.location.coordinates[1], restaurant.location.coordinates[0], zones);
 
   const [rLng, rLat] = restaurant.location.coordinates;
-  const allOnline = await FoodDeliveryPartner.find({
+  const quickOnline = await FoodDeliveryPartner.find({
     availabilityStatus: "online",
   })
     .select("_id status lastLat lastLng lastLocationAt name")
     .lean();
+  /*
+   * Riders online on the FOOD side count too, as their linked Quick rider
+   * record: the delivery app only goes online (and reports GPS) through Food,
+   * so the Quick pool on its own was always empty and no Quick or Medical
+   * order was ever offered to anyone. Freshest position wins per rider.
+   */
+  const { onlineFoodRidersAsQcCandidates } = await import('../../../../../../core/delivery/qcRiderLink.js');
+  const byRider = new Map(quickOnline.map((p) => [String(p._id), p]));
+  for (const p of await onlineFoodRidersAsQcCandidates()) {
+    const prev = byRider.get(String(p._id));
+    const fresher = !prev || new Date(p.lastLocationAt || 0) > new Date(prev.lastLocationAt || 0);
+    if (fresher) byRider.set(String(p._id), p);
+  }
+  const allOnline = [...byRider.values()];
 
   const scored = [];
   const allowedStatuses = process.env.NODE_ENV === 'production' ? ['approved'] : ['approved', 'pending'];
@@ -620,6 +635,10 @@ export async function tryAutoAssign(orderId, options = {}) {
               pickupDistanceKm: p.distanceKm,
               acceptanceDeadlineAt,
             });
+            void mirrorQcOfferToFoodRider(p.partnerId, {
+              event: 'new_order_available',
+              payload: { ...payload, pickupDistanceKm: p.distanceKm, acceptanceDeadlineAt },
+            });
           }
         }
 
@@ -633,16 +652,19 @@ export async function tryAutoAssign(orderId, options = {}) {
           // request anyway.
           const basePush = buildIncomingOrderPushData(order, payload, acceptanceDeadlineAt);
           for (const p of reofferEligible) {
-            await notifyOwnersActionableAlert(
-              [{ ownerType: 'DELIVERY_PARTNER', ownerId: p.partnerId }],
-              {
+            const reofferPush = {
                 title: 'New order available!',
                 body: `Order #${order.order_id || order._id} is still available. Tap to accept.`,
                 androidTag: `order_${order._id.toString()}`,
                 androidChannelId: 'new_orders_v2',
                 data: { ...basePush, pickupDistanceKm: s(p.distanceKm ?? '') },
-              },
+              };
+            await notifyOwnersActionableAlert(
+              [{ ownerType: 'DELIVERY_PARTNER', ownerId: p.partnerId }],
+              reofferPush,
             );
+            // The delivery app signs in as the Food rider: reach it there too.
+            await mirrorQcOfferToFoodRider(p.partnerId, { push: reofferPush });
           }
         } catch (err) {
           logger.warn(`Re-offer push failed for order ${order._id}: ${err.message}`);
@@ -677,6 +699,10 @@ export async function tryAutoAssign(orderId, options = {}) {
           acceptanceDeadlineAt,
         });
       }
+      void mirrorQcOfferToFoodRider(p.partnerId, {
+        event: 'new_order',
+        payload: { ...payload, pickupDistanceKm: p.distanceKm, acceptanceDeadlineAt },
+      });
     }
 
     if (eligible.length > 0) {
@@ -711,6 +737,16 @@ export async function tryAutoAssign(orderId, options = {}) {
               data: { ...basePush, pickupDistanceKm: s(p.distanceKm ?? '') },
             }
           );
+          // The delivery app signs in as the Food rider: reach it there too.
+          await mirrorQcOfferToFoodRider(p.partnerId, {
+            push: {
+              title: 'New order available!',
+              body: `Order #${order.order_id || order._id} is available. You have ${Math.round(DRIVER_ACCEPT_WINDOW_MS / 1000)} seconds to accept!`,
+              androidTag: `order_${order._id.toString()}`,
+              androidChannelId: 'new_orders_v2',
+              data: { ...basePush, pickupDistanceKm: s(p.distanceKm ?? '') },
+            },
+          });
         }
       } catch (err) {
         logger.warn(`Push notifications failed for broadcast on order ${order._id}: ${err.message}`);

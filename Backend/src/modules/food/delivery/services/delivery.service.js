@@ -421,6 +421,9 @@ export const updateDeliveryAvailability = async (userId, payload) => {
         partner.lastLocationAt = new Date();
     }
     await partner.save();
+    // The same rider takes Quick & Medical orders: keep that record in step.
+    const { syncQcRiderFromFood } = await import('../../../../core/delivery/qcRiderLink.js');
+    void syncQcRiderFromFood(userId, { availabilityStatus: validStatus, lat: latitude, lng: longitude });
     return { availabilityStatus: partner.availabilityStatus };
 };
 
