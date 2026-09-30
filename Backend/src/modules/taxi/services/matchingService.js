@@ -170,6 +170,35 @@ export const findZoneByPickup = async (pickupCoords) => {
   });
 };
 
+/**
+ * A city ride starts and ends inside one service zone (client rule 2026-09-30):
+ * the drop, and every stop, must lie in the pickup's zone. Throws a 400 the app
+ * shows as-is. Intercity trips and outstation parcels are meant to leave the
+ * zone and are not checked. Skipped while no zone exists, so a server not yet
+ * set up keeps working.
+ */
+export const assertTripInsidePickupZone = async ({ pickupCoords, dropCoords, stops = [] }) => {
+  if ((await Zone.estimatedDocumentCount()) === 0) return null;
+  const zone = await findZoneByPickup(pickupCoords);
+  if (!zone) {
+    throw new ApiError(400, 'Rides are not available at this pickup location yet. Please choose a pickup inside our service area.');
+  }
+  const zoneName = zone.name ? ` (${zone.name})` : '';
+  const drop = normalizePoint(dropCoords, 'dropCoords');
+  if (!pointInZoneGeometry(drop, zone.geometry)) {
+    throw new ApiError(400, `This drop location is outside your pickup's service area${zoneName}. Please choose a drop inside the same area.`);
+  }
+  for (const stop of Array.isArray(stops) ? stops : []) {
+    const point = stop?.coordinates || stop?.location?.coordinates || (stop && stop.lat != null && (stop.lng ?? stop.lon) != null ? [stop.lng ?? stop.lon, stop.lat] : stop);
+    let coords;
+    try { coords = normalizePoint(point, 'stop'); } catch { continue; }
+    if (!pointInZoneGeometry(coords, zone.geometry)) {
+      throw new ApiError(400, `A stop on this trip is outside your pickup's service area${zoneName}. Please keep every stop inside the same area.`);
+    }
+  }
+  return zone;
+};
+
 const toLocalMeters = (origin, target) => {
   const [originLng, originLat] = origin;
   const [targetLng, targetLat] = target;

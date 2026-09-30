@@ -1004,6 +1004,12 @@ export const quoteRideFares = async ({
       : null;
   const pickupPoint = normalizePoint(pickupCoords, 'pickupCoords');
   const dropPoint = normalizePoint(dropCoords, 'dropCoords');
+  // Refused at the quote, so the app says so as soon as the drop is chosen
+  // rather than at "Book". Intercity quotes leave the zone by design.
+  if (transportType !== 'intercity') {
+    const { assertTripInsidePickupZone } = await import('./matchingService.js');
+    await assertTripInsidePickupZone({ pickupCoords: pickupPoint, dropCoords: dropPoint, stops });
+  }
   const surgeZone = await findSurgeZoneForPickup({ pickupPoint, serviceLocationId, transportType });
   const surgeSlots = await loadZoneSurgeSlots(surgeZone?._id);
   // Parcels carry no ride insurance.
@@ -1157,11 +1163,23 @@ export const createRideRecord = async ({
    * went to any driver in range. Skipped while no zone exists, so a server not
    * yet set up keeps working.
    */
+  /*
+   * ...and ends in the same zone: the drop and every stop must be inside the
+   * pickup's zone. Intercity trips and outstation parcels leave it by design.
+   */
   {
-    const { findZoneByPickup } = await import('./matchingService.js');
-    const { Zone } = await import('../driver/models/Zone.js');
-    if ((await Zone.estimatedDocumentCount()) > 0 && !(await findZoneByPickup(pickupCoords))) {
-      throw new ApiError(400, 'Rides are not available at this pickup location yet. Please choose a pickup inside our service area.');
+    const leavesZoneByDesign = normalizeServiceType(serviceType) === 'intercity'
+      || normalizeRideTransportType(transport_type) === 'intercity'
+      || Boolean(parcel?.isOutstation)
+      || String(parcel?.deliveryScope || '').trim().toLowerCase() === 'outstation';
+    const { assertTripInsidePickupZone, findZoneByPickup } = await import('./matchingService.js');
+    if (!leavesZoneByDesign) {
+      await assertTripInsidePickupZone({ pickupCoords, dropCoords, stops });
+    } else {
+      const { Zone } = await import('../driver/models/Zone.js');
+      if ((await Zone.estimatedDocumentCount()) > 0 && !(await findZoneByPickup(pickupCoords))) {
+        throw new ApiError(400, 'Rides are not available at this pickup location yet. Please choose a pickup inside our service area.');
+      }
     }
   }
 
