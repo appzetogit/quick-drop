@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { isPriced as isPrescriptionPriced } from '../../shared/prescriptionOrder.js';
 import { FoodOrder, FoodSettings } from '../models/order.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodDeliveryPartner } from '../../delivery/models/deliveryPartner.model.js';
@@ -518,6 +519,28 @@ export async function tryAutoAssign(orderId, options = {}) {
       { $unset: { 'dispatch.dispatchingAt': '' } }
     ).catch((err) => logger.warn(`tryAutoAssign: Failed to release premature lock for ${orderId}: ${err.message}`));
     return order;
+  }
+
+  /*
+   * A prescription order reaches 'preparing' the moment the pharmacy sends its
+   * bill -- before the customer has seen the price. Riders are offered it only
+   * once the customer has agreed: bill approved (cash on delivery), or paid
+   * online. An order from before bills existed (priced, no bill status) keeps
+   * going as it did.
+   */
+  if (order.prescriptionOnly === true) {
+    const billStatus = String(order.prescription?.bill?.status || 'none');
+    const paidOnline = String(order.payment?.status || '') === 'paid';
+    const agreed = billStatus === 'approved' || paidOnline
+      || (billStatus === 'none' && isPrescriptionPriced(order));
+    if (!agreed) {
+      logger.info(`tryAutoAssign: Skip for ${orderId} (prescription bill ${billStatus}, not yet agreed by the customer).`);
+      await FoodOrder.updateOne(
+        { _id: order._id },
+        { $unset: { 'dispatch.dispatchingAt': '' } }
+      ).catch((err) => logger.warn(`tryAutoAssign: Failed to release lock for ${orderId}: ${err.message}`));
+      return order;
+    }
   }
 
   try {
