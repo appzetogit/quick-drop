@@ -312,10 +312,7 @@ export async function createInitialTransaction(order) {
     const packagingMode = String(order.pricing?.packagingMode || '');
     // Net of GST for the same reason the food is: an inclusive restaurant does
     // not keep the tax inside its own packaging charge either.
-    // The restaurant's real share, not the printed line (billing.js packagingForPayout).
-    const netPackagingFee = Number(
-        order.pricing?.bill?.packagingForPayout ?? order.pricing?.netPackagingFee ?? packagingFee,
-    ) || 0;
+    const netPackagingFee = Number(order.pricing?.netPackagingFee ?? packagingFee) || 0;
     const restaurantPackagingEarnings =
         packagingMode === '' || packagingMode === 'RESTAURANT' ? netPackagingFee : 0;
 

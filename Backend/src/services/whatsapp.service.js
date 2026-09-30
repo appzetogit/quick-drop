@@ -124,8 +124,7 @@ export async function sendFoodInvoiceWhatsApp(order, user) {
   });
 
   const subtotal = order.pricing?.subtotal || order.subtotal || items.reduce((sum, i) => sum + i.total, 0);
-  // The GST line as the bill prints it (pricing.tax is what is owed).
-  const tax = order.pricing?.bill?.gstOnItems ?? order.pricing?.tax ?? 0;
+  const tax = order.pricing?.tax || 0;
   const packagingFee = order.pricing?.packagingFee || 0;
   const deliveryFee = order.pricing?.deliveryFee || 0;
   const platformFee = order.pricing?.platformFee || 0;

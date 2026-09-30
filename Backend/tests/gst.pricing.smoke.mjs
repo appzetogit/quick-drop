@@ -145,13 +145,11 @@ try {
   console.log("");
   check("exclusive: tax added on top", e.bill.netItemAmount === 200 && e.bill.gstOnItems === 10,
     `${e.bill.netItemAmount} + ${e.bill.gstOnItems}`);
-  // Client rule 2026-09-29: the GST printed on an inclusive price is the rate on
-  // that price (5% of 200 = 10); what is owed stays the part inside it (9.52).
-  check("inclusive: GST printed is 5% of the price, owed is the part inside it",
-    i.bill.netItemAmount === 190 && i.bill.gstOnItems === 10 && i.bill.gstCharged === 9.52,
-    `${i.bill.netItemAmount} + ${i.bill.gstOnItems} (owed ${i.bill.gstCharged})`);
+  check("inclusive: tax taken out of the price",
+    i.bill.netItemAmount === 190.48 && i.bill.gstOnItems === 9.52,
+    `${i.bill.netItemAmount} + ${i.bill.gstOnItems}`);
   check("inclusive: net + tax is the listed 200", near(i.bill.netItemAmount + i.bill.gstOnItems, 200));
-  check("the books carry the GST owed, not the printed line", i.tax === 9.52, `${i.tax}`);
+  check("extraction is not 5% of the gross", i.bill.gstOnItems !== e.bill.gstOnItems, "9.52 vs 10");
   check("the inclusive customer pays the tax less",
     e.bill.grandTotal - i.bill.grandTotal === 10, `${e.bill.grandTotal} - ${i.bill.grandTotal}`);
   check("both bills reconcile", billAddsUp(e.bill) && billAddsUp(i.bill));
@@ -177,8 +175,7 @@ try {
   check("food and packaging are one supply: 5% of 220", ep.bill.gstOnItems === 11,
     `${ep.bill.gstOnItems}`);
   check("an inclusive restaurant's packaging is inclusive too",
-    ip.bill.netPackagingFee === 19.95 && ip.bill.packagingForPayout === 20,
-    `${ip.bill.netPackagingFee} printed, ${ip.bill.packagingForPayout} paid, out of 21`);
+    ip.bill.netPackagingFee === 20, `${ip.bill.netPackagingFee} out of 21`);
   check("the inclusive customer pays exactly what was listed",
     near(ip.bill.netItemAmount + ip.bill.netPackagingFee + ip.bill.gstOnItems, 221),
     "200 + 21");
@@ -195,10 +192,9 @@ try {
   // Business rule 2026-09-29: an inclusive restaurant's packaging -- whoever
   // set it -- has no GST added on top; the tax is inside it, like the food's.
   check("packaging on an inclusive restaurant has its GST inside it",
-    near(ap.bill.packagingForPayout, 20), `${ap.bill.packagingForPayout}`);
+    near(ap.bill.netPackagingFee, 20), `${ap.bill.netPackagingFee}`);
   check("so the tax is extracted from both the food and the packaging",
-    near(ap.bill.gstOnItems, 10 + 1.05) && near(ap.bill.gstCharged, 9.52 + 1),
-    `${ap.bill.gstOnItems} printed, ${ap.bill.gstCharged} owed`);
+    near(ap.bill.gstOnItems, 9.52 + 1), `${ap.bill.gstOnItems}`);
   check("a bill that mixes the two still reconciles", billAddsUp(ap.bill));
 
   // =====================================================================
@@ -222,7 +218,7 @@ try {
   check("pricesIncludeGst survives the save", sp.pricesIncludeGst === true);
   check("packagingMode survives the save", sp.packagingMode === "RESTAURANT", `${sp.packagingMode}`);
   check("the printed net lines survive the save",
-    sp.netItemAmount === 190 && sp.netPackagingFee === 19.95,
+    sp.netItemAmount === 190.48 && sp.netPackagingFee === 20,
     `${sp.netItemAmount} / ${sp.netPackagingFee}`);
 
   const snap = await getRestaurantCommissionSnapshot({ restaurantId: incPack.r._id, pricing: sp });
@@ -255,7 +251,7 @@ try {
   const a = txn?.amounts || {};
   const b = ip2.bill;
   const accounted = a.restaurantShare + a.riderShare + a.platformNetProfit
-    + (b.gstCharged ?? b.gstOnItems) + b.platformFeeGst;
+    + b.gstOnItems + b.platformFeeGst;
   console.log("    rider share (tip)  :", a.riderShare);
   console.log("    accounted for      :", Math.round(accounted * 100) / 100,
     "of", b.grandTotal);

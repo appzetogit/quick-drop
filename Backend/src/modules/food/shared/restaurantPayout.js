@@ -106,11 +106,7 @@ export function buildRestaurantPayoutBreakdown(order, { restaurantFundedDiscount
      */
     const packagingMode = String(pricing.packagingMode || '');
     const packagingIsRestaurants = packagingMode === '' || packagingMode === 'RESTAURANT';
-    // The restaurant's real share, not the printed line (billing.js packagingForPayout).
-    const netPackagingFee = round2(finite(
-        pricing.bill?.packagingForPayout,
-        finite(pricing.netPackagingFee, finite(pricing.packagingFee)),
-    ));
+    const netPackagingFee = round2(finite(pricing.netPackagingFee, finite(pricing.packagingFee)));
     const packagingCharge = packagingIsRestaurants ? netPackagingFee : 0;
 
     const commissionAmount = round2(finite(pricing.restaurantCommission));

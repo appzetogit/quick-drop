@@ -928,8 +928,7 @@ export async function calculateOrderPricing(userId, dto) {
 
   // Kept under their existing names so every reader that predates the bill --
   // the app's summary, the order record, the POS payload -- keeps working.
-  // The GST actually owed; the bill prints bill.gstOnItems.
-  const tax = bill.gstCharged ?? bill.gstOnItems;
+  const tax = bill.gstOnItems;
   const total = bill.grandTotal;
 
   return {

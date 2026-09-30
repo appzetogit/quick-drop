@@ -311,8 +311,7 @@ export async function createOrder(userId, dto) {
     });
 
     normalizedPricing.bill = settledBill;
-    // The GST actually owed; the bill prints settledBill.gstOnItems.
-    normalizedPricing.tax = settledBill.gstCharged ?? settledBill.gstOnItems;
+    normalizedPricing.tax = settledBill.gstOnItems;
     normalizedPricing.netItemAmount = settledBill.netItemAmount;
     normalizedPricing.netPackagingFee = settledBill.netPackagingFee;
     normalizedPricing.commissionableAmount = settledBill.commissionBase;
