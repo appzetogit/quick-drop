@@ -21,20 +21,34 @@ import { ValidationError } from '../../../core/auth/errors.js';
 
 const toId = (value) => String(value || '').trim();
 
-/** Add-on ids a client asked for on one line, de-duplicated and validated in shape. */
+/** Most of one add-on on one unit of a dish ("Ketchup x2" is 2). */
+export const MAX_ADDON_QUANTITY = 10;
+
+/**
+ * Add-on ids a client asked for on one line, validated in shape.
+ *
+ * An id repeated N times means N of that add-on (the app sends "Ketchup x2" as
+ * the id twice), as does an entry `{ addonId, quantity: N }`. Each is capped at
+ * MAX_ADDON_QUANTITY. Returned with the repeats, in first-asked order.
+ */
 export function normalizeRequestedAddonIds(rawLine = {}) {
     const raw = rawLine.addonIds ?? rawLine.addons ?? [];
     const list = Array.isArray(raw) ? raw : [raw];
 
-    const ids = list
-        .map((entry) => (entry && typeof entry === 'object' ? toId(entry.addonId ?? entry.id ?? entry._id) : toId(entry)))
-        .filter(Boolean);
+    const counts = new Map();
+    for (const entry of list) {
+        const isObject = entry && typeof entry === 'object';
+        const id = isObject ? toId(entry.addonId ?? entry.id ?? entry._id) : toId(entry);
+        if (!id) continue;
+        const qty = isObject && Number.isFinite(Number(entry.quantity)) ? Math.floor(Number(entry.quantity)) : 1;
+        if (qty < 1) continue;
+        counts.set(id, Math.min(MAX_ADDON_QUANTITY, (counts.get(id) || 0) + qty));
+    }
 
-    const unique = [...new Set(ids)];
-    const invalid = unique.filter((id) => !mongoose.Types.ObjectId.isValid(id));
+    const invalid = [...counts.keys()].filter((id) => !mongoose.Types.ObjectId.isValid(id));
     if (invalid.length) throw new ValidationError('One or more selected add-ons are not valid');
 
-    return unique;
+    return [...counts].flatMap(([id, qty]) => Array(qty).fill(id));
 }
 
 /**
@@ -171,7 +185,11 @@ export function resolveLineAddons(menuItem, requestedIds = [], addonsById = new 
     const allowed = resolveAllowedAddonIds(menuItem, variantId);
     const priceOverrides = resolveVariantAddonPriceOverrides(menuItem, variantId);
 
-    const addons = requestedIds.map((id) => {
+    // "Ketchup x2" arrives as the id twice: one entry with quantity 2.
+    const quantities = new Map();
+    for (const id of requestedIds) quantities.set(String(id), (quantities.get(String(id)) || 0) + 1);
+
+    const addons = [...quantities].map(([id, quantity]) => {
         const doc = addonsById.get(String(id));
         // Same message whether the add-on is unknown, belongs to another
         // restaurant, or is withdrawn: the customer can act on it either way, and
@@ -189,10 +207,11 @@ export function resolveLineAddons(menuItem, requestedIds = [], addonsById = new 
             addonId: doc._id,
             name: doc.name,
             price: override !== undefined ? override : (Number(doc.price) || 0),
+            quantity,
         };
     });
 
-    const addonsTotal = Math.round(addons.reduce((sum, a) => sum + a.price, 0) * 100) / 100;
+    const addonsTotal = Math.round(addons.reduce((sum, a) => sum + a.price * (a.quantity || 1), 0) * 100) / 100;
     return { addons, addonsTotal };
 }
 

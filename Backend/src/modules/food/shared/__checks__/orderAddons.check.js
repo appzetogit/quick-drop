@@ -31,11 +31,23 @@ assert.deepEqual(normalizeRequestedAddonIds({ addons: [{ addonId: String(CHEESE)
 assert.deepEqual(normalizeRequestedAddonIds({ addons: [{ _id: String(BACON) }] }), [String(BACON)]);
 // A single value, not an array.
 assert.deepEqual(normalizeRequestedAddonIds({ addonIds: String(CHEESE) }), [String(CHEESE)]);
-// Duplicates collapse: asking for cheese twice must not charge for it twice.
+// Repeats are a quantity: "Cheese x2" is the id twice, or { addonId, quantity: 2 }.
 assert.deepEqual(
     normalizeRequestedAddonIds({ addonIds: [String(CHEESE), String(CHEESE)] }),
-    [String(CHEESE)]
+    [String(CHEESE), String(CHEESE)]
 );
+assert.deepEqual(
+    normalizeRequestedAddonIds({ addons: [{ addonId: String(CHEESE), quantity: 2 }] }),
+    [String(CHEESE), String(CHEESE)]
+);
+// ...capped, so a broken client cannot pile them up.
+assert.equal(normalizeRequestedAddonIds({ addons: [{ addonId: String(CHEESE), quantity: 500 }] }).length, 10);
+{
+    const { addons, addonsTotal } = resolveLineAddons(burger, [String(CHEESE), String(CHEESE), String(BACON)], addonsById);
+    assert.equal(addons.length, 2, 'one entry per add-on');
+    assert.equal(addons[0].quantity, 2);
+    assert.equal(addonsTotal, 105.5); // 30 x 2 + 45.5
+}
 throws(() => normalizeRequestedAddonIds({ addonIds: ['not-an-id'] }), /not valid/);
 
 // --- nothing requested, nothing charged ----------------------------------

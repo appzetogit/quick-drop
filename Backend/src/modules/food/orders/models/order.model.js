@@ -29,7 +29,10 @@ const orderItemSchema = new mongoose.Schema(
             type: [new mongoose.Schema({
                 addonId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodAddon', required: true },
                 name: { type: String, required: true, trim: true },
+                /** Per piece; the line pays price x quantity for it. */
                 price: { type: Number, required: true, min: 0 },
+                /** "Ketchup x2" is 2. Absent on older orders, which is 1. */
+                quantity: { type: Number, min: 1, default: 1 },
             }, { _id: false })],
             default: [],
         },

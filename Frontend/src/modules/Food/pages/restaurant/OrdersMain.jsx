@@ -1712,10 +1712,10 @@ export default function OrdersMain() {
           }
           for (const addon of item.addons || []) {
             rows.push([
-              `   + ${addon.name}`,
-              qty,
+              `   + ${addon.name}${(addon.quantity || 1) > 1 ? ` x${addon.quantity}` : ""}`,
+              (addon.quantity || 1) * qty,
               `₹${(addon.price || 0).toFixed(2)}`,
-              `₹${((addon.price || 0) * qty).toFixed(2)}`,
+              `₹${((addon.price || 0) * (addon.quantity || 1) * qty).toFixed(2)}`,
             ]);
           }
           return rows;
@@ -2474,10 +2474,10 @@ export default function OrdersMain() {
                                           <li
                                             key={addon.addonId || addonIndex}
                                             className="flex items-start justify-between text-xs text-amber-800">
-                                            <span>+ {addon.name}</span>
+                                            <span>+ {addon.name}{(addon.quantity || 1) > 1 ? ` x${addon.quantity}` : ""}</span>
                                             {addon.price > 0 && (
                                               <span className="ml-2 text-gray-500">
-                                                ₹{addon.price * item.quantity}
+                                                ₹{addon.price * (addon.quantity || 1) * item.quantity}
                                               </span>
                                             )}
                                           </li>
