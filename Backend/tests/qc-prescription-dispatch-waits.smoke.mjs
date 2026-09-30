@@ -73,6 +73,37 @@ await check('older order priced with no bill status -> goes to riders as before'
   assert.ok(await passedGate(await rxOrder({ billStatus: 'none' })));
 });
 
+// The rider's "available orders" list and accept (how the premature order was
+// actually reached: never offered, found in the list, accepted).
+const delivery = await import('../src/modules/quickCommerce/modules/food/orders/services/order-delivery.service.js');
+const { FoodDeliveryPartner: QcRider } = await import('../src/modules/quickCommerce/modules/food/delivery/models/deliveryPartner.model.js');
+const rider = await QcRider.create({ name: 'R', phone: '9400000001', status: 'approved' });
+const listed = async () => ((await delivery.listOrdersAvailableDelivery(String(rider._id), { page: 1, limit: 50 }))?.data || []).map((o) => o.order_id);
+
+const noBill = await rxOrder({ billStatus: 'none', priced: false });
+const waiting = await rxOrder({ billStatus: 'submitted' });
+const agreed = await rxOrder({ billStatus: 'approved' });
+// Offered to this rider, so only the bill rule (not distance) decides what shows.
+for (const id of [noBill, waiting, agreed]) {
+  await QcOrder.collection.updateOne({ _id: id }, { $set: { 'dispatch.offeredTo': [{ partnerId: rider._id, at: new Date(), action: 'offered' }] } });
+}
+const idOf = async (id) => (await QcOrder.collection.findOne({ _id: id })).order_id;
+
+await check('available list hides a prescription order with no bill yet, or a bill not yet agreed', async () => {
+  const ids = await listed();
+  assert.ok(!ids.includes(await idOf(noBill)), 'no-bill order listed');
+  assert.ok(!ids.includes(await idOf(waiting)), 'unagreed order listed');
+  assert.ok(ids.includes(await idOf(agreed)), `agreed order missing: ${ids}`);
+});
+await check('accepting a prescription order before the bill is agreed is refused', async () => {
+  await assert.rejects(() => delivery.acceptOrderDelivery(String(noBill), String(rider._id)), /waiting for the customer to accept the pharmacy bill/);
+  await assert.rejects(() => delivery.acceptOrderDelivery(String(waiting), String(rider._id)), /waiting for the customer to accept the pharmacy bill/);
+});
+await check('an agreed prescription order passes the bill check on accept', async () => {
+  try { await delivery.acceptOrderDelivery(String(agreed), String(rider._id)); }
+  catch (e) { assert.ok(!/pharmacy bill/.test(e.message), e.message); }
+});
+
 await mongoose.disconnect();
 await server.stop();
 console.log(failed ? `\n${failed} FAILED` : '\nall prescription dispatch checks passed');

@@ -262,6 +262,9 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
               },
             },
             orderStatus: { $in: ['confirmed', 'preparing', 'ready_for_pickup'] },
+            // A prescription order is only for riders once the customer has
+            // agreed to the pharmacy's bill (approved for cash, or paid online).
+            $or: RIDER_READY_PRESCRIPTION,
           },
           {
             'dispatch.deliveryPartnerId': partnerId,
@@ -467,9 +470,32 @@ async function releaseQcLock(deliveryPartnerId, orderId) {
   await releaseAssignment(driverId, orderId);
 }
 
+/** Unassigned orders a rider may be shown: not a prescription order still waiting on its bill. */
+const RIDER_READY_PRESCRIPTION = Object.freeze([
+  { prescriptionOnly: { $ne: true } },
+  { 'prescription.bill.status': 'approved' },
+  { 'payment.status': 'paid' },
+  // Priced through the older fill path (no bill step): items and a total.
+  { 'prescription.bill.status': { $in: [null, 'none'] }, 'items.0': { $exists: true }, 'pricing.total': { $gt: 0 } },
+]);
+
 export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   const identity = buildOrderIdentityFilter(orderId);
   if (!identity) throw new ValidationError('Order id required');
+
+  // Not before the customer has agreed to a prescription order's bill: until
+  // then there is no price, no rider pay, and possibly no order at all.
+  {
+    const rx = await FoodOrder.findOne(identity).select('prescriptionOnly prescription.bill.status payment.status items pricing.total').lean();
+    const billStatus = String(rx?.prescription?.bill?.status || 'none');
+    const filledTheOldWay = billStatus === 'none' && (rx?.items || []).length > 0 && Number(rx?.pricing?.total) > 0;
+    if (rx?.prescriptionOnly === true
+      && billStatus !== 'approved'
+      && String(rx.payment?.status || '') !== 'paid'
+      && !filledTheOldWay) {
+      throw new ValidationError('This medical order is waiting for the customer to accept the pharmacy bill.');
+    }
+  }
 
   const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
   const now = new Date();
