@@ -1834,7 +1834,10 @@ export const listApprovedRestaurants = async (query = {}) => {
         location: 1,
         openingTime: 1,
         closingTime: 1,
-        openDays: 1
+        openDays: 1,
+        // Public licence number, shown at the foot of the menu (the app opens the
+        // menu from this list's copy of the restaurant).
+        fssaiNumber: 1
     };
 
     // Use $geoNear only when geo is explicitly needed (radius filter or nearest sorting).
