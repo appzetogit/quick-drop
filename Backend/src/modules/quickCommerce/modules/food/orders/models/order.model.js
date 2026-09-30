@@ -97,6 +97,8 @@ const pricingSchema = new mongoose.Schema(
         /** GST on the platform fee (Master rate), collected for the government. */
         platformFeeGst: { type: Number, default: 0, min: 0 },
         platformFeeGstRate: { type: Number, default: 0, min: 0 },
+        // Total rounded to the rupee; may be negative (336.60 -> 337 is +0.40, 337.40 -> 337 is -0.40).
+        roundOff: { type: Number, default: 0 },
         platformFee: { type: Number, default: 0, min: 0 },
         /** Extra surcharge when user selects Quick Mode (also included in platformFee). */
         quickDeliveryFee: { type: Number, default: 0, min: 0 },

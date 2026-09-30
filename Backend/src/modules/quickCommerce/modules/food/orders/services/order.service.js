@@ -724,6 +724,7 @@ export async function createOrder(userId, dto) {
       couponCode: pricingResult.pricing?.couponCode
         ? String(pricingResult.pricing.couponCode).trim().toUpperCase()
         : null,
+      roundOff: Number(pricingResult.pricing?.roundOff) || 0,
       total: Number(pricingResult.pricing?.total) || 0,
       currency: String(pricingResult.pricing?.currency || "INR"),
       // Same road distance source as cart preview / delivery Rest→User.

@@ -81,9 +81,10 @@ check('three bottles carry 15.75, the sum three unit returns refund', () => {
 });
 
 const threeOil = await price([{ itemId: String(oil._id), quantity: 3, price: 105 }]);
-check('the priced order bills 315 + 15.75 = 330.75', () => {
+check('the priced order bills 315 + 15.75 = 330.75, charged to the rupee as 331 (+0.25)', () => {
     assert.equal(threeOil.pricing.tax, 15.75, `tax ${threeOil.pricing.tax}`);
-    assert.equal(threeOil.pricing.total, 330.75, `total ${threeOil.pricing.total}`);
+    assert.equal(threeOil.pricing.total, 331, `total ${threeOil.pricing.total}`);
+    assert.equal(threeOil.pricing.roundOff, 0.25, `roundOff ${threeOil.pricing.roundOff}`);
 });
 
 check('the order records the fallback GST rate it priced untagged lines at', () => {

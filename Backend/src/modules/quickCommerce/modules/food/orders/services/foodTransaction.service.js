@@ -117,7 +117,9 @@ export async function createInitialTransaction(order) {
     let restaurantNet = subtotal + packagingFee - restaurantCommission;
     // The 18% GST on the delivery fee is collected for the government, like the
     // item GST, so it is booked as tax below rather than as platform profit.
-    let platformNetProfit = platformFee + deliveryFee + restaurantCommission - riderShare;
+    // The round-off the customer paid (to the rupee) is the platform's.
+    const roundOff = Number(order.pricing?.roundOff) || 0;
+    let platformNetProfit = platformFee + deliveryFee + restaurantCommission - riderShare + roundOff;
     let adminDiscountShare = 0;
     let restaurantDiscountShare = 0;
     let discountAdminBearPercentage = 0;

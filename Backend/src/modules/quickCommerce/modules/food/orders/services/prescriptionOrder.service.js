@@ -250,7 +250,10 @@ export async function fillPrescriptionOrder(orderId, restaurantId, dto = {}) {
         logger.error(`Commission calculation failed for prescription order ${order._id}: ${err?.message || err}`);
     }
 
-    const total = round2(subtotal + tax + deliveryFee + deliveryFeeGst + platformFee + platformFeeGst);
+    // Charged to the rupee, like Food: 336.80 -> 337 with a +0.20 round-off line.
+    const payableBeforeRounding = round2(subtotal + tax + deliveryFee + deliveryFeeGst + platformFee + platformFeeGst);
+    const total = Math.round(payableBeforeRounding);
+    const roundOff = round2(total - payableBeforeRounding);
 
     order.items = items;
     order.pricing = {
@@ -264,6 +267,7 @@ export async function fillPrescriptionOrder(orderId, restaurantId, dto = {}) {
         platformFeeGst,
         platformFeeGstRate,
         restaurantCommission,
+        roundOff,
         total,
         distanceKm: Number.isFinite(distanceKm) ? distanceKm : null,
     };
@@ -396,7 +400,10 @@ export async function submitPrescriptionBill(orderId, restaurantId, dto = {}) {
         logger.error(`Commission calculation failed for prescription order ${order._id}: ${err?.message || err}`);
     }
 
-    const total = round2(subtotal + tax + deliveryFee + deliveryFeeGst + platformFee + platformFeeGst);
+    // Charged to the rupee, like Food: 336.80 -> 337 with a +0.20 round-off line.
+    const payableBeforeRounding = round2(subtotal + tax + deliveryFee + deliveryFeeGst + platformFee + platformFeeGst);
+    const total = Math.round(payableBeforeRounding);
+    const roundOff = round2(total - payableBeforeRounding);
 
     order.items = items;
     order.pricing = {
@@ -410,6 +417,7 @@ export async function submitPrescriptionBill(orderId, restaurantId, dto = {}) {
         platformFeeGst,
         platformFeeGstRate,
         restaurantCommission,
+        roundOff,
         total,
         distanceKm: Number.isFinite(distanceKm) ? distanceKm : null,
     };

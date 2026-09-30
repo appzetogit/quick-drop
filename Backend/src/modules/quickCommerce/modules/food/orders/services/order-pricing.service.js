@@ -621,12 +621,15 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
   // GST on the platform fee, at Master's rate when one is set (not charged otherwise).
   const { platformFeeGstRate, platformFeeGst } = platformFeeGstFor(feeSettings, platformFee);
 
-  const total = round2(
+  const payableBeforeRounding = round2(
     Math.max(
       0,
       subtotal + packagingFee + deliveryFee + deliveryFeeGst + platformFee + platformFeeGst + tax - discount,
     ),
   );
+  // Charged to the rupee, like Food: 336.80 -> 337 with a +0.20 round-off line.
+  const total = Math.round(payableBeforeRounding);
+  const roundOff = round2(total - payableBeforeRounding);
 
   const basePricing = {
     subtotal,
@@ -650,6 +653,7 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
     discountFundedByPlatform,
     // Which base the GST above was charged on; a return refunds on the same one.
     gstOnPreDiscountValue,
+    roundOff,
     total,
     currency: "INR",
     couponCode: appliedCoupon?.code || codeRaw || null,
