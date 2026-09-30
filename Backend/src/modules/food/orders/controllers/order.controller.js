@@ -163,6 +163,10 @@ export async function rateCustomerDeliveryController(req, res, next) {
     try {
         const deliveryPartnerId = req.user?.userId;
         const dto = validateCustomerRatingDto(req.body);
+        // Quick & Medical keep no rider-to-customer rating: accept it so the
+        // app's last screen finishes, and record nothing.
+        const qc = await viaQuickOrder(req, async () => ({ recorded: false }));
+        if (qc) return sendResponse(res, 200, 'Customer rated successfully', qc.result);
         const result = await orderService.submitCustomerRating(
             req.params.orderId,
             deliveryPartnerId,
@@ -402,6 +406,8 @@ export async function updateOrderStatusDeliveryController(req, res, next) {
         const deliveryPartnerId = req.user?.userId;
         const orderId = req.params.orderId;
         const dto = validateOrderStatusDto(req.body);
+        const qc = await viaQuickOrder(req, (svc, rider, id) => svc.updateOrderStatusDelivery(id, rider, dto.orderStatus));
+        if (qc) return sendResponse(res, 200, 'Order status updated', { order: qc.result });
         const order = await orderService.updateOrderStatusDelivery(orderId, deliveryPartnerId, dto.orderStatus);
         return sendResponse(res, 200, 'Order status updated', { order });
     } catch (err) {
@@ -426,6 +432,8 @@ export async function createCollectQrController(req, res, next) {
         const deliveryPartnerId = req.user?.userId;
         const orderId = req.params.orderId;
         const customerInfo = req.body || {};
+        const qc = await viaQuickOrder(req, (svc, rider, id) => svc.createCollectQr(id, rider, customerInfo));
+        if (qc) return sendResponse(res, 200, 'QR created', qc.result);
         const result = await orderService.createCollectQr(orderId, deliveryPartnerId, customerInfo);
         return sendResponse(res, 200, 'QR created', result);
     } catch (err) {
@@ -451,6 +459,8 @@ export async function getPaymentStatusController(req, res, next) {
     try {
         const deliveryPartnerId = req.user?.userId;
         const orderId = req.params.orderId;
+        const qc = await viaQuickOrder(req, (svc, rider, id) => svc.getPaymentStatus(id, rider));
+        if (qc) return sendResponse(res, 200, 'Payment status retrieved', qc.result);
         const result = await orderService.getPaymentStatus(orderId, deliveryPartnerId);
         return sendResponse(res, 200, 'Payment status retrieved', result);
     } catch (err) {
@@ -462,6 +472,8 @@ export async function switchToCashController(req, res, next) {
     try {
         const deliveryPartnerId = req.user?.userId;
         const orderId = req.params.orderId;
+        const qc = await viaQuickOrder(req, (svc, rider, id) => svc.switchToCash(id, rider));
+        if (qc) return sendResponse(res, 200, 'Switched to cash collection', qc.result);
         const result = await orderService.switchToCash(orderId, deliveryPartnerId);
         return sendResponse(res, 200, 'Switched to cash collection', result);
     } catch (err) {

@@ -63,7 +63,7 @@ const medOrder = await QcOrder.collection.insertOne({
   pricing: { subtotal: 25, total: 25 }, payment: { method: 'cash', status: 'cod_pending' },
   prescription: { required: true, status: 'approved', bill: { status: 'approved' } },
   dispatch: { status: 'unassigned', offeredTo: [{ partnerId: new mongoose.Types.ObjectId(qcRiderId), at: new Date(), action: 'offered' }] },
-  deliveryAddress: { city: 'Indore', state: 'MP', location: { type: 'Point', coordinates: [75.88, 22.72] } },
+  deliveryAddress: { street: '12 MG Road', city: 'Indore', state: 'MP', location: { type: 'Point', coordinates: [75.88, 22.72] } },
   createdAt: new Date(), updatedAt: new Date(),
 });
 const medId = String(medOrder.insertedId);
@@ -90,6 +90,40 @@ await check('accepting the Medical order through the FOOD accept endpoint assign
   assert.ok(!sent.includes(qcRiderId), 'response still carries the Quick rider id');
   assert.ok(sent.includes(foodId), 'response should name the Food rider');
 });
+
+// The rest of the rider's flow, every step through the FOOD endpoints the app calls.
+const call = async (name, req) => {
+  const ctrl = await import('../src/modules/food/orders/controllers/order.controller.js');
+  return new Promise((resolve) => {
+    const res = { status(c) { this.code = c; return this; }, json(b) { resolve({ code: this.code, body: b }); return this; } };
+    ctrl[name]({ params: { orderId: medId }, user: { userId: foodId, role: 'DELIVERY_PARTNER' }, body: {}, query: {}, ...req }, res,
+      (err) => resolve({ code: err?.statusCode || 500, body: { message: err?.message } }));
+  });
+};
+const step = (label, name, req = {}) => check(label, async () => {
+  const out = await call(name, req);
+  assert.equal(out.code, 200, `${name}: ${out.code} ${JSON.stringify(out.body).slice(0, 300)}`);
+  return out;
+});
+
+await step('reached pickup', 'confirmReachedPickupDeliveryController');
+await step('picked up (with the pharmacy bill photo)', 'confirmPickupDeliveryController', { body: { billImageUrl: 'https://example.com/bill.jpg' } });
+await step('reached drop', 'confirmReachedDropDeliveryController');
+await check('drop OTP', async () => {
+  const row = await QcOrder.collection.findOne({ _id: new mongoose.Types.ObjectId(medId) });
+  const otp = row.deliveryVerification?.dropOtp?.code || row.deliveryOtp || row.deliveryVerification?.dropOtp?.otp;
+  assert.ok(otp, `no OTP stored: ${JSON.stringify(row.deliveryVerification)}`);
+  const out = await call('verifyDropOtpDeliveryController', { body: { otp: String(otp) } });
+  assert.equal(out.code, 200, JSON.stringify(out.body).slice(0, 300));
+});
+await step('collect cash (was not routed to Medical before)', 'switchToCashController');
+await step('payment status (was not routed to Medical before)', 'getPaymentStatusController');
+await step('complete', 'completeDeliveryController');
+await check('the order is delivered', async () => {
+  const row = await QcOrder.collection.findOne({ _id: new mongoose.Types.ObjectId(medId) });
+  assert.equal(row.orderStatus, 'delivered');
+});
+await step('rate customer does not fail on a Medical order', 'rateCustomerDeliveryController', { body: { rating: 5 } });
 
 await mongoose.disconnect();
 await server.stop();
