@@ -110,6 +110,8 @@ router.patch('/orders/:orderId/accept', authMiddleware, requireFoodDeliveryPartn
 router.patch('/orders/:orderId/reject', authMiddleware, requireFoodDeliveryPartner, orderController.rejectOrderDeliveryController);
 router.patch('/orders/:orderId/reached-pickup', authMiddleware, requireFoodDeliveryPartner, orderController.confirmReachedPickupDeliveryController);
 router.patch('/orders/:orderId/confirm-pickup', authMiddleware, requireFoodDeliveryPartner, orderController.confirmPickupDeliveryController);
+// The bill photo taken at pickup; returns { url } for confirm-pickup's billImageUrl.
+router.post('/orders/:orderId/bill-photo', authMiddleware, requireFoodDeliveryPartner, orderController.uploadPickupBillPhotoController);
 router.patch('/orders/:orderId/reached-drop', authMiddleware, requireFoodDeliveryPartner, orderController.confirmReachedDropDeliveryController);
 router.get('/orders/:orderId/route', authMiddleware, requireFoodDeliveryPartner, orderController.getOrderRouteDeliveryController);
 router.post('/orders/:orderId/verify-drop-otp', authMiddleware, requireFoodDeliveryPartner, orderController.verifyDropOtpDeliveryController);

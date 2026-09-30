@@ -106,6 +106,16 @@ const step = (label, name, req = {}) => check(label, async () => {
   return out;
 });
 
+await check('bill photo: another rider is refused, a non-image is refused', async () => {
+  const other = await FoodRider.create({ name: 'Other', phone: '9876500002', status: 'approved' });
+  const ctrl = await import('../src/modules/food/orders/controllers/order.controller.js');
+  const hit = (userId, body) => new Promise((resolve) => {
+    const res = { status(c) { this.code = c; return this; }, json(b) { resolve({ code: this.code, body: b }); return this; } };
+    ctrl.uploadPickupBillPhotoController({ params: { orderId: medId }, user: { userId }, body }, res, (e) => resolve({ code: 500, body: e?.message }));
+  });
+  assert.equal((await hit(String(other._id), { base64: Buffer.from('x').toString('base64') })).code, 403);
+  assert.equal((await hit(foodId, { base64: Buffer.from('not an image at all, just text').toString('base64') })).code, 400);
+});
 await step('reached pickup', 'confirmReachedPickupDeliveryController');
 await step('picked up (with the pharmacy bill photo)', 'confirmPickupDeliveryController', { body: { billImageUrl: 'https://example.com/bill.jpg' } });
 await step('reached drop', 'confirmReachedDropDeliveryController');

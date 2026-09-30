@@ -334,6 +334,52 @@ export async function confirmPickupDeliveryController(req, res, next) {
     }
 }
 
+/**
+ * The pharmacy / restaurant bill, photographed by the rider at pickup.
+ * Body: { base64, mimeType? }. Returns { url } for confirm-pickup's billImageUrl.
+ * Only the rider carrying the order (Food, or Quick & Medical as the linked
+ * rider) may upload, only images, at most 8MB.
+ */
+export async function uploadPickupBillPhotoController(req, res, next) {
+    try {
+        const riderId = String(req.user?.userId || '');
+        const orderId = req.params.orderId;
+        const link = await import('../../../../core/delivery/qcRiderLink.js');
+        const mongoose = (await import('mongoose')).default;
+        const byId = mongoose.Types.ObjectId.isValid(orderId)
+            ? { _id: new mongoose.Types.ObjectId(orderId) }
+            : { $or: [{ order_id: orderId }, { orderId }] };
+        let assigned = null;
+        if (await link.isQcOrderId(orderId)) {
+            const { FoodOrder: QcOrder } = await import('../../../quickCommerce/modules/food/orders/models/order.model.js');
+            const qcRider = await link.qcRiderIdForFoodRider(riderId);
+            const row = await QcOrder.findOne(byId).select('dispatch.deliveryPartnerId').lean();
+            assigned = row && qcRider && String(row.dispatch?.deliveryPartnerId || '') === String(qcRider);
+        } else {
+            const { FoodOrder } = await import('../models/order.model.js');
+            const row = await FoodOrder.findOne(byId).select('dispatch.deliveryPartnerId').lean();
+            assigned = row && String(row.dispatch?.deliveryPartnerId || '') === riderId;
+        }
+        if (!assigned) return sendResponse(res, 403, 'Not your order', null);
+
+        const base64 = String(req.body?.base64 || '').replace(/^data:[^,]*,/, '');
+        if (!base64) return sendResponse(res, 400, 'base64 is required', null);
+        const buffer = Buffer.from(base64, 'base64');
+        if (!buffer.length || buffer.length > 8 * 1024 * 1024) {
+            return sendResponse(res, 400, 'Bill photo must be an image up to 8MB', null);
+        }
+        const { detectMimeType } = await import('../../../../services/storage.service.js');
+        if (!String(detectMimeType(buffer) || '').startsWith('image/')) {
+            return sendResponse(res, 400, 'Bill photo must be an image (JPG, PNG or WebP)', null);
+        }
+        const { uploadImageBuffer } = await import('../../../../services/cloudinary.service.js');
+        const url = await uploadImageBuffer(buffer, 'delivery/pickup-bills');
+        return sendResponse(res, 200, 'Bill photo uploaded', { url });
+    } catch (err) {
+        next(err);
+    }
+}
+
 export async function confirmReachedDropDeliveryController(req, res, next) {
     try {
         const qc = await viaQuickOrder(req, (svc, rider, id) => svc.confirmReachedDropDelivery(id, rider));
