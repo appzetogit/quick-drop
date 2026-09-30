@@ -4,6 +4,8 @@ import { FoodTransaction } from '../../orders/models/foodTransaction.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { FoodRestaurantWithdrawal } from '../models/foodRestaurantWithdrawal.model.js';
 import { getRestaurantWithdrawalSettings } from '../../admin/services/admin.service.js';
+import { getRestaurantCommissionSnapshot } from '../../orders/services/foodTransaction.service.js';
+import { COMMISSION_SOURCES } from '../../shared/commissionSchedule.js';
 
 function toTwoDigitYearString(dateObj) {
     const y = String(dateObj.getFullYear());
@@ -195,6 +197,30 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
     const withdrawalSettings = await getRestaurantWithdrawalSettings();
     const minimumWithdrawalAmount = Number(withdrawalSettings?.minimumWithdrawalAmount) || 0;
 
+    // The rate new orders are charged, so the owner knows before the payout --
+    // no live order to resolve it against here, so a bare {restaurantId} snapshot
+    // stands in, same as the rate-preview usage this snapshot function already
+    // supports (see its own comment on monetizationMode).
+    const commissionSnapshot = await getRestaurantCommissionSnapshot({
+        pricing: {},
+        restaurantId: rid,
+    }).catch(() => null);
+    const commission = commissionSnapshot
+        ? {
+            type: commissionSnapshot.commissionType,
+            value: commissionSnapshot.commissionValue,
+            // The app only distinguishes "own" (this shop's own rate) from
+            // everything else, which it labels as the platform standard.
+            source:
+                commissionSnapshot.commissionSource === COMMISSION_SOURCES.RESTAURANT_DEFAULT ||
+                commissionSnapshot.commissionSource === COMMISSION_SOURCES.SCHEDULE_RESTAURANT
+                    ? 'own'
+                    : commissionSnapshot.commissionSource === COMMISSION_SOURCES.NONE
+                        ? 'none'
+                        : 'default',
+        }
+        : { type: 'percentage', value: 0, source: 'none' };
+
     const currentCycle = {
         start: { ...nowWindow.startMeta },
         end: { ...nowWindow.endMeta },
@@ -286,7 +312,8 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         wallet: currentCycle,
         currentCycle,
         invoiceSummary,
-        pastCycles: pastCyclesResult
+        pastCycles: pastCyclesResult,
+        commission
     };
 }
 
