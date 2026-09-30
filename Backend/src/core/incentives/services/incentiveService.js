@@ -99,6 +99,28 @@ async function resolveDriverContext({ startFrom, id }) {
         }
     }
 
+    // The Quick & Medical rider record a Food rider delivers those orders as
+    // (core/delivery/qcRiderLink): without it, Medical deliveries made through
+    // the Food app never counted towards the day's ladder.
+    // ...and the other way round: a Medical order completed as the Quick rider
+    // still credits the Food account the delivery app shows.
+    if (qcPartnerId && !foodPartnerId) {
+        try {
+            const { foodRiderIdForQcRider } = await import('../../delivery/qcRiderLink.js');
+            foodPartnerId = (await foodRiderIdForQcRider(qcPartnerId)) || null;
+        } catch {
+            /* no Food account */
+        }
+    }
+    if (foodPartnerId && !qcPartnerId) {
+        try {
+            const { qcRiderIdForFoodRider } = await import('../../delivery/qcRiderLink.js');
+            qcPartnerId = (await qcRiderIdForFoodRider(foodPartnerId)) || null;
+        } catch {
+            /* count Food orders only */
+        }
+    }
+
     const taxiDriverId = driver?._id || null;
     const driverKey = taxiDriverId
         ? `driver:${taxiDriverId}`
@@ -276,7 +298,14 @@ async function payTierReward({ ctx, rule, tier, completedOrders, periodKey }) {
         periodKey,
     };
 
-    if (ctx.taxiDriverId) {
+    // Food & Quick rewards go to the delivery wallet -- the balance the delivery
+    // app shows and pays out from. They used to go to the taxi driver wallet
+    // for a linked rider, which the delivery app never reads, so the reward
+    // was earned but never seen. Taxi & porter rewards stay in the taxi wallet.
+    const deliveryPartnerId = rule.segment === 'foodAndQuick'
+        ? (ctx.foodPartnerId || ctx.qcPartnerId)
+        : null;
+    if (ctx.taxiDriverId && !deliveryPartnerId) {
         await applyDriverWalletAdjustment({
             driverId: ctx.taxiDriverId,
             amount: tier.rewardAmount,
@@ -287,7 +316,7 @@ async function payTierReward({ ctx, rule, tier, completedOrders, periodKey }) {
         return 'taxi_driver_wallet';
     }
 
-    const partnerId = ctx.foodPartnerId || ctx.qcPartnerId;
+    const partnerId = deliveryPartnerId || ctx.foodPartnerId || ctx.qcPartnerId;
     if (!partnerId) throw new Error('No wallet to credit — rider resolved to neither a driver nor a delivery partner');
 
     // Unique per (day, tier, partner) — via the schema's unique index, a
@@ -362,7 +391,7 @@ async function creditWindow({ ctx, segment, zoneId, vehicleTypeId, windowType })
                     periodKey,
                     completedOrders,
                     rewardAmount: tier.rewardAmount,
-                    creditedVia: ctx.taxiDriverId ? 'taxi_driver_wallet' : 'delivery_bonus_transaction',
+                    creditedVia: ctx.taxiDriverId && segment !== 'foodAndQuick' ? 'taxi_driver_wallet' : 'delivery_bonus_transaction',
                 });
             } catch (err) {
                 if (err?.code === 11000) continue; // this tier was already credited today
