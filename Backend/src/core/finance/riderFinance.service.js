@@ -56,11 +56,54 @@ const toObjectId = (value) => {
  * with no taxi contribution rather than a failure.
  */
 export const resolveRiderIdentity = async (anyId) => {
+    const identity = await resolveHubIdentity(anyId);
+    return withQcRiderLink(identity);
+};
+
+/**
+ * The Quick & Medical rider record a Food rider delivers those orders as, and back.
+ *
+ * The delivery app only talks to /food/delivery/*; a Quick or Medical order is
+ * accepted and completed as the linked QC rider record (core/delivery/qcRiderLink),
+ * which is matched by driverId or phone and never written to
+ * Driver.legacyQcPartnerId. Reading only the hub left qcPartnerId null for every
+ * such rider, so their QC earnings were not withdrawable and the cash they
+ * collected on QC orders never reached the shared cash limit. Mirrors the same
+ * fallback in incentiveService.resolveDriverContext.
+ *
+ * Fills a MISSING id only: a hub-linked id is never replaced, so a rider whose
+ * legacyQcPartnerId is set (and equal to the linked record) is counted once.
+ */
+const withQcRiderLink = async (identity) => {
+    if (!identity || (identity.foodPartnerId && identity.qcPartnerId)) return identity;
+    if (!identity.foodPartnerId && !identity.qcPartnerId) return identity;
+    try {
+        const link = await import('../delivery/qcRiderLink.js');
+        if (identity.foodPartnerId && !identity.qcPartnerId) {
+            const qcId = toObjectId(await link.qcRiderIdForFoodRider(identity.foodPartnerId));
+            if (qcId && String(qcId) !== String(identity.foodPartnerId)) {
+                return { ...identity, qcPartnerId: qcId };
+            }
+        } else if (identity.qcPartnerId && !identity.foodPartnerId) {
+            const foodId = toObjectId(await link.foodRiderIdForQcRider(identity.qcPartnerId));
+            if (foodId && String(foodId) !== String(identity.qcPartnerId)) {
+                return { ...identity, foodPartnerId: foodId };
+            }
+        }
+    } catch (err) {
+        logger.warn(`resolveRiderIdentity: qc rider link unavailable: ${err.message}`);
+    }
+    return identity;
+};
+
+/** The hub walk: taxidrivers and the two partner records' driverId. */
+const resolveHubIdentity = async (anyId) => {
     const id = toObjectId(anyId);
     if (!id) return { driverId: null, foodPartnerId: null, qcPartnerId: null, linked: false };
 
     const { Driver } = await import('../../modules/taxi/driver/models/Driver.js');
 
+    const startedFrom = { foodPartnerId: null, qcPartnerId: null };
     let driver = await Driver.findById(id)
         .select('_id legacyDeliveryPartnerId legacyQcPartnerId')
         .lean();
@@ -85,6 +128,9 @@ export const resolveRiderIdentity = async (anyId) => {
             ? { driverId: null, foodPartnerId: partner._id, qcPartnerId: null, linked: false }
             : { driverId: null, foodPartnerId: null, qcPartnerId: partner._id, linked: false };
 
+        if (foodPartner) startedFrom.foodPartnerId = partner._id;
+        else startedFrom.qcPartnerId = partner._id;
+
         if (!partner.driverId) {
             // Unlinked: this partner id is the only identity there is.
             return unlinked;
@@ -102,8 +148,10 @@ export const resolveRiderIdentity = async (anyId) => {
 
     return {
         driverId: driver._id,
-        foodPartnerId: driver.legacyDeliveryPartnerId || null,
-        qcPartnerId: driver.legacyQcPartnerId || null,
+        // The partner id the caller started from is theirs even when the hub does
+        // not name it (a hub carrying only the other vertical's id).
+        foodPartnerId: driver.legacyDeliveryPartnerId || startedFrom.foodPartnerId || null,
+        qcPartnerId: driver.legacyQcPartnerId || startedFrom.qcPartnerId || null,
         linked: true,
     };
 };
@@ -259,7 +307,9 @@ const EMPTY_DELIVERY_MONEY = Object.freeze({
  * separate collections, and a row carries exactly one deliveryPartnerId.
  */
 const resolveDeliveryMoney = async (partnerIds) => {
-    const ids = partnerIds.map(toObjectId).filter(Boolean);
+    // De-duplicated: the same id reached two ways (hub link and qcRiderLink) must
+    // be one identity, never two.
+    const ids = [...new Map(partnerIds.map(toObjectId).filter(Boolean).map((id) => [String(id), id])).values()];
     if (!ids.length) return { ...EMPTY_DELIVERY_MONEY, byVertical: {} };
 
     const perVertical = await Promise.all(DELIVERY_MONEY_SOURCES.map((source) => sumDeliveryMoney(source, ids)));

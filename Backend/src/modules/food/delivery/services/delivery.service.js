@@ -602,16 +602,60 @@ export const getDeliveryPartnerEarnings = async (deliveryPartnerId, query = {}) 
         ])
     ]);
 
-    const totalEarnings = Number(agg?.[0]?.totalEarnings) || 0;
+    const foodEarnings = Number(agg?.[0]?.totalEarnings) || 0;
+
+    // Quick & Medical deliveries this rider made through the Food app, as the
+    // linked QC rider record (core/delivery/qcRiderLink). They are stored in
+    // qc_orders, so a Food-only sum left "Today's earning" at 0 after a
+    // Medical delivery.
+    let qcOrders = 0;
+    let qcEarnings = 0;
+    try {
+        const { qcRiderIdForFoodRider } = await import('../../../../core/delivery/qcRiderLink.js');
+        const qcId = await qcRiderIdForFoodRider(partnerId);
+        if (qcId && mongoose.Types.ObjectId.isValid(qcId)) {
+            const { FoodOrder: QcOrder } = await import('../../../quickCommerce/modules/food/orders/models/order.model.js');
+            const qcMatch = { ...match, 'dispatch.deliveryPartnerId': new mongoose.Types.ObjectId(qcId) };
+            const [count, qcAgg] = await Promise.all([
+                QcOrder.countDocuments(qcMatch),
+                QcOrder.aggregate([
+                    { $match: qcMatch },
+                    { $group: { _id: null, total: { $sum: { $ifNull: ['$riderEarning', 0] } } } },
+                ]),
+            ]);
+            qcOrders = count;
+            qcEarnings = Number(qcAgg?.[0]?.total) || 0;
+        }
+    } catch {
+        /* Food figures alone */
+    }
+
+    // Target incentives paid in this period (delivery bonuses, transactionId INC-...).
+    let incentive = 0;
+    try {
+        const bonusMatch = { deliveryPartnerId: partnerId, transactionId: /^INC-/ };
+        if (range) bonusMatch.createdAt = { $gte: range.start, $lte: range.end };
+        const bonusAgg = await DeliveryBonusTransaction.aggregate([
+            { $match: bonusMatch },
+            { $group: { _id: null, total: { $sum: { $ifNull: ['$amount', 0] } } } },
+        ]);
+        incentive = Number(bonusAgg?.[0]?.total) || 0;
+    } catch {
+        /* no incentive figure */
+    }
+
+    const orderEarning = Math.round((foodEarnings + qcEarnings) * 100) / 100;
+    const totalEarnings = Math.round((orderEarning + incentive) * 100) / 100;
+    const allOrders = totalOrders + qcOrders;
 
     // Frontend only strongly relies on totalEarnings + totalOrders.
     const summary = {
         totalEarnings,
-        totalOrders,
+        totalOrders: allOrders,
         totalHours: 0,
         totalMinutes: 0,
-        orderEarning: totalEarnings,
-        incentive: 0,
+        orderEarning,
+        incentive,
         otherEarnings: 0
     };
 
@@ -619,7 +663,7 @@ export const getDeliveryPartnerEarnings = async (deliveryPartnerId, query = {}) 
         summary,
         period,
         date: date.toISOString(),
-        pagination: { page, limit, total: totalOrders }
+        pagination: { page, limit, total: allOrders }
     };
 };
 
