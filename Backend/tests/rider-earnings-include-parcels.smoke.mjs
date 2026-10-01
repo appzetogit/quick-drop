@@ -57,6 +57,23 @@ await check("the week's pocket includes the parcel as a trip and a payment", asy
   assert.equal(Math.round(pocket.summary.totalEarning * 100) / 100, 93.46);
 });
 
+await check('a Medical delivery is listed in history under the pharmacy name', async () => {
+  const link = await import('../src/core/delivery/qcRiderLink.js');
+  const qcId = await link.qcRiderIdForFoodRider(rider._id);
+  const pharmacy = new mongoose.Types.ObjectId();
+  await mongoose.connection.db.collection('qc_restaurants').insertOne({ _id: pharmacy, restaurantName: 'Quick Medical', storeType: 'pharmacy' });
+  const { FoodOrder: QcOrder } = await import('../src/modules/quickCommerce/modules/food/orders/models/order.model.js');
+  await QcOrder.collection.insertOne({
+    order_id: 'MED-1000000009', orderStatus: 'delivered', riderEarning: 30, restaurantId: pharmacy,
+    dispatch: { status: 'accepted', deliveryPartnerId: new mongoose.Types.ObjectId(qcId) },
+    deliveryState: { deliveredAt: new Date() }, createdAt: new Date(),
+  });
+  const { trips } = await svc.getDeliveryPartnerTripHistory(String(rider._id), { period: 'daily', status: 'Completed' });
+  assert.ok(trips.some((t) => t.restaurantName === 'Quick Medical'), JSON.stringify(trips.map((t) => t.restaurantName)));
+  const pocket = await svc.getDeliveryPocketDetails(String(rider._id));
+  assert.ok(pocket.transactions.payment.some((t) => /Quick Medical/.test(t.description)), JSON.stringify(pocket.transactions.payment.map((t) => t.description)));
+});
+
 await check('trip history lists the parcel', async () => {
   const { trips } = await svc.getDeliveryPartnerTripHistory(String(rider._id), { period: 'daily', status: 'Completed' });
   assert.ok(trips.some((t) => t.restaurantName === 'Bike parcel'), JSON.stringify(trips.map((t) => t.restaurantName)));

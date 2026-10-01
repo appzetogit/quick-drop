@@ -854,10 +854,25 @@ const linkedQcTrips = async (partnerId, range = null) => {
         const qcId = await qcRiderIdForFoodRider(partnerId);
         if (!qcId || !mongoose.Types.ObjectId.isValid(qcId)) return [];
         const { FoodOrder: QcOrder } = await import('../../../quickCommerce/modules/food/orders/models/order.model.js');
+        // Registers the store model the populate below needs.
+        await import('../../../quickCommerce/modules/food/restaurant/models/restaurant.model.js');
         const match = { 'dispatch.deliveryPartnerId': new mongoose.Types.ObjectId(qcId), orderStatus: 'delivered' };
         if (range) match['deliveryState.deliveredAt'] = { $gte: range.start, $lte: range.end };
-        const orders = await QcOrder.find(match).sort({ 'deliveryState.deliveredAt': -1 }).limit(1000).lean();
-        return orders.map(toTripDto);
+        // The store's name, so history and earnings say which pharmacy/shop
+        // (toTripDto reads restaurantId.restaurantName).
+        const orders = await QcOrder.find(match)
+            .populate({ path: 'restaurantId', select: 'restaurantName storeType' })
+            .sort({ 'deliveryState.deliveredAt': -1 })
+            .limit(1000)
+            .lean();
+        return orders.map((o) => {
+            const trip = toTripDto(o);
+            if (!trip.restaurantName) {
+                const label = String(o.order_id || '').startsWith('MED-') ? 'Medical order' : 'Quick order';
+                return { ...trip, restaurantName: label, restaurant: label };
+            }
+            return trip;
+        });
     } catch {
         return [];
     }
