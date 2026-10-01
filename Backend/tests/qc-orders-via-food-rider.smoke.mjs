@@ -56,9 +56,12 @@ await check('Quick dispatch counts online Food riders as Quick candidates', asyn
 });
 
 const qcRiderId = await link.qcRiderIdForFoodRider(foodId);
+// The pharmacy, so the trip steps have a store to send back.
+const pharmacyId = new mongoose.Types.ObjectId();
+await mongoose.connection.db.collection('qc_restaurants').insertOne({ _id: pharmacyId, restaurantName: 'Quick Medical', storeType: 'pharmacy', location: { type: 'Point', coordinates: [75.88, 22.72], addressLine1: '17/C, New Palasia' } });
 const medOrder = await QcOrder.collection.insertOne({
   order_id: 'MED-1000000001', orderId: 'MED-1000000001', orderStatus: 'preparing',
-  userId: new mongoose.Types.ObjectId(), restaurantId: new mongoose.Types.ObjectId(),
+  userId: new mongoose.Types.ObjectId(), restaurantId: pharmacyId,
   items: [{ itemId: new mongoose.Types.ObjectId(), name: 'Paracetamol', price: 25, quantity: 1 }],
   pricing: { subtotal: 25, total: 25 }, payment: { method: 'cash', status: 'cod_pending' },
   prescription: { required: true, status: 'approved', bill: { status: 'approved' } },
@@ -116,9 +119,17 @@ await check('bill photo: another rider is refused, a non-image is refused', asyn
   assert.equal((await hit(String(other._id), { base64: Buffer.from('x').toString('base64') })).code, 403);
   assert.equal((await hit(foodId, { base64: Buffer.from('not an image at all, just text').toString('base64') })).code, 400);
 });
-await step('reached pickup', 'confirmReachedPickupDeliveryController');
+await check('reached pickup: the response still names the pharmacy (the app shows it)', async () => {
+  const out = await call('confirmReachedPickupDeliveryController', {});
+  assert.equal(out.code, 200, JSON.stringify(out.body).slice(0, 300));
+  assert.match(JSON.stringify(out.body), /Quick Medical/);
+});
 await step('picked up (with the pharmacy bill photo)', 'confirmPickupDeliveryController', { body: { billImageUrl: 'https://example.com/bill.jpg' } });
-await step('reached drop', 'confirmReachedDropDeliveryController');
+await check('reached drop: the response still names the pharmacy (the app shows it)', async () => {
+  const out = await call('confirmReachedDropDeliveryController', {});
+  assert.equal(out.code, 200, JSON.stringify(out.body).slice(0, 300));
+  assert.match(JSON.stringify(out.body), /Quick Medical/);
+});
 await check('drop OTP', async () => {
   const row = await QcOrder.collection.findOne({ _id: new mongoose.Types.ObjectId(medId) });
   const otp = row.deliveryVerification?.dropOtp?.code || row.deliveryOtp || row.deliveryVerification?.dropOtp?.otp;

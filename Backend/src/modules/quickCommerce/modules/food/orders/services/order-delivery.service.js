@@ -86,6 +86,26 @@ const DELIVERY_RESTAURANT_POPULATE = {
     'restaurantName name phone ownerPhone primaryContactNumber location addressLine1 area city state pincode landmark profileImage coverImage coverImages galleryImages menuImages',
 };
 
+/**
+ * The order with its store (name, address, phone, pin) filled in, for the
+ * rider app.
+ *
+ * The app replaces its current order with what each trip step returns. These
+ * steps returned the store as a bare id, so after "Reached pickup" a Medical
+ * order's card lost the pharmacy's name and address ("Pharmacy", no address).
+ */
+async function withStoreForRider(order) {
+  try {
+    const store = order?.restaurantId;
+    if (order && typeof order.populate === 'function' && store && !store.restaurantName) {
+      await order.populate(DELIVERY_RESTAURANT_POPULATE);
+    }
+  } catch (err) {
+    logger.warn(`withStoreForRider: ${err.message}`);
+  }
+  return order;
+}
+
 const DELIVERY_TRANSACTION_SELECT = 'orderId payment paymentMethod pricing amounts status';
 
 function mergeTransactionIntoOrder(orderDoc, txDoc) {
@@ -945,7 +965,7 @@ export async function confirmReachedPickupDelivery(orderId, deliveryPartnerId) {
   const currentPhase = order.deliveryState?.currentPhase || '';
   const currentStatus = order.deliveryState?.status || '';
   if (currentPhase === 'at_pickup' || currentStatus === 'reached_pickup') {
-    return sanitizeOrderForExternal(order);
+    return sanitizeOrderForExternal(await withStoreForRider(order));
   }
 
   const from = currentStatus || currentPhase || order.orderStatus;
@@ -1006,7 +1026,7 @@ export async function confirmReachedPickupDelivery(orderId, deliveryPartnerId) {
     deliveryPhase: order.deliveryState?.currentPhase,
     deliveryStatus: order.deliveryState?.status,
   });
-  return sanitizeOrderForExternal(order);
+  return sanitizeOrderForExternal(await withStoreForRider(order));
 }
 
 export async function confirmPickupDelivery(orderId, deliveryPartnerId, billImageUrl) {
@@ -1063,7 +1083,7 @@ export async function confirmPickupDelivery(orderId, deliveryPartnerId, billImag
     deliveryPartnerId,
     billImageUrl: billImageUrl || null,
   });
-  return sanitizeOrderForExternal(order);
+  return sanitizeOrderForExternal(await withStoreForRider(order));
 }
 
 export async function confirmReachedDropDelivery(orderId, deliveryPartnerId) {
@@ -1080,7 +1100,7 @@ export async function confirmReachedDropDelivery(orderId, deliveryPartnerId) {
 
   if (order.deliveryVerification?.dropOtp?.verified) {
     emitOrderUpdate(order, deliveryPartnerId);
-    return sanitizeOrderForDeliveryPartner(order);
+    return sanitizeOrderForDeliveryPartner(await withStoreForRider(order));
   }
 
   const alreadyAtDrop =
@@ -1135,7 +1155,7 @@ export async function confirmReachedDropDelivery(orderId, deliveryPartnerId) {
     dropOtpRequired: order.deliveryVerification?.dropOtp?.required ?? true,
     dropOtpVerified: order.deliveryVerification?.dropOtp?.verified ?? false,
   });
-  return sanitizeOrderForDeliveryPartner(order);
+  return sanitizeOrderForDeliveryPartner(await withStoreForRider(order));
 }
 
 /*
@@ -1177,7 +1197,7 @@ export async function verifyDropOtpDelivery(orderId, deliveryPartnerId, otp) {
   }
 
   if (order.deliveryVerification?.dropOtp?.verified) {
-    return { order: sanitizeOrderForDeliveryPartner(order) };
+    return { order: sanitizeOrderForDeliveryPartner(await withStoreForRider(order)) };
   }
 
   const otpStr = String(otp || '').trim();
@@ -1205,7 +1225,7 @@ export async function verifyDropOtpDelivery(orderId, deliveryPartnerId, otp) {
     orderId: order._id.toString(),
     deliveryPartnerId,
   });
-  return { order: sanitizeOrderForDeliveryPartner(order) };
+  return { order: sanitizeOrderForDeliveryPartner(await withStoreForRider(order)) };
 }
 
 export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
