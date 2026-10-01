@@ -15,11 +15,18 @@ import { STORE_TYPES, MEDICAL_STORE_TYPE } from './storeType.js';
  * filter working.
  */
 
-/** No scope for an absent or explicitly "all" value; otherwise a known type. */
+/**
+ * "quick": every store type except pharmacy. The Quick Commerce panel sends
+ * it, so medical stores (which have their own panel) are not listed there.
+ */
+export const QUICK_SCOPE = 'quick';
+
+/** No scope for an absent or explicitly "all" value; otherwise a known type, or QUICK_SCOPE. */
 export const normalizeStoreTypeFilter = (value) => {
     if (value === undefined || value === null) return null;
     const raw = String(value).trim().toLowerCase();
     if (!raw || raw === 'all') return null;
+    if (raw === QUICK_SCOPE) return QUICK_SCOPE;
     if (!STORE_TYPES.includes(raw)) {
         throw new ValidationError(`Unknown store type: ${String(value).slice(0, 40)}`);
     }
@@ -27,6 +34,13 @@ export const normalizeStoreTypeFilter = (value) => {
 };
 
 export const isMedicalScope = (value) => normalizeStoreTypeFilter(value) === MEDICAL_STORE_TYPE;
+
+/** The Mongo condition on a seller's storeType for a scope, or null for none. */
+export const storeTypeCondition = (value) => {
+    const type = normalizeStoreTypeFilter(value);
+    if (!type) return null;
+    return type === QUICK_SCOPE ? { $ne: MEDICAL_STORE_TYPE } : type;
+};
 
 /**
  * The sellers of one type, for scoping lists that hang off a seller (products,
@@ -40,9 +54,9 @@ export const isMedicalScope = (value) => normalizeStoreTypeFilter(value) === MED
  * would show every product on the platform under Medical.
  */
 export async function sellerIdsOfStoreType(FoodRestaurant, storeType) {
-    const type = normalizeStoreTypeFilter(storeType);
-    if (!type) return null;
-    const rows = await FoodRestaurant.find({ storeType: type }).select('_id').lean();
+    const condition = storeTypeCondition(storeType);
+    if (!condition) return null;
+    const rows = await FoodRestaurant.find({ storeType: condition }).select('_id').lean();
     return rows.map((row) => row._id);
 }
 

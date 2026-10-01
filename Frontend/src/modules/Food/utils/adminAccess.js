@@ -169,6 +169,9 @@ const PAGE_RULES = [
   ["/zone-setup", "zones"],
   ["/restaurants/complaints", "support"],
   ["/restaurants", "restaurants"],
+  // Quick and Medical show the same seller pages under /stores.
+  ["/stores/complaints", "support"],
+  ["/stores", "restaurants"],
   ["/free-delivery", "restaurants"],
   ["/delivery-radius", "restaurants"],
   ["/verification", "restaurants"],

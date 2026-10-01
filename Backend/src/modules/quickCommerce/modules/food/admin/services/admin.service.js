@@ -38,7 +38,7 @@ import {
     normalizeDrugLicenceInput,
     normalizeStoreTypeInput,
 } from '../../shared/storeType.js';
-import { normalizeStoreTypeFilter, sellerIdsOfStoreType, applySellerScope } from '../../shared/storeScope.js';
+import { normalizeStoreTypeFilter, storeTypeCondition, sellerIdsOfStoreType, applySellerScope } from '../../shared/storeScope.js';
 import { FoodEarningAddon } from '../models/earningAddon.model.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
 import { FoodRestaurantCommission } from '../models/restaurantCommission.model.js';
@@ -395,7 +395,7 @@ export async function getRestaurants(query) {
     // The Medical panel is this same list scoped to pharmacies. An unknown type
     // is refused rather than ignored, so a bad value can never widen the list
     // back to every seller.
-    const storeTypeFilter = normalizeStoreTypeFilter(query.storeType);
+    const storeTypeFilter = storeTypeCondition(query.storeType);
     if (storeTypeFilter) filter.storeType = storeTypeFilter;
     if (status && ['pending', 'approved', 'rejected'].includes(status)) {
         filter.status = status;

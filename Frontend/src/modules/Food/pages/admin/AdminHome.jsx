@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { verticalAdminPath } from "../../components/admin/AdminSidebar"
 import { useNavigate } from "react-router-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@food/components/ui/card"
 import {
@@ -234,7 +235,7 @@ export default function AdminHome() {
               helper={`${periodLabel} restaurant cut`}
               icon={<ArrowUpRight className="h-5 w-5 text-indigo-600" />}
               accent="bg-indigo-200/40"
-              path="/admin/food/restaurants/commission"
+              path={verticalAdminPath("/admin/food/restaurants/commission")}
             />
             <MetricCard
               title="Orders processed"
@@ -282,7 +283,7 @@ export default function AdminHome() {
               helper="Approved restaurants"
               icon={<Store className="h-5 w-5 text-blue-600" />}
               accent="bg-blue-200/40"
-              path="/admin/food/restaurants"
+              path={verticalAdminPath("/admin/food/restaurants")}
             />
             <MetricCard
               title="Restaurant request pending"
@@ -290,7 +291,7 @@ export default function AdminHome() {
               helper="Awaiting approval"
               icon={<UserCheck className="h-5 w-5 text-accent-orange" />}
               accent="bg-primary-orange/20/40"
-              path="/admin/food/restaurants/joining-request"
+              path={verticalAdminPath("/admin/food/restaurants/joining-request")}
             />
             <MetricCard
               title="Total delivery boy"

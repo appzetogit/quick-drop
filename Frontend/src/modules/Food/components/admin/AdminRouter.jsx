@@ -1,5 +1,6 @@
 import { Suspense, lazy } from "react";
-import { Routes, Route, Navigate, Outlet, useParams } from "react-router-dom";
+import { Routes, Route, Navigate, Outlet, useParams, useLocation } from "react-router-dom";
+import { currentAdminBase } from "./AdminSidebar";
 
 /** Old per-panel edit links land on the one Master screen. */
 function RedirectAdminEdit() {
@@ -186,6 +187,34 @@ const MedicalCommission = lazy(() => import("@food/pages/admin/medical/MedicalCo
  * The prefix swap happens once, in the axios request interceptor, keyed on the browser
  * path. Nothing below needs to know which vertical it is serving.
  */
+/** Seller pages, by sub-path: shown under /restaurants (Food) and /stores (Quick, Medical). */
+const SELLER_PAGES = [
+  ["", RestaurantsList],
+  ["add", AddRestaurant],
+  ["edit/:id", EditRestaurant],
+  ["joining-request", JoiningRequest],
+  ["commission", RestaurantCommission],
+  ["monetization-mode", MonetizationMode],
+  ["free-item-offers", RestaurantFreebieOffers],
+  ["bogo-offers", RestaurantBogoOffers],
+  ["combos", RestaurantCombos],
+  ["complaints", RestaurantComplaints],
+  ["reviews", RestaurantReviews],
+  ["bulk-import", RestaurantsBulkImport],
+  ["bulk-export", RestaurantsBulkExport],
+]
+
+/** In the Quick and Medical panels a /restaurants address is the /stores one. */
+function StoresRedirect({ children }) {
+  const location = useLocation()
+  const base = currentAdminBase(location.pathname)
+  if (base !== "/admin/food" && location.pathname.startsWith(`${base}/restaurants`)) {
+    const to = location.pathname.replace(`${base}/restaurants`, `${base}/stores`) + location.search
+    return <Navigate to={to} replace />
+  }
+  return children
+}
+
 const verticalAdminRoutes = (
   <>
             <Route index element={<AdminHome />} />
@@ -219,19 +248,15 @@ const verticalAdminRoutes = (
             <Route path="zone-setup/edit/:id" element={<AddZone />} />
             <Route path="zone-setup/view/:id" element={<ViewZone />} />
             <Route path="food-approval" element={<FoodApproval />} />
-            <Route path="restaurants" element={<RestaurantsList />} />
-            <Route path="restaurants/add" element={<AddRestaurant />} />
-            <Route path="restaurants/edit/:id" element={<EditRestaurant />} />
-            <Route path="restaurants/joining-request" element={<JoiningRequest />} />
-            <Route path="restaurants/commission" element={<RestaurantCommission />} />
-            <Route path="restaurants/monetization-mode" element={<MonetizationMode />} />
-            <Route path="restaurants/free-item-offers" element={<RestaurantFreebieOffers />} />
-            <Route path="restaurants/bogo-offers" element={<RestaurantBogoOffers />} />
-          <Route path="restaurants/combos" element={<RestaurantCombos />} />
-            <Route path="restaurants/complaints" element={<RestaurantComplaints />} />
-            <Route path="restaurants/reviews" element={<RestaurantReviews />} />
-            <Route path="restaurants/bulk-import" element={<RestaurantsBulkImport />} />
-            <Route path="restaurants/bulk-export" element={<RestaurantsBulkExport />} />
+            {/* The seller pages. Food calls them restaurants; Quick and Medical
+                call them stores, under /stores (a /restaurants address there
+                redirects). Same screens either way, from one list. */}
+            {SELLER_PAGES.map(([sub, Page]) => (
+              <Route key={`restaurants/${sub}`} path={sub ? `restaurants/${sub}` : "restaurants"} element={<StoresRedirect><Page /></StoresRedirect>} />
+            ))}
+            {SELLER_PAGES.map(([sub, Page]) => (
+              <Route key={`stores/${sub}`} path={sub ? `stores/${sub}` : "stores"} element={<Page />} />
+            ))}
 
             {/* FOOD & CATEGORY MANAGEMENT */}
             <Route path="categories" element={<Category />} />

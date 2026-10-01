@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { verticalAdminPath } from "../../../components/admin/AdminSidebar"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
 import { useLocation, useNavigate } from "react-router-dom"
 import { Building2, Info, Tag, Upload, Calendar, FileText, MapPin, CheckCircle2, X, Image as ImageIcon, Clock, Loader2 } from "lucide-react"
@@ -654,7 +655,7 @@ export default function AddRestaurant() {
         toast.success("Restaurant created successfully!")
         setShowSuccessDialog(true)
         setTimeout(() => {
-          navigate("/admin/food/restaurants")
+          navigate(verticalAdminPath("/admin/food/restaurants"))
         }, 2000)
       } else {
         throw new Error(response?.data?.message || "Failed to create restaurant")

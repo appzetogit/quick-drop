@@ -172,6 +172,20 @@ const REUSED_ADMIN_BASES = ["/admin/quick-commerce", "/admin/medical"]
 export const currentAdminBase = (pathname = "") =>
   REUSED_ADMIN_BASES.find((base) => pathname.startsWith(base)) || FOOD_ADMIN_BASE
 
+/**
+ * A food admin path as it lives in the panel for `base`. Quick and Medical call
+ * their sellers stores, so /restaurants there is /stores (see AdminRouter).
+ */
+export const rebaseAdminPath = (path, base) => {
+  if (typeof path !== "string" || !path.startsWith(FOOD_ADMIN_BASE) || base === FOOD_ADMIN_BASE) return path
+  const rest = path.slice(FOOD_ADMIN_BASE.length)
+  return `${base}${rest.replace(/^\/restaurants(?=\/|$|\?)/, "/stores")}`
+}
+
+/** The same, for the panel the operator is in now: for in-page links on shared screens. */
+export const verticalAdminPath = (path) =>
+  rebaseAdminPath(path, currentAdminBase(typeof window === "undefined" ? "" : window.location.pathname))
+
 export const getVerticalTitle = (base = "", customName = "") => {
   const name = (customName || "Quick Drop").trim()
   if (base === "/admin/medical") {
@@ -325,10 +339,7 @@ export const brandingFor = (base) => VERTICAL_BRANDING[base] || VERTICAL_BRANDIN
 /** Re-point every menu path at `base`. Returns the menu untouched for food. */
 export const rebaseAdminMenu = (nodes, base) => {
   if (base === FOOD_ADMIN_BASE || !Array.isArray(nodes)) return nodes
-  const rebase = (path) =>
-    typeof path === "string" && path.startsWith(FOOD_ADMIN_BASE)
-      ? `${base}${path.slice(FOOD_ADMIN_BASE.length)}`
-      : path
+  const rebase = (path) => rebaseAdminPath(path, base)
   const { labels, words = [], hiddenPaths = [], hiddenSections = [], onlyPaths } = brandingFor(base)
   const relabel = (label) => {
     if (!label) return label

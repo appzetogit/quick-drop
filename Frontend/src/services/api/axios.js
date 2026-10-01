@@ -336,7 +336,9 @@ const SHARED_FOOD_PREFIXES = ["auth"];
  * API, narrowed to that one type. `scope` is what narrows them.
  */
 const QC_ADMIN_BASES = [
-  { base: "/admin/quick-commerce", scope: null },
+  // "quick": every store type but pharmacy -- medical stores have their own
+  // panel and must not be listed (or edited by mistake) under Quick Commerce.
+  { base: "/admin/quick-commerce", scope: "quick" },
   { base: "/admin/medical", scope: "pharmacy" },
 ];
 

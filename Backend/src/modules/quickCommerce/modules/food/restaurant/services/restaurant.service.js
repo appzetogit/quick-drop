@@ -2115,7 +2115,10 @@ export const listApprovedRestaurants = async (query = {}) => {
     // nothing and looking like an empty neighbourhood.
     // With no type asked for this is the Quick Shop list, which must not
     // include pharmacies -- they have their own tab.
-    if (query.storeType !== undefined && String(query.storeType).trim()) {
+    if (String(query.storeType || '').trim().toLowerCase() === 'quick') {
+        // The Quick Commerce admin panel's scope: the Quick Shop list.
+        Object.assign(filter, QUICK_SHOP_SELLER_FILTER);
+    } else if (query.storeType !== undefined && String(query.storeType).trim()) {
         filter.storeType = normalizeStoreTypeInput(query.storeType);
     } else {
         Object.assign(filter, QUICK_SHOP_SELLER_FILTER);
