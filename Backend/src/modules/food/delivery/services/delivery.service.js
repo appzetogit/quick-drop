@@ -645,9 +645,13 @@ export const getDeliveryPartnerEarnings = async (deliveryPartnerId, query = {}) 
         /* no incentive figure */
     }
 
-    const orderEarning = Math.round((foodEarnings + qcEarnings) * 100) / 100;
+    // Bike parcels / rides done as the linked taxi driver.
+    const rideTrips = await linkedRideTrips(partnerId, range);
+    const rideEarnings = rideTrips.reduce((sum, t) => sum + (Number(t.earningAmount) || 0), 0);
+
+    const orderEarning = Math.round((foodEarnings + qcEarnings + rideEarnings) * 100) / 100;
     const totalEarnings = Math.round((orderEarning + incentive) * 100) / 100;
-    const allOrders = totalOrders + qcOrders;
+    const allOrders = totalOrders + qcOrders + rideTrips.length;
 
     // Frontend only strongly relies on totalEarnings + totalOrders.
     const summary = {
@@ -781,6 +785,84 @@ const toTripDto = (order) => {
     };
 };
 
+/**
+ * Bike parcels (and rides) this rider completed on the taxi side, as trips.
+ *
+ * A Food + Daily needs + Medical + Bike parcel rider does parcels as their
+ * linked taxi driver, stored in rides, not orders, so "Today's earning",
+ * "Today's trips", the week's pocket and history all read 0 after a parcel.
+ * Earning is the ride's driverEarnings (fare less commission), what the taxi
+ * side recorded for it.
+ */
+const linkedRideTrips = async (partnerId, range = null) => {
+    try {
+        const partner = await FoodDeliveryPartner.findById(partnerId).select('driverId').lean();
+        if (!partner?.driverId) return [];
+        const { Ride } = await import('../../../taxi/user/models/Ride.js');
+        const match = { driverId: partner.driverId, liveStatus: 'completed' };
+        if (range) match.completedAt = { $gte: range.start, $lte: range.end };
+        const rides = await Ride.find(match)
+            .select('_id serviceType fare driverEarnings commissionAmount paymentMethod completedAt createdAt pickupAddress dropAddress')
+            .sort({ completedAt: -1 })
+            .limit(1000)
+            .lean();
+        return rides.map((r) => {
+            const fare = Number(r.fare) || 0;
+            const earning = Math.round((Number(r.driverEarnings ?? (fare - (Number(r.commissionAmount) || 0))) || 0) * 100) / 100;
+            const when = r.completedAt || r.createdAt;
+            const label = String(r.serviceType || '').toLowerCase() === 'parcel' ? 'Bike parcel' : 'Ride';
+            const cash = String(r.paymentMethod || '').toLowerCase() === 'cash';
+            return {
+                id: r._id,
+                _id: r._id,
+                orderId: `${label} ${String(r._id).slice(-6).toUpperCase()}`,
+                type: String(r.serviceType || 'ride').toLowerCase(),
+                status: 'Completed',
+                restaurantName: label,
+                restaurant: label,
+                items: [],
+                orderItems: [],
+                paymentMethod: r.paymentMethod || '',
+                totalAmount: fare,
+                orderTotal: fare,
+                codAmount: cash ? fare : 0,
+                codCollectedAmount: cash ? fare : 0,
+                deliveryEarning: earning,
+                earningAmount: earning,
+                amount: earning,
+                riderBasePay: earning,
+                riderDeliveryFeeShare: 0,
+                riderSurgePay: 0,
+                riderIncentivePay: 0,
+                riderTotalPayout: earning,
+                createdAt: r.createdAt,
+                deliveredAt: when,
+                completedAt: when,
+                date: when,
+                time: when ? new Date(when).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '',
+            };
+        });
+    } catch {
+        return [];
+    }
+};
+
+/** Quick & Medical deliveries this rider made as their linked QC rider, as trips. */
+const linkedQcTrips = async (partnerId, range = null) => {
+    try {
+        const { qcRiderIdForFoodRider } = await import('../../../../core/delivery/qcRiderLink.js');
+        const qcId = await qcRiderIdForFoodRider(partnerId);
+        if (!qcId || !mongoose.Types.ObjectId.isValid(qcId)) return [];
+        const { FoodOrder: QcOrder } = await import('../../../quickCommerce/modules/food/orders/models/order.model.js');
+        const match = { 'dispatch.deliveryPartnerId': new mongoose.Types.ObjectId(qcId), orderStatus: 'delivered' };
+        if (range) match['deliveryState.deliveredAt'] = { $gte: range.start, $lte: range.end };
+        const orders = await QcOrder.find(match).sort({ 'deliveryState.deliveredAt': -1 }).limit(1000).lean();
+        return orders.map(toTripDto);
+    } catch {
+        return [];
+    }
+};
+
 export const getDeliveryPartnerTripHistory = async (deliveryPartnerId, query = {}) => {
     if (!deliveryPartnerId || !mongoose.Types.ObjectId.isValid(deliveryPartnerId)) {
         throw new ValidationError('Delivery partner not found');
@@ -820,11 +902,23 @@ export const getDeliveryPartnerTripHistory = async (deliveryPartnerId, query = {
         .limit(limit)
         .lean();
 
+    // Completed Medical/Quick deliveries and bike parcels belong in history
+    // too; a "cancelled" or "pending" filter has none to add.
+    const extra = sf === 'cancelled' || sf === 'pending'
+        ? []
+        : [
+            ...(await linkedQcTrips(partnerId, { start, end })),
+            ...(await linkedRideTrips(partnerId, { start, end })),
+        ];
+    const trips = [...(orders || []).map(toTripDto), ...extra]
+        .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+        .slice(0, limit);
+
     return {
         period,
         date: (date || new Date()).toISOString(),
         range: { start: start.toISOString(), end: end.toISOString() },
-        trips: (orders || []).map(toTripDto)
+        trips
     };
 };
 
@@ -862,9 +956,29 @@ export const getDeliveryPocketDetails = async (deliveryPartnerId, query = {}) =>
         .limit(limit)
         .lean();
 
-    const trips = (orders || []).map(toTripDto);
+    // Medical/Quick deliveries and bike parcels count in the week too.
+    const [qcTrips, rideTrips] = await Promise.all([
+        linkedQcTrips(partnerId, { start, end }),
+        linkedRideTrips(partnerId, { start, end }),
+    ]);
+    const extraTrips = [...qcTrips, ...rideTrips];
 
-    const paymentTransactions = (orders || []).map((o) => ({
+    const trips = [...(orders || []).map(toTripDto), ...extraTrips]
+        .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+    const extraPayments = extraTrips.map((t) => ({
+        _id: t._id,
+        type: 'payment',
+        amount: Number(t.earningAmount) || 0,
+        status: 'Completed',
+        date: t.date,
+        createdAt: t.date,
+        orderId: String(t.orderId),
+        metadata: { orderId: String(t.orderId) },
+        description: `${t.restaurantName ? `${t.restaurantName} earning` : 'Order earning'}`,
+    }));
+
+    const paymentTransactions = [...extraPayments, ...(orders || []).map((o) => ({
         _id: o._id,
         type: 'payment',
         amount: Number(o.riderEarning) || 0,
@@ -874,7 +988,7 @@ export const getDeliveryPocketDetails = async (deliveryPartnerId, query = {}) =>
         orderId: o.orderId || String(o._id),
         metadata: { orderId: o.orderId || String(o._id) },
         description: o?.restaurantId?.restaurantName ? `Order earning - ${o.restaurantId.restaurantName}` : 'Order earning'
-    }));
+    }))];
 
     const bonusTransactions = (bonusTxList || []).map((t) => ({
         _id: t._id,

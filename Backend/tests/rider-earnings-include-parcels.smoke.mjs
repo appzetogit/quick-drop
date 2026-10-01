@@ -1,0 +1,68 @@
+/**
+ * A bike parcel shows in the delivery app's earnings, week and history.
+ *
+ * Run: node tests/rider-earnings-include-parcels.smoke.mjs
+ *
+ * Seen live 2026-10-01: a Food + Bike parcel rider completed a cash parcel
+ * (fare 54, earning 53.46) and "Today's earning", "Today's trips", "This week"
+ * and the earnings breakup all stayed at 0: they summed food orders only.
+ */
+import assert from 'node:assert/strict';
+import mongoose from 'mongoose';
+import { MongoMemoryServer } from 'mongodb-memory-server';
+
+const server = await MongoMemoryServer.create();
+await mongoose.connect(server.getUri(), { dbName: 'rider_earnings_parcels' });
+let failed = 0;
+const check = async (label, fn) => {
+  try { await fn(); console.log(`  PASS  ${label}`); }
+  catch (e) { failed += 1; console.log(`  FAIL  ${label}\n        ${e.stack || e.message}`); }
+};
+
+const { FoodDeliveryPartner } = await import('../src/modules/food/delivery/models/deliveryPartner.model.js');
+const { FoodOrder } = await import('../src/modules/food/orders/models/order.model.js');
+const { Ride } = await import('../src/modules/taxi/user/models/Ride.js');
+const svc = await import('../src/modules/food/delivery/services/delivery.service.js');
+
+const driverId = new mongoose.Types.ObjectId();
+const rider = await FoodDeliveryPartner.create({ name: 'R', phone: '9500000001', status: 'approved', driverId });
+const at = { type: 'Point', coordinates: [75.88, 22.72] };
+
+await FoodOrder.collection.insertOne({
+  order_id: 'FOD-5000001', orderStatus: 'delivered', riderEarning: 40,
+  dispatch: { status: 'accepted', deliveryPartnerId: rider._id },
+  deliveryState: { deliveredAt: new Date() }, createdAt: new Date(),
+});
+await Ride.collection.insertOne({
+  driverId, userId: new mongoose.Types.ObjectId(), serviceType: 'parcel', liveStatus: 'completed', status: 'completed',
+  fare: 54, driverEarnings: 53.46, commissionAmount: 0.54, paymentMethod: 'cash',
+  completedAt: new Date(), createdAt: new Date(), pickupLocation: at, dropLocation: at,
+});
+// Someone else's ride must not count.
+await Ride.collection.insertOne({
+  driverId: new mongoose.Types.ObjectId(), serviceType: 'parcel', liveStatus: 'completed', fare: 99, driverEarnings: 90,
+  completedAt: new Date(), createdAt: new Date(), pickupLocation: at, dropLocation: at,
+});
+
+await check("today's earning and orders include the parcel", async () => {
+  const { summary } = await svc.getDeliveryPartnerEarnings(String(rider._id), { period: 'today' });
+  assert.equal(summary.totalOrders, 2);
+  assert.equal(summary.totalEarnings, 93.46);
+});
+
+await check("the week's pocket includes the parcel as a trip and a payment", async () => {
+  const pocket = await svc.getDeliveryPocketDetails(String(rider._id));
+  assert.equal(pocket.trips.length, 2);
+  assert.ok(pocket.trips.some((t) => t.restaurantName === 'Bike parcel' && t.earningAmount === 53.46));
+  assert.equal(Math.round(pocket.summary.totalEarning * 100) / 100, 93.46);
+});
+
+await check('trip history lists the parcel', async () => {
+  const { trips } = await svc.getDeliveryPartnerTripHistory(String(rider._id), { period: 'daily', status: 'Completed' });
+  assert.ok(trips.some((t) => t.restaurantName === 'Bike parcel'), JSON.stringify(trips.map((t) => t.restaurantName)));
+});
+
+await mongoose.disconnect();
+await server.stop();
+console.log(failed ? `\n${failed} FAILED` : '\nall checks passed');
+process.exit(failed ? 1 : 0);

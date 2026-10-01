@@ -48,12 +48,18 @@ const ride = (driverId, serviceType, vehicleIconType) => Ride.collection.insertO
   status: 'completed', completedAt: new Date(), pickupLocation: at, dropLocation: at, createdAt: new Date(),
 }).then((r) => Ride.collection.findOne({ _id: r.insertedId }));
 
+const { Vehicle } = await import('../src/modules/taxi/admin/models/Vehicle.js');
+const bikeType = new mongoose.Types.ObjectId();
+await Vehicle.collection.insertOne({ _id: bikeType, name: 'Bike', icon_types: 'bike', transport_type: 'taxi' });
+
 await check('which ladder a ride climbs', async () => {
   const { segmentOfRide } = incentives.__testables;
-  assert.equal(segmentOfRide({ serviceType: 'parcel', vehicleIconType: 'bike' }), 'foodAndQuick');
-  assert.equal(segmentOfRide({ serviceType: 'parcel', vehicleIconType: 'truck' }), 'heavyParcel');
-  assert.equal(segmentOfRide({ serviceType: 'ride', vehicleIconType: 'bike' }), 'taxiAndPorter');
-  assert.equal(segmentOfRide({ serviceType: 'ride', vehicleIconType: 'car' }), 'taxiAndPorter');
+  assert.equal(await segmentOfRide({ serviceType: 'parcel', vehicleIconType: 'bike' }), 'foodAndQuick');
+  assert.equal(await segmentOfRide({ serviceType: 'parcel', vehicleIconType: 'truck' }), 'heavyParcel');
+  assert.equal(await segmentOfRide({ serviceType: 'ride', vehicleIconType: 'bike' }), 'taxiAndPorter');
+  assert.equal(await segmentOfRide({ serviceType: 'ride', vehicleIconType: 'car' }), 'taxiAndPorter');
+  // Seen live 2026-10-01: a bike parcel saved with an empty icon type.
+  assert.equal(await segmentOfRide({ serviceType: 'parcel', vehicleIconType: '', vehicleTypeId: bikeType }), 'foodAndQuick');
 });
 
 await check('a bike parcel + a food order fill the food ladder and pay the DELIVERY wallet', async () => {
@@ -98,6 +104,17 @@ await check('the Heavy parcel ladder counts non-2-wheeler parcels and pays the t
   assert.equal(card.completedOrders, 3);
   const d = await Driver.findById(truck._id).lean();
   assert.equal(Number(d.wallet?.balance), 400, JSON.stringify(d.wallet));
+});
+
+await check('a bike parcel with an empty icon (bike vehicle type) moves the food ladder', async () => {
+  const before = (await incentives.getCurrentIncentiveForFoodPartner(food._id)).completedOrders;
+  const r = await Ride.collection.insertOne({
+    driverId: rider._id, userId: new mongoose.Types.ObjectId(), serviceType: 'parcel', vehicleIconType: '',
+    vehicleTypeId: bikeType, liveStatus: 'completed', status: 'completed', completedAt: new Date(),
+    pickupLocation: at, dropLocation: at, createdAt: new Date(),
+  });
+  await incentives.onTaxiRideCompleted({ driverId: rider._id, ride: await Ride.collection.findOne({ _id: r.insertedId }) });
+  assert.equal((await incentives.getCurrentIncentiveForFoodPartner(food._id)).completedOrders, before + 1);
 });
 
 await check('a bike parcel does not count on the Taxi ladder', async () => {

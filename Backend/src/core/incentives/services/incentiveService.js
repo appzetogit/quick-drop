@@ -255,16 +255,53 @@ export function tiersOfRule(rule) {
  *   - a passenger ride (bike taxi, auto, cab) is taxiAndPorter, shown as "Taxi".
  */
 const TWO_WHEELER_ICONS = ['bike', 'scooty', 'scooter', 'ev_bike', 'evbike', 'motorcycle'];
-const BIKE_PARCEL = { serviceType: 'parcel', vehicleIconType: { $in: TWO_WHEELER_ICONS } };
-const HEAVY_PARCEL = { serviceType: 'parcel', vehicleIconType: { $nin: TWO_WHEELER_ICONS } };
 const PASSENGER_RIDE = { serviceType: { $ne: 'parcel' } };
 const RIDE_SEGMENTS = new Set(['taxiAndPorter', 'heavyParcel']);
 
+/*
+ * A ride often carries an empty vehicleIconType (the customer app does not
+ * always send it), so a 2-wheeler is also recognised by its vehicle type in
+ * the catalogue. Cached for a minute: the catalogue changes rarely.
+ */
+let twoWheelerTypeCache = { at: 0, ids: [] };
+async function twoWheelerVehicleTypeIds() {
+    if (Date.now() - twoWheelerTypeCache.at < 60 * 1000) return twoWheelerTypeCache.ids;
+    try {
+        const { Vehicle } = await import('../../../modules/taxi/admin/models/Vehicle.js');
+        const rows = await Vehicle.find({ icon_types: { $in: TWO_WHEELER_ICONS } }).select('_id').lean();
+        twoWheelerTypeCache = { at: Date.now(), ids: rows.map((r) => r._id) };
+    } catch {
+        /* keep the last list */
+    }
+    return twoWheelerTypeCache.ids;
+}
+
+async function bikeParcelFilter() {
+    return {
+        serviceType: 'parcel',
+        $or: [
+            { vehicleIconType: { $in: TWO_WHEELER_ICONS } },
+            { vehicleTypeId: { $in: await twoWheelerVehicleTypeIds() } },
+        ],
+    };
+}
+
+async function heavyParcelFilter() {
+    return {
+        serviceType: 'parcel',
+        vehicleIconType: { $nin: TWO_WHEELER_ICONS },
+        vehicleTypeId: { $nin: await twoWheelerVehicleTypeIds() },
+    };
+}
+
 /** The ladder a completed ride counts on. */
-export function segmentOfRide(ride) {
+export async function segmentOfRide(ride) {
     if (String(ride?.serviceType || '').toLowerCase() !== 'parcel') return 'taxiAndPorter';
     const icon = String(ride?.vehicleIconType || '').toLowerCase();
-    return TWO_WHEELER_ICONS.includes(icon) ? 'foodAndQuick' : 'heavyParcel';
+    if (TWO_WHEELER_ICONS.includes(icon)) return 'foodAndQuick';
+    const typeId = String(ride?.vehicleTypeId || '');
+    const bikes = await twoWheelerVehicleTypeIds();
+    return typeId && bikes.some((id) => String(id) === typeId) ? 'foodAndQuick' : 'heavyParcel';
 }
 
 /**
@@ -336,7 +373,7 @@ async function countCompletedToday(ctx, segment, { start, end }, scope = {}) {
                     completedAt: { $gte: start, $lte: end },
                     ...rideVehicleTypeFilter(scope),
                 },
-                segment === 'heavyParcel' ? HEAVY_PARCEL : PASSENGER_RIDE,
+                segment === 'heavyParcel' ? await heavyParcelFilter() : PASSENGER_RIDE,
                 await rideZoneFilter(scope),
             ],
         });
@@ -370,7 +407,7 @@ async function countCompletedToday(ctx, segment, { start, end }, scope = {}) {
                     liveStatus: 'completed',
                     completedAt: { $gte: start, $lte: end },
                 },
-                BIKE_PARCEL,
+                await bikeParcelFilter(),
                 await bikeParcelZoneFilter(scope),
             ],
         }).catch((err) => {
@@ -548,7 +585,7 @@ export function onFoodOrQuickCommerceOrderCompleted({ deliveryPartnerId, vertica
  * in the Food/Quick/Medical zone its pickup is in.
  */
 export async function onTaxiRideCompleted({ driverId, ride = null }) {
-    const segment = segmentOfRide(ride);
+    const segment = await segmentOfRide(ride);
     if (segment === 'foodAndQuick') {
         return maybeCreditIncentive({
             startFrom: 'taxiDriver',
