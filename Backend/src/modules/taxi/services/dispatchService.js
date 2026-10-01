@@ -612,7 +612,10 @@ const emitRideRequestToDrivers = async ({
 
   sendPushNotificationToEntities({
     driverIds: targetDrivers.map((driver) => String(driver._id)),
-    title: ride.serviceType === 'parcel' ? 'New delivery request' : 'New ride request',
+    // Data-only, like food offers: a notification push lands silently in the
+    // tray of a locked phone and the delivery app never rings for it.
+    dataOnly: true,
+    title: ride.serviceType === 'parcel' ? 'New parcel delivery' : 'New ride request',
     body: ride.pickupAddress
       ? `Pickup: ${ride.pickupAddress}`
       : 'A new booking is waiting for your response.',

@@ -131,6 +131,11 @@ export const getFirebaseMessaging = () => {
     return messaging;
 };
 
+/** Tests only: stand in a fake messaging client to see what would be sent. */
+export const __setFirebaseMessagingForTests = (fake) => {
+    messaging = fake;
+};
+
 export const getFirebaseDatabase = getFirebaseDB;
 export const firebaseServerTimestamp = admin.database.ServerValue.TIMESTAMP;
 

@@ -123,6 +123,7 @@ const sendPushToTargets = async ({
   body,
   image = '',
   data = {},
+  dataOnly = false,
 }) => {
   const messaging = getFirebaseMessaging();
 
@@ -160,29 +161,47 @@ const sendPushToTargets = async ({
   );
 
   for (const batch of chunk(dedupedTargets, 500)) {
-    const response = await messaging.sendEachForMulticast({
-      tokens: batch.map((target) => target.token),
-      notification: {
-        title,
-        body,
-        ...(image ? { imageUrl: image } : {}),
-      },
-      data: {
-        ...safeData,
-        click_action: 'FLUTTER_NOTIFICATION_CLICK',
-      },
-      android: {
-        priority: 'high',
-        notification: image ? { imageUrl: image } : undefined,
-      },
-      webpush: {
+    /*
+     * dataOnly: no notification block, so Android hands the push to the app
+     * instead of dropping a silent copy in the tray. A ride/parcel offer needs
+     * that: the delivery app rings its full-screen alert only from a data
+     * message, which is how food offers already arrive. Title and body travel
+     * in the data for the app to show.
+     */
+    const message = dataOnly
+      ? {
+        tokens: batch.map((target) => target.token),
+        data: { ...safeData, title: String(title || ''), body: String(body || '') },
+        android: { priority: 'high', ttl: 60 * 1000 },
+        apns: {
+          headers: { 'apns-priority': '10' },
+          payload: { aps: { alert: { title: String(title || ''), body: String(body || '') }, sound: 'default' } },
+        },
+      }
+      : {
+        tokens: batch.map((target) => target.token),
         notification: {
           title,
           body,
-          ...(image ? { image } : {}),
+          ...(image ? { imageUrl: image } : {}),
         },
-      },
-    });
+        data: {
+          ...safeData,
+          click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        },
+        android: {
+          priority: 'high',
+          notification: image ? { imageUrl: image } : undefined,
+        },
+        webpush: {
+          notification: {
+            title,
+            body,
+            ...(image ? { image } : {}),
+          },
+        },
+      };
+    const response = await messaging.sendEachForMulticast(message);
 
     response.responses.forEach((item, index) => {
       if (item.success) {
@@ -246,16 +265,30 @@ const collectDirectTargets = async ({ userIds = [], driverIds = [] }) => {
     // identity their token carries. Reading only the Driver document finds
     // nothing, so the ride offer goes out over the socket alone and a
     // backgrounded driver never hears about it.
-    const partnerIds = drivers
-      .filter((d) => d.legacyDeliveryPartnerId && !hasAnyPushToken(d))
+    const tokenless = drivers.filter((d) => !hasAnyPushToken(d));
+    const partnerIds = tokenless
+      .filter((d) => d.legacyDeliveryPartnerId)
       .map((d) => d.legacyDeliveryPartnerId);
+    // Older links point only the other way (partner.driverId), with no
+    // legacyDeliveryPartnerId on the driver: those drivers got no push at all.
+    const unlinkedDriverIds = tokenless.filter((d) => !d.legacyDeliveryPartnerId).map((d) => d._id);
 
     let partnerTokens = new Map();
-    if (partnerIds.length) {
+    if (partnerIds.length || unlinkedDriverIds.length) {
       const { FoodDeliveryPartner } = await import('../../food/delivery/models/deliveryPartner.model.js');
-      const partners = await FoodDeliveryPartner.find({ _id: { $in: partnerIds } })
-        .select('_id fcmTokenMobile')
+      const partners = await FoodDeliveryPartner.find({
+        $or: [
+          { _id: { $in: partnerIds } },
+          ...(unlinkedDriverIds.length ? [{ driverId: { $in: unlinkedDriverIds } }] : []),
+        ],
+      })
+        .select('_id driverId fcmTokenMobile')
         .lean();
+      for (const p of partners) {
+        if (!p.driverId) continue;
+        const d = drivers.find((x) => String(x._id) === String(p.driverId) && !x.legacyDeliveryPartnerId);
+        if (d) d.legacyDeliveryPartnerId = p._id;
+      }
       // Mobile only. The partner's fcmTokens list holds *web* tokens from the
       // dashboard; a ride offer pushed to a browser tab is noise at best, and
       // those tokens outnumber the real device 5:1 on live accounts.
@@ -426,6 +459,7 @@ export const sendPushNotificationToEntities = async ({
   body,
   image = '',
   data = {},
+  dataOnly = false,
 }) => {
   // Ride updates to customers are filed in the one inbox the app reads
   // (core/notifications/customerInbox.js). Drivers have their own app.
@@ -440,5 +474,6 @@ export const sendPushNotificationToEntities = async ({
     body,
     image,
     data,
+    dataOnly,
   });
 };
