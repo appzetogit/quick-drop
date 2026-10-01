@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { FileText, Loader2, Search, Trash2, X } from "lucide-react"
 import { adminAPI } from "@food/api"
+import AssignRiderButton from "@food/components/admin/orders/manual-assign/AssignRiderButton"
+import RiderAssignmentSection from "@food/components/admin/orders/manual-assign/RiderAssignmentSection"
+
+// Medical orders are quick-commerce orders: the /qc admin API assigns their riders.
+const ASSIGN_VERTICAL = "quickCommerce"
 
 /**
  * Every order a pharmacy has been asked to dispense, and where it has got to.
@@ -216,7 +221,17 @@ export default function PrescriptionOrders() {
                       <td className="px-4 py-3 text-sm font-medium text-slate-900">
                         {order.total > 0 ? rupees(order.total) : "Not priced"}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        {/* Rows carry no dispatch data, so this shows for every
+                            assignable state; the server refuses an accepted order
+                            or an unapproved bill with its own message. */}
+                        <AssignRiderButton
+                          order={order}
+                          vertical={ASSIGN_VERTICAL}
+                          onAssigned={load}
+                          size="xs"
+                          className="mr-1 align-middle"
+                        />
                         <button
                           type="button"
                           title="Remove from this list"
@@ -240,13 +255,13 @@ export default function PrescriptionOrders() {
         )}
       </div>
 
-      {selected && <OrderPanel order={selected} onClose={() => setSelected(null)} />}
+      {selected && <OrderPanel order={selected} onClose={() => setSelected(null)} onChanged={load} />}
     </div>
   )
 }
 
 /** The documents and the decisions, side by side. */
-function OrderPanel({ order, onClose }) {
+function OrderPanel({ order, onClose, onChanged }) {
   const rx = order.prescription || {}
   const bill = rx.bill || {}
 
@@ -293,6 +308,8 @@ function OrderPanel({ order, onClose }) {
             label="Payment"
             value={`${(order.paymentMethod || "—").toUpperCase()} · ${(order.paymentStatus || "—").toUpperCase()}`}
           />
+
+          <RiderAssignmentSection order={order} vertical={ASSIGN_VERTICAL} onChanged={onChanged} title="Delivery rider" />
 
           <div className="space-y-2">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Documents</p>

@@ -39,6 +39,12 @@ export default function OrdersTable({
   actionLoadingOrderId,
   deletingOrderId,
   /*
+   * Optional per-row slots for the manual rider assignment UI: a status line
+   * under the order status, and a button among the row actions.
+   */
+  renderStatusExtra,
+  renderRowActions,
+  /*
    * Optional server-driven pagination:
    *   { page, limit, total, totalPages, onPageChange }
    *
@@ -369,6 +375,7 @@ export default function OrdersTable({
                           {order.cancellationReason}
                         </div>
                       )}
+                      {renderStatusExtra ? renderStatusExtra(order) : null}
                     </div>
                   </td>
                 )}
@@ -405,6 +412,7 @@ export default function OrdersTable({
                           <span>Reject</span>
                         </button>
                       )}
+                      {renderRowActions ? renderRowActions(order) : null}
                       <button 
                         onClick={() => onViewOrder(order)}
                         className="p-1.5 rounded text-accent-orange hover:bg-primary-orange/5 transition-colors"

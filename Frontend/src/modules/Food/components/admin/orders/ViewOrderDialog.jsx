@@ -6,6 +6,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@food/components/ui/dialog"
+import RiderAssignmentSection from "@food/components/admin/orders/manual-assign/RiderAssignmentSection"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -103,7 +104,7 @@ const getPaymentStatusColor = (paymentStatus) => {
   return "text-slate-600"
 }
 
-export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
+export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical, onOrderChanged }) {
   if (!order) return null
 
   // Debug: Log order data to check billImageUrl
@@ -440,6 +441,11 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order }) {
                 )}
               </div>
             </div>
+          )}
+
+          {/* Manual rider assignment: status, countdown, Assign / Reassign / Unassign. */}
+          {isOpen && (
+            <RiderAssignmentSection order={order} vertical={vertical} onChanged={onOrderChanged} />
           )}
 
           {/* Delivery Partner Information */}

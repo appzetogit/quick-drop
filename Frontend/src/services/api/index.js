@@ -370,6 +370,12 @@ export const supportInboxAPI = {
     apiClient.patch(`/platform/support/tickets/${encodeURIComponent(source)}/${encodeURIComponent(id)}`, data, { contextModule: "admin" }),
 };
 
+/** Admin orders base for a vertical: Food on /food/admin, Quick & Medical on /qc/admin. */
+const adminOrdersBase = (vertical) =>
+  vertical === "quickCommerce" || vertical === "quick" || vertical === "medical"
+    ? "/qc/admin/orders"
+    : "/food/admin/orders";
+
 export const adminAPI = {
   getFoodAssignableZones: () =>
     apiClient.get("/food/admin/admin-management/assignable-zones", { contextModule: "admin" }),
@@ -931,7 +937,30 @@ export const adminAPI = {
     apiClient.delete(`/food/admin/orders/${String(orderId)}`, {
       contextModule: "admin",
     }),
-  /** Dispatch settings – auto vs manual assign (global) */
+  /**
+   * Manual rider assignment (per order). `vertical` is 'food' or
+   * 'quickCommerce' (Quick and Medical share the /qc admin API). Note the
+   * request interceptor still moves any /food URL to /qc while the browser is
+   * on a quick-commerce or medical admin path, so 'food' there means the page's
+   * own vertical.
+   */
+  getRiderCandidates: (vertical, orderId, { q, limit } = {}) =>
+    apiClient.get(`${adminOrdersBase(vertical)}/${encodeURIComponent(String(orderId))}/rider-candidates`, {
+      params: { q: q && String(q).trim() ? String(q).trim() : undefined, limit },
+      contextModule: "admin",
+    }),
+  assignRider: (vertical, orderId, { deliveryPartnerId, force = false } = {}) =>
+    apiClient.patch(
+      `${adminOrdersBase(vertical)}/${encodeURIComponent(String(orderId))}/assign-rider`,
+      { deliveryPartnerId, ...(force ? { force: true } : {}) },
+      { contextModule: "admin" },
+    ),
+  unassignRider: (vertical, orderId) =>
+    apiClient.patch(
+      `${adminOrdersBase(vertical)}/${encodeURIComponent(String(orderId))}/unassign-rider`,
+      {},
+      { contextModule: "admin" },
+    ),
   /** Create restaurant (admin). Single API: POST /food/admin/restaurants. Body: JSON with image URLs. */
   createRestaurant: (body) =>
     apiClient.post("/food/admin/restaurants", body ?? {}, {

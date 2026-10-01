@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useLocation, useSearchParams } from "react-router-dom"
 import io from "socket.io-client"
 import { FileText, Calendar, Package } from "lucide-react"
 import { adminAPI } from "@food/api"
@@ -12,6 +12,15 @@ import ViewOrderDialog from "@food/components/admin/orders/ViewOrderDialog"
 import SettingsDialog from "@food/components/admin/orders/SettingsDialog"
 import RefundModal from "@food/components/admin/orders/RefundModal"
 import { useOrdersManagement } from "@food/components/admin/orders/useOrdersManagement"
+import AssignRiderButton from "@food/components/admin/orders/manual-assign/AssignRiderButton"
+import ManualAssignStatus from "@food/components/admin/orders/manual-assign/ManualAssignStatus"
+import { useAdminDispatchSocket } from "@food/components/admin/orders/manual-assign/useAdminDispatchSocket"
+import {
+  adminVerticalFromPath,
+  eventMatchesOrder,
+  isManualPending,
+  withLiveEvent,
+} from "@food/components/admin/orders/manual-assign/manualAssignUtils"
 import { Loader2 } from "lucide-react"
 import { OrdersDashboardSkeleton } from "@food/components/ui/loading-skeletons"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
@@ -44,6 +53,8 @@ export default function OrdersPage({ statusKey = "all" }) {
   // size out of the URL, so it has to exist before that.
   const [searchParams, setSearchParams] = useSearchParams()
   const [orders, setOrders] = useState([])
+  // Latest manual_assignment_update per order, shown until the refetch it triggers lands.
+  const [liveAssignEvents, setLiveAssignEvents] = useState({})
   const [pageMeta, setPageMeta] = useState({ total: 0, totalPages: 1 })
   /*
    * The live search term, held in a ref rather than read directly.
@@ -428,6 +439,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         seenOrderIdsRef.current = nextOrderIds
         isFirstLoadRef.current = false
         setOrders(nextOrders)
+        setLiveAssignEvents({})
       } else {
         debugError("Failed to fetch orders:", response.data)
         if (!silent) toast.error("Failed to fetch orders")
@@ -567,6 +579,8 @@ export default function OrdersPage({ statusKey = "all" }) {
         paymentType,
         paymentStatus,
         orderStatus: displayStatus,
+        // The wire value, kept because orderStatus above is now a display label.
+        rawOrderStatus: backendStatus,
         deliveryPartnerName,
         deliveryPartnerPhone,
         deliveryType: order.deliveryType || "Home Delivery",
@@ -723,6 +737,79 @@ export default function OrdersPage({ statusKey = "all" }) {
     }, 350)
     return () => clearTimeout(timer)
   }, [searchQuery, page, setPage, fetchOrders])
+
+  /*
+   * Manual rider assignment: live from the admin socket (Food on the root
+   * namespace, Quick & Medical on /qc). A matching event is shown at once and
+   * the page re-read shortly after, debounced so a burst is one request. With
+   * no socket, the page re-reads every 10s -- only while some order on it is
+   * waiting on a hand-picked rider, and not on "all", which already polls.
+   */
+  const { pathname } = useLocation()
+  const assignVertical = adminVerticalFromPath(pathname)
+  const ordersRef = useRef([])
+  useEffect(() => {
+    ordersRef.current = normalizedOrders
+  }, [normalizedOrders])
+  const assignRefetchTimerRef = useRef(null)
+
+  const scheduleAssignRefetch = useCallback(() => {
+    clearTimeout(assignRefetchTimerRef.current)
+    assignRefetchTimerRef.current = setTimeout(() => {
+      fetchOrders({ silent: true, withRingCheck: false })
+    }, 1000)
+  }, [fetchOrders])
+
+  useEffect(() => () => clearTimeout(assignRefetchTimerRef.current), [])
+
+  const handleDispatchEvent = useCallback((eventName, payload) => {
+    const match = ordersRef.current.find((order) => eventMatchesOrder(payload, order))
+    if (!match) return
+    if (eventName === "manual_assignment_update") {
+      setLiveAssignEvents((prev) => ({ ...prev, [String(match.id)]: payload }))
+    }
+    scheduleAssignRefetch()
+  }, [scheduleAssignRefetch])
+
+  const { connected: dispatchSocketConnected } = useAdminDispatchSocket(assignVertical, handleDispatchEvent)
+
+  const hasPendingManualAssign = useMemo(
+    () => normalizedOrders.some((order) => isManualPending(order)),
+    [normalizedOrders],
+  )
+
+  useEffect(() => {
+    if (dispatchSocketConnected || statusKey === "all" || !hasPendingManualAssign) return undefined
+    const timer = setInterval(() => {
+      fetchOrders({ silent: true, withRingCheck: false })
+    }, 10000)
+    return () => clearInterval(timer)
+  }, [dispatchSocketConnected, statusKey, hasPendingManualAssign, fetchOrders])
+
+  const refreshAfterAssign = useCallback(() => {
+    fetchOrders({ silent: true, withRingCheck: false })
+  }, [fetchOrders])
+
+  const withLive = useCallback(
+    (order) => withLiveEvent(order, liveAssignEvents[String(order.id)]),
+    [liveAssignEvents],
+  )
+
+  const renderAssignStatus = useCallback(
+    (order) => (
+      <div className="max-w-xs">
+        <ManualAssignStatus order={withLive(order)} vertical={assignVertical} onChanged={refreshAfterAssign} compact />
+      </div>
+    ),
+    [withLive, assignVertical, refreshAfterAssign],
+  )
+
+  const renderAssignAction = useCallback(
+    (order) => (
+      <AssignRiderButton order={withLive(order)} vertical={assignVertical} onAssigned={refreshAfterAssign} size="xs" />
+    ),
+    [withLive, assignVertical, refreshAfterAssign],
+  )
 
   const orderIdFromUrl = searchParams.get("orderId")
 
@@ -999,6 +1086,8 @@ export default function OrdersPage({ statusKey = "all" }) {
         isOpen={isViewOrderOpen}
         onOpenChange={setIsViewOrderOpen}
         order={selectedOrder}
+        vertical={assignVertical}
+        onOrderChanged={refreshAfterAssign}
       />
       <RefundModal
         isOpen={refundModalOpen}
@@ -1025,6 +1114,8 @@ export default function OrdersPage({ statusKey = "all" }) {
         onRejectOrder={statusKey === "all" || statusKey === "pending" ? handleRejectOrder : undefined}
         actionLoadingOrderId={processingActionOrderId}
         deletingOrderId={deletingOrderId}
+        renderStatusExtra={renderAssignStatus}
+        renderRowActions={renderAssignAction}
       />
     </div>
   )
