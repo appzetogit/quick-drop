@@ -5,6 +5,13 @@ import mongoose from "mongoose";
 import QRCode from "qrcode";
 import { env } from "../../../../config/env.js";
 import { mirrorTaxiPayment } from '../../services/paymentMirror.service.js';
+import {
+  assertPhonePeTopupOwner,
+  buildTopupOrderNotes,
+  creditTopupOnce,
+  recordPhonePeTopupIntent,
+  resolveRazorpayTopup,
+} from '../../services/walletTopupGuard.service.js';
 import { ApiError } from "../../../../utils/ApiError.js";
 import { normalizePoint, toPoint } from "../../../../utils/geo.js";
 import { Driver } from "../models/Driver.js";
@@ -4911,7 +4918,8 @@ export const createDriverWalletTopupOrder = async (req, res) => {
         amount: amountPaise,
         currency: "INR",
         receipt,
-        notes: { driverId },
+        // driverId stays for the dashboard; the typed notes are what verify checks.
+        notes: { driverId, ...buildTopupOrderNotes({ ownerType: "driver", ownerId: driverId }) },
       },
       keyId,
       keySecret,
@@ -4968,6 +4976,13 @@ export const createDriverPhonePeWalletTopupOrder = async (req, res) => {
   const redirectUrl = `${frontendBaseUrl}/taxi/driver/wallet?phonepe_txn=${encodeURIComponent(merchantTransactionId)}`;
   const callbackUrl = `${backendBaseUrl}/api/v1/common/payment-gateway/phonepe/callback`;
   const driver = driverId ? await Driver.findById(driverId).select("phone").lean() : null;
+  // Recorded before PhonePe hears of it: verify credits only ids started here, by their owner.
+  await recordPhonePeTopupIntent({
+    merchantTransactionId,
+    ownerType: "driver",
+    ownerId: driverId,
+    amountPaise: Math.round(amount * 100),
+  });
   const payload = await phonePeRequest({
     method: "POST",
     path: "/pg/v1/pay",
@@ -5027,6 +5042,8 @@ export const verifyDriverWalletTopup = async (req, res) => {
     orderId.startsWith("mock_order_") &&
     signature === "mock_signature_bypass";
 
+  const driverId = req.auth?.sub;
+
   let amountPaise;
   if (isMock) {
     const parts = orderId.split("_");
@@ -5046,14 +5063,18 @@ export const verifyDriverWalletTopup = async (req, res) => {
       throw new ApiError(400, "Invalid payment signature");
     }
 
-    const order = await fetchRazorpay({
-      method: "GET",
-      path: `/orders/${encodeURIComponent(orderId)}`,
-      keyId,
-      keySecret,
-    });
-
-    amountPaise = Number(order?.amount);
+    /*
+     * A valid signature only proves the payment is real. It must also be a
+     * top-up order created for THIS driver, and the amount is the gateway's
+     * figure for the payment. See services/walletTopupGuard.service.js.
+     */
+    ({ amountPaise } = await resolveRazorpayTopup({
+      orderId,
+      paymentId,
+      ownerType: "driver",
+      ownerId: driverId,
+      fetchRazorpay: (path) => fetchRazorpay({ method: "GET", path, keyId, keySecret }),
+    }));
   }
 
   if (!Number.isFinite(amountPaise) || amountPaise <= 0) {
@@ -5061,7 +5082,6 @@ export const verifyDriverWalletTopup = async (req, res) => {
   }
 
   const amount = Math.round(amountPaise) / 100;
-  const driverId = req.auth?.sub;
 
   // The payer here is the DRIVER topping up their own wallet, not a rider.
   await mirrorTaxiPayment({
@@ -5069,14 +5089,39 @@ export const verifyDriverWalletTopup = async (req, res) => {
     purpose: 'driver_wallet_topup', mock: isMock,
   });
 
-  const alreadyCredited = await WalletTransaction.findOne({
-    driverId,
-    "metadata.providerPaymentId": paymentId,
-  })
-    .select("_id")
-    .lean();
+  // The receipt is the global once-only claim on this payment; the ledger-row
+  // check inside still covers top-ups credited before receipts existed.
+  const { result } = await creditTopupOnce({
+    provider: isMock ? "razorpay_mock" : "razorpay",
+    paymentId,
+    orderId,
+    ownerType: "driver",
+    ownerId: driverId,
+    amount,
+    credit: async () => {
+      const alreadyCredited = await WalletTransaction.findOne({
+        driverId,
+        "metadata.providerPaymentId": paymentId,
+      })
+        .select("_id")
+        .lean();
 
-  if (alreadyCredited) {
+      if (alreadyCredited) return null;
+
+      return topUpDriverWallet({
+        driverId,
+        amount,
+        metadata: {
+          source: "razorpay",
+          provider: "razorpay",
+          providerOrderId: orderId,
+          providerPaymentId: paymentId,
+        },
+      });
+    },
+  });
+
+  if (!result) {
     const driver = await Driver.findById(driverId);
     res.json({
       success: true,
@@ -5086,17 +5131,6 @@ export const verifyDriverWalletTopup = async (req, res) => {
     });
     return;
   }
-
-  const result = await topUpDriverWallet({
-    driverId,
-    amount,
-    metadata: {
-      source: "razorpay",
-      provider: "razorpay",
-      providerOrderId: orderId,
-      providerPaymentId: paymentId,
-    },
-  });
 
   const payload = {
     wallet: result.wallet,
@@ -5120,6 +5154,9 @@ export const verifyDriverPhonePeWalletTopup = async (req, res) => {
     throw new ApiError(400, "merchantTransactionId is required");
   }
 
+  // Only a top-up this driver started here may be checked, let alone credited.
+  await assertPhonePeTopupOwner({ merchantTransactionId, ownerType: "driver", ownerId: req.auth?.sub });
+
   const { merchantId, saltKey, saltIndex, environment } = await resolvePhonePeCredentials();
   const payload = await phonePeRequest({
     method: "GET",
@@ -5136,29 +5173,43 @@ export const verifyDriverPhonePeWalletTopup = async (req, res) => {
   const driverId = req.auth?.sub;
 
   if (paymentState === "COMPLETED") {
-    const alreadyCredited = await WalletTransaction.findOne({
-      driverId,
-      $or: [
-        { "metadata.providerPaymentId": paymentId },
-        { "metadata.providerOrderId": merchantTransactionId },
-      ],
-    })
-      .select("_id")
-      .lean();
-
-    let result = null;
-    if (!alreadyCredited) {
-      result = await topUpDriverWallet({
-        driverId,
-        amount,
-        metadata: {
-          source: "phonepe",
-          provider: "phonepe",
-          providerOrderId: merchantTransactionId,
-          providerPaymentId: paymentId,
-        },
-      });
+    if (!(amount > 0)) {
+      throw new ApiError(400, "Invalid payment amount");
     }
+
+    // Keyed on merchantTransactionId: ours, one per top-up, and what the intent names.
+    const { result } = await creditTopupOnce({
+      provider: "phonepe",
+      paymentId: merchantTransactionId,
+      orderId: paymentId,
+      ownerType: "driver",
+      ownerId: driverId,
+      amount,
+      credit: async () => {
+        const alreadyCredited = await WalletTransaction.findOne({
+          driverId,
+          $or: [
+            { "metadata.providerPaymentId": paymentId },
+            { "metadata.providerOrderId": merchantTransactionId },
+          ],
+        })
+          .select("_id")
+          .lean();
+
+        if (alreadyCredited) return null;
+
+        return topUpDriverWallet({
+          driverId,
+          amount,
+          metadata: {
+            source: "phonepe",
+            provider: "phonepe",
+            providerOrderId: merchantTransactionId,
+            providerPaymentId: paymentId,
+          },
+        });
+      },
+    });
 
     const driver = await Driver.findById(driverId);
     res.json({

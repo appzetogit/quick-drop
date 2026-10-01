@@ -2,6 +2,13 @@ import crypto from 'node:crypto';
 import { safeSignatureEqual } from '../../../../utils/safeCompare.js';
 import mongoose from 'mongoose';
 import { mirrorTaxiPayment } from '../../services/paymentMirror.service.js';
+import {
+  assertPhonePeTopupOwner,
+  buildTopupOrderNotes,
+  creditTopupOnce,
+  recordPhonePeTopupIntent,
+  resolveRazorpayTopup,
+} from '../../services/walletTopupGuard.service.js';
 import { ApiError } from '../../../../utils/ApiError.js';
 import { User } from '../models/User.js';
 import { UserWallet } from '../models/UserWallet.js';
@@ -1909,7 +1916,8 @@ export const createRazorpayWalletTopupOrder = async (req, res) => {
       amount: amountPaise,
       currency: 'INR',
       receipt,
-      notes: { userId },
+      // userId stays for the dashboard; the typed notes are what verify checks.
+      notes: { userId, ...buildTopupOrderNotes({ ownerType: 'user', ownerId: userId }) },
     },
     keyId,
     keySecret,
@@ -1982,6 +1990,13 @@ export const createPhonePeWalletTopupOrder = async (req, res) => {
   const redirectUrl = `${frontendBaseUrl}/taxi/user/wallet?phonepe_txn=${encodeURIComponent(merchantTransactionId)}`;
   const callbackUrl = `${backendBaseUrl}/api/v1/common/payment-gateway/phonepe/callback`;
   const user = userId ? await User.findById(userId).select('phone').lean() : null;
+  // Recorded before PhonePe hears of it: verify credits only ids started here, by their owner.
+  await recordPhonePeTopupIntent({
+    merchantTransactionId,
+    ownerType: 'user',
+    ownerId: userId,
+    amountPaise: Math.round(amount * 100),
+  });
   const payload = await phonePeRequest({
     method: 'POST',
     path: '/pg/v1/pay',
@@ -2102,20 +2117,22 @@ export const verifyRazorpayWalletTopup = async (req, res) => {
     throw new ApiError(400, 'Invalid payment signature');
   }
 
-  const order = await razorpayRequest({
-    method: 'GET',
-    path: `/orders/${encodeURIComponent(orderId)}`,
-    keyId,
-    keySecret,
+  const userId = req.auth?.sub;
+
+  /*
+   * A valid signature only proves the payment is real. It must also be a
+   * top-up order created for THIS user, and the amount is the gateway's figure
+   * for the payment. See services/walletTopupGuard.service.js.
+   */
+  const { amountPaise } = await resolveRazorpayTopup({
+    orderId,
+    paymentId,
+    ownerType: 'user',
+    ownerId: userId,
+    fetchRazorpay: (path) => razorpayRequest({ method: 'GET', path, keyId, keySecret }),
   });
 
-  const amountPaise = Number(order?.amount);
-  if (!Number.isFinite(amountPaise) || amountPaise <= 0) {
-    throw new ApiError(400, 'Invalid order amount');
-  }
-
   const amount = Math.round(amountPaise) / 100;
-  const userId = req.auth?.sub;
 
   // Verified against the gateway above -- mirror into the shared payments collection.
   // Cannot throw; see services/paymentMirror.service.js.
@@ -2123,31 +2140,43 @@ export const verifyRazorpayWalletTopup = async (req, res) => {
 
   await ensureUserWallet(userId);
 
-  const alreadyCredited = await UserWallet.findOne({
-    userId,
-    'transactions.providerPaymentId': paymentId,
-  })
-    .select('_id')
-    .lean();
+  // The receipt is the global once-only claim on this payment; the wallet-row
+  // check inside still covers top-ups credited before receipts existed.
+  await creditTopupOnce({
+    provider: 'razorpay',
+    paymentId,
+    orderId,
+    ownerType: 'user',
+    ownerId: userId,
+    amount,
+    credit: async () => {
+      const alreadyCredited = await UserWallet.findOne({
+        userId,
+        'transactions.providerPaymentId': paymentId,
+      })
+        .select('_id')
+        .lean();
 
-  if (!alreadyCredited) {
-    const tx = {
-      kind: 'credit',
-      amount,
-      title: 'Wallet Refilled',
-      provider: 'razorpay',
-      providerOrderId: orderId,
-      providerPaymentId: paymentId,
-    };
+      if (alreadyCredited) return;
 
-    await UserWallet.updateOne(
-      { userId },
-      {
-        $inc: { balance: amount },
-        $push: { transactions: { $each: [tx], $slice: -50 } },
-      },
-    );
-  }
+      const tx = {
+        kind: 'credit',
+        amount,
+        title: 'Wallet Refilled',
+        provider: 'razorpay',
+        providerOrderId: orderId,
+        providerPaymentId: paymentId,
+      };
+
+      await UserWallet.updateOne(
+        { userId },
+        {
+          $inc: { balance: amount },
+          $push: { transactions: { $each: [tx], $slice: -50 } },
+        },
+      );
+    },
+  });
 
   const wallet = await UserWallet.findOne({ userId }).select('balance refundWallet transactions').slice('transactions', -10).lean();
   if (!wallet) {
@@ -2169,6 +2198,9 @@ export const verifyPhonePeWalletTopup = async (req, res) => {
     throw new ApiError(400, 'merchantTransactionId is required');
   }
 
+  // Only a top-up this user started here may be checked, let alone credited.
+  await assertPhonePeTopupOwner({ merchantTransactionId, ownerType: 'user', ownerId: req.auth?.sub });
+
   const { merchantId, saltKey, saltIndex, environment } = await resolvePhonePeCredentials();
   const payload = await phonePeRequest({
     method: 'GET',
@@ -2185,36 +2217,50 @@ export const verifyPhonePeWalletTopup = async (req, res) => {
   const userId = req.auth?.sub;
 
   if (paymentState === 'COMPLETED') {
+    if (!(amount > 0)) {
+      throw new ApiError(400, 'Invalid payment amount');
+    }
     await ensureUserWallet(userId);
 
-    const alreadyCredited = await UserWallet.findOne({
-      userId,
-      $or: [
-        { 'transactions.providerPaymentId': paymentId },
-        { 'transactions.providerOrderId': merchantTransactionId },
-      ],
-    })
-      .select('_id')
-      .lean();
+    // Keyed on merchantTransactionId: ours, one per top-up, and what the intent names.
+    await creditTopupOnce({
+      provider: 'phonepe',
+      paymentId: merchantTransactionId,
+      orderId: paymentId,
+      ownerType: 'user',
+      ownerId: userId,
+      amount,
+      credit: async () => {
+        const alreadyCredited = await UserWallet.findOne({
+          userId,
+          $or: [
+            { 'transactions.providerPaymentId': paymentId },
+            { 'transactions.providerOrderId': merchantTransactionId },
+          ],
+        })
+          .select('_id')
+          .lean();
 
-    if (!alreadyCredited) {
-      const tx = {
-        kind: 'credit',
-        amount,
-        title: 'Wallet Refilled',
-        provider: 'phonepe',
-        providerOrderId: merchantTransactionId,
-        providerPaymentId: paymentId,
-      };
+        if (alreadyCredited) return;
 
-      await UserWallet.updateOne(
-        { userId },
-        {
-          $inc: { balance: amount },
-          $push: { transactions: { $each: [tx], $slice: -50 } },
-        },
-      );
-    }
+        const tx = {
+          kind: 'credit',
+          amount,
+          title: 'Wallet Refilled',
+          provider: 'phonepe',
+          providerOrderId: merchantTransactionId,
+          providerPaymentId: paymentId,
+        };
+
+        await UserWallet.updateOne(
+          { userId },
+          {
+            $inc: { balance: amount },
+            $push: { transactions: { $each: [tx], $slice: -50 } },
+          },
+        );
+      },
+    });
 
     const wallet = await UserWallet.findOne({ userId })
       .select('balance refundWallet transactions')
