@@ -68,6 +68,8 @@ export const listOnboardingOptions = () => ({
         {
             key: DRIVER_CLASSES.TWO_WHEELER,
             label: 'I have a 2 Wheeler',
+            // Pick one option (radio) or several (tick-boxes).
+            singleChoice: true,
             intents: Object.entries(DRIVER_INTENTS)
                 .filter(([, v]) => v.driverClass === DRIVER_CLASSES.TWO_WHEELER)
                 .map(([key, v]) => ({ key, label: v.label })),
@@ -75,6 +77,8 @@ export const listOnboardingOptions = () => ({
         {
             key: DRIVER_CLASSES.PASSENGER_TAXI,
             label: 'Taxi for passenger delivery',
+            // Pick one option (radio) or several (tick-boxes).
+            singleChoice: true,
             intents: Object.entries(DRIVER_INTENTS)
                 .filter(([, v]) => v.driverClass === DRIVER_CLASSES.PASSENGER_TAXI)
                 .map(([key, v]) => ({ key, label: v.label })),
@@ -82,6 +86,8 @@ export const listOnboardingOptions = () => ({
         {
             key: DRIVER_CLASSES.PARCEL_VEHICLE,
             label: 'Vehicle for parcel delivery',
+            // Pick one option (radio) or several (tick-boxes).
+            singleChoice: false,
             intents: Object.entries(DRIVER_INTENTS)
                 .filter(([, v]) => v.driverClass === DRIVER_CLASSES.PARCEL_VEHICLE)
                 .map(([key, v]) => ({ key, label: v.label })),
