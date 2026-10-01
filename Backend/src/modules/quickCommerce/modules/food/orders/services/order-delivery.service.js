@@ -409,18 +409,20 @@ async function assertCashLimitAllows(deliveryPartnerId, order) {
   const method = String(order?.payment?.method || order?.paymentMethod || '').toLowerCase();
   if (method !== 'cash' && method !== 'razorpay_qr') return;
 
-  const [settings, wallet] = await Promise.all([
-    FoodDeliveryCashLimit.findOne({ isActive: true }).select('deliveryCashLimit').lean(),
-    FoodDeliveryWallet.findOne({ deliveryPartnerId }).select('cashInHand').lean(),
-  ]);
-
-  const limit = Number(settings?.deliveryCashLimit) || 0;
+  // The rider's ONE cash figure (core/finance/riderFinance): cash from Food,
+  // Quick & Medical and taxi together, against their own limit (0 = none). It
+  // read qc_delivery_wallets.cashInHand, which nothing but an admin edit ever
+  // updates, so a rider took unlimited Quick/Medical cash orders.
+  const { getRiderFinance } = await import('../../../../../../core/finance/riderFinance.service.js');
+  const finance = await getRiderFinance(deliveryPartnerId).catch(() => null);
+  const limit = Number(finance?.cashLimit) || 0;
   if (limit <= 0) return;
 
-  const inHand = Number(wallet?.cashInHand) || 0;
-  if (inHand >= limit) {
+  const inHand = Number(finance?.cashInHand) || 0;
+  const orderCash = Math.max(0, Number(order?.pricing?.total) || 0);
+  if (inHand + orderCash > limit) {
     throw new ValidationError(
-      `You are holding Rs.${inHand} in cash, which is at your Rs.${limit} limit. ` +
+      `You are holding Rs.${inHand} in cash; this order would take you past your Rs.${limit} limit. ` +
         'Deposit your cash to keep accepting cash orders.',
     );
   }
@@ -572,7 +574,7 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   // cash ceiling must not end up holding a cash trip they cannot be given.
   {
     const pending = await FoodOrder.findOne(identity)
-      .select('payment paymentMethod')
+      .select('payment paymentMethod pricing.total')
       .lean();
     if (pending) await assertCashLimitAllows(partnerId, pending);
   }

@@ -249,23 +249,20 @@ function buildPushItems(items) {
  *
  * @returns {Promise<Set<string>>} partner ids to skip
  */
-async function getCashBlockedPartnerIds(partnerIds) {
+async function getCashBlockedPartnerIds(partnerIds, orderCash = 0) {
   if (!partnerIds.length) return new Set();
 
-  const settings = await FoodDeliveryCashLimit.findOne({ isActive: true })
-    .select('deliveryCashLimit')
-    .lean();
-  const limit = Number(settings?.deliveryCashLimit) || 0;
-  if (limit <= 0) return new Set();
-
-  const wallets = await FoodDeliveryWallet.find({
-    deliveryPartnerId: { $in: partnerIds },
-    cashInHand: { $gte: limit },
-  })
-    .select('deliveryPartnerId cashInHand')
-    .lean();
-
-  return new Set(wallets.map((w) => String(w.deliveryPartnerId)));
+  // The shared figure (core/finance/riderFinance), same as accept: cash across
+  // Food, Quick & Medical and taxi against the rider's own limit (0 = none).
+  // qc_delivery_wallets.cashInHand, read before, is never updated by deliveries.
+  const { getRiderFinance } = await import('../../../../../../core/finance/riderFinance.service.js');
+  const results = await Promise.all(partnerIds.map(async (id) => {
+    const finance = await getRiderFinance(id).catch(() => null);
+    const limit = Number(finance?.cashLimit) || 0;
+    if (limit <= 0) return null;
+    return (Number(finance?.cashInHand) || 0) + Math.max(0, Number(orderCash) || 0) > limit ? String(id) : null;
+  }));
+  return new Set(results.filter(Boolean));
 }
 
 /** Cash the rider has to physically collect, so it counts against their float. */
@@ -604,7 +601,7 @@ export async function tryAutoAssign(orderId, options = {}) {
 
     // Riders at their cash ceiling are skipped for cash-collect orders only.
     const cashBlockedIds = orderCollectsCash(order)
-      ? await getCashBlockedPartnerIds(partners.map((p) => p.partnerId))
+      ? await getCashBlockedPartnerIds(partners.map((p) => p.partnerId), Number(order?.pricing?.total) || 0)
       : new Set();
 
     const eligible = partners.filter((partner) => {
@@ -650,6 +647,8 @@ export async function tryAutoAssign(orderId, options = {}) {
         const partnerKey = partner.partnerId.toString();
         if (permanentlyExcludedIds.has(partnerKey)) return false;
         if (busyPartnerIds.has(partnerKey)) return false;
+        // Over the cash limit is over the limit on a re-offer too.
+        if (cashBlockedIds.has(partnerKey)) return false;
         return true;
       });
       if (reofferEligible.length > 0) {
