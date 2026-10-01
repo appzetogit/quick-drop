@@ -1256,7 +1256,7 @@ export const cancelRide = async (req, res) => {
 };
 
 export const listAvailableDrivers = async (req, res) => {
-  const { vehicleTypeId, lat, lng, maxDistance, limit = 30, service_location_id, transport_type } = req.query;
+  const { vehicleTypeId, lat, lng, maxDistance, limit = 30, service_location_id, transport_type, service_type } = req.query;
   const latitude = Number(lat);
   const longitude = Number(lng);
   const distance = Number(maxDistance);
@@ -1287,6 +1287,12 @@ export const listAvailableDrivers = async (req, res) => {
   const driverMatchFilters = buildDriverMatchFilters({
     vehicleTypeId,
     transportType: transport_type,
+    // Without this, a delivery-only driver (parcel capability, no taxi) is
+    // always filtered out of this lookup -- the unified-dispatch capability
+    // check below defaults to requiring `taxi` unless told this is a parcel
+    // job, which left the parcel booking screen's ETA permanently empty for
+    // a nearby rider who simply never holds that capability.
+    serviceType: service_type,
   });
 
   const drivers = await Driver.find({
