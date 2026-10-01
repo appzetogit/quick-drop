@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { ApiError } from '../../../utils/ApiError.js';
 
-const SEGMENTS = ['foodAndQuick', 'taxiAndPorter'];
+const SEGMENTS = ['foodAndQuick', 'taxiAndPorter', 'heavyParcel'];
 const MAX_TIERS = 12;
 
 function validateTier(raw, index) {
@@ -65,8 +65,8 @@ export function validateIncentiveRuleUpsertDto(body = {}) {
     if (rawVehicleType && !mongoose.Types.ObjectId.isValid(rawVehicleType)) {
         throw new ApiError(400, 'vehicleTypeId must be a vehicle type id, or empty for every vehicle type');
     }
-    if (rawVehicleType && segment !== 'taxiAndPorter') {
-        throw new ApiError(400, 'vehicleTypeId only applies to the taxiAndPorter segment');
+    if (rawVehicleType && segment === 'foodAndQuick') {
+        throw new ApiError(400, 'vehicleTypeId only applies to the taxi and heavy parcel ladders');
     }
 
     const windowType = String(body.windowType || 'daily').trim();

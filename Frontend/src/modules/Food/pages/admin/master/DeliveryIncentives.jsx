@@ -23,15 +23,23 @@ import { useAdminAccess, isRestricted, can } from "@food/utils/adminAccess"
 const SEGMENTS = [
   {
     id: "foodAndQuick",
-    label: "Food, Quick Commerce & Medical",
-    hint: "Riders on the food-and-delivery duty — food, groceries and medicine all count toward the same ladder.",
-    // A zone ladder can be for a Food, Quick or Medical zone: whichever the order is in.
+    label: "Food, Daily needs, Medical & Bike parcel",
+    hint: "Food + Daily needs + Medical + Bike parcel riders — food, groceries, medicine and parcels on a 2-wheeler all count toward the same ladder.",
+    // A zone ladder can be for a Food, Quick or Medical zone: whichever the order
+    // (or the bike parcel's pickup) is in.
     zoneModules: ["food", "quickCommerce", "medical"],
   },
   {
+    // Key kept for the ladders already saved; passenger rides only now.
     id: "taxiAndPorter",
-    label: "Taxi & Porter",
-    hint: "Riders on the rides-and-parcel duty — rides and parcel/porter jobs both count toward the same ladder.",
+    label: "Taxi",
+    hint: "Passenger rides only — bike taxi, auto and cab trips count toward this ladder. Parcels are not counted here.",
+    zoneModules: ["taxi"],
+  },
+  {
+    id: "heavyParcel",
+    label: "Heavy parcel",
+    hint: "Parcel and porter jobs on anything bigger than a 2-wheeler — tempo, van, truck. Bike parcels count on the food ladder instead.",
     zoneModules: ["taxi"],
   },
 ]

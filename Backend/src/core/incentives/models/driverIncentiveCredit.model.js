@@ -23,7 +23,7 @@ const driverIncentiveCreditSchema = new mongoose.Schema(
         driverKey: { type: String, required: true, index: true },
         ruleId: { type: mongoose.Schema.Types.ObjectId, ref: 'DriverIncentiveRule', required: true },
         tierId: { type: mongoose.Schema.Types.ObjectId, required: true },
-        segment: { type: String, enum: ['foodAndQuick', 'taxiAndPorter'], required: true },
+        segment: { type: String, enum: ['foodAndQuick', 'taxiAndPorter', 'heavyParcel'], required: true },
         periodKey: { type: String, required: true },
         completedOrders: { type: Number, required: true },
         rewardAmount: { type: Number, required: true },

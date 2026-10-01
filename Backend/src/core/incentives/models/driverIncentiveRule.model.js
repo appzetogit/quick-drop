@@ -37,7 +37,12 @@ const driverIncentiveRuleSchema = new mongoose.Schema(
     {
         segment: {
             type: String,
-            enum: ['foodAndQuick', 'taxiAndPorter'],
+            // foodAndQuick: food, daily needs, medical AND bike parcels (the
+            //   "Food + Daily needs + Medical + Bike parcel" rider).
+            // taxiAndPorter: passenger rides only, any vehicle (key kept for
+            //   the ladders already on file; shown as "Taxi").
+            // heavyParcel: parcel/porter jobs on anything but a 2-wheeler.
+            enum: ['foodAndQuick', 'taxiAndPorter', 'heavyParcel'],
             required: true,
             index: true,
         },
