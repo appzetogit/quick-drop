@@ -587,10 +587,15 @@ export const sendNotificationToOwners = async (targets = [], payload = {}) => {
  * is fixed rather than parallel.
  */
 export const notifyOwnersActionableAlert = async (targets = [], payload = {}) => {
-    const { androidTag, androidChannelId, ...rest } = payload;
+    const { androidTag, androidChannelId, data, ...rest } = payload;
 
+    // The plain copy must carry no `data` at all -- buildMessagePayload attaches
+    // `data` whenever it's present regardless of `dataOnly`, so leaving it in
+    // `rest` here silently recreates the combined notification+data message the
+    // comment above warns about, and a backgrounded/killed app never gets woken
+    // for the real (data-only) copy below.
     await sendNotificationToOwners(targets, { ...rest, androidTag, androidChannelId });
-    return sendNotificationToOwners(targets, { ...rest, dataOnly: true });
+    return sendNotificationToOwners(targets, { ...rest, data, dataOnly: true });
 };
 
 export const notifyAdminsSafely = async (payload = {}) => {
