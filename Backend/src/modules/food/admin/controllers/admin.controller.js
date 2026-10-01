@@ -1460,6 +1460,17 @@ export async function updateSupportTicket(req, res, next) {
 }
 
 // ----- Delivery partners -----
+/** "Delete" on the rider list: deactivates, keeping wallet and history. */
+export async function deactivateDeliveryPartner(req, res, next) {
+    try {
+        const data = await adminService.deactivateDeliveryPartner(req.params.id);
+        if (!data) return res.status(404).json({ success: false, message: 'Delivery partner not found' });
+        res.status(200).json({ success: true, message: 'Delivery partner deactivated', data });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export async function getDeliveryPartners(req, res, next) {
     try {
         const data = await adminService.getDeliveryPartners(req.query);

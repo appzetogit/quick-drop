@@ -5000,6 +5000,46 @@ export async function getDeliverymanReviews(query = {}) {
     return { reviews, total, page, limit };
 }
 
+/**
+ * Deactivate a delivery partner from the admin panel.
+ *
+ * The list's Delete button called an API that did not exist, so nothing ever
+ * happened. Deactivated rather than deleted: the wallet, any cash they owe and
+ * their order history stay. They go offline on every side (Food, Quick/Medical
+ * through the food record, taxi/parcel through the driver record), lose their
+ * push tokens, and every app call is refused (auth.middleware).
+ */
+export async function deactivateDeliveryPartner(id) {
+    if (!mongoose.Types.ObjectId.isValid(String(id))) return null;
+    const partner = await FoodDeliveryPartner.findById(id);
+    if (!partner) return null;
+
+    const onFood = await FoodOrder.exists({
+        'dispatch.deliveryPartnerId': partner._id,
+        'dispatch.status': 'accepted',
+        orderStatus: { $nin: ['delivered', 'completed', 'rejected'], $not: /^cancel/ },
+    });
+    const { foodRiderHasQcJob } = await import('../../../../core/delivery/qcRiderLink.js');
+    if (onFood || await foodRiderHasQcJob(partner._id).catch(() => false)) {
+        throw new ValidationError('This rider is carrying an order. Reassign or finish it before deactivating them.');
+    }
+
+    partner.status = 'deactivated';
+    partner.availabilityStatus = 'offline';
+    partner.fcmTokens = [];
+    partner.fcmTokenMobile = [];
+    await partner.save();
+
+    if (partner.driverId) {
+        const { Driver } = await import('../../../taxi/driver/models/Driver.js');
+        await Driver.updateOne({ _id: partner.driverId }, { $set: { isOnline: false, approve: false } }).catch(() => {});
+    }
+    const { syncQcRiderFromFood } = await import('../../../../core/delivery/qcRiderLink.js');
+    await syncQcRiderFromFood(String(partner._id), { availabilityStatus: 'offline' }).catch(() => {});
+
+    return { _id: partner._id, status: partner.status };
+}
+
 export async function approveDeliveryPartner(id, { serviceCapabilities } = {}) {
     const partner = await FoodDeliveryPartner.findById(id);
     if (!partner) return null;

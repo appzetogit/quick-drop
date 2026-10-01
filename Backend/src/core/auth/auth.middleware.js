@@ -101,6 +101,9 @@ export const authMiddleware = (req, res, next) => {
             }
             lookupAccount(role, userId).then((account) => {
                 if (!account) return sendError(res, 401, 'Account not found');
+                if (role === 'DELIVERY_PARTNER' && account.status === 'deactivated') {
+                    return sendError(res, 403, 'Your delivery account has been deactivated. Please contact support.');
+                }
                 if (role === 'DELIVERY_PARTNER' && account.status !== 'approved') {
                     return sendError(res, 403, account.status === 'rejected'
                         ? 'Your delivery account has been rejected. Please contact support.'

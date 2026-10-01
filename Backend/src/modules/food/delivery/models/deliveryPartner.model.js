@@ -115,7 +115,9 @@ const deliveryPartnerSchema = new mongoose.Schema(
         bankDetailsChangedAt: { type: Date, default: null },
         status: {
             type: String,
-            enum: ['pending', 'approved', 'rejected'],
+            // 'deactivated': removed by an admin. Kept, not deleted, so the
+            // wallet, cash owed and order history stay; the app is refused.
+            enum: ['pending', 'approved', 'rejected', 'deactivated'],
             default: 'pending'
         },
         rejectionReason: { type: String },

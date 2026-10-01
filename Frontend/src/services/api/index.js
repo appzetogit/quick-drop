@@ -553,6 +553,11 @@ export const adminAPI = {
         contextModule: "admin",
       },
     ),
+  /** Deactivates (keeps wallet and history); the rider list's Delete button. */
+  deleteDeliveryPartner: (id) =>
+    apiClient.delete(`/food/admin/delivery/partners/${String(id)}`, {
+      contextModule: "admin",
+    }),
   updateDeliveryPartnerCapabilities: (id, serviceCapabilities) =>
     apiClient.patch(
       `/food/admin/delivery/${String(id)}/capabilities`,

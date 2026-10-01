@@ -267,6 +267,7 @@ router.get('/delivery/:id', inZone, adminController.getDeliveryPartnerById);
 router.patch('/delivery/:id/approve', inZone, adminController.approveDeliveryPartner);
 router.patch('/delivery/:id/reject', inZone, adminController.rejectDeliveryPartner);
 router.patch('/delivery/:id/capabilities', inZone, adminController.updateDeliveryPartnerCapabilities);
+router.delete('/delivery/partners/:id', inZone, adminController.deactivateDeliveryPartner);
 
 // ----- Zones -----
 router.get('/zones', adminController.getZones);
