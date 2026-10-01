@@ -9,16 +9,9 @@ export const processMaintenanceJob = async (job) => {
     const type = data.type || 'unknown';
 
     if (type === 'MANUAL_ASSIGN_EXPIRY') {
-        // Every 30s, so it logs only when it hands an order back (manualAssign.js).
-        // Not rethrown: a retry would only stack on the next tick.
-        try {
-            const { expireManualAssignments } = await import('../../core/delivery/manualAssign.js');
-            const result = await expireManualAssignments();
-            return { processed: true, type, jobId: job.id, ...result };
-        } catch (err) {
-            logger.error(`[BullMQ:maintenance] MANUAL_ASSIGN_EXPIRY failed: ${err.message}`);
-            return { processed: false, type, jobId: job.id };
-        }
+        // Runs in the API now (server.js), where the socket server is. A tick left
+        // over in Redis from before the move is ignored.
+        return { processed: false, type, jobId: job.id, movedToApi: true };
     }
 
     logger.info(`[BullMQ:maintenance] type=${type} jobId=${job.id}`);

@@ -33,6 +33,7 @@ import { initializeFirebaseRealtime, setFirebaseServiceAccountOverride } from '.
 const SHUTDOWN_TIMEOUT_MS = 10000;
 let server = null;
 let expireOffersInterval = null;
+let manualAssignExpiryInterval = null;
 let fssaiExpiryInterval = null;
 let spScheduler = null;
 let ledgerNightlyInterval = null;
@@ -49,6 +50,7 @@ const gracefulShutdown = async (signal) => {
             await closeRedis();
             await closeBullMQConnection();
             if (expireOffersInterval) clearInterval(expireOffersInterval);
+            if (manualAssignExpiryInterval) clearInterval(manualAssignExpiryInterval);
             if (fssaiExpiryInterval) clearInterval(fssaiExpiryInterval);
             if (spScheduler) spScheduler.stop();
             if (ledgerNightlyInterval) clearInterval(ledgerNightlyInterval);
@@ -340,6 +342,23 @@ const startServer = async () => {
                 .then(() => import('./src/core/orders/orderHold.js'))
                 .then(({ startOrderHoldSweeper }) => startOrderHoldSweeper())
                 .catch((err) => logger.error(`Order hold sweeper failed to start: ${err.message}`));
+
+            // Manual rider assignments nobody answered in time go back to
+            // auto-dispatch (core/delivery/manualAssign.js). Here in the API, not the
+            // workers: the hand-back tells the admin panel and the rider over the
+            // socket, and restarts dispatch, whose offers also go out over the
+            // socket -- the workers process has no socket server, so from there the
+            // panel stayed on "time up" and riders got no in-app offer. Each release
+            // is a write conditioned on the state it read, so a second instance is
+            // harmless. Not tied to BACKGROUND_JOBS_ENABLED, like the hold sweeper.
+            import('./src/core/delivery/manualAssign.js')
+                .then(({ expireManualAssignments }) => {
+                    const tick = () => expireManualAssignments()
+                        .catch((err) => logger.error(`Manual-assign expiry failed: ${err.message}`));
+                    manualAssignExpiryInterval = setInterval(tick, 30 * 1000);
+                    manualAssignExpiryInterval.unref?.();
+                })
+                .catch((err) => logger.error(`Manual-assign expiry failed to start: ${err.message}`));
 
             if (!config.backgroundJobsEnabled) {
                 logger.warn('BACKGROUND_JOBS_ENABLED=false — skipping offer expiry and FSSAI sync (read-mostly instance)');
