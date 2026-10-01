@@ -41,6 +41,7 @@ import {
   getDriverNotifications,
   cancelDriverScheduledRide,
   cancelDriverActiveRide,
+  declineDriverRideOffer,
   getDriverScheduledRides,
   getServiceCenterBookings,
   getServiceCenterBookingBiometrics,
@@ -179,6 +180,11 @@ driverRouter.post(
   "/rides/:rideId/cancel",
   authenticate(["driver"]),
   asyncHandler(cancelDriverActiveRide),
+);
+driverRouter.post(
+  "/rides/:rideId/decline",
+  authenticate(["driver"]),
+  asyncHandler(declineDriverRideOffer),
 );
 driverRouter.get(
   "/wallet",

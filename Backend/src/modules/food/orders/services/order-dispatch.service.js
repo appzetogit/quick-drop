@@ -312,6 +312,11 @@ const offerPushData = (order, payload = {}) => {
   const str = (value) => (value === null || value === undefined ? '' : String(value));
   return {
     type: 'new_order',
+    // One explicit label the native incoming-order card's heading switches
+    // on, alongside the medical/quick-commerce forks of this same payload
+    // builder -- see their own jobType for why this replaces guessing from
+    // order-code prefixes.
+    jobType: 'food',
     orderId: order._id.toString(),
     restaurantName: str(payload.restaurantName),
     restaurantAddress: str(payload.restaurantAddress),

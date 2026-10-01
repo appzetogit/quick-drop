@@ -40,7 +40,8 @@ import {
   hashPassword,
   signAccessToken,
 } from "../services/authService.js";
-import { cancelScheduledRideByDriver, cancelActiveRideByDriver, emitToDriver } from "../../services/dispatchService.js";
+import { cancelScheduledRideByDriver, cancelActiveRideByDriver, emitToDriver, emitToRideRoom, getDispatchState, markDriverRejectedFromDispatch } from "../../services/dispatchService.js";
+import { getRideRoom } from "../../services/rideService.js";
 import { reconcileDriverAssignment } from "../services/driverAssignmentService.js";
 import { notifyLateAvailableDriver } from "../../services/dispatchService.js";
 import { findZoneByPickup } from "../services/locationService.js";
@@ -2774,6 +2775,39 @@ export const cancelDriverActiveRide = async (req, res) => {
       cancellationFee: Number(settlement?.feeAmount || 0),
     },
   });
+};
+
+/**
+ * Declines a ride/parcel offer this driver was dispatched, over plain REST.
+ *
+ * Mirrors the socket `rejectRide` handler exactly (same ownership check, same
+ * `markDriverRejectedFromDispatch` call, same `driverRejectedRide` room
+ * broadcast) so a decline answers identically whichever transport sent it.
+ * Exists for the native Android incoming-order card, which can show and
+ * answer a ride offer even with no Flutter engine running -- it has no
+ * socket connection to call `rejectRide` over, only an authenticated REST
+ * client.
+ */
+export const declineDriverRideOffer = async (req, res) => {
+  const rideId = toCleanString(req.params?.rideId);
+  if (!rideId) {
+    throw new ApiError(400, "Ride id is required");
+  }
+
+  // Only a driver who was actually offered this ride may decline it -- same
+  // guard the socket path uses, so a stray/late REST call can't poke a ride
+  // it was never dispatched.
+  const state = getDispatchState(rideId);
+  const wasOffered = Array.isArray(state?.notifiedDriverIds)
+    && state.notifiedDriverIds.map(String).includes(String(req.auth.sub));
+  if (!wasOffered) {
+    throw new ApiError(404, "This ride was not offered to you");
+  }
+
+  markDriverRejectedFromDispatch(rideId, req.auth.sub);
+  emitToRideRoom(rideId, "driverRejectedRide", { rideId });
+
+  res.json({ success: true, message: "Offer declined" });
 };
 
 export const addDriverEmergencyContact = async (req, res) => {

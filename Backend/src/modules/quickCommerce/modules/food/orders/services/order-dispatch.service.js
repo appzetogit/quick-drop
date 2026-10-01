@@ -137,6 +137,12 @@ export function buildIncomingOrderPushData(order, payload, acceptanceDeadlineAt)
 
   return {
     type: 'new_order',
+    // One explicit label the native incoming-order card's heading switches
+    // on, instead of guessing Medical-vs-QC from the order-code prefix
+    // (MED-/QC-) the way it still has to without this. prescriptionOnly/
+    // prescriptionRequired are the same fields the order's own isMedicalOrder
+    // concept is built from elsewhere (see shared/prescriptionRules.js).
+    jobType: (order?.prescriptionOnly || order?.prescriptionRequired) ? 'medical' : 'quick_commerce',
     // Carried INSIDE data on purpose.
     //
     // This push is data-only, so FCM omits the notification block and

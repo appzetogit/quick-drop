@@ -624,6 +624,25 @@ const emitRideRequestToDrivers = async ({
       rideId: String(ride._id),
       serviceType: ride.serviceType || 'ride',
       userId: String(ride.userId?._id || ride.userId || ''),
+      // Same field names Food/QC's push already uses (pickupAddress,
+      // dropAddress, tripDistanceKm, earningAmount) -- the native incoming-
+      // order card reads these generically across job types, so a ride
+      // offer needs them under the same keys rather than a parallel set.
+      // Without this the push alone had {type, rideId, serviceType, userId}
+      // and nothing to actually draw a card from.
+      pickupAddress: ride.pickupAddress || '',
+      dropAddress: ride.dropAddress || '',
+      tripDistanceKm: ride.estimatedDistanceMeters
+        ? String(Math.round((ride.estimatedDistanceMeters / 1000) * 10) / 10)
+        : '',
+      earningAmount: String(ride.fare || 0),
+      // One explicit label the native card's heading switches on, instead of
+      // guessing from a mix of `type`/`serviceType`/order-code-prefix the
+      // way the Food/QC path still has to. Porter has no distinct backend
+      // concept today -- it is a `parcel` service-type ride like Bike Parcel,
+      // told apart only by vehicle class, which this payload does not carry
+      // -- so both read as 'parcel' here.
+      jobType: ride.serviceType === 'parcel' ? 'parcel' : 'taxi',
     },
   }).catch((error) => {
     console.error('Failed to send driver ride-request push notification', error);
