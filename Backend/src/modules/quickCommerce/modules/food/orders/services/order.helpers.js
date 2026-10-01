@@ -581,7 +581,14 @@ export async function notifyRestaurantNewOrder(orderDoc, { released = false } = 
           .join(", ")
       : "";
     const total = orderDoc.pricing?.total ?? 0;
-    
+
+    // Same app, same mechanism for every store type -- but the partner should
+    // see at a glance which kind of order just came in, since a medical-store
+    // owner glancing at "New order received" has no way to tell a grocery
+    // order from a prescription one apart until they open it.
+    const vertical = await verticalOfOrder(orderDoc);
+    const orderKindTitle = vertical === 'medical' ? 'New Medical order received' : 'New Quick Commerce order received';
+
     // Construct rich body for the custom notification layout in Flutter
     let bodyText = `Order #${orderDoc.order_id || orderDoc._id} is waiting for review.`;
     if (itemsList) bodyText += `\nItems: ${itemsList}`;
@@ -598,7 +605,7 @@ export async function notifyRestaurantNewOrder(orderDoc, { released = false } = 
     await notifyOwnersActionableAlert(
       [{ ownerType: "RESTAURANT", ownerId: orderDoc.restaurantId }],
       {
-        title: "New order received",
+        title: orderKindTitle,
         body: bodyText,
         androidTag: `order_${orderDoc._id?.toString?.() || ""}`,
         // The channel the restaurant app actually creates. The service default
@@ -617,7 +624,7 @@ export async function notifyRestaurantNewOrder(orderDoc, { released = false } = 
         androidChannelId: "new_order_channel_v3",
         data: {
           type: "new_order",
-          title: "New order received",
+          title: orderKindTitle,
           body: bodyText,
           orderId: orderDoc._id.toString(),
           orderMongoId: orderDoc._id?.toString?.() || "",

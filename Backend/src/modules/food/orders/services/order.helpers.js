@@ -371,7 +371,7 @@ Address: ${addressStr}`;
     await notifyOwnersActionableAlert(
       [{ ownerType: "RESTAURANT", ownerId: orderDoc.restaurantId }],
       {
-        title: "New order received",
+        title: "New Food order received",
         body: bodyText,
         androidTag: `order_${orderDoc._id?.toString?.() || ""}`,
         // Must match the channel id the app itself creates
@@ -386,7 +386,7 @@ Address: ${addressStr}`;
         androidChannelId: "new_order_channel_v3",
         data: {
           type: "new_order",
-          title: "New order received",
+          title: "New Food order received",
           body: bodyText,
           orderId: orderDoc._id.toString(),
           orderMongoId: orderDoc._id?.toString?.() || "",
