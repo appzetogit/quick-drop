@@ -174,7 +174,10 @@ export const initSocket = async (server) => {
             }
             // Shared support inbox. Without this an admin's socket sits in no room
             // at all and every support message the chat service emits to it is lost.
-            if (role === 'ADMIN') socket.join(roomNames.admin());
+            // A super admin IS an admin (same rule as requireRoles): the token carries
+            // the admin document's role, so 'super_admin' joined no admin room and
+            // never heard support chat, order or manual-assignment updates.
+            if (['ADMIN', 'SUPER_ADMIN'].includes(String(role).toUpperCase())) socket.join(roomNames.admin());
         }
 
         // Explicit join (used by existing restaurant client hook).

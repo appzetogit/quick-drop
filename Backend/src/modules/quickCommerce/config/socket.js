@@ -149,7 +149,10 @@ export const initSocket = async (rootIo) => {
                     room: roomNames.delivery(userId),
                 });
             }
-            if (role === 'ADMIN') socket.join(roomNames.admin());
+            // A super admin IS an admin (same rule as requireRoles): the token carries
+            // the admin document's role, so 'super_admin' joined no admin room and
+            // never heard support chat, order or manual-assignment updates.
+            if (['ADMIN', 'SUPER_ADMIN'].includes(String(role).toUpperCase())) socket.join(roomNames.admin());
         }
 
         // ─── Chat: typing indicator relay (messages themselves go over REST) ───
