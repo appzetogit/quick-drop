@@ -377,7 +377,13 @@ Address: ${addressStr}`;
         // Must match the channel id the app itself creates
         // (core/services/local_notification_service.dart) — an id Android has
         // never seen is silently demoted to low importance.
-        androidChannelId: "new_order_channel_v2",
+        // Bumped to _v3 alongside the app's own channel definition
+        // (local_notification_service.dart) -- Android permanently locks a
+        // channel's sound/importance the first time it's created on a
+        // device, so a device that got "_v2" under any earlier, subtly
+        // different settings is stuck silent forever no matter what this
+        // string says until the id itself changes.
+        androidChannelId: "new_order_channel_v3",
         data: {
           type: "new_order",
           title: "New order received",

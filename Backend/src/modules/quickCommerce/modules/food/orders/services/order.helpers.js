@@ -606,10 +606,15 @@ export async function notifyRestaurantNewOrder(orderDoc, { released = false } = 
         // Android silently demotes an unknown channel to low importance, so the
         // alert would arrive without sound or a heads-up even once it displayed.
         // Must match local_notification_service.dart's _newOrderChannel id
-        // exactly -- the "_v2" is not optional, the app bumped to it to force
-        // every device onto a fresh channel with the right sound (see that
-        // file's own comment on why the id was bumped).
-        androidChannelId: "new_order_channel_v2",
+        // exactly. Bumped again to "_v3": a medical-store test device was
+        // still silent after this string was corrected to match "_v2",
+        // because Android permanently locks a channel's sound/importance
+        // the first time it is created on a device -- if that device had
+        // already created "_v2" under any earlier, subtly different
+        // settings (plausible given this id was sent wrong until the
+        // previous fix), no later code change to "_v2" itself can ever
+        // reach it. Only a new id forces a genuinely fresh channel.
+        androidChannelId: "new_order_channel_v3",
         data: {
           type: "new_order",
           title: "New order received",
