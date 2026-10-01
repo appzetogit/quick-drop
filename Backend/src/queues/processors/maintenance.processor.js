@@ -8,6 +8,19 @@ export const processMaintenanceJob = async (job) => {
     const data = job?.data || {};
     const type = data.type || 'unknown';
 
+    if (type === 'MANUAL_ASSIGN_EXPIRY') {
+        // Every 30s, so it logs only when it hands an order back (manualAssign.js).
+        // Not rethrown: a retry would only stack on the next tick.
+        try {
+            const { expireManualAssignments } = await import('../../core/delivery/manualAssign.js');
+            const result = await expireManualAssignments();
+            return { processed: true, type, jobId: job.id, ...result };
+        } catch (err) {
+            logger.error(`[BullMQ:maintenance] MANUAL_ASSIGN_EXPIRY failed: ${err.message}`);
+            return { processed: false, type, jobId: job.id };
+        }
+    }
+
     logger.info(`[BullMQ:maintenance] type=${type} jobId=${job.id}`);
 
     if (type === 'SUBSCRIPTION_EXPIRY_CHECK') {

@@ -46,6 +46,7 @@
     "test:assignment": "node tests/assignment.smoke.mjs",
     "test:assignment-claim": "node tests/assignment.claim.smoke.mjs",
     "test:dispatch": "node tests/dispatch.smoke.mjs",
+    "test:manual-assign": "node tests/manual-assign.smoke.mjs",
     "test:workmode": "node tests/workmode.smoke.mjs",
     "test:api": "node tests/api.smoke.mjs",
     "test:sp-migration": "node tests/sp.migration.smoke.mjs",

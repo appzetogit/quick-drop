@@ -52,7 +52,6 @@ import {
     validateVerifyPaymentDto,
     validateCancelOrderDto,
     validateOrderStatusDto,
-    validateAssignDeliveryDto,
     validateDispatchSettingsDto,
     validateOrderRatingsDto,
     validateCustomerRatingDto
@@ -296,11 +295,13 @@ export async function acceptOrderDeliveryController(req, res, next) {
 
 export async function rejectOrderDeliveryController(req, res, next) {
     try {
-        const qc = await viaQuickOrder(req, (svc, rider, id) => svc.rejectOrderDelivery(id, rider));
+        // Optional: shown to the admins when the rider declines an order they assigned.
+        const reason = typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 200) : '';
+        const qc = await viaQuickOrder(req, (svc, rider, id) => svc.rejectOrderDelivery(id, rider, { reason }));
         if (qc) return sendResponse(res, 200, 'Order rejected', { order: qc.result });
         const deliveryPartnerId = req.user?.userId;
         const orderId = req.params.orderId;
-        const order = await orderService.rejectOrderDelivery(orderId, deliveryPartnerId);
+        const order = await orderService.rejectOrderDelivery(orderId, deliveryPartnerId, { reason });
         return sendResponse(res, 200, 'Order rejected', { order });
     } catch (err) {
         next(err);
@@ -542,18 +543,6 @@ export async function getOrderByIdAdminController(req, res, next) {
         const orderId = req.params.orderId;
         const order = await orderService.getOrderById(orderId, { admin: true });
         return sendResponse(res, 200, 'Order retrieved', { order });
-    } catch (err) {
-        next(err);
-    }
-}
-
-export async function assignDeliveryPartnerController(req, res, next) {
-    try {
-        const adminId = req.user?.userId;
-        const orderId = req.params.orderId;
-        const dto = validateAssignDeliveryDto(req.body);
-        const order = await orderService.assignDeliveryPartnerAdmin(orderId, dto.deliveryPartnerId, adminId);
-        return sendResponse(res, 200, 'Delivery partner assigned', { order });
     } catch (err) {
         next(err);
     }

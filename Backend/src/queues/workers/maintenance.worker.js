@@ -60,11 +60,29 @@ const startMaintenanceWorker = async () => {
         }
     );
 
-    worker.on('completed', (job) => logger.info(`Maintenance job ${job.id} completed`));
+    // 4. Manual rider assignments nobody answered (every 30s): the order goes back
+    //    to auto-dispatch (core/delivery/manualAssign.js). Here, in the workers,
+    //    and not in the API: one repeatable job runs once per tick however many
+    //    API instances there are, and concurrency 1 keeps two runs from overlapping.
+    await maintenanceQueue.add(
+        'MANUAL_ASSIGN_EXPIRY',
+        { type: 'MANUAL_ASSIGN_EXPIRY' },
+        {
+            repeat: { every: 30 * 1000 },
+            jobId: 'manual_assign_expiry_job',
+            removeOnComplete: true,
+            removeOnFail: 50,
+        }
+    );
+
+    // The 30s expiry tick would fill the log with a line a minute; it logs its own result.
+    worker.on('completed', (job) => {
+        if (job?.data?.type !== 'MANUAL_ASSIGN_EXPIRY') logger.info(`Maintenance job ${job.id} completed`);
+    });
     worker.on('failed', (job, err) => logger.error(`Maintenance job ${job?.id} failed: ${err.message}`));
     worker.on('error', (err) => logger.error(`Maintenance worker error: ${err.message}`));
 
-    logger.info('Maintenance worker started with repeatable jobs (Subscription & FSSAI)');
+    logger.info('Maintenance worker started with repeatable jobs (Subscription, FSSAI, stale sweep, manual-assign expiry)');
     return worker;
 };
 

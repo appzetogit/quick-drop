@@ -15,6 +15,7 @@ import * as feedbackExperienceController from '../controllers/feedbackExperience
 import * as notificationBroadcastController from '../controllers/notificationBroadcast.controller.js';
 import * as diningAdminController from '../../dining/controllers/diningAdmin.controller.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
+import { manualAssignControllers } from '../../../../core/delivery/manualAssign.controller.js';
 import { getAdminPageController, upsertAdminPageController } from '../controllers/pageContent.controller.js';
 import * as incentiveController from '../../../../core/incentives/controllers/incentiveController.js';
 import { upload } from '../../../../middleware/upload.js';
@@ -287,6 +288,12 @@ router.get('/orders', orderController.listOrdersAdminController);
 router.get('/orders/:orderId', orderController.getOrderByIdAdminController);
 router.patch('/orders/:orderId/status', orderController.updateOrderStatusAdminController);
 router.delete('/orders/:orderId', orderController.deleteOrderAdminController);
+// Assign a rider by hand (core/delivery/manualAssign.js). Same gates as the
+// routes above: admin, and the 'orders' permission (write for the PATCHes).
+const manualAssign = manualAssignControllers('food');
+router.get('/orders/:orderId/rider-candidates', manualAssign.riderCandidates);
+router.patch('/orders/:orderId/assign-rider', manualAssign.assignRider);
+router.patch('/orders/:orderId/unassign-rider', manualAssign.unassignRider);
 
 // ----- Order cancellation after the restaurant accepts -----
 router.get('/order-cancellation', async (_req, res, next) => {

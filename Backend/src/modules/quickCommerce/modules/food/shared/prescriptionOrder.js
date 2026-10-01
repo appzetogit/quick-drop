@@ -227,7 +227,7 @@ export function assertBillApproved(order, nextStatus) {
  *
  * Unlike [assertBillApproved]/[assertPrescriptionOrderPriced], this has no
  * `nextStatus` to gate on: assigning a rider doesn't move `orderStatus` by
- * itself (see `assignDeliveryPartnerAdmin`), so it has to run unconditionally
+ * itself (see `assignRider` in core/delivery/manualAssign.js), so it has to run unconditionally
  * for a prescription order rather than only when a status transition happens
  * to be one of [ACCEPTANCE_STATUSES]. Without this, an admin's manual "assign
  * a rider" action was the one path in the whole order lifecycle that could

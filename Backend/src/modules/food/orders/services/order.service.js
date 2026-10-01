@@ -1560,8 +1560,8 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   return deliveryService.acceptOrderDelivery(orderId, deliveryPartnerId);
 }
 
-export async function rejectOrderDelivery(orderId, deliveryPartnerId) {
-  return deliveryService.rejectOrderDelivery(orderId, deliveryPartnerId);
+export async function rejectOrderDelivery(orderId, deliveryPartnerId, options = {}) {
+  return deliveryService.rejectOrderDelivery(orderId, deliveryPartnerId, options);
 }
 
 export async function confirmReachedPickupDelivery(orderId, deliveryPartnerId) {
@@ -1784,35 +1784,10 @@ export async function listOrdersAdmin(query) {
   return { ...paginated, orders: paginated.data };
 }
 
-export async function assignDeliveryPartnerAdmin(
-  orderId,
-  deliveryPartnerId,
-  adminId,
-) {
-  const order = await FoodOrder.findById(orderId);
-  if (!order) throw new NotFoundError("Order not found");
-  if (order.dispatch.status === "accepted")
-    throw new ValidationError("Order already accepted by partner");
-
-  const partner = await FoodDeliveryPartner.findById(deliveryPartnerId)
-    .select("status")
-    .lean();
-  if (!partner || partner.status !== "approved")
-    throw new ValidationError("Delivery partner not available");
-
-    order.dispatch.status = 'assigned';
-    order.dispatch.deliveryPartnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
-    order.dispatch.assignedAt = new Date();
-    pushStatusHistory(order, { byRole: 'ADMIN', byId: adminId, from: order.dispatch.status, to: 'assigned' });
-    await order.save();
-    enqueueOrderEvent('delivery_partner_assigned', {
-        orderMongoId: order._id?.toString?.(),
-        orderId: order._id.toString(),
-        deliveryPartnerId,
-        adminId
-    });
-    return normalizeOrderForClient(order);
-}
+// An admin assigning a rider by hand: core/delivery/manualAssign.js (assignRider),
+// mounted at PATCH /admin/orders/:orderId/assign-rider. The old unrouted
+// assignDeliveryPartnerAdmin that lived here bypassed the accept window, the
+// auto-dispatch hand-off and the rider alert, and was removed.
 
 export async function deleteOrderAdmin(orderId, adminId) {
   const identity = buildOrderIdentityFilter(orderId);

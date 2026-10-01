@@ -488,7 +488,14 @@ export async function tryAutoAssign(orderId, options = {}) {
         {
           'dispatch.status': 'assigned',
           'dispatch.acceptedAt': { $exists: false },
-          'dispatch.assignedAt': { $lt: new Date(Date.now() - lockTimeout) }
+          'dispatch.assignedAt': { $lt: new Date(Date.now() - lockTimeout) },
+          // An admin's pick is not a stale offer: it is the assigned rider's for
+          // the whole manual window (core/delivery/manualAssign.js), and the
+          // expiry sweep -- which tells the rider -- hands it back afterwards.
+          $or: [
+            { 'dispatch.assignMode': { $ne: 'manual' } },
+            { 'dispatch.manualDeadlineAt': { $not: { $gt: new Date() } } },
+          ],
         }
       ],
       'dispatch.dispatchingAt': { $exists: false }
@@ -791,16 +798,23 @@ export async function tryAutoAssign(orderId, options = {}) {
         _id: order._id,
         'dispatch.status': { $ne: 'accepted' },
         'dispatch.acceptedAt': { $exists: false },
+        // Nor over an admin's pick made during the broadcast (core/delivery/manualAssign.js).
+        $nor: [{
+          'dispatch.assignMode': 'manual',
+          'dispatch.status': 'assigned',
+          'dispatch.manualDeadlineAt': { $gt: new Date() },
+        }],
       },
       {
-        $set: { 'dispatch.status': 'unassigned', 'dispatch.deliveryPartnerId': null },
+        $set: { 'dispatch.status': 'unassigned', 'dispatch.deliveryPartnerId': null, 'dispatch.assignMode': 'auto' },
+        $unset: { 'dispatch.manualDeadlineAt': '' },
         $push: { 'dispatch.offeredTo': { $each: offeredToEntries } },
       },
     );
 
     if (reoffer.modifiedCount === 0) {
       logger.info(
-        `tryAutoAssign: order ${order._id} was accepted during broadcast â€” leaving assignment intact.`,
+        `tryAutoAssign: order ${order._id} was accepted or assigned during broadcast â€” leaving assignment intact.`,
       );
       return order;
     }
@@ -869,10 +883,17 @@ export async function resendDeliveryNotificationRestaurant(orderId, restaurantId
   if (order.dispatch?.status === 'accepted') {
     throw new ValidationError('A delivery partner has already accepted this order.');
   }
+  // An admin picked a rider and they are still inside their window to answer.
+  if (order.dispatch?.assignMode === 'manual' && order.dispatch?.status === 'assigned'
+    && order.dispatch?.manualDeadlineAt && new Date(order.dispatch.manualDeadlineAt) > new Date()) {
+    throw new ValidationError('Our team has assigned a rider to this order and is waiting for them to accept.');
+  }
 
   order.dispatch.status = 'unassigned';
   order.dispatch.deliveryPartnerId = null;
   order.dispatch.offeredTo = [];
+  order.dispatch.assignMode = 'auto';
+  order.dispatch.manualDeadlineAt = undefined;
   await order.save();
 
   await tryAutoAssign(order._id);
@@ -897,6 +918,8 @@ export async function resendDeliveryNotificationAdmin(orderId) {
   order.dispatch.status = 'unassigned';
   order.dispatch.deliveryPartnerId = null;
   order.dispatch.offeredTo = [];
+  order.dispatch.assignMode = 'auto';
+  order.dispatch.manualDeadlineAt = undefined;
   await order.save();
 
   await tryAutoAssign(order._id);

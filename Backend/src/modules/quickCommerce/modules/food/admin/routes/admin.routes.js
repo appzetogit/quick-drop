@@ -14,6 +14,7 @@ import * as notificationBroadcastController from '../controllers/notificationBro
 import * as diningAdminController from '../../dining/controllers/diningAdmin.controller.js';
 import * as subscriptionBillingController from '../controllers/subscriptionBilling.controller.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
+import { manualAssignControllers } from '../../../../../../core/delivery/manualAssign.controller.js';
 import { listUserCartsAdminController, getUserCartPricingAdminController } from '../controllers/userCartAdmin.controller.js';
 import { getAdminPageController, upsertAdminPageController } from '../controllers/pageContent.controller.js';
 import { upload } from '../../../../middleware/upload.js';
@@ -537,6 +538,21 @@ router.post(
     '/orders/:orderId/resend-notification',
     requireAdminPermission('order_management', 'edit'),
     orderController.resendDeliveryNotificationAdminController
+);
+// Assign a rider by hand (core/delivery/manualAssign.js), for Quick and Medical
+// orders alike. The GET is gated by the section check above (order_management
+// view); the PATCHes ask for edit, as Deassign & Resend does.
+const manualAssign = manualAssignControllers('quickCommerce');
+router.get('/orders/:orderId/rider-candidates', manualAssign.riderCandidates);
+router.patch(
+    '/orders/:orderId/assign-rider',
+    requireAdminPermission('order_management', 'edit'),
+    manualAssign.assignRider
+);
+router.patch(
+    '/orders/:orderId/unassign-rider',
+    requireAdminPermission('order_management', 'edit'),
+    manualAssign.unassignRider
 );
 router.post('/orders/:orderId/refund', orderController.processRefundAdminController);
 router.delete('/orders/:orderId', orderController.deleteOrderAdminController);

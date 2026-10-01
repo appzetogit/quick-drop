@@ -621,6 +621,8 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
         'dispatch.assignedAt': now,
         'dispatch.acceptedAt': now,
       },
+      // An admin's pick, once accepted, has no deadline left to expire.
+      $unset: { 'dispatch.manualDeadlineAt': '' },
       $push: {
         statusHistory: statusHistoryEntry,
       },
@@ -846,7 +848,7 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
   return responseOrder;
 }
 
-export async function rejectOrderDelivery(orderId, deliveryPartnerId) {
+export async function rejectOrderDelivery(orderId, deliveryPartnerId, { reason } = {}) {
   const identity = buildOrderIdentityFilter(orderId);
   if (!identity) throw new ValidationError('Order id required');
 
@@ -877,6 +879,11 @@ export async function rejectOrderDelivery(orderId, deliveryPartnerId) {
   );
   if (offer) offer.action = 'rejected';
 
+  // An admin's pick declined: back to auto-dispatch, and the admins are told
+  // (core/delivery/manualAssign.js). Null for an ordinary reject.
+  const manualAssign = await import('../../../../../../core/delivery/manualAssign.js');
+  const declined = await manualAssign.noteManualDecline('quickCommerce', order, deliveryPartnerId, reason);
+
   order.dispatch.status = 'unassigned';
   order.dispatch.deliveryPartnerId = undefined;
   order.dispatch.assignedAt = undefined;
@@ -886,9 +893,10 @@ export async function rejectOrderDelivery(orderId, deliveryPartnerId) {
     byId: deliveryPartnerId,
     from: 'assigned',
     to: 'unassigned',
-    note: 'Rejected',
+    note: declined ? declined.note : 'Rejected',
   });
   await order.save();
+  if (declined) void manualAssign.announceManualDecline('quickCommerce', order, deliveryPartnerId, declined);
 
   // Free the rider before the order is re-offered. Releasing after tryAutoAssign
   // would leave a window where this order is dispatchable but the only rider who

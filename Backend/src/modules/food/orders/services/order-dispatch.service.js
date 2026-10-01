@@ -138,8 +138,12 @@ async function listNearbyOnlineDeliveryPartners(
   // Distance is not the same question as zone: two zones can sit inside 15km of
   // each other, and an order must still stay in its own.
   const zoneScoped = zoneScope(scored);
+  // Copied first: with no zone enforced, `kept` IS `scored`, and clearing
+  // `scored` emptied it too -- every dispatch then fell through to the 60 km
+  // fallback and skipped the 15/25/40 km steps.
+  const keptInZone = zoneScoped.kept.slice();
   scored.length = 0;
-  scored.push(...zoneScoped.kept);
+  scored.push(...keptInZone);
 
   scored.sort((a, b) => a.distanceKm - b.distanceKm);
   const picked = scored.slice(0, Math.max(1, limit));
@@ -346,7 +350,14 @@ export async function tryAutoAssign(orderId, options = {}) {
         {
           'dispatch.status': 'assigned',
           'dispatch.acceptedAt': { $exists: false },
-          'dispatch.assignedAt': { $lt: new Date(Date.now() - lockTimeout) }
+          'dispatch.assignedAt': { $lt: new Date(Date.now() - lockTimeout) },
+          // An admin's pick is not a stale offer: it is the assigned rider's for
+          // the whole manual window (core/delivery/manualAssign.js), and the
+          // expiry sweep -- which tells the rider -- hands it back afterwards.
+          $or: [
+            { 'dispatch.assignMode': { $ne: 'manual' } },
+            { 'dispatch.manualDeadlineAt': { $not: { $gt: new Date() } } },
+          ],
         }
       ],
       'dispatch.dispatchingAt': { $exists: false }
@@ -468,10 +479,34 @@ export async function tryAutoAssign(orderId, options = {}) {
       action: 'offered'
     }));
 
-    order.dispatch.status = 'unassigned';
-    order.dispatch.deliveryPartnerId = null;
-    order.dispatch.offeredTo.push(...offeredToEntries);
-    await order.save();
+    /*
+     * Conditional update, not order.save() -- the same fix quick commerce made.
+     * This document was loaded before the rider lookup and the push fan-out, and
+     * in that time a rider may have accepted or an admin may have assigned a
+     * rider by hand (core/delivery/manualAssign.js). A blind save wrote
+     * 'unassigned' over either.
+     */
+    const reoffer = await FoodOrder.updateOne(
+      {
+        _id: order._id,
+        'dispatch.status': { $ne: 'accepted' },
+        'dispatch.acceptedAt': { $exists: false },
+        $nor: [{
+          'dispatch.assignMode': 'manual',
+          'dispatch.status': 'assigned',
+          'dispatch.manualDeadlineAt': { $gt: new Date() },
+        }],
+      },
+      {
+        $set: { 'dispatch.status': 'unassigned', 'dispatch.deliveryPartnerId': null, 'dispatch.assignMode': 'auto' },
+        $unset: { 'dispatch.manualDeadlineAt': '' },
+        $push: { 'dispatch.offeredTo': { $each: offeredToEntries } },
+      },
+    );
+    if (reoffer.modifiedCount === 0) {
+      logger.info(`tryAutoAssign: order ${order._id} was accepted or assigned during broadcast -- leaving it.`);
+      return order;
+    }
 
     // Re-check in 60s
     await addOrderJob({
@@ -536,10 +571,17 @@ export async function resendDeliveryNotificationRestaurant(orderId, restaurantId
   if (order.dispatch?.status === 'accepted') {
     throw new ValidationError('A delivery partner has already accepted this order.');
   }
+  // An admin picked a rider and they are still inside their window to answer.
+  if (order.dispatch?.assignMode === 'manual' && order.dispatch?.status === 'assigned'
+    && order.dispatch?.manualDeadlineAt && new Date(order.dispatch.manualDeadlineAt) > new Date()) {
+    throw new ValidationError('Our team has assigned a rider to this order and is waiting for them to accept.');
+  }
 
   order.dispatch.status = 'unassigned';
   order.dispatch.deliveryPartnerId = null;
   order.dispatch.offeredTo = [];
+  order.dispatch.assignMode = 'auto';
+  order.dispatch.manualDeadlineAt = undefined;
   await order.save();
 
   await tryAutoAssign(order._id);

@@ -329,7 +329,20 @@ const dispatchSchema = new mongoose.Schema(
             at: { type: Date, default: Date.now },
             action: { type: String, enum: ['offered', 'rejected', 'timeout'], default: 'offered' }
         }],
-        dispatchingAt: { type: Date }
+        dispatchingAt: { type: Date },
+        /*
+         * Manual assignment (core/delivery/manualAssign.js). 'manual' while an
+         * admin's pick is waiting on that rider: auto-dispatch leaves the order
+         * alone until manualDeadlineAt, after which the expiry sweep hands it
+         * back. Reset to 'auto' whenever the order returns to the pool.
+         */
+        assignMode: { type: String, enum: ['auto', 'manual'], default: 'auto' },
+        assignedBy: {
+            adminId: { type: mongoose.Schema.Types.ObjectId, default: null },
+            name: { type: String, default: '' },
+            at: { type: Date, default: null }
+        },
+        manualDeadlineAt: { type: Date }
     },
     { _id: false }
 );
@@ -553,6 +566,8 @@ orderSchema.index({ 'dispatch.deliveryPartnerId': 1, orderStatus: 1 });
 orderSchema.index({ 'dispatch.status': 1, orderStatus: 1 });
 orderSchema.index({ 'dispatch.status': 1, orderStatus: 1, updatedAt: -1 });
 orderSchema.index({ 'dispatch.deliveryPartnerId': 1, 'dispatch.status': 1, updatedAt: -1 });
+// The manual-assignment expiry sweep (core/delivery/manualAssign.js), every 30s.
+orderSchema.index({ 'dispatch.assignMode': 1, 'dispatch.status': 1, 'dispatch.manualDeadlineAt': 1 });
 orderSchema.index({ 'payment.status': 1, createdAt: -1 });
 orderSchema.index({ 'payment.method': 1, createdAt: -1 });
 
