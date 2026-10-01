@@ -363,20 +363,36 @@ const getAdminNotifications = async (req, res) => {
 };
 
 /**
+ * The owner field to filter a caller's notifications by.
+ *
+ * Uses the role from the verified token (req.userRole). req.user.role is the
+ * account document's own field: absent on some accounts and lowercase on others,
+ * and every miss used to drop the owner filter -- any caller could mark read or
+ * delete anyone's notification, and mark-all-read touched the whole platform.
+ * Returns null for an unknown role so callers refuse rather than go unfiltered.
+ */
+const ownerFilter = (req) => {
+  const role = String(req.userRole || req.user?.role || '').trim().toUpperCase();
+  const id = req.user?.id;
+  if (!id) return null;
+  if (role === 'USER') return { userId: id };
+  if (role === 'VENDOR') return { vendorId: id };
+  if (role === 'WORKER') return { workerId: id };
+  if (['ADMIN', 'SUPER_ADMIN', 'SUPERADMIN'].includes(role)) return { adminId: id };
+  return null;
+};
+
+const invalidRole = (res) => res.status(403).json({ success: false, message: 'Invalid user role' });
+
+/**
  * Mark notification as read
  */
 const markAsRead = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
-    const userRole = req.user.role;
-
-    // Build query based on user role
-    let query = { _id: id };
-    if (userRole === 'USER') query.userId = userId;
-    else if (userRole === 'VENDOR') query.vendorId = userId;
-    else if (userRole === 'WORKER') query.workerId = userId;
-    else if (userRole === 'ADMIN') query.adminId = userId;
+    const owner = ownerFilter(req);
+    if (!owner) return invalidRole(res);
+    const query = { _id: id, ...owner };
 
     const notification = await Notification.findOne(query);
 
@@ -410,15 +426,9 @@ const markAsRead = async (req, res) => {
  */
 const markAllAsRead = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const userRole = req.user.role;
-
-    // Build query based on user role
-    let query = { isRead: false };
-    if (userRole === 'USER') query.userId = userId;
-    else if (userRole === 'VENDOR') query.vendorId = userId;
-    else if (userRole === 'WORKER') query.workerId = userId;
-    else if (userRole === 'ADMIN') query.adminId = userId;
+    const owner = ownerFilter(req);
+    if (!owner) return invalidRole(res);
+    const query = { isRead: false, ...owner };
 
     await Notification.updateMany(query, {
       isRead: true,
@@ -444,15 +454,9 @@ const markAllAsRead = async (req, res) => {
 const deleteNotification = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
-    const userRole = req.user.role;
-
-    // Build query based on user role
-    let query = { _id: id };
-    if (userRole === 'USER') query.userId = userId;
-    else if (userRole === 'VENDOR') query.vendorId = userId;
-    else if (userRole === 'WORKER') query.workerId = userId;
-    else if (userRole === 'ADMIN') query.adminId = userId;
+    const owner = ownerFilter(req);
+    if (!owner) return invalidRole(res);
+    const query = { _id: id, ...owner };
 
     const notification = await Notification.findOneAndDelete(query);
 
@@ -481,22 +485,10 @@ const deleteNotification = async (req, res) => {
  */
 const deleteAllNotifications = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const userRole = req.user.role;
-
-    // Build query based on user role to ensure they only delete their own notifications
-    let query = {};
-    if (userRole === 'USER' || userRole === 'user') query.userId = userId;
-    else if (userRole === 'VENDOR' || userRole === 'vendor') query.vendorId = userId;
-    else if (userRole === 'WORKER' || userRole === 'worker') query.workerId = userId;
-    else if (userRole === 'ADMIN' || userRole === 'admin' || userRole === 'super_admin') query.adminId = userId;
-    else {
-      console.log('Role mismatch in deleteAllNotifications:', userRole);
-      return res.status(403).json({
-        success: false,
-        message: 'Invalid user role'
-      });
-    }
+    // Only the caller's own notifications.
+    const owner = ownerFilter(req);
+    if (!owner) return invalidRole(res);
+    const query = { ...owner };
 
     const result = await Notification.deleteMany(query);
 

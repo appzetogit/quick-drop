@@ -4,6 +4,7 @@ const { validationResult } = require('express-validator');
 const { createOrder } = require('../../services/razorpayService');
 const { withTransaction, abort } = require('../../utils/withTransaction');
 const { confirmGatewayPayment } = require('../../utils/confirmGatewayPayment');
+const { claimPaymentReceipt, releasePaymentReceipt } = require('../../utils/paymentReceipt');
 
 /**
  * Get wallet balance
@@ -119,6 +120,10 @@ const verifyWalletTopup = async (req, res) => {
       razorpay_signature
     } = req.body;
 
+    if (!razorpay_order_id || !razorpay_payment_id) {
+      return res.status(400).json({ success: false, message: 'Missing payment details' });
+    }
+
     // Verify signature
     const { verifyPayment } = require('../../services/razorpayService');
     const isValid = verifyPayment(razorpay_order_id, razorpay_payment_id, razorpay_signature);
@@ -141,6 +146,21 @@ const verifyWalletTopup = async (req, res) => {
       return res.status(confirmed.status).json({ success: false, message: confirmed.message });
     }
 
+    // The signature and the captured status say nothing about WHAT the payment
+    // was for. Without this, any genuine payment -- a booking payment, a plan
+    // purchase, someone else's top-up -- could be replayed here and credited to
+    // the caller's wallet. addMoneyToWallet stamps { type, userId } into the
+    // order notes; both are server-set and must match the caller.
+    if (!confirmed.mock) {
+      const notes = confirmed.notes || {};
+      if (notes.type !== 'wallet_topup') {
+        return res.status(400).json({ success: false, message: 'This payment is not a wallet top-up' });
+      }
+      if (!notes.userId || String(notes.userId) !== String(userId)) {
+        return res.status(403).json({ success: false, message: 'This order belongs to a different account' });
+      }
+    }
+
     // Dev-mock orders can't be confirmed against a gateway, so they fall back to
     // the requested amount. isDevMockOrder() is hard-disabled in production.
     const amount = confirmed.mock ? Number(req.body.amount) : confirmed.amount;
@@ -148,56 +168,85 @@ const verifyWalletTopup = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid payment amount' });
     }
 
+    // Platform-wide single use: a payment id can be consumed by ONE flow for ONE
+    // account. Claimed before any money moves; released if crediting fails.
+    const claim = await claimPaymentReceipt({
+      paymentId: razorpay_payment_id,
+      orderId: razorpay_order_id,
+      purpose: 'wallet_topup',
+      ownerId: userId,
+      amount
+    });
+    if (claim.status === 'conflict') {
+      return res.status(409).json({ success: false, message: 'This payment has already been used' });
+    }
+    if (claim.status === 'duplicate') {
+      // Same payment, same account, same purpose: already credited. Idempotent success.
+      const current = await User.findById(userId).select('wallet').lean();
+      return res.status(200).json({
+        success: true,
+        message: 'This payment has already been credited',
+        data: { balance: current?.wallet?.balance || 0, alreadyProcessed: true }
+      });
+    }
+
     const Transaction = require('../../models/Transaction');
 
-    // Credit + ledger row commit together, and the ledger row's unique-ish
-    // referenceId check makes a replayed signature a no-op instead of free money.
-    const outcome = await withTransaction(async (session) => {
-      const alreadyCredited = await Transaction.findOne({
-        referenceId: razorpay_payment_id,
-        type: 'credit'
-      }).session(session);
+    // Credit + ledger row commit together. The legacy ledger lookup still guards
+    // payments credited before receipts existed.
+    let outcome;
+    try {
+      outcome = await withTransaction(async (session) => {
+        const alreadyCredited = await Transaction.findOne({
+          referenceId: razorpay_payment_id
+        }).session(session);
 
-      if (alreadyCredited) abort({ alreadyCredited: true });
+        if (alreadyCredited) abort({ alreadyCredited: true });
 
-      const updated = await User.findByIdAndUpdate(
-        userId,
-        { $inc: { 'wallet.balance': amount } },
-        { new: true, session }
-      );
+        const updated = await User.findByIdAndUpdate(
+          userId,
+          { $inc: { 'wallet.balance': amount } },
+          { new: true, session }
+        );
 
-      if (!updated) abort({ notFound: true });
+        if (!updated) abort({ notFound: true });
 
-      const previousBalance = (updated.wallet.balance || 0) - amount;
+        const previousBalance = (updated.wallet.balance || 0) - amount;
 
-      await Transaction.create([{
-        userId: updated._id,
-        type: 'credit',
-        amount,
-        status: 'completed',
-        paymentMethod: 'razorpay', // or online
-        description: 'Wallet Top-up',
-        balanceBefore: previousBalance,
-        balanceAfter: updated.wallet.balance,
-        referenceId: razorpay_payment_id,
-        metadata: {
-          orderId: razorpay_order_id
-        }
-      }], { session });
+        await Transaction.create([{
+          userId: updated._id,
+          type: 'credit',
+          amount,
+          status: 'completed',
+          paymentMethod: 'razorpay', // or online
+          description: 'Wallet Top-up',
+          balanceBefore: previousBalance,
+          balanceAfter: updated.wallet.balance,
+          referenceId: razorpay_payment_id,
+          metadata: {
+            orderId: razorpay_order_id
+          }
+        }], { session });
 
-      return { balance: updated.wallet.balance };
-    });
+        return { balance: updated.wallet.balance };
+      });
+    } catch (err) {
+      await releasePaymentReceipt({ paymentId: razorpay_payment_id, purpose: 'wallet_topup', ownerId: userId });
+      throw err;
+    }
 
     if (outcome.notFound) {
+      await releasePaymentReceipt({ paymentId: razorpay_payment_id, purpose: 'wallet_topup', ownerId: userId });
       return res.status(404).json({
         success: false,
         message: 'User not found'
       });
     }
     if (outcome.alreadyCredited) {
-      return res.status(400).json({
+      // Consumed before receipts existed. Keep the receipt: the payment IS used.
+      return res.status(409).json({
         success: false,
-        message: 'This payment has already been credited'
+        message: 'This payment has already been used'
       });
     }
 

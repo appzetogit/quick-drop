@@ -5,6 +5,7 @@ const { createOrder, verifyPayment } = require('../../services/razorpayService')
 const { withTransaction, abort } = require('../../utils/withTransaction');
 const { effectiveCashLimit } = require('../../utils/cashLimit');
 const { confirmGatewayPayment } = require('../../utils/confirmGatewayPayment');
+const { claimPaymentReceipt, releasePaymentReceipt } = require('../../utils/paymentReceipt');
 const PlatformEarning = require('../../models/PlatformEarning');
 
 /**
@@ -316,64 +317,94 @@ const verifyDuesPayment = async (req, res) => {
       return res.status(confirmed.status).json({ success: false, message: confirmed.message });
     }
 
-    if (!confirmed.mock && confirmed.notes?.workerId &&
-        String(confirmed.notes.workerId) !== String(workerId)) {
-      return res.status(403).json({ success: false, message: 'This order belongs to a different account' });
+    // A payment with no workerId in its notes (a booking payment, a wallet
+    // top-up) used to pass this check and clear dues. createDuesPaymentOrder has
+    // always written { type: 'worker_dues', workerId }, so both are required.
+    if (!confirmed.mock) {
+      const notes = confirmed.notes || {};
+      if (notes.type !== 'worker_dues') {
+        return res.status(400).json({ success: false, message: 'This payment is not a dues payment' });
+      }
+      if (!notes.workerId || String(notes.workerId) !== String(workerId)) {
+        return res.status(403).json({ success: false, message: 'This order belongs to a different account' });
+      }
+    }
+
+    // Platform-wide single use, claimed before dues move; released if applying fails.
+    const claim = await claimPaymentReceipt({
+      paymentId: razorpay_payment_id,
+      orderId: razorpay_order_id,
+      purpose: 'worker_dues',
+      ownerId: workerId,
+      amount: confirmed.amount
+    });
+    if (claim.status !== 'claimed') {
+      return res.status(claim.status === 'duplicate' ? 400 : 409).json({
+        success: false,
+        message: claim.status === 'duplicate' ? 'This payment has already been applied' : 'This payment has already been used'
+      });
     }
 
     // Dues reduction and its ledger row commit together.
-    const outcome = await withTransaction(async (session) => {
-      const already = await Transaction.findOne({
-        'metadata.transactionId': razorpay_payment_id,
-        type: 'settlement'
-      }).session(session);
-      if (already) abort({ alreadyApplied: true });
+    let outcome;
+    try {
+      outcome = await withTransaction(async (session) => {
+        const already = await Transaction.findOne({
+          'metadata.transactionId': razorpay_payment_id,
+          type: 'settlement'
+        }).session(session);
+        if (already) abort({ alreadyApplied: true });
 
-      const worker = await Worker.findById(workerId).session(session);
-      if (!worker) abort({ notFound: true });
+        const worker = await Worker.findById(workerId).session(session);
+        if (!worker) abort({ notFound: true });
 
-      const currentDues = worker.wallet?.dues || 0;
-      // Dev-mock orders have no gateway amount to read, so they settle the full
-      // dues as before. isDevMockOrder() is hard-disabled in production.
-      const paidAmount = confirmed.mock ? currentDues : confirmed.amount;
-      // Never drive dues negative if the worker overpays.
-      const applied = Math.min(paidAmount, currentDues);
+        const currentDues = worker.wallet?.dues || 0;
+        // Dev-mock orders have no gateway amount to read, so they settle the full
+        // dues as before. isDevMockOrder() is hard-disabled in production.
+        const paidAmount = confirmed.mock ? currentDues : confirmed.amount;
+        // Never drive dues negative if the worker overpays.
+        const applied = Math.min(paidAmount, currentDues);
 
-      worker.wallet.dues = currentDues - applied;
+        worker.wallet.dues = currentDues - applied;
 
-      // Unblock once the outstanding balance is back within the cash limit
-      if (worker.wallet.isBlocked && worker.wallet.dues <= (await effectiveCashLimit(worker)).limit) {
-        worker.wallet.isBlocked = false;
-        worker.wallet.blockedAt = null;
-        worker.wallet.blockReason = null;
-      }
-
-      await worker.save({ session });
-
-      const [transaction] = await Transaction.create([{
-        workerId: worker._id,
-        type: 'settlement',
-        amount: applied, // The amount actually applied against dues
-        description: `Paid platform dues via Razorpay`,
-        status: 'completed',
-        metadata: {
-          paymentMethod: 'razorpay',
-          transactionId: razorpay_payment_id,
-          orderId: razorpay_order_id,
-          amountPaid: paidAmount,
-          notes: 'Worker cleared their platform dues'
+        // Unblock once the outstanding balance is back within the cash limit
+        if (worker.wallet.isBlocked && worker.wallet.dues <= (await effectiveCashLimit(worker)).limit) {
+          worker.wallet.isBlocked = false;
+          worker.wallet.blockedAt = null;
+          worker.wallet.blockReason = null;
         }
-      }], { session });
 
-      return {
-        transaction,
-        applied,
-        dues: worker.wallet.dues,
-        isBlocked: worker.wallet.isBlocked
-      };
-    });
+        await worker.save({ session });
+
+        const [transaction] = await Transaction.create([{
+          workerId: worker._id,
+          type: 'settlement',
+          amount: applied, // The amount actually applied against dues
+          description: `Paid platform dues via Razorpay`,
+          status: 'completed',
+          metadata: {
+            paymentMethod: 'razorpay',
+            transactionId: razorpay_payment_id,
+            orderId: razorpay_order_id,
+            amountPaid: paidAmount,
+            notes: 'Worker cleared their platform dues'
+          }
+        }], { session });
+
+        return {
+          transaction,
+          applied,
+          dues: worker.wallet.dues,
+          isBlocked: worker.wallet.isBlocked
+        };
+      });
+    } catch (err) {
+      await releasePaymentReceipt({ paymentId: razorpay_payment_id, purpose: 'worker_dues', ownerId: workerId });
+      throw err;
+    }
 
     if (outcome.notFound) {
+      await releasePaymentReceipt({ paymentId: razorpay_payment_id, purpose: 'worker_dues', ownerId: workerId });
       return res.status(404).json({ success: false, message: 'Worker not found' });
     }
     if (outcome.alreadyApplied) {
