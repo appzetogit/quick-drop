@@ -587,23 +587,47 @@ export function onFoodOrQuickCommerceOrderCompleted({ deliveryPartnerId, vertica
 export async function onTaxiRideCompleted({ driverId, ride = null }) {
     const segment = await segmentOfRide(ride);
     if (segment === 'foodAndQuick') {
-        return maybeCreditIncentive({
+        await maybeCreditIncentive({
             startFrom: 'taxiDriver',
             id: driverId,
             segment,
             zoneId: await deliveryZoneIdAt(ride?.pickupLocation?.coordinates),
         });
+    } else {
+        const { taxiZoneIdOfRide } = await import('../../zones/taxiZone.js');
+        const zoneId = ride ? await taxiZoneIdOfRide(ride) : null;
+        const vehicleTypeId = ride?.vehicleTypeId || null;
+        await maybeCreditIncentive({
+            startFrom: 'taxiDriver',
+            id: driverId,
+            segment,
+            zoneId,
+            vehicleTypeId,
+        });
     }
-    const { taxiZoneIdOfRide } = await import('../../zones/taxiZone.js');
-    const zoneId = ride ? await taxiZoneIdOfRide(ride) : null;
-    const vehicleTypeId = ride?.vehicleTypeId || null;
-    return maybeCreditIncentive({
-        startFrom: 'taxiDriver',
-        id: driverId,
-        segment,
-        zoneId,
-        vehicleTypeId,
-    });
+    await nudgeIncentiveCard(driverId);
+}
+
+/**
+ * Tell the delivery app to redraw its incentive card now.
+ *
+ * The app refetches the card when a FOOD order finishes, but not when a
+ * parcel or ride does, so the bar waited for its 60-second poll. It already
+ * refetches on an `incentive_credited` push; one with no tier or amount is
+ * silent (data-only, nothing announced, no notification shown).
+ */
+async function nudgeIncentiveCard(driverId) {
+    try {
+        const ctx = await resolveDriverContext({ startFrom: 'taxiDriver', id: driverId });
+        if (!ctx?.foodPartnerId) return;
+        const { sendNotificationToOwners } = await import('../../notifications/firebase.service.js');
+        await sendNotificationToOwners(
+            [{ ownerType: 'DELIVERY_PARTNER', ownerId: ctx.foodPartnerId }],
+            { dataOnly: true, skipHighlighter: true, title: '', body: '', data: { type: 'incentive_credited', reason: 'progress' } },
+        );
+    } catch (err) {
+        logger.warn(`incentive: card nudge failed: ${err?.message || err}`);
+    }
 }
 
 /**
