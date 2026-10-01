@@ -183,6 +183,13 @@ const buildCatalogUpdate = (body = {}) => {
 
 /** Selling above the printed maximum retail price is illegal, so it is refused outright. */
 const assertPriceWithinMrp = (price, mrp, variants = []) => {
+    // Each pack size (500 g, 1 kg) carries its own printed MRP as its otherPrice.
+    for (const v of Array.isArray(variants) ? variants : []) {
+        const variantMrp = Number(v?.otherPrice);
+        if (Number.isFinite(variantMrp) && variantMrp > 0 && Number(v?.price) > variantMrp) {
+            throw new ValidationError(`${v?.name || 'A size'}: price cannot be above its MRP of ${variantMrp}`);
+        }
+    }
     if (!Number.isFinite(Number(mrp)) || Number(mrp) <= 0) return;
     const highest = Math.max(
         Number(price) || 0,
