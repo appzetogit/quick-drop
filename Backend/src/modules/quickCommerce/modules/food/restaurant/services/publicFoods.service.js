@@ -101,6 +101,14 @@ export async function listPublicFoods(query = {}) {
             images: Array.isArray(food.images) && food.images.length
                 ? food.images
                 : (food.image ? [food.image] : []),
+            // What is on the pack, as the restaurant-menu payload already sends
+            // it: without these a listing card showed "1 pack" and no MRP.
+            brand: food.brand || '',
+            packSize: food.packSize || '',
+            mrp: food.mrp ?? null,
+            stockQty: food.stockQty ?? null,
+            maxQtyPerOrder: food.maxQtyPerOrder ?? null,
+            expiryDate: food.expiryDate || null,
             foodType: food.foodType || 'Non-Veg',
             isAvailable: food.isAvailable !== false,
             preparationTime: food.preparationTime || '',
