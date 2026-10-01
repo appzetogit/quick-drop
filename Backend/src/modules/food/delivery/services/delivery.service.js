@@ -847,6 +847,56 @@ const linkedRideTrips = async (partnerId, range = null) => {
     }
 };
 
+/**
+ * Bonuses credited to the rider (target incentives, referral and admin
+ * bonuses), as rows for the History screen, which otherwise lists trips only.
+ */
+const bonusHistoryRows = async (partnerId, range) => {
+    try {
+        const rows = await DeliveryBonusTransaction.find({
+            deliveryPartnerId: partnerId,
+            createdAt: { $gte: range.start, $lte: range.end },
+        })
+            .sort({ createdAt: -1 })
+            .limit(200)
+            .lean();
+        return rows.map((t) => {
+            const amount = Number(t.amount) || 0;
+            const isIncentive = /^INC-/.test(String(t.transactionId || ''));
+            const label = isIncentive ? 'Incentive bonus' : 'Bonus';
+            const reference = String(t.reference || '').trim();
+            return {
+                id: t._id,
+                _id: t._id,
+                orderId: t.transactionId || String(t._id),
+                type: 'bonus',
+                category: 'bonus',
+                status: 'Completed',
+                restaurantName: reference ? `${label} · ${reference}` : label,
+                restaurant: label,
+                items: [],
+                orderItems: [],
+                paymentMethod: '',
+                totalAmount: 0,
+                orderTotal: 0,
+                codAmount: 0,
+                codCollectedAmount: 0,
+                deliveryEarning: amount,
+                earningAmount: amount,
+                amount,
+                riderTotalPayout: amount,
+                createdAt: t.createdAt,
+                deliveredAt: t.createdAt,
+                completedAt: t.createdAt,
+                date: t.createdAt,
+                time: t.createdAt ? new Date(t.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : '',
+            };
+        });
+    } catch {
+        return [];
+    }
+};
+
 /** Quick & Medical deliveries this rider made as their linked QC rider, as trips. */
 const linkedQcTrips = async (partnerId, range = null) => {
     try {
@@ -867,11 +917,15 @@ const linkedQcTrips = async (partnerId, range = null) => {
             .lean();
         return orders.map((o) => {
             const trip = toTripDto(o);
+            const medical = String(o.order_id || '').startsWith('MED-') || o.restaurantId?.storeType === 'pharmacy';
+            // The History screen tags a card by `category` (Medical / Quick
+            // Commerce); without it these showed as Food.
+            const tagged = { ...trip, category: medical ? 'medical' : 'quick_commerce' };
             if (!trip.restaurantName) {
-                const label = String(o.order_id || '').startsWith('MED-') ? 'Medical order' : 'Quick order';
-                return { ...trip, restaurantName: label, restaurant: label };
+                const label = medical ? 'Medical order' : 'Quick order';
+                return { ...tagged, restaurantName: label, restaurant: label };
             }
-            return trip;
+            return tagged;
         });
     } catch {
         return [];
@@ -917,13 +971,15 @@ export const getDeliveryPartnerTripHistory = async (deliveryPartnerId, query = {
         .limit(limit)
         .lean();
 
-    // Completed Medical/Quick deliveries and bike parcels belong in history
-    // too; a "cancelled" or "pending" filter has none to add.
+    // Completed Medical/Quick deliveries and the bonuses credited in the period
+    // belong in history too; a "cancelled" or "pending" filter has none to add.
+    // Parcels/rides are NOT added here: the History screen loads them itself
+    // from the ride history, and adding them listed every parcel twice.
     const extra = sf === 'cancelled' || sf === 'pending'
         ? []
         : [
             ...(await linkedQcTrips(partnerId, { start, end })),
-            ...(await linkedRideTrips(partnerId, { start, end })),
+            ...(await bonusHistoryRows(partnerId, { start, end })),
         ];
     const trips = [...(orders || []).map(toTripDto), ...extra]
         .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))

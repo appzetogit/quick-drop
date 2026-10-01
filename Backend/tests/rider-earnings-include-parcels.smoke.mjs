@@ -74,9 +74,29 @@ await check('a Medical delivery is listed in history under the pharmacy name', a
   assert.ok(pocket.transactions.payment.some((t) => /Quick Medical/.test(t.description)), JSON.stringify(pocket.transactions.payment.map((t) => t.description)));
 });
 
-await check('trip history lists the parcel', async () => {
+await check('trip history does NOT repeat the parcel (the app lists rides itself)', async () => {
   const { trips } = await svc.getDeliveryPartnerTripHistory(String(rider._id), { period: 'daily', status: 'Completed' });
-  assert.ok(trips.some((t) => t.restaurantName === 'Bike parcel'), JSON.stringify(trips.map((t) => t.restaurantName)));
+  assert.ok(!trips.some((t) => t.restaurantName === 'Bike parcel'), JSON.stringify(trips.map((t) => t.restaurantName)));
+});
+
+await check('a bonus credited today appears in history, tagged, with its amount', async () => {
+  const { DeliveryBonusTransaction } = await import('../src/modules/food/admin/models/deliveryBonusTransaction.model.js');
+  await DeliveryBonusTransaction.create({
+    deliveryPartnerId: rider._id, transactionId: 'INC-20261001-aaaaaa-bbbbbb', amount: 150,
+    reference: 'Daily incentive — tier 1-5 (5 completed today)',
+  });
+  const { trips } = await svc.getDeliveryPartnerTripHistory(String(rider._id), { period: 'daily' });
+  const bonus = trips.find((t) => t.type === 'bonus');
+  assert.ok(bonus, JSON.stringify(trips.map((t) => t.restaurantName)));
+  assert.equal(bonus.earningAmount, 150);
+  assert.match(bonus.restaurantName, /^Incentive bonus · Daily incentive/);
+  const cancelled = await svc.getDeliveryPartnerTripHistory(String(rider._id), { period: 'daily', status: 'Cancelled' });
+  assert.ok(!cancelled.trips.some((t) => t.type === 'bonus'));
+});
+
+await check('a Medical delivery in history is tagged medical', async () => {
+  const { trips } = await svc.getDeliveryPartnerTripHistory(String(rider._id), { period: 'daily' });
+  assert.equal(trips.find((t) => t.restaurantName === 'Quick Medical')?.category, 'medical');
 });
 
 await mongoose.disconnect();
