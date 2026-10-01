@@ -605,7 +605,11 @@ export async function notifyRestaurantNewOrder(orderDoc, { released = false } = 
         // is the rider app's new-order channel, which does not exist here —
         // Android silently demotes an unknown channel to low importance, so the
         // alert would arrive without sound or a heads-up even once it displayed.
-        androidChannelId: "new_order_channel",
+        // Must match local_notification_service.dart's _newOrderChannel id
+        // exactly -- the "_v2" is not optional, the app bumped to it to force
+        // every device onto a fresh channel with the right sound (see that
+        // file's own comment on why the id was bumped).
+        androidChannelId: "new_order_channel_v2",
         data: {
           type: "new_order",
           title: "New order received",
