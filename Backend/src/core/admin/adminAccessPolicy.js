@@ -341,8 +341,10 @@ const TAXI_ADMIN_RULES = [
   rule(/^\/admin\/(trips|ride-requests|ongoing-rides|deliveries|rental-quote-requests|rental-booking-requests|rental-tracking|pooling-bookings|bus-bookings)(\/|$)/, 'orders'),
   rule(/^\/admin\/(safety|chat|support)(\/|$)/, 'support'),
   rule(/^\/admin\/(referrals|referral)(\/|$)/, 'referrals'),
-  rule(/^\/admin\/(promotions|promo|coupons|banners)(\/|$)/, 'promotions'),
+  rule(/^\/admin\/(promotions|promos?|coupons|banners)(\/|$)/, 'promotions'),
   rule(/^\/admin\/(landing-page|languages)(\/|$)/, 'cms'),
+  // Broadcast pushes to every taxi user: the catalogue files these under cms.
+  rule(/^\/admin\/(notifications|push-notifications)(\/|$)/, 'cms'),
   rule(/^\/admin\/payment-methods(\/|$)/, 'fee_settings'),
   rule(/^\/admin\/(integration-settings|common|general-settings|notification-channels)(\/|$)/, 'settings'),
   rule(/^\/on-boarding(\/|$)/, 'cms'),

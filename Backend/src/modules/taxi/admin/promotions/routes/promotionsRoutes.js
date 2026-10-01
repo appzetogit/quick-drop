@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import { authenticate } from '../../../middlewares/authMiddleware.js';
+import { requireServiceAccess } from '../../../../../core/roles/serviceAccess.middleware.js';
+import { enforceAdminAccess } from '../../../../../core/admin/enforceAdminAccess.middleware.js';
+import { resolveTaxiAdminResource } from '../../../../../core/admin/adminAccessPolicy.js';
 import {
   createBanner,
   createPromoCode,
@@ -22,6 +25,21 @@ import {
 export const promotionsRouter = Router();
 
 promotionsRouter.use('/admin', authenticate(['admin']));
+
+/*
+ * This router is also mounted at /api/v1 (the taxi promo page calls
+ * /api/v1/admin/promos), outside the taxi admin router's service-access and
+ * permission checks, so a Food-only sub-admin could create taxi promo codes or
+ * push to every taxi user. Gate just these paths: other modules' /v1/admin/*
+ * routes pass through this router untouched.
+ */
+const TAXI_PROMOTION_PATH = /^\/admin\/(promotions|promos|notifications|push-notifications|banners)(\/|$)/;
+const taxiServiceAccess = requireServiceAccess('taxi');
+const taxiPermission = enforceAdminAccess('taxi', resolveTaxiAdminResource);
+promotionsRouter.use((req, res, next) => {
+  if (!TAXI_PROMOTION_PATH.test(req.path)) return next();
+  return taxiServiceAccess(req, res, (err) => (err ? next(err) : taxiPermission(req, res, next)));
+});
 
 promotionsRouter.get('/admin/promotions/bootstrap', getPromotionsBootstrap);
 promotionsRouter.get('/admin/promos', getPromoCodes);

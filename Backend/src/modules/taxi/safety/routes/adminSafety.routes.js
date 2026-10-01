@@ -1,10 +1,12 @@
 import express from 'express';
 import * as adminSafetyController from '../controllers/adminSafety.controller.js';
 import { authMiddleware, requireAdmin } from '../../../../core/auth/auth.middleware.js';
+import { requireServiceAccess } from '../../../../core/roles/serviceAccess.middleware.js';
 
 export const adminSafetyRouter = express.Router();
 
-adminSafetyRouter.use(authMiddleware, requireAdmin);
+// SOS alerts and safety reports are taxi data: a Food-only admin has no business here.
+adminSafetyRouter.use(authMiddleware, requireAdmin, requireServiceAccess('taxi'));
 
 // Dashboard & Analytics
 adminSafetyRouter.get('/analytics', adminSafetyController.getAnalytics);
