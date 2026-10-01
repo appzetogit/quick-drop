@@ -45,13 +45,16 @@ export const SERVICE_CAPABILITIES = Object.freeze({
  */
 export const DRIVER_INTENTS = Object.freeze({
     // ---- I have a 2 wheeler -------------------------------------------------
+    // Key kept for the riders who already chose it. Bike parcel is listed only
+    // under Bike Taxi (2026-10-01): parcel jobs go through the taxi dispatcher,
+    // which a rider who signed up for food never comes online on, so offering it
+    // here promised requests they could not receive.
     food_daily_medical_parcel: {
         driverClass: DRIVER_CLASSES.TWO_WHEELER,
-        label: 'Food + Daily needs + Medical + Bike parcel',
+        label: 'Food + Daily needs + Medical',
         capabilities: [
             SERVICE_CAPABILITIES.DELIVERY,
             SERVICE_CAPABILITIES.QUICK_COMMERCE,
-            SERVICE_CAPABILITIES.PARCEL,
         ],
     },
     bike_taxi_parcel: {

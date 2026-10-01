@@ -56,6 +56,13 @@ const statusBadge = (status) => {
  */
 const waitingOn = (order) => {
   const rx = order.prescription || {}
+  // The order's own state first: a delivered order read "The pharmacy — preparing"
+  // because only the prescription and bill were looked at.
+  const status = String(order.orderStatus || "").toLowerCase()
+  if (status === "delivered") return "Delivered"
+  if (status.startsWith("cancelled")) return "Cancelled"
+  if (["picked_up", "reached_drop"].includes(status)) return "The rider — on the way"
+  if (status === "pending_payment") return "The customer — paying online"
   if (rx.status === "rejected") return "Closed — prescription rejected"
   if (rx.status === "pending_review") return "The pharmacist"
   switch (rx.bill?.status) {

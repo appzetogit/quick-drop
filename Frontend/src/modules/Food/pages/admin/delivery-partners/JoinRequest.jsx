@@ -18,7 +18,7 @@ const CLASS_LABELS = {
 }
 
 const INTENT_LABELS = {
-  food_daily_medical_parcel: 'Food + Daily needs + Medical + Bike parcel',
+  food_daily_medical_parcel: 'Food + Daily needs + Medical',
   bike_taxi_parcel: 'Bike Taxi + Bike parcel',
   three_wheeler: '3 wheeler',
   four_wheeler: '4 wheeler',
@@ -28,7 +28,7 @@ const INTENT_LABELS = {
 
 /** Which capabilities each answer asks for. */
 const INTENT_CAPABILITIES = {
-  food_daily_medical_parcel: ['delivery', 'quickCommerce', 'parcel'],
+  food_daily_medical_parcel: ['delivery', 'quickCommerce'],
   bike_taxi_parcel: ['taxi', 'parcel'],
   three_wheeler: ['taxi'],
   four_wheeler: ['taxi'],
