@@ -397,6 +397,37 @@ export async function ensureUnifiedDriverForPartner(partner, { approved } = {}) 
 }
 
 /**
+ * Copy what the rider chose at sign-up onto the driver record.
+ *
+ * The app builds its duty toggle from the driver's serviceIntents/driverClass,
+ * and dispatch matches parcels on the vehicle's type ('bike'). Approval copied
+ * neither, and the new sign-up sends the vehicle as a catalogue id, which landed
+ * in vehicleType as an id that matches no vehicle key.
+ */
+async function carrySignupOntoDriver(partner, driver) {
+    if (Array.isArray(partner?.serviceIntents) && partner.serviceIntents.length) {
+        driver.serviceIntents = [...partner.serviceIntents];
+    }
+    if (partner?.driverClass) driver.driverClass = partner.driverClass;
+
+    const isId = (v) => /^[a-f0-9]{24}$/i.test(String(v || ''));
+    const vehicleId = [partner?.vehicleType, driver.vehicleType].find(isId);
+    if (!vehicleId) return;
+    try {
+        const { Vehicle } = await import('../../modules/taxi/admin/models/Vehicle.js');
+        const vehicle = await Vehicle.findById(vehicleId).select('icon_types').lean();
+        if (!vehicle) return;
+        driver.vehicleTypeId = vehicle._id;
+        if (vehicle.icon_types) {
+            driver.vehicleType = vehicle.icon_types;
+            driver.vehicleIconType = vehicle.icon_types;
+        }
+    } catch {
+        // A vehicle lookup must not block an approval.
+    }
+}
+
+/**
  * Set exactly which streams a partner's driver may work, from the admin panel.
  *
  * Order matters: the quick-commerce pool helper unconditionally ADDS its
@@ -417,6 +448,7 @@ export async function applyPartnerCapabilities(partner, capabilities, { approved
 
     driver.serviceCapabilities = caps;
     driver.workMode = coerceWorkMode(driver.workMode, caps);
+    await carrySignupOntoDriver(partner, driver);
     await driver.save();
 
     return {

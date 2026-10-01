@@ -26,10 +26,15 @@ const INTENT_LABELS = {
   heavy_parcel_delivery: 'Heavy delivery',
 }
 
-/** Which capabilities each answer asks for. */
+/**
+ * Which capabilities each answer asks for. Fallback only: the server sends
+ * `requestedCapabilities` worked out by the rule dispatch uses
+ * (driverClasses.js). Kept in step with it: bike parcel goes with the
+ * Food + Daily needs + Medical rider, Bike Taxi is passengers only.
+ */
 const INTENT_CAPABILITIES = {
-  food_daily_medical_parcel: ['delivery', 'quickCommerce'],
-  bike_taxi_parcel: ['taxi', 'parcel'],
+  food_daily_medical_parcel: ['delivery', 'quickCommerce', 'parcel'],
+  bike_taxi_parcel: ['taxi'],
   three_wheeler: ['taxi'],
   four_wheeler: ['taxi'],
   parcel_delivery: ['parcel'],
@@ -74,7 +79,10 @@ export default function JoinRequest() {
   // asked the question, which is what the default always was.
   useEffect(() => {
     if (!isApproveOpen || !selectedRequest) return
-    const requested = capabilitiesRequestedBy(selectedRequest.serviceIntents)
+    const requested = Array.isArray(selectedRequest.requestedCapabilities)
+      && selectedRequest.requestedCapabilities.length
+      ? selectedRequest.requestedCapabilities
+      : capabilitiesRequestedBy(selectedRequest.serviceIntents)
     setApproveCapabilities(requested.length ? requested : ["delivery"])
   }, [isApproveOpen, selectedRequest])
   const [filters, setFilters] = useState({

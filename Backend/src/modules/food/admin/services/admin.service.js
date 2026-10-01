@@ -4112,6 +4112,10 @@ export async function getDeliveryJoinRequests(query) {
     const requestCaps = await capsFor(list);
 
     const vehicleNames = await vehicleTypeNamesFor(list.map((doc) => doc.vehicleType));
+    // What their sign-up answer entitles them to, by the same rule dispatch
+    // uses (driverClasses.js), so the approve dialog pre-ticks from the server
+    // instead of keeping its own copy of the rule.
+    const { capabilitiesForIntents } = await import('../../../taxi/shared/driverClasses.js');
     const requests = list.map((doc, index) => ({
         _id: doc._id,
         sl: skip + index + 1,
@@ -4119,6 +4123,9 @@ export async function getDeliveryJoinRequests(query) {
         email: doc.email || '',
         phone: doc.phone || '',
         ...(requestCaps.get(String(doc._id)) || {}),
+        driverClass: doc.driverClass || '',
+        serviceIntents: Array.isArray(doc.serviceIntents) ? doc.serviceIntents : [],
+        requestedCapabilities: capabilitiesForIntents(doc.serviceIntents || []),
         zone: doc.city || doc.state || doc.address || '',
         jobType: doc.jobType || '',
         vehicleType: vehicleTypeLabel(vehicleNames, doc.vehicleType),
