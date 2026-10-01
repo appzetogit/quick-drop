@@ -18,8 +18,8 @@ const CLASS_LABELS = {
 }
 
 const INTENT_LABELS = {
-  food_daily_medical_parcel: 'Food + Daily needs + Medical',
-  bike_taxi_parcel: 'Bike Taxi + Bike parcel',
+  food_daily_medical_parcel: 'Food + Daily needs + Medical + Bike parcel',
+  bike_taxi_parcel: 'Bike Taxi',
   three_wheeler: '3 wheeler',
   four_wheeler: '4 wheeler',
   parcel_delivery: 'Parcel delivery',

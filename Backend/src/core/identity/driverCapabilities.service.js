@@ -297,6 +297,10 @@ export function coerceWorkMode(currentMode, capabilities) {
     const canDeliver = caps.has('delivery') || caps.has('quickCommerce');
     const mode = String(currentMode || 'all');
 
+    // A delivery rider who also carries bike parcels (parcel, no taxi): the app
+    // only listens to the ride dispatcher in 'all', and without `taxi` they are
+    // never offered passengers, so 'all' is their delivery mode.
+    if ((mode === 'delivery' || mode === 'quickCommerce') && canDeliver && caps.has('parcel') && !caps.has('taxi')) return 'all';
     if (mode === 'all' && canTaxi && canDeliver) return 'all';
     if (mode === 'taxi' && canTaxi) return 'taxi';
     if ((mode === 'delivery' || mode === 'quickCommerce') && canDeliver) return 'delivery';

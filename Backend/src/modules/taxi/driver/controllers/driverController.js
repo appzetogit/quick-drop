@@ -2329,7 +2329,12 @@ export const setWorkMode = async (req, res) => {
     throw new ApiError(400, "You need more than one capability for 'all' mode");
   }
 
-  driver.workMode = requested;
+  // Delivery + bike parcel (parcel, no taxi) is stored as 'all', as
+  // coerceWorkMode does: parcel jobs come through the ride dispatcher, which
+  // the app only listens to in 'all'. No passengers without `taxi`.
+  driver.workMode = requested === 'delivery' && caps.includes('parcel') && !caps.includes('taxi')
+    ? 'all'
+    : requested;
   await driver.save();
 
   res.json({

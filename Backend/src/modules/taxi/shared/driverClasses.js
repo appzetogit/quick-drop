@@ -45,22 +45,25 @@ export const SERVICE_CAPABILITIES = Object.freeze({
  */
 export const DRIVER_INTENTS = Object.freeze({
     // ---- I have a 2 wheeler -------------------------------------------------
-    // Key kept for the riders who already chose it. Bike parcel is listed only
-    // under Bike Taxi (2026-10-01): parcel jobs go through the taxi dispatcher,
-    // which a rider who signed up for food never comes online on, so offering it
-    // here promised requests they could not receive.
+    // A two-wheeler rider picks ONE of these two (see oneTwoWheelerIntent).
+    // Bike parcel goes with the delivery rider; Bike Taxi is passengers only,
+    // a commercial registration of its own (client, 2026-10-01). A delivery
+    // rider holding `parcel` is kept on work mode 'all' so the app also comes
+    // online on the ride dispatcher (coerceWorkMode); without `taxi` they are
+    // never offered passengers. Keys unchanged for riders already on file.
     food_daily_medical_parcel: {
         driverClass: DRIVER_CLASSES.TWO_WHEELER,
-        label: 'Food + Daily needs + Medical',
+        label: 'Food + Daily needs + Medical + Bike parcel',
         capabilities: [
             SERVICE_CAPABILITIES.DELIVERY,
             SERVICE_CAPABILITIES.QUICK_COMMERCE,
+            SERVICE_CAPABILITIES.PARCEL,
         ],
     },
     bike_taxi_parcel: {
         driverClass: DRIVER_CLASSES.TWO_WHEELER,
-        label: 'Bike Taxi + Bike parcel',
-        capabilities: [SERVICE_CAPABILITIES.TAXI, SERVICE_CAPABILITIES.PARCEL],
+        label: 'Bike Taxi',
+        capabilities: [SERVICE_CAPABILITIES.TAXI],
     },
 
     // ---- I have a taxi for passengers --------------------------------------
@@ -144,6 +147,21 @@ export const normalizeDriverIntents = (value, driverClass = null) => {
         out.push(key);
     }
     return out;
+};
+
+/**
+ * The two 2-wheeler options are one choice, not two: keep the first picked.
+ * Applied when a rider registers; riders already on file are left as they are.
+ */
+const TWO_WHEELER_INTENTS = ['food_daily_medical_parcel', 'bike_taxi_parcel'];
+export const oneTwoWheelerIntent = (intents = []) => {
+    let seen = false;
+    return intents.filter((key) => {
+        if (!TWO_WHEELER_INTENTS.includes(key)) return true;
+        if (seen) return false;
+        seen = true;
+        return true;
+    });
 };
 
 /**

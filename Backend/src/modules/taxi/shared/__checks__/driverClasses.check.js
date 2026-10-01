@@ -42,14 +42,16 @@ assert.deepEqual(normalizeDriverIntents(undefined), []);
     const caps = capabilitiesForIntents(['food_daily_medical_parcel']);
     assert.ok(caps.includes(SERVICE_CAPABILITIES.DELIVERY));
     assert.ok(caps.includes(SERVICE_CAPABILITIES.QUICK_COMMERCE));
-    // Bike parcel is under Bike Taxi only: parcels run on the taxi dispatcher.
-    assert.ok(!caps.includes(SERVICE_CAPABILITIES.PARCEL));
+    // Bike parcel goes with the delivery rider (client, 2026-10-01).
+    assert.ok(caps.includes(SERVICE_CAPABILITIES.PARCEL));
     // The whole point: a food rider is NOT granted passenger rides.
     assert.ok(!caps.includes(SERVICE_CAPABILITIES.TAXI));
 }
 {
     const caps = capabilitiesForIntents(['bike_taxi_parcel']);
     assert.ok(caps.includes(SERVICE_CAPABILITIES.TAXI));
+    // Bike Taxi is passengers only.
+    assert.ok(!caps.includes(SERVICE_CAPABILITIES.PARCEL));
     // ...and a bike-taxi rider is not granted food.
     assert.ok(!caps.includes(SERVICE_CAPABILITIES.DELIVERY));
 }

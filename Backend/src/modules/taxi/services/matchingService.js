@@ -54,7 +54,11 @@ export const buildDriverMatchFilters = ({ zoneId, vehicleTypeId, vehicleTypeIds,
       : vehicleTypeClauses[0] || {};
 
   let transportFilter = {};
-  if (transportType) {
+  // A parcel goes to whoever holds the parcel capability (filtered below),
+  // whatever they first registered for: a delivery rider who carries bike
+  // parcels is registered for delivery, not taxi.
+  const isParcelJob = String(serviceType || '').trim().toLowerCase() === 'parcel';
+  if (transportType && !isParcelJob) {
     if (transportType === 'taxi') {
       transportFilter = { registerFor: { $in: ['taxi', 'both', 'all'] } };
     } else if (transportType === 'delivery') {

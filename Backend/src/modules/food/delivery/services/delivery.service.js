@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { normalizeDriverClass, normalizeDriverIntents } from '../../../taxi/shared/driverClasses.js';
+import { normalizeDriverClass, normalizeDriverIntents, oneTwoWheelerIntent } from '../../../taxi/shared/driverClasses.js';
 import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { DeliverySupportTicket } from '../models/supportTicket.model.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
@@ -156,10 +156,11 @@ export const registerDeliveryPartner = async (payload, files) => {
         // means a confused client, not a bad applicant.
         onboardingDocuments,
         driverClass: normalizeDriverClass(driverClass) || '',
-        serviceIntents: normalizeDriverIntents(
+        // A 2-wheeler rider picks one of the two options (oneTwoWheelerIntent).
+        serviceIntents: oneTwoWheelerIntent(normalizeDriverIntents(
             typeof serviceIntents === 'string' ? serviceIntents.split(',') : serviceIntents,
             driverClass,
-        ),
+        )),
         status: 'pending',
         ...images
     });
