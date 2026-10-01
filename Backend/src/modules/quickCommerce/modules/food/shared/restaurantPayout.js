@@ -12,6 +12,8 @@
  * this kind of order, so those lines simply read as zero.
  */
 
+import { splitDiscountForOffer } from './discountSplit.util.js';
+
 const round2 = (value) => {
     const n = Number(value);
     if (!Number.isFinite(n)) return 0;
@@ -96,21 +98,26 @@ export async function resolveRestaurantFundedDiscounts(orders = []) {
     try {
         const { FoodOffer } = await import('../admin/models/offer.model.js');
         const offers = await FoodOffer.find({ couponCode: { $in: [...byCode.keys()] } })
-            .select('couponCode createdByRole')
+            .select('couponCode createdByRole adminBearPercentage restaurantBearPercentage')
             .lean();
-        const restaurantFunded = new Set(
-            (offers || [])
-                .filter((o) => String(o.createdByRole).toUpperCase() === 'RESTAURANT')
-                .map((o) => String(o.couponCode).toUpperCase()),
+        // The store's share, by the same split the ledger deducts (discountSplit.util).
+        // Keying only on createdByRole showed an admin coupon the store half-funds
+        // as fully platform-funded: the payout on screen was more than was paid.
+        const storeShare = new Map(
+            (offers || []).map((o) => [
+                String(o.couponCode).toUpperCase(),
+                splitDiscountForOffer(o, 100).restaurantBearPercentage / 100,
+            ]),
         );
         for (const [code, list] of byCode) {
-            if (!restaurantFunded.has(code)) continue;
+            const share = storeShare.get(code) || 0;
+            if (share <= 0) continue;
             for (const order of list) {
                 const funded = finite(
                     order?.pricing?.bill?.discountOnNet,
                     finite(order?.pricing?.discount),
                 );
-                result.set(String(order._id || order.orderMongoId || ''), round2(funded));
+                result.set(String(order._id || order.orderMongoId || ''), round2(funded * share));
             }
         }
     } catch {
