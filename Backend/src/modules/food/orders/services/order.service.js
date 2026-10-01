@@ -325,38 +325,19 @@ export async function createOrder(userId, dto) {
       const feeDoc = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 });
       const codOrderLimit = feeDoc?.codOrderLimit;
       
-      if (codOrderLimit !== undefined && codOrderLimit !== null && normalizedPricing.total >= codOrderLimit) {
+      // 0 or unset means no limit (0 used to refuse every cash order).
+      if (Number(codOrderLimit) > 0 && normalizedPricing.total >= Number(codOrderLimit)) {
         throw new ValidationError(`Cash on Delivery is not allowed for orders of ₹${codOrderLimit} or more.`);
       }
 
-      // Also check maxAvailableCashLimit of online delivery boy wallets if applicable
-      const { FoodDeliveryPartner } = await import('../../delivery/models/deliveryPartner.model.js');
-      const { getDeliveryPartnerWalletEnhanced } = await import('../../delivery/services/deliveryFinance.service.js');
-      const onlinePartners = await FoodDeliveryPartner.find({ availabilityStatus: 'online' }).lean();
-      
-      // ponytail: with zero online partners there is nobody who can collect the cash, so COD
-      // must be rejected — NOT treated as an unlimited cash limit (the old behaviour let COD
-      // orders through with no courier able to fulfil them). availabilityStatus is a maintained
-      // enum (online/offline), so an empty result reliably means "no one online".
-      if (onlinePartners.length === 0) {
-        throw new ValidationError("Cash on Delivery is currently unavailable as no delivery partners are online.");
-      }
-
-      let maxAvailableCashLimit = 0;
-      for (const partner of onlinePartners) {
-        try {
-          const wallet = await getDeliveryPartnerWalletEnhanced(partner._id);
-          if (wallet.availableCashLimit > maxAvailableCashLimit) {
-            maxAvailableCashLimit = wallet.availableCashLimit;
-          }
-        } catch (e) {
-          // Ignore
-        }
-      }
-
-      if (normalizedPricing.total > maxAvailableCashLimit) {
-        throw new ValidationError("Cash on Delivery is currently unavailable due to delivery partner wallet limits.");
-      }
+      /*
+       * No refusal here for who happens to be online. Cash on delivery used to be
+       * refused whenever no Food rider was online at that second -- or when no
+       * online rider had cash headroom, which a rider with no limit set read as
+       * Rs 0 -- so customers could not order at all at quiet times. The order is
+       * placed like any other: dispatch skips riders over their cash limit
+       * (order-dispatch.service.js) and keeps offering it as riders come online.
+       */
     }
 
     if (paymentMethod === "razorpay" && !isRazorpayConfigured()) {
