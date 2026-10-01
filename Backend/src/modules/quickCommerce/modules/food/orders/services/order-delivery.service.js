@@ -590,6 +590,13 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
    * the race for an order is not left holding a lock on it.
    */
   const lockOrder = await FoodOrder.findOne(identity).select('_id').lean();
+  {
+    // The lock is a no-op for riders without a unified driver record; this isn't.
+    const { qcRiderHasFoodJob } = await import('../../../../../../core/delivery/qcRiderLink.js');
+    if (lockOrder && await qcRiderHasFoodJob(partnerId).catch(() => false)) {
+      throw new ValidationError('You are already on another job');
+    }
+  }
   if (lockOrder && !(await acquireQcLock(partnerId, lockOrder._id))) {
     throw new ValidationError('You are already on another job');
   }

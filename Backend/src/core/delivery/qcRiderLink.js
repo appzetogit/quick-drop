@@ -180,3 +180,63 @@ export async function syncQcRiderFromFood(foodRiderId, { availabilityStatus, lat
     return false;
   }
 }
+
+/*
+ * One rider, one job across Food and Quick/Medical.
+ *
+ * Each side's busy check only looked at its own orders, and the cross-service
+ * busy-lock is a no-op for riders with no unified driver record -- which is
+ * every rider who signed up through the Food app. So a rider carrying a Food
+ * order could be offered and accept a Medical order, and the reverse.
+ */
+const activeJobFilter = (partnerIds) => ({
+  'dispatch.status': 'accepted',
+  'dispatch.deliveryPartnerId': { $in: partnerIds.map((id) => new mongoose.Types.ObjectId(String(id))) },
+  orderStatus: { $nin: ['delivered', 'completed', 'rejected'], $not: /^cancel/ },
+});
+
+const orderModels = async () => {
+  const [{ FoodOrder }, { FoodOrder: QcOrder }] = await Promise.all([
+    import('../../modules/food/orders/models/order.model.js'),
+    import('../../modules/quickCommerce/modules/food/orders/models/order.model.js'),
+  ]);
+  return { FoodOrder, QcOrder };
+};
+
+/** Whether this Food rider is carrying a Quick/Medical order. */
+export async function foodRiderHasQcJob(foodRiderId) {
+  const qcId = await qcRiderIdForFoodRider(foodRiderId);
+  if (!qcId) return false;
+  const { QcOrder } = await orderModels();
+  return Boolean(await QcOrder.exists(activeJobFilter([qcId])));
+}
+
+/** Whether this Quick rider's Food record is carrying a Food order. */
+export async function qcRiderHasFoodJob(qcRiderId) {
+  const foodId = await foodRiderIdForQcRider(qcRiderId);
+  if (!foodId) return false;
+  const { FoodOrder } = await orderModels();
+  return Boolean(await FoodOrder.exists(activeJobFilter([foodId])));
+}
+
+/** Of these Food riders, the ids (strings) carrying a Quick/Medical order. */
+export async function foodRidersOnQcJobs(foodRiderIds = []) {
+  const pairs = (await Promise.all(foodRiderIds.map(async (f) => [String(f), await qcRiderIdForFoodRider(f)])))
+    .filter(([, q]) => q);
+  if (!pairs.length) return new Set();
+  const { QcOrder } = await orderModels();
+  const rows = await QcOrder.find(activeJobFilter(pairs.map(([, q]) => q))).select('dispatch.deliveryPartnerId').lean();
+  const busyQc = new Set(rows.map((r) => String(r.dispatch.deliveryPartnerId)));
+  return new Set(pairs.filter(([, q]) => busyQc.has(q)).map(([f]) => f));
+}
+
+/** Of these Quick riders, the ids (strings) whose Food record is carrying a Food order. */
+export async function qcRidersOnFoodJobs(qcRiderIds = []) {
+  const pairs = (await Promise.all(qcRiderIds.map(async (q) => [String(q), await foodRiderIdForQcRider(q)])))
+    .filter(([, f]) => f);
+  if (!pairs.length) return new Set();
+  const { FoodOrder } = await orderModels();
+  const rows = await FoodOrder.find(activeJobFilter(pairs.map(([, f]) => f))).select('dispatch.deliveryPartnerId').lean();
+  const busyFood = new Set(rows.map((r) => String(r.dispatch.deliveryPartnerId)));
+  return new Set(pairs.filter(([, f]) => busyFood.has(f)).map(([q]) => q));
+}

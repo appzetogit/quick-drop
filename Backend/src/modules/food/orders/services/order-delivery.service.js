@@ -372,6 +372,13 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
       throw new ValidationError('You are holding too much cash to take a cash order. Deposit your cash first.');
     }
   }
+  if (lockOrderId && offeredToMe) {
+    // The lock is a no-op for riders without a unified driver record; this isn't.
+    const { foodRiderHasQcJob } = await import('../../../../core/delivery/qcRiderLink.js');
+    if (await foodRiderHasQcJob(partnerId).catch(() => false)) {
+      throw new ValidationError('You are already on another job');
+    }
+  }
   if (lockOrderId && !(await acquireDeliveryLock(partnerId, lockOrderId._id))) {
     throw new ValidationError('You are already on another job');
   }

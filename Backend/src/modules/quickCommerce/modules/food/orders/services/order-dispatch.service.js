@@ -576,6 +576,12 @@ export async function tryAutoAssign(orderId, options = {}) {
     const searchOptions = { maxKm, limit: 15 };
     const { partners } = await listNearbyOnlineDeliveryPartners(order.restaurantId, searchOptions);
     const busyPartnerIds = await getBusyDeliveryPartnerIds();
+    // Riders carrying a Food order are busy here too (see qcRiderLink).
+    {
+      const { qcRidersOnFoodJobs } = await import('../../../../../../core/delivery/qcRiderLink.js');
+      const onFood = await qcRidersOnFoodJobs((partners || []).map((p) => p.partnerId)).catch(() => new Set());
+      for (const id of onFood) busyPartnerIds.add(id);
+    }
 
     // TIERED ALERT LOGIC
     // Phase 2: Broadcast to all (Attempt 3+)

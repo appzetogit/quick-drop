@@ -108,7 +108,11 @@ async function listNearbyOnlineDeliveryPartners(
 
   // Driver unification: drop partners whose unified driver is busy on another job or whose
   // work-mode excludes deliveries. Flag-gated; no-op (and no extra query) while disabled.
-  const eligible = await filterByUnifiedWorkMode(allOnline);
+  const unified = await filterByUnifiedWorkMode(allOnline);
+  // A rider carrying a Quick/Medical order isn't offered Food (see qcRiderLink).
+  const { foodRidersOnQcJobs } = await import('../../../../core/delivery/qcRiderLink.js');
+  const onQc = await foodRidersOnQcJobs(unified.map((p) => p._id)).catch(() => new Set());
+  const eligible = unified.filter((p) => !onQc.has(String(p._id)));
 
   const scored = [];
   const allowedStatuses = process.env.NODE_ENV === 'production' ? ['approved'] : ['approved', 'pending'];
