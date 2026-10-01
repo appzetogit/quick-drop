@@ -12,6 +12,9 @@ const petpoojaSettingsSchema = new mongoose.Schema(
         apiKey: { type: String, default: '' },
         clientCode: { type: String, default: '' },
         apiUrl: { type: String, default: 'https://api.petpooja.com/v2' },
+        // Shared secret Petpooja must send on its status callback (header
+        // x-petpooja-token or ?token=). Generated when the integration is enabled.
+        webhookSecret: { type: String, default: '' },
     },
     { collection: 'food_petpooja_settings', timestamps: true }
 );

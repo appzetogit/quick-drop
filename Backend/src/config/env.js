@@ -180,6 +180,7 @@ export const config = {
     petpoojaClientCode: process.env.PETPOOJA_CLIENT_CODE || '',
     petpoojaOutletId: process.env.PETPOOJA_OUTLET_ID || '',
     petpoojaApiUrl: process.env.PETPOOJA_API_URL || 'https://api.petpooja.com/v2',
+    petpoojaWebhookSecret: process.env.PETPOOJA_WEBHOOK_SECRET || '',
 
     // Background jobs: boot watchdog, seeders, offer/FSSAI expiry sweeps, and the
     // service-provider booking scheduler. Default ON so normal deployments are

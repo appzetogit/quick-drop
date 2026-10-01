@@ -27,6 +27,7 @@ export async function getPetpoojaSettings() {
         apiKey: (doc && doc.apiKey) || config.petpoojaApiKey,
         clientCode: (doc && doc.clientCode) || config.petpoojaClientCode,
         apiUrl: (doc && doc.apiUrl) || config.petpoojaApiUrl,
+        webhookSecret: (doc && doc.webhookSecret) || config.petpoojaWebhookSecret,
     };
 }
 

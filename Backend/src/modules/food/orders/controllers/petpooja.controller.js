@@ -4,6 +4,7 @@ import * as orderService from '../services/order.service.js';
 import { buildOrderIdentityFilter } from '../services/order.helpers.js';
 import { getPetpoojaSettings } from '../services/petpooja.service.js';
 import { logger } from '../../../../utils/logger.js';
+import { safeSignatureEqual } from '../../../../utils/safeCompare.js';
 
 /**
  * Handles incoming webhooks from Petpooja POS to update order states on K9.
@@ -15,13 +16,22 @@ export async function petpoojaWebhookController(req, res, next) {
             return res.status(503).json({ success: false, message: 'Petpooja integration is disabled' });
         }
 
+        // The route is public and order ids are guessable (FOD- + 7 digits), and a
+        // "cancelled" status refunds the order. Without a configured secret nothing
+        // is accepted; with one, the caller must present it.
+        const presented = String(req.get?.('x-petpooja-token') || req.query?.token || '');
+        if (!settings.webhookSecret || !safeSignatureEqual(String(settings.webhookSecret), presented)) {
+            logger.warn('[Petpooja Webhook] Refused: missing or wrong webhook token');
+            return res.status(401).json({ success: false, message: 'Unauthorized' });
+        }
+
         const body = req.body || {};
         const { order_id, status, reason, outlet_code } = body;
 
         logger.info(`[Petpooja Webhook] Received webhook payload: ${JSON.stringify(body)}`);
 
-        if (!order_id || !status) {
-            return res.status(400).json({ success: false, message: 'Missing required fields: order_id and status' });
+        if (!order_id || !status || !outlet_code) {
+            return res.status(400).json({ success: false, message: 'Missing required fields: order_id, status and outlet_code' });
         }
 
         // 1. Resolve order
@@ -47,7 +57,7 @@ export async function petpoojaWebhookController(req, res, next) {
         }
 
         // Guard: check that webhook outlet code matches restaurant's registered outlet code
-        if (outlet_code && String(restaurant.petpoojaOutletId) !== String(outlet_code)) {
+        if (!restaurant.petpoojaOutletId || String(restaurant.petpoojaOutletId) !== String(outlet_code)) {
             logger.warn(`[Petpooja Webhook] Outlet mismatch for order ${order_id}: expected ${restaurant.petpoojaOutletId}, got ${outlet_code}`);
             return res.status(400).json({ success: false, message: 'Outlet code mismatch' });
         }

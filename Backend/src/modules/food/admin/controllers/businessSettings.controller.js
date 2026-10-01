@@ -1,5 +1,6 @@
 import { FoodBusinessSettings } from '../models/businessSettings.model.js';
 import { overlayBusinessSettings, syncManagedFromLegacy } from '../../../../core/settings/platformProfile.service.js';
+import crypto from 'crypto';
 import { FoodPetpoojaSettings } from '../models/petpoojaSettings.model.js';
 import { sendResponse } from '../../../../utils/response.js';
 import { uploadImageBufferDetailed } from '../../../../services/cloudinary.service.js';
@@ -15,6 +16,14 @@ const maskSecret = (value) => {
  * Returns the platform's global PetPooja credentials for the admin panel.
  * Secrets are masked; `hasApiKey`/`hasClientCode` tell the UI whether a value is set.
  */
+/** The callback URL to register with Petpooja, token included. Empty until a secret exists. */
+const petpoojaWebhookUrl = (req, secret) => {
+    if (!secret) return '';
+    const host = req.get?.('x-forwarded-host') || req.get?.('host') || '';
+    const proto = req.get?.('x-forwarded-proto') || req.protocol || 'https';
+    return `${proto}://${host}/api/v1/petpooja/webhook?token=${encodeURIComponent(secret)}`;
+};
+
 export async function getPetpoojaSettings(req, res, next) {
     try {
         let settings = await FoodPetpoojaSettings.findOne().lean();
@@ -29,6 +38,7 @@ export async function getPetpoojaSettings(req, res, next) {
             clientCodeMasked: maskSecret(settings.clientCode),
             hasApiKey: Boolean(settings.apiKey),
             hasClientCode: Boolean(settings.clientCode),
+            webhookUrl: petpoojaWebhookUrl(req, settings.webhookSecret),
             updatedAt: settings.updatedAt,
         });
     } catch (error) {
@@ -63,6 +73,11 @@ export async function updatePetpoojaSettings(req, res, next) {
             return res.status(400).json({ success: false, message: 'apiKey and clientCode are required to enable PetPooja' });
         }
 
+        // The status webhook refuses every call without this secret.
+        if (settings.enabled && !settings.webhookSecret) {
+            settings.webhookSecret = crypto.randomBytes(24).toString('hex');
+        }
+
         await settings.save();
         return sendResponse(res, 200, 'PetPooja settings updated successfully', {
             enabled: settings.enabled,
@@ -71,6 +86,7 @@ export async function updatePetpoojaSettings(req, res, next) {
             clientCodeMasked: maskSecret(settings.clientCode),
             hasApiKey: Boolean(settings.apiKey),
             hasClientCode: Boolean(settings.clientCode),
+            webhookUrl: petpoojaWebhookUrl(req, settings.webhookSecret),
         });
     } catch (error) {
         next(error);
