@@ -1832,10 +1832,12 @@ export const serializeRideRealtime = (ride) => ({
 export const ensureRideParticipantAccess = async ({ rideId, role, entityId }) => {
   const ride = await Ride.findById(rideId);
   if (!ride) throw new ApiError(404, 'Ride not found');
-  if (role === 'user' && String(ride.userId) !== String(entityId)) {
-    throw new ApiError(403, 'Forbidden');
-  }
-  if (role === 'driver' && String(ride.driverId) !== String(entityId)) {
+  // Only the ride's own rider and driver. Every other role used to pass: the
+  // taxi socket accepts any platform token (restaurant, seller, an untranslated
+  // delivery partner), so any of them could join any ride room and read live
+  // location, the OTP and phone numbers. No admin screen joins ride rooms.
+  const owner = role === 'user' ? ride.userId : role === 'driver' ? ride.driverId : null;
+  if (!owner || !entityId || String(owner) !== String(entityId)) {
     throw new ApiError(403, 'Forbidden');
   }
   return ride;
