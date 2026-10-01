@@ -2570,6 +2570,12 @@ export const getCurrentDriver = async (req, res) => {
         : [],
       onboarding: driver.onboarding || {},
       todaySummary: todaySummary || buildDriverTodaySummaryFromDocument(driver),
+      // The daily-selfie requirement was removed from goOnline (see its own
+      // comment), but the app's selfieStatus() check still gates on this
+      // field being present and dated today -- reporting it as always
+      // satisfied here keeps the camera screen from appearing without
+      // touching the app itself.
+      onlineSelfie: { imageUrl: 'https://quickdrop.appzeto.com/selfie-not-required', forDate: new Date().toISOString().slice(0, 10) },
     },
   });
 };
