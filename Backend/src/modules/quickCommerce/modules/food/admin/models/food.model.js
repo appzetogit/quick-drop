@@ -9,7 +9,12 @@ const foodVariantSchema = new mongoose.Schema(
         stockQty: { type: Number, default: null, min: 0 },
         /** Flag to the seller below this. null = no flag. */
         lowStockThreshold: { type: Number, default: null, min: 0 },
-        sku: { type: String, trim: true, default: '' }
+        sku: { type: String, trim: true, default: '' },
+        /**
+         * GST % for this pack size. null = the product's rate (then the
+         * order-wide rate). Sizes of one product can sit in different slabs.
+         */
+        gstRate: { type: Number, default: null, min: 0, max: 100 }
     },
     { _id: true }
 );

@@ -22,6 +22,15 @@ const stockInput = (value) => {
     return n;
 };
 
+/** GST % on a variant: undefined = not sent (keep), null/'' = use the product's rate. */
+const gstInput = (value) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0 || n > 100) throw new ValidationError('GST rate must be between 0 and 100');
+    return n;
+};
+
 /**
  * Keep the stock of variants the form did not mention. Matched by id, then by
  * name, so a form that re-creates variants without ids does not reset stock.
@@ -31,7 +40,7 @@ const carryVariantStock = (variant, existing = []) => {
         || (existing || []).find((e) => toTrimmedString(e?.name).toLowerCase() === variant.name.toLowerCase());
     if (!match) return variant;
     if (variant._id === undefined && match._id) variant._id = match._id;
-    for (const key of ['stockQty', 'lowStockThreshold']) {
+    for (const key of ['stockQty', 'lowStockThreshold', 'gstRate']) {
         if (variant[key] === undefined && match[key] !== undefined) variant[key] = match[key];
     }
     if (variant.sku === undefined && match.sku) variant.sku = match.sku;
@@ -88,6 +97,8 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
             const low = stockInput(entry?.lowStockThreshold);
             if (low !== undefined) variant.lowStockThreshold = low;
             if (entry?.sku !== undefined) variant.sku = toTrimmedString(entry.sku);
+            const gst = gstInput(entry?.gstRate);
+            if (gst !== undefined) variant.gstRate = gst;
 
             return carryVariantStock(variant, existing);
         })
@@ -118,6 +129,8 @@ export const serializeFoodVariants = (value = []) =>
                 stockQty: entry?.stockQty ?? null,
                 lowStockThreshold: entry?.lowStockThreshold ?? null,
                 sku: toTrimmedString(entry?.sku),
+                // GST % for this size; null = the product's rate.
+                gstRate: entry?.gstRate ?? null,
                 inStock: entry?.stockQty == null || Number(entry.stockQty) > 0
             };
         })

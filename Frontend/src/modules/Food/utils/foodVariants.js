@@ -49,6 +49,8 @@ export const normalizeFoodVariants = (value) =>
         stockQty: entry?.stockQty ?? null,
         lowStockThreshold: entry?.lowStockThreshold ?? null,
         sku: entry?.sku || "",
+        // GST % per size (stores); null = the product's rate.
+        gstRate: entry?.gstRate ?? null,
       }
     })
     .filter(Boolean)

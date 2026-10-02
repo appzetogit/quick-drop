@@ -3881,6 +3881,8 @@ export async function getFoods(query) {
         // Stock, for the admin form (per size is inside each variant).
         stockQty: f.stockQty ?? null,
         lowStockThreshold: f.lowStockThreshold ?? null,
+        // GST % (per size is inside each variant); null = the standard rate.
+        gstRate: f.gstRate ?? null,
         variants: serializeFoodVariants(f.variants),
         variations: serializeFoodVariants(f.variants),
         image: f.image || '',

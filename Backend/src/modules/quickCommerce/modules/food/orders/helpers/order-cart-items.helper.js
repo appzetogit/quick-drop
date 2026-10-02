@@ -10,6 +10,13 @@ function toObjectIds(ids = []) {
     .map((id) => new mongoose.Types.ObjectId(id));
 }
 
+const hasRate = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+function lineGstRate(variant, foodDoc) {
+  if (variant && hasRate(variant.gstRate)) return Number(variant.gstRate);
+  if (hasRate(foodDoc?.gstRate)) return Number(foodDoc.gstRate);
+  return null;
+}
+
 function resolveFoodItemPrice(foodDoc, rawItem) {
   const variantId = String(rawItem?.variantId || '').trim();
   const variants = Array.isArray(foodDoc?.variants) ? foodDoc.variants : [];
@@ -153,16 +160,23 @@ export async function resolveOrderCartItems(restaurantId, rawItems = []) {
         throw new ValidationError(`You can order at most ${cap} of ${foodDoc.name}`);
       }
 
-      const onHand = foodDoc.stockQty;
+      const pricing = resolveFoodItemPrice(foodDoc, rawItem);
+      const variant = pricing.variantId
+        ? (foodDoc.variants || []).find((v) => String(v?._id) === pricing.variantId)
+        : null;
+
+      // A chosen size counts its own stock when it tracks one; otherwise the
+      // product's. Matches what inventory.service.js claims at order creation.
+      const sizeTracked = variant && variant.stockQty !== null && variant.stockQty !== undefined;
+      const onHand = sizeTracked ? variant.stockQty : foodDoc.stockQty;
+      const label = variant ? `${foodDoc.name} (${variant.name})` : foodDoc.name;
       if (onHand !== null && onHand !== undefined && Number(onHand) < quantity) {
         throw new ValidationError(
           Number(onHand) > 0
-            ? `Only ${Number(onHand)} left of ${foodDoc.name}. Please reduce the quantity.`
-            : `${foodDoc.name} just went out of stock`,
+            ? `Only ${Number(onHand)} left of ${label}. Please reduce the quantity.`
+            : `${label} just went out of stock`,
         );
       }
-
-      const pricing = resolveFoodItemPrice(foodDoc, rawItem);
       const addons = resolveAttachedAddons(rawItem?.addons);
       const addonsTotal = addons.reduce((sum, a) => sum + a.price, 0);
 
@@ -176,11 +190,9 @@ export async function resolveOrderCartItems(restaurantId, rawItems = []) {
         addons,
         quantity,
         // Carried onto the line so tax is computed per product rather than at
-        // one rate for the whole basket. null defers to the order-wide rate.
-        gstRate:
-          foodDoc.gstRate === null || foodDoc.gstRate === undefined
-            ? null
-            : Number(foodDoc.gstRate),
+        // one rate for the whole basket: the chosen size's own rate, else the
+        // product's. null defers to the order-wide rate.
+        gstRate: lineGstRate(variant, foodDoc),
         brand: String(foodDoc.brand || ''),
         packSize: String(foodDoc.packSize || ''),
         // Snapshotted so category reporting survives a rename or a delete.

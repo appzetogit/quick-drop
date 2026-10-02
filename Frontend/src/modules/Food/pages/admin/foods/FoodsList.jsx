@@ -36,6 +36,7 @@ const createFoodForm = () => ({
   preparationTime: "",
   stockQty: "",
   lowStockThreshold: "",
+  gstRate: "",
   availabilitySchedule: buildScheduleState(null),
   suggestedItemIds: [],
 })
@@ -60,6 +61,9 @@ const shelfPriceOf = (form) => {
   }
   return pays(form?.basePrice)
 }
+
+/** India's GST slabs for goods. */
+const GST_SLABS = [0, 5, 12, 18, 28]
 
 const createVariantDraft = (variant = {}) => ({
   id: String(variant?.id || variant?._id || `variant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
@@ -87,6 +91,8 @@ const createVariantDraft = (variant = {}) => ({
   stockQty: variant?.stockQty != null ? String(variant.stockQty) : "",
   lowStockThreshold: variant?.lowStockThreshold != null ? String(variant.lowStockThreshold) : "",
   stockQtyAtLoad: variant?.stockQty != null ? String(variant.stockQty) : "",
+  // GST % for this size. Blank = the product's rate.
+  gstRate: variant?.gstRate != null ? String(variant.gstRate) : "",
   lowStockAtLoad: variant?.lowStockThreshold != null ? String(variant.lowStockThreshold) : "",
   // Per-variant add-on pairings. Dropped here would mean an admin editing any
   // variant silently wipes what the restaurant paired -- the payload replaces
@@ -440,6 +446,7 @@ export default function FoodsList() {
       preparationTime: String(food.preparationTime || ""),
       stockQty: food.stockQty != null ? String(food.stockQty) : "",
       lowStockThreshold: food.lowStockThreshold != null ? String(food.lowStockThreshold) : "",
+      gstRate: food.gstRate != null ? String(food.gstRate) : "",
       availabilitySchedule: buildScheduleState(food.availabilitySchedule),
       suggestedItemIds: food.suggestedItemIds ?? null,
     })
@@ -549,6 +556,7 @@ export default function FoodsList() {
         lowStockThreshold: variant?.lowStockThreshold ?? "",
         stockChanged: (variant?.stockQty ?? "") !== (variant?.stockQtyAtLoad ?? ""),
         lowChanged: (variant?.lowStockThreshold ?? "") !== (variant?.lowStockAtLoad ?? ""),
+        gstRate: variant?.gstRate ?? "",
       }))
       .filter((variant) => variant.id || variant.name || variant.price)
 
@@ -659,8 +667,12 @@ export default function FoodsList() {
           ...(isStockPanel && variant.lowChanged
             ? { lowStockThreshold: variant.lowStockThreshold === "" ? null : Number(variant.lowStockThreshold) }
             : {}),
+          // Blank = the product's rate.
+          ...(isStockPanel ? { gstRate: variant.gstRate === "" ? null : Number(variant.gstRate) } : {}),
         })),
         ...(isStockPanel && !foodForm.variantsEnabled ? productStockPayload() : {}),
+        // Blank = the order-wide rate from fee settings.
+        ...(isStockPanel ? { gstRate: foodForm.gstRate === "" ? null : Number(foodForm.gstRate) } : {}),
         description: foodForm.description.trim(),
         image: imageUrl,
         foodType: foodForm.foodType === "Veg" ? "Veg" : "Non-Veg",
@@ -1372,6 +1384,20 @@ export default function FoodsList() {
                         </div>
                       </>
                     )}
+                    <div className="mt-3">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">GST</label>
+                      <select
+                        value={foodForm.gstRate}
+                        onChange={(e) => setFoodForm((prev) => ({ ...prev, gstRate: e.target.value }))}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                      >
+                        <option value="">Standard rate (fee settings)</option>
+                        {GST_SLABS.map((r) => <option key={r} value={String(r)}>{r}%</option>)}
+                      </select>
+                      {foodForm.variantsEnabled && (
+                        <p className="mt-1 text-xs text-slate-500">Sizes use this unless they set their own GST below.</p>
+                      )}
+                    </div>
                   </div>
                 )}
                 <label className="block text-sm font-medium text-slate-700 mb-1">Timing</label>
@@ -1595,6 +1621,17 @@ export default function FoodsList() {
                                 placeholder="No warning"
                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                               />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-slate-600 mb-1">GST for this size</label>
+                              <select
+                                value={variant.gstRate ?? ""}
+                                onChange={(e) => handleVariantChange(variant.id, "gstRate", e.target.value)}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                              >
+                                <option value="">Same as product</option>
+                                {GST_SLABS.map((r) => <option key={r} value={String(r)}>{r}%</option>)}
+                              </select>
                             </div>
                           </>
                         )}
