@@ -164,10 +164,61 @@ export async function resolveAppServicesAt({ lat, lng } = {}) {
         zonesByService = Object.fromEntries(found);
     }
 
+    const services = resolveAppServices(state, zonesByService);
+    // Riders online in the customer's zone, for the delivery services, so the
+    // app can say "no delivery partners available right now" instead of the
+    // order just sitting unassigned. Never blocks ordering (cash or online).
+    await Promise.all(services.map(async (svc) => {
+        if (!DELIVERY_SERVICES.has(svc.key) || !svc.inZone || !svc.zone?.id) return;
+        try {
+            const online = await ridersOnlineInZone(svc.key, svc.zone.id);
+            svc.ridersOnline = online;
+            svc.ridersAvailable = online > 0;
+            svc.notice = online > 0
+                ? null
+                : 'No delivery partners are available in your area right now. You can still order; delivery may take longer.';
+        } catch (err) {
+            logger.warn(`[app-services] rider count failed for ${svc.key}: ${err.message}`);
+        }
+    }));
+
     return {
         located: latitude !== null && longitude !== null,
-        services: resolveAppServices(state, zonesByService),
+        services,
     };
+}
+
+// ------------------------------------------------- riders in a zone ----
+
+const DELIVERY_SERVICES = new Set(['food', 'quick', 'medical']);
+// Same window dispatch uses (DISPATCH_STALE_GPS_MS): older positions do not count.
+const RIDER_FRESH_MS = Number(process.env.DISPATCH_STALE_GPS_MS) || 45 * 60 * 1000;
+const RIDER_COUNT_TTL_MS = 30 * 1000;
+const riderCountCache = new Map(); // `${service}:${zoneId}` -> { at, value }
+
+/**
+ * Online riders with a recent position inside this service's zone. The
+ * delivery app goes online on the Food side for every delivery service, so
+ * Food riders are counted against the Food, Quick or Medical zone polygon.
+ */
+async function ridersOnlineInZone(service, zoneId) {
+    const key = `${service}:${zoneId}`;
+    const hit = riderCountCache.get(key);
+    if (hit && Date.now() - hit.at < RIDER_COUNT_TTL_MS) return hit.value;
+
+    const source = await ZONE_SOURCES[service]();
+    const zone = (await source.list()).find((z) => String(z._id) === String(zoneId));
+    if (!zone) return 0;
+    const { FoodDeliveryPartner } = await import('../../modules/food/delivery/models/deliveryPartner.model.js');
+    const riders = await FoodDeliveryPartner.find({
+        availabilityStatus: 'online',
+        status: 'approved',
+        lastLocationAt: { $gte: new Date(Date.now() - RIDER_FRESH_MS) },
+    }).select('lastLat lastLng').lean();
+    const value = riders.filter((r) => Number.isFinite(Number(r.lastLat)) && Number.isFinite(Number(r.lastLng))
+        && polygonContains(zone, Number(r.lastLat), Number(r.lastLng))).length;
+    riderCountCache.set(key, { at: Date.now(), value });
+    return value;
 }
 
 // ---------------------------------------------------------------- admin ----
