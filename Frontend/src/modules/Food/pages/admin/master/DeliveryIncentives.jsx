@@ -133,32 +133,54 @@ function TierRow({ tier, onChange, onRemove, disabled }) {
   )
 }
 
+/** "2026-10-05" for a date input, in IST. */
+const dayOf = (d) => (d ? new Date(new Date(d).getTime() + 5.5 * 3600 * 1000).toISOString().slice(0, 10) : "")
+const isDated = (r) => Boolean(r?.startsAt || r?.endsAt)
+const runText = (r) => {
+  if (!isDated(r)) return ""
+  const f = (d) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" })
+  if (r.startsAt && r.endsAt) return `${f(r.startsAt)} – ${f(r.endsAt)}`
+  return r.startsAt ? `from ${f(r.startsAt)}` : `until ${f(r.endsAt)}`
+}
+const seedForm = (rule) => ({
+  title: rule?.title || "",
+  tiers: tiersFromRule(rule),
+  startsAt: dayOf(rule?.startsAt),
+  endsAt: dayOf(rule?.endsAt),
+})
+
 const ladderLine = (rule) => (rule?.tiers || []).map((t) => `${t.fromOrders}-${t.toOrders} → ₹${t.rewardAmount}`).join(",  ")
 
 function SegmentCard({ segment, rules, saving, onSave, onTurnOff, busyId, limited = false, canWrite = true }) {
   // A zone's own ladder, or (no zone) the default one every other zone uses.
   const [zone, setZone] = useState({ id: "", name: "" })
   const mine = (r) => r.segment === segment.id
-  const active = rules.find((r) => mine(r) && String(r.zoneId || "") === zone.id) || null
-  const fallback = zone.id ? rules.find((r) => mine(r) && !r.zoneId) || null : null
+  // The permanent ladder is the one edited here; a limited-time one runs on top of it.
+  const inZone = rules.filter((r) => mine(r) && String(r.zoneId || "") === zone.id)
+  const active = inZone.find((r) => !isDated(r)) || inZone[0] || null
+  const promos = inZone.filter((r) => isDated(r) && r !== active)
+  const fallback = zone.id ? rules.find((r) => mine(r) && !r.zoneId && !isDated(r)) || null : null
   const busy = Boolean(active) && busyId === active._id
   // A zone sub-admin changes only their own zones' ladders; the default is head office's.
   const canEdit = canWrite && (!limited || Boolean(zone.id))
-  const [form, setForm] = useState(() => ({ title: active?.title || "", tiers: tiersFromRule(active) }))
+  const [form, setForm] = useState(() => seedForm(active))
 
   // Re-seed the form whenever the active rule for THIS segment changes (a
   // fresh load, or this segment's own save completing) — but never while the
   // admin is mid-edit on the other segment's card, since each card owns its
   // own independent form state.
   useEffect(() => {
-    setForm({ title: active?.title || "", tiers: tiersFromRule(active) })
+    setForm(seedForm(active))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?._id])
 
   const invalidReason = tiersError(form.tiers)
+    || (form.startsAt && form.endsAt && form.endsAt < form.startsAt ? "The end date is before the start date" : "")
   const dirty =
     !active ||
     form.title !== (active.title || "") ||
+    form.startsAt !== dayOf(active.startsAt) ||
+    form.endsAt !== dayOf(active.endsAt) ||
     JSON.stringify(form.tiers) !== JSON.stringify(tiersFromRule(active))
   const finalTier = form.tiers[form.tiers.length - 1]
   const totalReward = form.tiers.reduce((sum, t) => sum + (Number(t.rewardAmount) || 0), 0)
@@ -233,6 +255,30 @@ function SegmentCard({ segment, rules, saving, onSave, onTurnOff, busyId, limite
           Shown to the rider as-is. Left blank, the app fills in the numbers below.
         </span>
       </label>
+
+      <div className="mb-4">
+        <span className="text-sm font-medium text-neutral-800">Limited time <span className="font-normal text-neutral-500">(optional)</span></span>
+        <div className="mt-1.5 grid grid-cols-2 gap-3">
+          <label className="block text-xs text-neutral-600">
+            Starts
+            <input type="date" className={`${inputCls} mt-1`} value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} />
+          </label>
+          <label className="block text-xs text-neutral-600">
+            Ends
+            <input type="date" className={`${inputCls} mt-1`} value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} />
+          </label>
+        </div>
+        <span className="mt-1 block text-xs text-neutral-500">
+          With dates, this ladder is an offer: it runs only between them, on top of the everyday ladder, which takes over again when it ends. Leave both empty for the everyday ladder.
+        </span>
+        {promos.length > 0 && (
+          <ul className="mt-2 space-y-1 text-xs text-neutral-700">
+            {promos.map((p) => (
+              <li key={p._id}>Offer {runText(p)}: {ladderLine(p)}</li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[420px] text-sm">
@@ -314,6 +360,9 @@ export default function DeliveryIncentives() {
         zoneId: zone.id || null,
         zoneName: zone.name || "",
         title: form.title,
+        // Whole days in India time: from the start of the first to the end of the last.
+        startsAt: form.startsAt ? `${form.startsAt}T00:00:00+05:30` : null,
+        endsAt: form.endsAt ? `${form.endsAt}T23:59:59+05:30` : null,
         tiers: form.tiers.map((t) => ({
           fromOrders: Number(t.fromOrders),
           toOrders: Number(t.toOrders),
@@ -414,7 +463,10 @@ export default function DeliveryIncentives() {
                       {recent.map((r) => (
                         <tr key={r._id} className="border-b border-neutral-100 last:border-0">
                           <td className="py-2 pr-2 align-top">{SEGMENTS.find((s) => s.id === r.segment)?.label || r.segment}</td>
-                          <td className="py-2 pr-2 align-top text-neutral-600">{r.zoneId ? r.zoneName || "Zone" : "All zones"}</td>
+                          <td className="py-2 pr-2 align-top text-neutral-600">
+                            {r.zoneId ? r.zoneName || "Zone" : "All zones"}
+                            {isDated(r) && <span className="block text-xs text-amber-700">Offer {runText(r)}</span>}
+                          </td>
                           <td className="py-2 pr-2">
                             {(r.tiers || []).map((t) => `${t.fromOrders}-${t.toOrders} → ₹${t.rewardAmount}`).join(",  ")}
                           </td>

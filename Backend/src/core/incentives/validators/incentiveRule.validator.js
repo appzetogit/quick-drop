@@ -74,9 +74,23 @@ export function validateIncentiveRuleUpsertDto(body = {}) {
         throw new ApiError(400, 'windowType must be "daily" or "weekly"');
     }
 
+    const dateOrNull = (v, label) => {
+        if (v === undefined || v === null || v === '') return null;
+        const d = new Date(v);
+        if (Number.isNaN(d.getTime())) throw new ApiError(400, `${label} is not a valid date`);
+        return d;
+    };
+    const startsAt = dateOrNull(body.startsAt, 'Start date');
+    const endsAt = dateOrNull(body.endsAt, 'End date');
+    if (startsAt && endsAt && endsAt <= startsAt) {
+        throw new ApiError(400, 'End date must be after the start date');
+    }
+
     return {
         segment,
         tiers,
+        startsAt,
+        endsAt,
         title: String(body.title || '').trim(),
         zoneId: rawZone ? new mongoose.Types.ObjectId(rawZone) : null,
         zoneName: rawZone ? String(body.zoneName || '').trim().slice(0, 120) : '',

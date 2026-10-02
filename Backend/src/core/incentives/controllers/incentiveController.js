@@ -64,6 +64,12 @@ export async function upsertIncentiveRuleController(req, res, next) {
                 vehicleTypeId: body.vehicleTypeId,
                 windowType: body.windowType,
                 isActive: true,
+                // A dated (limited-time) ladder runs on top of the permanent one
+                // and replaces only another dated one; the permanent ladder takes
+                // over again when it ends.
+                ...(body.startsAt || body.endsAt
+                    ? { $or: [{ startsAt: { $ne: null } }, { endsAt: { $ne: null } }] }
+                    : { startsAt: null, endsAt: null }),
             },
             { $set: { isActive: false } },
         );

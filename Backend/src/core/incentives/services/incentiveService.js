@@ -149,9 +149,29 @@ async function resolveDriverContext({ startFrom, id }) {
 
 const asId = (v) => (v && mongoose.Types.ObjectId.isValid(String(v)) ? new mongoose.Types.ObjectId(String(v)) : null);
 
+/** A ladder with run dates applies only between them (null = open on that side). */
+const runningNow = (now = new Date()) => ({
+    $and: [
+        { $or: [{ startsAt: null }, { startsAt: { $lte: now } }] },
+        { $or: [{ endsAt: null }, { endsAt: { $gte: now } }] },
+    ],
+});
+
+/** A ladder's day or week, cut to its run dates. */
+function boundsWithin(rule, at = new Date()) {
+    const b = windowBoundsFor(rule, at);
+    const starts = rule?.startsAt ? new Date(rule.startsAt) : null;
+    const ends = rule?.endsAt ? new Date(rule.endsAt) : null;
+    return {
+        ...b,
+        start: starts && starts > b.start ? starts : b.start,
+        end: ends && ends < b.end ? ends : b.end,
+    };
+}
+
 /** Every distinct non-null value a segment's rules use for one axis. */
 async function ownValuesOf(segment, field, windowType = 'daily') {
-    return DriverIncentiveRule.distinct(field, { segment, windowType, isActive: true, [field]: { $ne: null } });
+    return DriverIncentiveRule.distinct(field, { segment, windowType, isActive: true, [field]: { $ne: null }, ...runningNow() });
 }
 
 /**
@@ -187,9 +207,12 @@ async function ladderFor(segment, zoneId = null, vehicleTypeId = null, windowTyp
 
     for (const match of candidates) {
         // eslint-disable-next-line no-await-in-loop
-        const rule = await DriverIncentiveRule.findOne({ segment, windowType, isActive: true, ...match })
+        // A running limited-time ladder beats the permanent one it sits on.
+        const live = await DriverIncentiveRule.find({ segment, windowType, isActive: true, ...match, ...runningNow() })
             .sort({ createdAt: -1 })
+            .limit(5)
             .lean();
+        const rule = live.find((r) => r.startsAt || r.endsAt) || live[0] || null;
         if (!rule) continue;
         return {
             rule,
@@ -515,7 +538,7 @@ async function creditWindow({ ctx, segment, zoneId, vehicleTypeId, windowType })
         const tiers = sortedTiersOf(rule);
         if (tiers.length === 0) return;
 
-        const { start, end, periodKey } = windowBoundsFor(rule);
+        const { start, end, periodKey } = boundsWithin(rule);
         const completedOrders = await countCompletedToday(ctx, segment, { start, end }, scope);
 
         const dueTiers = tiers.filter((t) => completedOrders >= t.toOrders);
@@ -696,7 +719,7 @@ async function buildCurrentIncentive(ctx, { forceSegment } = {}) {
     const tiers = sortedTiersOf(rule);
     if (tiers.length === 0) return null;
 
-    const { start, end, periodKey } = windowBoundsFor(rule);
+    const { start, end, periodKey } = boundsWithin(rule);
     const completedOrders = await countCompletedToday(ctx, segment, { start, end }, scope);
 
     const creditedRows = await DriverIncentiveCredit.find({ driverKey: ctx.driverKey, ruleId: rule._id, periodKey })

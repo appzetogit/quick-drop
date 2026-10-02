@@ -1111,6 +1111,9 @@ export const getActiveEarningAddonsForPartner = async (deliveryPartnerId) => {
     if (!deliveryPartnerId || !mongoose.Types.ObjectId.isValid(deliveryPartnerId)) {
         throw new ValidationError('Delivery partner not found');
     }
+    // Retired: the rider's one incentive is the Master ladder (core/incentives),
+    // so no per-service offer is shown next to it.
+    return { activeOffer: null, offers: [] };
 
     const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
     const now = new Date();

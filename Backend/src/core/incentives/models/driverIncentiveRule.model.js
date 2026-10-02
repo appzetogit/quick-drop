@@ -77,6 +77,13 @@ const driverIncentiveRuleSchema = new mongoose.Schema(
         /** Counted per calendar day (IST) or per calendar week (Mon-Sun IST) —
          *  see istDayBounds/istWeekBounds in incentiveService.js. */
         windowType: { type: String, enum: ['daily', 'weekly'], default: 'daily' },
+        /*
+         * Optional run dates for a limited-time ladder ("this week only").
+         * Outside them the ladder does not apply, and only orders from
+         * startsAt on count. null = no limit on that side.
+         */
+        startsAt: { type: Date, default: null },
+        endsAt: { type: Date, default: null },
         isActive: { type: Boolean, default: true, index: true },
         createdByAdminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     },

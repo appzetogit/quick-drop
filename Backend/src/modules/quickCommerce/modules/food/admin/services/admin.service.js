@@ -5420,7 +5420,18 @@ export async function getEarningAddons() {
     return { earningAddons };
 }
 
+/*
+ * Earning Addon is retired. Each service's offers counted only that service's
+ * orders (Food offers ignored Quick and Medical deliveries), while riders take
+ * every kind. Master > Delivery Incentives replaces it: one ladder that counts
+ * Food, Quick, Medical and bike-parcel orders together. Credited history stays
+ * readable; no new offer is shown, created or credited.
+ */
+export const EARNING_ADDON_RETIRED_MESSAGE =
+    'Earning Addon has been replaced by Master > Delivery Incentives, which counts every order type together.';
+
 export async function createEarningAddon(body) {
+    throw new ValidationError(EARNING_ADDON_RETIRED_MESSAGE);
     const created = await FoodEarningAddon.create({
         title: body.title,
         requiredOrders: body.requiredOrders,
@@ -5454,6 +5465,7 @@ export async function deleteEarningAddon(id) {
 }
 
 export async function toggleEarningAddonStatus(id, status) {
+    if (String(status) === 'active') throw new ValidationError(EARNING_ADDON_RETIRED_MESSAGE);
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
     return FoodEarningAddon.findByIdAndUpdate(id, { $set: { status } }, { new: true }).lean();
 }
@@ -5621,6 +5633,8 @@ export async function cancelEarningAddonHistory(historyId, reason) {
 }
 
 export async function checkEarningAddonCompletions(deliveryPartnerId, _force = false) {
+    // Retired (see EARNING_ADDON_RETIRED_MESSAGE): nothing new is credited.
+    return { completionsFound: 0, retired: true };
     const now = new Date();
     
     // Only search for active offers that are currently running.
