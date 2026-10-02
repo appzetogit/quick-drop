@@ -39,7 +39,11 @@ const NATIVE_LAST_ROUTE_KEY = 'native_last_route'
  * by a session flag so a genuinely missing chunk cannot become a reload loop:
  * one attempt per session, then the error is left to surface normally.
  */
-const CHUNK_RELOAD_FLAG = 'chunk_reload_attempted'
+const CHUNK_RELOAD_FLAG = 'chunk_reload_attempted_at'
+// One reload per minute, not one per session: a session that lived through two
+// deploys never recovered from the second (the admin panel stayed broken until
+// the tab was closed). A minute still stops a genuinely missing chunk looping.
+const CHUNK_RELOAD_GAP_MS = 60 * 1000
 const isStaleChunkError = (value) => {
   const message = String(value?.message || value || '')
   return (
@@ -51,8 +55,9 @@ const isStaleChunkError = (value) => {
 const recoverFromStaleChunk = (reason) => {
   if (!isStaleChunkError(reason)) return
   try {
-    if (sessionStorage.getItem(CHUNK_RELOAD_FLAG)) return
-    sessionStorage.setItem(CHUNK_RELOAD_FLAG, '1')
+    const last = Number(sessionStorage.getItem(CHUNK_RELOAD_FLAG) || 0)
+    if (Date.now() - last < CHUNK_RELOAD_GAP_MS) return
+    sessionStorage.setItem(CHUNK_RELOAD_FLAG, String(Date.now()))
   } catch {
     return // private mode with no sessionStorage: never risk a loop
   }

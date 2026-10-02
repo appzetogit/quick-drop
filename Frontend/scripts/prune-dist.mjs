@@ -16,7 +16,7 @@
  * Runs automatically after `npm run build`; run manually with
  *   node scripts/prune-dist.mjs [--dry-run]
  */
-import { chmodSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import { chmodSync, readdirSync, readFileSync, statSync, unlinkSync, utimesSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -75,18 +75,34 @@ if (keep.size === 0) {
     process.exit(1);
 }
 
+// A tab opened before a deploy still asks for the previous build's chunks when
+// it opens a page. Deleting them at once broke every such page ("server not
+// working" on the admin panel after each deploy), so an unreferenced file is
+// kept until it is this old.
+const GRACE_MS = Number(process.env.PRUNE_GRACE_DAYS || 3) * 24 * 60 * 60 * 1000;
+const now = Date.now();
+
 let removed = 0;
 let freed = 0;
+let graced = 0;
 for (const name of allAssets) {
-    if (keep.has(name)) continue;
     const full = join(assetsDir, name);
+    if (keep.has(name)) {
+        // Stamp what this build uses, so a file's age below means "since the
+        // last build that used it", not "since it was first built".
+        if (!dryRun) { try { utimesSync(full, new Date(), new Date()); } catch { /* best-effort */ } }
+        continue;
+    }
+    let mtimeMs = 0;
+    try { mtimeMs = statSync(full).mtimeMs; } catch { /* stat is best-effort */ }
+    if (now - mtimeMs < GRACE_MS) { graced += 1; continue; }
     try { freed += statSync(full).size; } catch { /* stat is best-effort */ }
     if (!dryRun) unlinkSync(full);
     removed += 1;
 }
 
 console.log(
-    `[prune-dist] kept ${keep.size}, ${dryRun ? 'would remove' : 'removed'} ${removed} ` +
+    `[prune-dist] kept ${keep.size} (+${graced} from recent builds), ${dryRun ? 'would remove' : 'removed'} ${removed} ` +
     `(${(freed / 1024 / 1024).toFixed(1)} MB)`
 );
 
