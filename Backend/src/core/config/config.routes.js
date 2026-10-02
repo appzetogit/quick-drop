@@ -59,6 +59,15 @@ router.get('/earnings/:vertical', getEarningsController);
  * changing a platform setting.
  */
 router.get('/users', listGlobalUsersController);
+// Master > Orders: every order (Food, Quick, Medical, Taxi, Parcel) in one list.
+router.get('/orders', async (req, res, next) => {
+    try {
+        const { listMasterOrders } = await import('../orders/masterOrders.service.js');
+        res.json({ success: true, data: await listMasterOrders(req.query || {}) });
+    } catch (err) {
+        next(err);
+    }
+});
 router.get('/users/export', requireFinancePermission('PLATFORM_SETTING_SET'), exportGlobalUsersController);
 
 // Master > Referral: what each service pays now, and whether Master or the

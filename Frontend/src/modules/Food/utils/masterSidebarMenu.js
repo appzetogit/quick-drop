@@ -46,6 +46,12 @@ export const masterSidebarMenu = [
       },
       {
         type: "link",
+        label: "All Orders",
+        path: "/admin/master/orders",
+        icon: "Package",
+      },
+      {
+        type: "link",
         label: "Admin Accounts",
         path: "/admin/master/admins",
         icon: "UserCog",

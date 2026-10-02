@@ -29,6 +29,7 @@ const HomeScreenArtwork = lazy(() => import("@food/pages/admin/master/HomeScreen
 const CommissionOverview = lazy(() => import("@food/pages/admin/master/CommissionOverview"))
 const AppServices = lazy(() => import("@food/pages/admin/master/AppServices"))
 const MasterCustomers = lazy(() => import("@food/pages/admin/master/GlobalUsers"))
+const MasterOrders = lazy(() => import("@food/pages/admin/master/MasterOrders"))
 const MasterDeliveryEarnings = lazy(() => import("@food/pages/admin/master/DeliveryEarnings"))
 const MasterDeliveryIncentives = lazy(() => import("@food/pages/admin/master/DeliveryIncentives"))
 const MasterPromotions = lazy(() => import("@food/pages/admin/master/PromoCeiling"))
@@ -441,6 +442,8 @@ export default function AdminRouter() {
           <Route path="master/commission" element={<CommissionOverview />} />
           <Route path="master/app-services" element={<AppServices />} />
           <Route path="master/customers" element={<MasterCustomers />} />
+          <Route path="master/orders" element={<MasterOrders />} />
+          <Route path="master/orders/:tab" element={<MasterOrders />} />
           <Route path="master/delivery-earnings" element={<MasterDeliveryEarnings />} />
           <Route path="master/delivery-incentives" element={<MasterDeliveryIncentives />} />
           <Route path="master/promotions" element={<MasterPromotions />} />

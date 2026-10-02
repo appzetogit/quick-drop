@@ -225,6 +225,9 @@ export const platformSettingsAPI = {
    * services are matched in by link or by phone. Read only -- blocking and
    * editing stay on the screens whose schema owns those fields.
    */
+  /** Master > Orders: every order, per tab (all | food | quick | medical | taxi | parcel). */
+  getMasterOrders: (params = {}) =>
+    apiClient.get("/platform/settings/orders", { params, contextModule: "admin" }),
   getGlobalUsers: (params = {}) =>
     apiClient.get("/platform/settings/users", { params, contextModule: "admin" }),
   /** The same list as a CSV file. Streamed by the server, so kept as a blob. */
