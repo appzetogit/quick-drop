@@ -25,6 +25,7 @@ import { applyPromoToRideInTransaction } from './promoService.js';
 import { getTipSettings } from './appSettingsService.js';
 import { getBidRideSettings } from './transportSettingsService.js';
 import { computeRideFare } from '../common/rideFare.js';
+import { resolveWeightSlot } from './weightSlotService.js';
 import { pickSurgeSlot, surgeFromPercent } from '../common/surgeSlot.js';
 import { SurgeSlot } from '../admin/models/SurgeSlot.js';
 import { RideInsurancePlan } from '../admin/models/RideInsurancePlan.js';
@@ -438,6 +439,19 @@ const normalizeParcelPayload = (parcel = {}) => ({
   receiverName: String(parcel.receiverName || '').trim(),
   receiverMobile: String(parcel.receiverMobile || '').trim(),
 });
+
+// Stamps the resolved weight slot onto the stored parcel (label and charge as
+// they were when booked, so a later edit to the goods type cannot rewrite it).
+const withWeightSlot = (parcelPayload, weightSlot) => (weightSlot
+  ? {
+    ...parcelPayload,
+    goodsTypeId: weightSlot.goodsTypeId,
+    weightSlotId: weightSlot.id,
+    weightSlotLabel: weightSlot.label,
+    weightCharge: weightSlot.price,
+    weight: parcelPayload.weight || weightSlot.label,
+  }
+  : parcelPayload);
 
 const normalizeIntercityPayload = (intercity = {}) => ({
   bookingId: String(intercity.bookingId || '').trim(),
@@ -996,8 +1010,14 @@ export const quoteRideFares = async ({
   vehicleTypeIds = [],
   transport_type,
   service_location_id,
+  weightSlotId,
+  goodsTypeId,
 }) => {
   const transportType = normalizeRideTransportType(transport_type);
+  // The parcel's weight slot, resolved from the goods type -- the amount is
+  // never taken from the app. Added to each vehicle's base price below.
+  const weightSlot = await resolveWeightSlot({ weightSlotId, goodsTypeId });
+  const weightExtra = weightSlot ? weightSlot.price : 0;
   const serviceLocationId =
     service_location_id && mongoose.Types.ObjectId.isValid(service_location_id)
       ? new mongoose.Types.ObjectId(service_location_id)
@@ -1032,12 +1052,12 @@ export const quoteRideFares = async ({
       transportType,
       vehicleTypeId,
     });
-    const base = computeRideFare({ pricingRule, transportType, distanceMeters, durationMinutes });
+    const base = computeRideFare({ pricingRule, transportType, distanceMeters, durationMinutes, extraAmount: weightExtra });
     const surge = base
       ? resolveRideSurge({ surgeZone, pricingRule, slots: surgeSlots, vehicleTypeId, fareBeforeSurge: base.fareBeforeSurge })
       : null;
     const fare = base
-      ? { ...computeRideFare({ pricingRule, transportType, distanceMeters, durationMinutes, surgeAmount: surge.amount }), surgePercent: surge.percent, surgeSlotName: surge.slotName }
+      ? { ...computeRideFare({ pricingRule, transportType, distanceMeters, durationMinutes, surgeAmount: surge.amount, extraAmount: weightExtra }), surgePercent: surge.percent, surgeSlotName: surge.slotName }
       : null;
     // The measured trip travels with the quote so the app can SHOW the same
     // distance it is being charged for. Without it the app displayed its own
@@ -1230,11 +1250,19 @@ export const createRideRecord = async ({
    * rides), so the fare a rider confirms is the fare they are charged. Surge is
    * added below via rideSurgeAmount, as before.
    */
+  // The weight slot is looked up from the goods type by its id -- the app only
+  // names it, the amount is the admin's.
+  const weightSlot = await resolveWeightSlot({
+    weightSlotId: parcel?.weightSlotId,
+    goodsTypeId: parcel?.goodsTypeId,
+  });
+
   const fareQuote = computeRideFare({
     pricingRule,
     transportType: normalizedTransportType,
     distanceMeters: safeEstimatedDistanceMeters,
     durationMinutes: safeEstimatedDurationMinutes,
+    extraAmount: weightSlot ? weightSlot.price : 0,
   });
 
   if (!fareQuote && normalizedTransportType !== 'delivery') {
@@ -1493,7 +1521,7 @@ export const createRideRecord = async ({
       service_location_id: resolvedServiceLocationId,
       transport_type: normalizedTransportType,
       pricingSnapshot,
-      parcel: normalizeParcelPayload(parcel),
+      parcel: withWeightSlot(normalizeParcelPayload(parcel), weightSlot),
       intercity: normalizeIntercityPayload(intercity),
       scheduledAt: normalizedScheduledAt,
       status: RIDE_STATUS.SEARCHING,
@@ -1549,7 +1577,7 @@ export const createRideRecord = async ({
             service_location_id: resolvedServiceLocationId,
             transport_type: normalizedTransportType,
             pricingSnapshot,
-            parcel: normalizeParcelPayload(parcel),
+            parcel: withWeightSlot(normalizeParcelPayload(parcel), weightSlot),
             intercity: normalizeIntercityPayload(intercity),
             scheduledAt: normalizedScheduledAt,
             status: RIDE_STATUS.SEARCHING,

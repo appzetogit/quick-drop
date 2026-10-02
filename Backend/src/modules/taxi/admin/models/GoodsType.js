@@ -42,6 +42,21 @@ const goodsTypeSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    // Weight bands a customer picks from for this goods type. The price is an
+    // EXTRA on top of the chosen vehicle's normal parcel fare. Each band's own
+    // _id is what the apps send back, so the amount is always re-read here.
+    weight_slots: {
+      type: [
+        new mongoose.Schema({
+          label: { type: String, trim: true, default: '' },
+          min_kg: { type: Number, min: 0, default: 0 },
+          max_kg: { type: Number, min: 0, default: 0 },
+          price: { type: Number, min: 0, default: 0 },
+          active: { type: Boolean, default: true },
+        }),
+      ],
+      default: [],
+    },
   },
   { timestamps: true },
 );

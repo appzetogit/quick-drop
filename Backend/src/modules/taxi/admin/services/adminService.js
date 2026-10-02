@@ -1837,7 +1837,45 @@ const serializeGoodsType = (item) => ({
   created_at: item.createdAt,
   updated_at: item.updatedAt,
   goods_type_translation_words: item.goods_type_translation_words || [],
+  weight_slots: (item.weight_slots || []).map((slot) => ({
+    _id: slot._id,
+    id: String(slot._id),
+    label: slot.label || '',
+    min_kg: Number(slot.min_kg) || 0,
+    max_kg: Number(slot.max_kg) || 0,
+    price: Number(slot.price) || 0,
+    active: slot.active !== false,
+  })),
 });
+
+// Weight slots arrive from the admin form as plain rows. Rows that already have
+// an _id keep it (so a slot a customer app has cached still resolves); a row
+// with neither a range nor a price is a blank form row and is dropped.
+const normalizeWeightSlots = (raw) => {
+  if (raw === undefined) return undefined;
+  const rows = Array.isArray(raw) ? raw : [];
+  const slots = [];
+  for (const row of rows) {
+    const min = Number(row?.min_kg);
+    const max = Number(row?.max_kg);
+    const price = Number(row?.price);
+    const blank = (row?.min_kg === '' || row?.min_kg == null)
+      && (row?.max_kg === '' || row?.max_kg == null)
+      && (row?.price === '' || row?.price == null);
+    if (blank) continue;
+    if (!Number.isFinite(min) || min < 0 || !Number.isFinite(max) || max <= min) {
+      throw new ApiError(400, 'Each weight slot needs a valid range (maximum must be above minimum)');
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      throw new ApiError(400, 'Each weight slot needs a price of 0 or more');
+    }
+    const label = String(row?.label || '').trim() || `${min} - ${max} kg`;
+    const slot = { label, min_kg: min, max_kg: max, price, active: row?.active !== false };
+    if (row?._id && /^[a-f0-9]{24}$/i.test(String(row._id))) slot._id = row._id;
+    slots.push(slot);
+  }
+  return slots;
+};
 
 const serializeRentalPackageType = (item) => ({
   _id: item._id,
@@ -8923,6 +8961,7 @@ export const getRentalTrackingDashboard = async () => {
       status: payload.status || (active === 1 ? 'active' : 'inactive'),
       active: active,
       translation_dataset: payload.translation_dataset || '',
+      weight_slots: normalizeWeightSlots(payload.weight_slots) || [],
     });
 
     return serializeGoodsType(item.toObject());
@@ -8954,6 +8993,11 @@ export const getRentalTrackingDashboard = async () => {
 
     if (payload.translation_dataset !== undefined) {
       item.translation_dataset = payload.translation_dataset;
+    }
+
+    const slots = normalizeWeightSlots(payload.weight_slots);
+    if (slots !== undefined) {
+      item.weight_slots = slots;
     }
 
     await item.save();

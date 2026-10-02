@@ -414,6 +414,8 @@ export const quoteRide = async (req, res) => {
     transport_type,
     service_location_id,
     serviceLocationId,
+    weightSlotId,
+    goodsTypeId,
   } = req.body || {};
 
   // The trip is measured from these, exactly as the booking measures it: any
@@ -429,6 +431,8 @@ export const quoteRide = async (req, res) => {
     vehicleTypeIds: Array.isArray(vehicleTypeIds) ? vehicleTypeIds : [vehicleTypeId].filter(Boolean),
     transport_type,
     service_location_id: service_location_id || serviceLocationId,
+    weightSlotId,
+    goodsTypeId,
   });
 
   res.json({ success: true, data: { quotes } });

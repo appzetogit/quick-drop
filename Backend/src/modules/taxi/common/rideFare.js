@@ -28,6 +28,10 @@ export function computeRideFare({
     distanceMeters = 0,
     durationMinutes = 0,
     surgeAmount = 0,
+    // A flat charge added to the vehicle's own base price (a parcel's weight
+    // slot). It is part of the subtotal, so tax and the platform fee apply to it
+    // exactly as they do to the base.
+    extraAmount = 0,
 } = {}) {
     if (!pricingRule) return null;
 
@@ -44,10 +48,11 @@ export function computeRideFare({
     const distanceKm = Math.max(0, Number(distanceMeters) || 0) / 1000;
     const minutes = Math.max(0, Number(durationMinutes) || 0);
     const withinBase = baseDistanceKm > 0 && distanceKm <= baseDistanceKm;
+    const weightCharge = Math.max(0, Number(extraAmount) || 0);
 
     const distanceFare = withinBase ? 0 : Math.max(0, distanceKm - baseDistanceKm) * perKm;
     const timeFare = withinBase ? 0 : minutes * perMinute;
-    const subtotal = basePrice + distanceFare + timeFare;
+    const subtotal = basePrice + weightCharge + distanceFare + timeFare;
     if (!(subtotal > 0)) return null;
 
     const serviceTax = (subtotal * serviceTaxPercent) / 100;
@@ -57,6 +62,7 @@ export function computeRideFare({
 
     const lines = {
         baseFare: money(basePrice),
+        weightCharge: money(weightCharge),
         distanceFare: money(distanceFare),
         timeFare: money(timeFare),
         serviceTax: money(serviceTax),

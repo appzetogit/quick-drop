@@ -131,6 +131,12 @@ const rideSchema = new mongoose.Schema(
         default: '',
         trim: true,
       },
+      // The weight slot picked at booking. Label and charge are copied from the
+      // goods type then, and the charge is already inside `fare`.
+      goodsTypeId: { type: String, default: '', trim: true },
+      weightSlotId: { type: String, default: '', trim: true },
+      weightSlotLabel: { type: String, default: '', trim: true },
+      weightCharge: { type: Number, default: 0, min: 0 },
       description: {
         type: String,
         default: '',

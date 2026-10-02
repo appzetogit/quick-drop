@@ -27,7 +27,19 @@ const defaultFormData = {
   active: 1,
   icon: '',
   iconFile: null,
+  weight_slots: [],
 };
+
+const emptySlot = () => ({ label: '', min_kg: '', max_kg: '', price: '' });
+
+const normalizeWeightSlotRows = (slots) =>
+  (Array.isArray(slots) ? slots : []).map((slot) => ({
+    _id: slot._id || slot.id || undefined,
+    label: slot.label || '',
+    min_kg: slot.min_kg ?? '',
+    max_kg: slot.max_kg ?? '',
+    price: slot.price ?? '',
+  }));
 
 const unwrap = (response) => response?.data?.data || response?.data || response || {};
 
@@ -74,6 +86,7 @@ const normalizeGoodsItem = (item = {}) => ({
   goods_type_for: normalizeGoodsTypeFor(item.goods_types_for || item.goods_type_for || []),
   active: Number(item.active ?? 1),
   icon: item.icon || '',
+  weight_slots: normalizeWeightSlotRows(item.weight_slots),
 });
 
 const StatusToggle = ({ active, onToggle }) => (
@@ -150,6 +163,7 @@ const GoodsTypes = ({ mode }) => {
               active: existing.active,
               icon: existing.icon,
               iconFile: null,
+              weight_slots: existing.weight_slots,
             });
           }
         } else if (mode === 'create') {
@@ -231,6 +245,24 @@ const GoodsTypes = ({ mode }) => {
     });
   };
 
+  const addSlot = () => {
+    setFormData((current) => ({ ...current, weight_slots: [...current.weight_slots, emptySlot()] }));
+  };
+
+  const updateSlot = (index, field, value) => {
+    setFormData((current) => ({
+      ...current,
+      weight_slots: current.weight_slots.map((slot, i) => (i === index ? { ...slot, [field]: value } : slot)),
+    }));
+  };
+
+  const removeSlot = (index) => {
+    setFormData((current) => ({
+      ...current,
+      weight_slots: current.weight_slots.filter((_, i) => i !== index),
+    }));
+  };
+
   const handleSave = async (event) => {
     event.preventDefault();
 
@@ -242,6 +274,29 @@ const GoodsTypes = ({ mode }) => {
     if (!formData.goods_type_for.length) {
       setErrorMessage('Select at least one supported vehicle type.');
       return;
+    }
+
+    // A row left completely blank is ignored; a half-filled one is an error, so
+    // the admin hears about it here rather than silently losing the row.
+    const filledSlots = formData.weight_slots.filter(
+      (slot) => String(slot.min_kg).trim() !== '' || String(slot.max_kg).trim() !== '' || String(slot.price).trim() !== '',
+    );
+    for (const [index, slot] of filledSlots.entries()) {
+      const min = Number(slot.min_kg);
+      const max = Number(slot.max_kg);
+      const price = Number(slot.price);
+      if (String(slot.min_kg).trim() === '' || String(slot.max_kg).trim() === '' || String(slot.price).trim() === '') {
+        setErrorMessage(`Weight slot ${index + 1}: fill From, To and Price.`);
+        return;
+      }
+      if (!(min >= 0) || !(max > min)) {
+        setErrorMessage(`Weight slot ${index + 1}: 'To' must be greater than 'From'.`);
+        return;
+      }
+      if (!(price >= 0)) {
+        setErrorMessage(`Weight slot ${index + 1}: price cannot be negative.`);
+        return;
+      }
     }
 
     setSaving(true);
@@ -256,6 +311,13 @@ const GoodsTypes = ({ mode }) => {
         goods_types_for: formData.goods_type_for.join(','),
         active: Number(formData.active),
         icon: iconData || '',
+        weight_slots: filledSlots.map((slot) => ({
+          _id: slot._id,
+          label: String(slot.label || '').trim(),
+          min_kg: Number(slot.min_kg),
+          max_kg: Number(slot.max_kg),
+          price: Number(slot.price),
+        })),
       };
 
       if (id && mode === 'edit') {
@@ -496,6 +558,82 @@ const GoodsTypes = ({ mode }) => {
               ) : (
                 <p className="text-sm text-slate-400">No vehicle types found.</p>
               )}
+            </div>
+          </div>
+
+          <div className="lg:col-span-2">
+            <label className={labelClass}>Weight Slots &amp; Extra Price</label>
+            <div className="space-y-3 rounded-2xl border border-slate-200 p-5">
+              <p className="text-[12px] text-slate-500">
+                The customer picks one of these weights for this goods type. The price is added on top of the
+                selected vehicle's normal fare (for example 0 to 2 kg, price 10 adds Rs 10).
+              </p>
+
+              {formData.weight_slots.length ? (
+                <div className="hidden grid-cols-[1.4fr_1fr_1fr_1fr_auto] gap-3 px-1 text-[11px] font-bold uppercase tracking-wider text-slate-400 md:grid">
+                  <span>Label (optional)</span>
+                  <span>From (kg)</span>
+                  <span>To (kg)</span>
+                  <span>Extra price (Rs)</span>
+                  <span className="w-9" />
+                </div>
+              ) : null}
+
+              {formData.weight_slots.map((slot, index) => (
+                <div key={slot._id || index} className="grid grid-cols-2 items-center gap-3 md:grid-cols-[1.4fr_1fr_1fr_1fr_auto]">
+                  <input
+                    type="text"
+                    value={slot.label}
+                    onChange={(e) => updateSlot(index, 'label', e.target.value)}
+                    placeholder="e.g. Up to 2 kg"
+                    className={`${inputClass} col-span-2 md:col-span-1`}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={slot.min_kg}
+                    onChange={(e) => updateSlot(index, 'min_kg', e.target.value)}
+                    placeholder="0"
+                    className={inputClass}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={slot.max_kg}
+                    onChange={(e) => updateSlot(index, 'max_kg', e.target.value)}
+                    placeholder="2"
+                    className={inputClass}
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={slot.price}
+                    onChange={(e) => updateSlot(index, 'price', e.target.value)}
+                    placeholder="10"
+                    className={inputClass}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeSlot(index)}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50"
+                    aria-label="Remove weight slot"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={addSlot}
+                className="inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-2.5 text-[12px] font-bold text-slate-600 transition hover:border-primary-orange/50 hover:text-primary-orange"
+              >
+                <Plus size={15} />
+                Add weight slot
+              </button>
             </div>
           </div>
 
