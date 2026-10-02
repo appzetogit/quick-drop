@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
+import { useDriverPaths } from './driverPaths';
 
 const inputClass =
   'w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-800 bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors';
@@ -147,6 +148,7 @@ const fromVehicleFieldResponse = (payload = {}) => ({
 
 const DriverDocumentForm = () => {
   const navigate = useNavigate();
+  const driverPaths = useDriverPaths();
   const { id } = useParams();
   const isEditMode = Boolean(id);
   const [searchParams] = useSearchParams();
@@ -303,7 +305,7 @@ const DriverDocumentForm = () => {
         }
       }
 
-      navigate('/taxi/admin/drivers/documents');
+      navigate(`${driverPaths.docs}`);
     } catch (err) {
       setError(err?.message || 'Unable to save onboarding configuration');
     } finally {
@@ -333,7 +335,7 @@ const DriverDocumentForm = () => {
           </h1>
           <button
             type="button"
-            onClick={() => navigate('/taxi/admin/drivers/documents')}
+            onClick={() => navigate(`${driverPaths.docs}`)}
             className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <ArrowLeft size={16} />

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, PencilLine, Plus, Search, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
+import { useDriverPaths } from './driverPaths';
 
 const inputClass =
   'w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-800 outline-none transition-colors focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500';
@@ -36,6 +37,7 @@ const getVehicleFieldPriority = (fieldKey = '') => {
 
 const GlobalDocuments = () => {
   const navigate = useNavigate();
+  const driverPaths = useDriverPaths();
   const [documents, setDocuments] = useState([]);
   const [vehicleFields, setVehicleFields] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -147,7 +149,7 @@ const GlobalDocuments = () => {
     <div className="flex items-center justify-end gap-2">
       <button
         type="button"
-        onClick={() => navigate(`/taxi/admin/drivers/documents/edit/${item.id || item._id}?type=${templateType}`)}
+        onClick={() => navigate(`${driverPaths.docs}/edit/${item.id || item._id}?type=${templateType}`)}
         className="rounded-lg border border-gray-200 p-2 text-amber-600 transition-colors hover:bg-amber-50"
       >
         <PencilLine size={16} />
@@ -180,7 +182,7 @@ const GlobalDocuments = () => {
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => navigate('/taxi/admin/drivers/documents/create?type=document')}
+              onClick={() => navigate(`${driverPaths.docs}/create?type=document`)}
               className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700"
             >
               <Plus size={16} />
@@ -188,7 +190,7 @@ const GlobalDocuments = () => {
             </button>
             <button
               type="button"
-              onClick={() => navigate('/taxi/admin/drivers/documents/create?type=vehicle_field')}
+              onClick={() => navigate(`${driverPaths.docs}/create?type=vehicle_field`)}
               className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-white px-4 py-2 text-sm font-medium text-indigo-700 transition-colors hover:bg-indigo-50"
             >
               <Plus size={16} />

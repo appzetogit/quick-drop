@@ -20,6 +20,7 @@ import { useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { adminService } from '../../services/adminService';
 import { adminAPI } from '@food/api';
+import { useDriverPaths } from './driverPaths';
 
 const ACTION_MENU_WIDTH = 238;
 const ACTION_MENU_GAP = 8;
@@ -27,6 +28,7 @@ const ACTION_MENU_MAX_HEIGHT = 300;
 
 const PendingDrivers = () => {
   const navigate = useNavigate();
+  const driverPaths = useDriverPaths();
   const [searchTerm, setSearchTerm] = useState('');
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [isLoading, setIsLoading] = useState(true);
@@ -103,11 +105,11 @@ const PendingDrivers = () => {
     if (action !== 'view' && action !== 'edit' && action !== 'password' && !window.confirm(confirmMsg)) return;
 
     if (action === 'view') {
-      navigate(`/taxi/admin/drivers/${driverId}`, { state: { from: '/taxi/admin/drivers/pending' } });
+      navigate(`${driverPaths.drivers}/${driverId}`, { state: { from: `${driverPaths.drivers}/pending` } });
       return;
     }
     if (action === 'edit') {
-      navigate(`/taxi/admin/drivers/edit/${driverId}`, { state: { from: '/taxi/admin/drivers/pending' } });
+      navigate(`${driverPaths.drivers}/edit/${driverId}`, { state: { from: `${driverPaths.drivers}/pending` } });
       return;
     }
 
@@ -266,7 +268,7 @@ const PendingDrivers = () => {
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-xl font-semibold text-gray-900">Pending Drivers</h1>
           <button
-            onClick={() => navigate('/taxi/admin/drivers/create')}
+            onClick={() => navigate(`${driverPaths.drivers}/create`)}
             className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
           >
             <Plus size={16} /> Add Drivers
@@ -363,7 +365,7 @@ const PendingDrivers = () => {
                     <td className="px-4 py-4">{driver.transport}</td>
                     <td className="px-4 py-4 text-center">
                       <button
-                        onClick={() => navigate(`/taxi/admin/drivers/${driver.id}?tab=Documents`, { state: { from: '/taxi/admin/drivers/pending' } })}
+                        onClick={() => navigate(`${driverPaths.drivers}/${driver.id}?tab=Documents`, { state: { from: `${driverPaths.drivers}/pending` } })}
                         className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-gray-200 text-indigo-600 hover:bg-indigo-50 transition-colors"
                       >
                         <FileText size={16} />

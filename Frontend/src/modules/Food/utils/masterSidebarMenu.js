@@ -67,15 +67,16 @@ export const masterSidebarMenu = [
           // Quick & Medical rider, bike taxi, cab, parcel) reads it for all of
           // them, filtered by vehicle class. It lives on Taxi's screen, which is
           // why it used to be labelled "Taxi · Driver Documents".
-          { label: "Partner Documents (all partners)", path: "/taxi/admin/drivers/documents" },
+          { label: "Partner Documents (all partners)", path: "/admin/master/partner-documents" },
           // Food, Quick and Medical share one rider pool: every rider signs up and
           // works on the Food record, and Quick keeps linked copies. One list.
           // Taxi drivers are a separate pool. countKey / alertKey name the
           // sidebar-badges total shown beside the entry (alert = needs action).
-          { label: "Delivery Partners (Food, Quick & Medical)", path: "/admin/food/delivery-partners", countKey: "masterRiders" },
-          { label: "Delivery Join Requests", path: "/admin/food/delivery-partners/join-request", alertKey: "masterRiderRequests" },
-          { label: "Taxi · Drivers", path: "/taxi/admin/drivers", countKey: "masterTaxiDrivers" },
-          { label: "Taxi · Pending Drivers", path: "/taxi/admin/drivers/pending", alertKey: "masterTaxiPending" },
+          // Master's own pages (AdminRouter master/*), so the admin stays in Master.
+          { label: "Delivery Partners", path: "/admin/master/delivery-partners", countKey: "masterRiders" },
+          { label: "Delivery Join Requests", path: "/admin/master/delivery-partners/join-requests", alertKey: "masterRiderRequests" },
+          { label: "Taxi Drivers", path: "/admin/master/taxi-drivers", countKey: "masterTaxiDrivers" },
+          { label: "Taxi Pending Drivers", path: "/admin/master/taxi-drivers/pending", alertKey: "masterTaxiPending" },
           ...sp([{ label: "Services · Workers", path: "/admin/sp/workers/all" }]),
         ],
       },

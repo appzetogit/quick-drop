@@ -235,6 +235,10 @@ export function resourceForPath(pathname = "") {
   if (pathname.startsWith("/admin/master/delivery-incentives")) return "zone_incentives"
   if (pathname.startsWith("/admin/master/cancellation")) return "zone_orders"
   if (pathname.startsWith("/admin/master/fees")) return "zone_fees"
+  // Master's rider and driver pages: the same permission as in the Food and Taxi panels.
+  if (pathname.startsWith("/admin/master/delivery-partners")) return "delivery"
+  if (pathname.startsWith("/admin/master/taxi-drivers")) return "delivery"
+  if (pathname.startsWith("/admin/master/partner-documents")) return "delivery"
   if (pathname.startsWith("/admin/master")) return "__owner__"
   const panel = panelOfPath(pathname)
   if (!panel) return null

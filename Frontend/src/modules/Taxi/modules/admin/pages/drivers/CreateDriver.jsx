@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTaxiTransportTypes } from '../../../../shared/hooks/useTaxiTransportTypes';
 import { normalizeDriverDocumentTemplates } from '../../../driver/utils/documentTemplates';
 import { adminService } from '../../services/adminService';
+import { useDriverPaths } from './driverPaths';
 
 const NAME_REGEX = /^[A-Za-z]+(?:[ .'-][A-Za-z]+)*$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -166,6 +167,7 @@ const initialFormData = {
 
 const CreateDriver = () => {
   const navigate = useNavigate();
+  const driverPaths = useDriverPaths();
   const { transportTypes } = useTaxiTransportTypes();
 
   const [formData, setFormData] = useState(initialFormData);
@@ -641,7 +643,7 @@ const CreateDriver = () => {
       });
 
       if (response?.success) {
-        navigate('/taxi/admin/drivers');
+        navigate(`${driverPaths.drivers}`);
         return;
       }
 
@@ -693,7 +695,7 @@ const CreateDriver = () => {
           </div>
           <button
             type="button"
-            onClick={() => navigate('/taxi/admin/drivers')}
+            onClick={() => navigate(`${driverPaths.drivers}`)}
             className="rounded-full border border-slate-200 bg-white px-5 py-2 text-xs font-black uppercase tracking-widest text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
           >
             Back To Drivers

@@ -27,6 +27,7 @@ import McvIcon from '@/assets/icons/mcv.png';
 import LuxuryIcon from '@/assets/icons/Luxury.png';
 import PremiumIcon from '@/assets/icons/Premium.png';
 import SuvIcon from '@/assets/icons/SUV.png';
+import { useDriverPaths } from './driverPaths';
 
 const mapContainerStyle = { width: '100%', height: '100%' };
 
@@ -223,6 +224,7 @@ const normalizeDocumentEntry = (doc = {}, fallbackKey = '') => {
 
 const DriverDetails = () => {
   const navigate = useNavigate();
+  const driverPaths = useDriverPaths();
   const location = useLocation();
   const { id } = useParams();
   const [activeTab, setActiveTab] = useState('Driver Profile');
@@ -318,7 +320,7 @@ const DriverDetails = () => {
   const normalizedBackRoute = typeof location.state?.from === 'string' ? location.state.from.trim() : '';
   const backRoute = normalizedBackRoute.startsWith('/taxi/admin/')
     ? normalizedBackRoute
-    : '/taxi/admin/drivers/pending';
+    : `${driverPaths.drivers}/pending`;
   const onboardingVehicle = profile?.onboarding?.vehicle || {};
   const vehicleFieldSummary = useMemo(() => ([
     {
@@ -796,7 +798,7 @@ const DriverDetails = () => {
                   </div>
                   <button
                     type="button"
-                    onClick={() => navigate(`/taxi/admin/drivers/edit/${id}`, { state: { from: location.pathname + location.search } })}
+                    onClick={() => navigate(`${driverPaths.drivers}/edit/${id}`, { state: { from: location.pathname + location.search } })}
                     className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
                   >
                     <PencilLine size={15} />

@@ -18,6 +18,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTaxiTransportTypes } from '../../../../shared/hooks/useTaxiTransportTypes';
 import { getUnifiedAdminToken } from '../../services/adminSession';
 import api from '../../../../shared/api/axiosInstance';
+import { useDriverPaths } from './driverPaths';
 
 const serviceCategoryOptions = [
   { value: 'taxi', label: 'Taxi' },
@@ -77,9 +78,10 @@ const getVehicleTypeLabel = (item = {}) => item?.vehicle_type || item?.name || i
 
 const EditDriver = () => {
   const navigate = useNavigate();
+  const driverPaths = useDriverPaths();
   const location = useLocation();
   const { id } = useParams();
-  const backRoute = location.state?.from || '/taxi/admin/drivers';
+  const backRoute = location.state?.from || `${driverPaths.drivers}`;
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [locations, setLocations] = useState([]);
@@ -804,7 +806,7 @@ const EditDriver = () => {
 
             <button 
               type="button"
-              onClick={() => navigate('/taxi/admin/drivers')}
+              onClick={() => navigate(`${driverPaths.drivers}`)}
               className="w-full py-3 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
             >
               Cancel

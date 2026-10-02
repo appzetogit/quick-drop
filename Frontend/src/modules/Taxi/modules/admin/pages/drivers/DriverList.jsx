@@ -20,6 +20,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
+import { useDriverPaths } from './driverPaths';
 
 const ACTION_MENU_WIDTH = 176;
 const ACTION_MENU_GAP = 8;
@@ -27,6 +28,7 @@ const ACTION_MENU_MAX_HEIGHT = 260;
 
 const DriverList = ({ mode = 'approved' }) => {
   const navigate = useNavigate();
+  const driverPaths = useDriverPaths();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeMenu, setActiveMenu] = useState(null);
   const [menuPosition, setMenuPosition] = useState(null);
@@ -220,7 +222,7 @@ const DriverList = ({ mode = 'approved' }) => {
           <h1 className="text-xl font-semibold text-gray-900">{mode === 'active' ? 'Active Drivers' : 'Approved Drivers'}</h1>
           {mode !== 'active' ? (
             <button
-              onClick={() => navigate('/taxi/admin/drivers/create')}
+              onClick={() => navigate(`${driverPaths.drivers}/create`)}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
             >
               <Plus size={15} /> Add Drivers
@@ -312,7 +314,7 @@ const DriverList = ({ mode = 'approved' }) => {
                     <td className="px-4 py-4 text-sm text-gray-500">{driver.transportType}</td>
                     <td className="px-4 py-4">
                       <button
-                        onClick={() => navigate(`/taxi/admin/drivers/${driver.id}?tab=Documents`)}
+                        onClick={() => navigate(`${driverPaths.drivers}/${driver.id}?tab=Documents`)}
                         className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                       >
                         <FileText size={16} />
@@ -396,7 +398,7 @@ const DriverList = ({ mode = 'approved' }) => {
             <button
               onClick={() => {
                 closeMenu();
-                navigate(`/taxi/admin/drivers/edit/${activeMenu}`);
+                navigate(`${driverPaths.drivers}/edit/${activeMenu}`);
               }}
               className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
             >
@@ -414,7 +416,7 @@ const DriverList = ({ mode = 'approved' }) => {
             <button
               onClick={() => {
                 closeMenu();
-                navigate(`/taxi/admin/drivers/${activeMenu}`);
+                navigate(`${driverPaths.drivers}/${activeMenu}`);
               }}
               className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2"
             >

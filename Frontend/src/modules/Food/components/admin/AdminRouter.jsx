@@ -33,6 +33,15 @@ const MasterOrders = lazy(() => import("@food/pages/admin/master/MasterOrders"))
 const MasterDeliveryEarnings = lazy(() => import("@food/pages/admin/master/DeliveryEarnings"))
 const MasterDeliveryIncentives = lazy(() => import("@food/pages/admin/master/DeliveryIncentives"))
 const MasterPromotions = lazy(() => import("@food/pages/admin/master/PromoCeiling"))
+// Master's own Delivery Management pages: the same screens as the Food and Taxi
+// panels, opened inside Master (links between them stay in Master).
+const TaxiDriverList = lazy(() => import("@/modules/Taxi/modules/admin/pages/drivers/DriverList"))
+const TaxiPendingDrivers = lazy(() => import("@/modules/Taxi/modules/admin/pages/drivers/PendingDrivers"))
+const TaxiDriverDetails = lazy(() => import("@/modules/Taxi/modules/admin/pages/drivers/DriverDetails"))
+const TaxiDriverCreate = lazy(() => import("@/modules/Taxi/modules/admin/pages/drivers/CreateDriver"))
+const TaxiDriverEdit = lazy(() => import("@/modules/Taxi/modules/admin/pages/drivers/EditDriver"))
+const PartnerDocuments = lazy(() => import("@/modules/Taxi/modules/admin/pages/drivers/GlobalDocuments"))
+const PartnerDocumentForm = lazy(() => import("@/modules/Taxi/modules/admin/pages/drivers/DriverDocumentForm"))
 const NewRefundRequests = lazy(() => import("@food/pages/admin/refunds/NewRefundRequests"));
 const FoodApproval = lazy(() => import("@food/pages/admin/restaurant/FoodApproval"));
 const OrdersPage = lazy(() => import("@food/pages/admin/orders/OrdersPage"));
@@ -447,6 +456,16 @@ export default function AdminRouter() {
           <Route path="master/delivery-earnings" element={<MasterDeliveryEarnings />} />
           <Route path="master/delivery-incentives" element={<MasterDeliveryIncentives />} />
           <Route path="master/promotions" element={<MasterPromotions />} />
+          <Route path="master/delivery-partners" element={<DeliverymanList />} />
+          <Route path="master/delivery-partners/join-requests" element={<JoinRequest />} />
+          <Route path="master/taxi-drivers" element={<TaxiDriverList />} />
+          <Route path="master/taxi-drivers/pending" element={<TaxiPendingDrivers />} />
+          <Route path="master/taxi-drivers/create" element={<TaxiDriverCreate />} />
+          <Route path="master/taxi-drivers/edit/:id" element={<TaxiDriverEdit />} />
+          <Route path="master/taxi-drivers/:id" element={<TaxiDriverDetails />} />
+          <Route path="master/partner-documents" element={<PartnerDocuments />} />
+          <Route path="master/partner-documents/create" element={<PartnerDocumentForm />} />
+          <Route path="master/partner-documents/edit/:id" element={<PartnerDocumentForm />} />
           <Route path="master/admins" element={<AdminAccounts />} />
           <Route path="master/admins/create" element={<AdminAccounts />} />
           <Route path="master/admins/edit/:id" element={<AdminAccounts />} />
