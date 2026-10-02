@@ -622,6 +622,12 @@ const emitRideRequestToDrivers = async ({
     data: {
       type: 'ride_request',
       rideId: String(ride._id),
+      // The app tells one round of offers from the next by these, so a
+      // driver who declined or let a round expire can be offered the ride
+      // again while the socket + push copies of ONE round still collapse.
+      attempt: String(attemptIndex + 1),
+      requestExpiresAt,
+      expiresInSeconds: String(dispatchConfig.retryWindowSeconds),
       serviceType: ride.serviceType || 'ride',
       userId: String(ride.userId?._id || ride.userId || ''),
       // Same field names Food/QC's push already uses (pickupAddress,
@@ -1264,9 +1270,7 @@ const dispatchAttempt = async (rideId, attemptIndex = 0) => {
     );
     const dispatchVehicleTypeIds = getDispatchVehicleTypeIds(ride);
     const dispatchState = getDispatchState(rideId);
-    if (dispatchConfig.dispatchType === 'one_by_one' && attemptIndex > 0 && dispatchState.driverIds.length) {
-      closeDriverRequestWindow(rideId, dispatchState.driverIds);
-    }
+    const previousRoundDriverIds = [...dispatchState.driverIds];
 
     const { zone, drivers, searchRadiusMeters } = await matchDrivers(ride.pickupLocation.coordinates, {
       maxDistance: radius,
@@ -1284,18 +1288,40 @@ const dispatchAttempt = async (rideId, attemptIndex = 0) => {
     const rejectedDriverIds = new Set(dispatchState.rejectedDriverIds);
     const notifiedDriverIds = new Set(dispatchState.notifiedDriverIds);
 
-    const availableDrivers = drivers.filter((driver) => {
+    const pickFresh = () => drivers.filter((driver) => {
       const driverId = String(driver._id);
       return !rejectedDriverIds.has(driverId) && !notifiedDriverIds.has(driverId);
     });
+    let availableDrivers = pickFresh();
+    let baseNotifiedDriverIds = dispatchState.notifiedDriverIds;
+
+    // Everyone nearby has already been offered this ride (and declined,
+    // cancelled or let the timer run out) and nobody has accepted. Start
+    // another cycle instead of going silent: the same drivers get it again
+    // after the usual retry delay, until the search window closes the ride.
+    if (!availableDrivers.length && drivers.length) {
+      rejectedDriverIds.clear();
+      notifiedDriverIds.clear();
+      baseNotifiedDriverIds = [];
+      availableDrivers = pickFresh();
+      saveDispatchState(rideId, { rejectedDriverIds: [], notifiedDriverIds: [] });
+    }
 
     const targetDrivers = dispatchConfig.dispatchType === 'broadcast'
       ? availableDrivers
       : availableDrivers.slice(0, 1);
     const nextNotifiedDriverIds = [
-      ...dispatchState.notifiedDriverIds,
+      ...baseNotifiedDriverIds,
       ...targetDrivers.map((driver) => String(driver._id)),
     ];
+
+    // Close the previous round's window only for drivers who are NOT being
+    // offered again right now: a close event arriving just before a fresh
+    // offer to the same driver makes the app write the ride off.
+    if (dispatchConfig.dispatchType === 'one_by_one' && attemptIndex > 0 && previousRoundDriverIds.length) {
+      const reOffered = new Set(targetDrivers.map((driver) => String(driver._id)));
+      closeDriverRequestWindow(rideId, previousRoundDriverIds.filter((id) => !reOffered.has(String(id))));
+    }
 
     saveDispatchState(rideId, {
       radiusIndex: attemptIndex,
