@@ -802,8 +802,16 @@ export async function confirmReachedDropDelivery(orderId, deliveryPartnerId) {
     '';
 
   const existingOtp = String(order.deliveryOtp || '').trim();
-  if (!alreadyAtDrop || !existingOtp) {
-    order.deliveryOtp = generateFourDigitDeliveryOtp();
+  // An order already at the drop with a code but the gate not armed (it was
+  // moved there by hand, or by an older build) used to skip this block, so
+  // Verify OTP was refused with "not active" and Complete with "tap Reached
+  // drop first" -- an unfinishable order. Arm the gate without re-rolling a
+  // code the customer may already have been shown.
+  const gateArmed = order.deliveryVerification?.dropOtp?.required === true;
+  if (!alreadyAtDrop || !existingOtp || !gateArmed) {
+    if (!alreadyAtDrop || !existingOtp) {
+      order.deliveryOtp = generateFourDigitDeliveryOtp();
+    }
     order.deliveryVerification = {
       ...(order.deliveryVerification?.toObject?.() ||
         order.deliveryVerification ||
