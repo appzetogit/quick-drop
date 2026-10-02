@@ -137,7 +137,8 @@ router.post(
     upload.single('file'),
     createHomePromotionBannerController
 );
-router.patch('/hero-banners/home-promotion/:id', adminOnly, updateHomePromotionBannerController);
+// A new image may come with the edit (multipart 'file'); without one only the details change.
+router.patch('/hero-banners/home-promotion/:id', adminOnly, upload.single('file'), updateHomePromotionBannerController);
 router.delete('/hero-banners/home-promotion/:id', adminOnly, deleteHomePromotionBannerController);
 router.patch('/hero-banners/home-promotion/:id/status', adminOnly, toggleHomePromotionBannerStatusController);
 router.patch('/hero-banners/home-promotion/:id/order', adminOnly, updateHomePromotionBannerOrderController);

@@ -101,13 +101,26 @@ export default function PromotionalBanner() {
 
       let res
       if (editingBanner) {
-        res = await api.patch(`/food/showcase-items/home-promotion/${editingBanner._id}`, {
-          title: formData.title,
-          ctaLink: formData.ctaLink,
-          zoneId: formData.zoneId || null,
-          startDate: formData.startDate || null,
-          endDate: formData.endDate || null
-        })
+        // The new image goes with the edit when one was picked; it used to be
+        // left out, so the banner kept its old picture.
+        if (formData.file) {
+          const edit = new FormData()
+          edit.append("file", formData.file)
+          edit.append("title", formData.title || "")
+          edit.append("ctaLink", formData.ctaLink || "")
+          edit.append("zoneId", formData.zoneId || "")
+          edit.append("startDate", formData.startDate || "")
+          edit.append("endDate", formData.endDate || "")
+          res = await api.patch(`/food/showcase-items/home-promotion/${editingBanner._id}`, edit)
+        } else {
+          res = await api.patch(`/food/showcase-items/home-promotion/${editingBanner._id}`, {
+            title: formData.title,
+            ctaLink: formData.ctaLink,
+            zoneId: formData.zoneId || null,
+            startDate: formData.startDate || null,
+            endDate: formData.endDate || null
+          })
+        }
       } else {
         res = await api.post("/food/showcase-items/home-promotion", data)
       }

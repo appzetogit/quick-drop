@@ -66,12 +66,40 @@ export const createHomePromotionBanner = async (file, meta = {}) => {
     }
 };
 
-export const updateHomePromotionBanner = async (id, data) => {
-    const updateData = { ...data };
-    if (data.startDate !== undefined) updateData.startDate = (data.startDate && data.startDate !== "") ? new Date(data.startDate) : null;
-    if (data.endDate !== undefined) updateData.endDate = (data.endDate && data.endDate !== "") ? new Date(data.endDate) : null;
+/**
+ * Edit a promotional banner: its details, and its image when a new one is sent.
+ *
+ * The edit screen's new image used to be dropped (the edit never carried a
+ * file), so a changed banner kept showing the old picture. And the whole body
+ * was written as-is, which let a request set imageUrl/publicId/isActive or any
+ * other field directly; only the editable fields are taken now.
+ */
+export const updateHomePromotionBanner = async (id, data = {}, file = null) => {
+    const existing = await HomePromotionBanner.findById(id).lean();
+    if (!existing) return null;
 
-    return HomePromotionBanner.findByIdAndUpdate(id, updateData, { new: true }).lean();
+    const updateData = {};
+    if (data.title !== undefined) updateData.title = String(data.title ?? '').trim();
+    if (data.ctaLink !== undefined) updateData.ctaLink = String(data.ctaLink ?? '').trim();
+    if (data.zoneId !== undefined) {
+        updateData.zoneId = data.zoneId && data.zoneId !== 'null' && data.zoneId !== '' ? data.zoneId : null;
+    }
+    if (data.startDate !== undefined) updateData.startDate = (data.startDate && data.startDate !== "" && data.startDate !== 'null') ? new Date(data.startDate) : null;
+    if (data.endDate !== undefined) updateData.endDate = (data.endDate && data.endDate !== "" && data.endDate !== 'null') ? new Date(data.endDate) : null;
+    if (data.sortOrder !== undefined && Number.isFinite(Number(data.sortOrder))) updateData.sortOrder = Number(data.sortOrder);
+
+    if (file?.buffer) {
+        const uploadResult = await uploadMediaBufferDetailed(file.buffer, 'food/home-promotion-banners');
+        updateData.imageUrl = uploadResult.secure_url;
+        updateData.publicId = uploadResult.public_id;
+    }
+
+    const updated = await HomePromotionBanner.findByIdAndUpdate(id, updateData, { new: true }).lean();
+    // The replaced picture is no longer used anywhere; best-effort, never blocks the edit.
+    if (file?.buffer && existing.publicId && existing.publicId !== updateData.publicId) {
+        await deleteStoredAsset(existing.publicId);
+    }
+    return updated;
 };
 
 export const deleteHomePromotionBanner = async (id) => {

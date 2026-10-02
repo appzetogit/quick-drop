@@ -24,7 +24,7 @@ export const updateHomePromotionBannerController = async (req, res, next) => {
     try {
         const { id } = req.params;
         const data = req.body;
-        const banner = await bannerService.updateHomePromotionBanner(id, data);
+        const banner = await bannerService.updateHomePromotionBanner(id, data, req.file);
         res.status(200).json({ success: true, banner });
     } catch (error) {
         next(error);
