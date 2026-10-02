@@ -1,5 +1,5 @@
 import { logger } from '../../utils/logger.js';
-import { listGlobalUsers, streamGlobalUsersCsv } from './globalUsers.service.js';
+import { listGlobalUsers, streamGlobalUsersCsv, setCustomerBlocked } from './globalUsers.service.js';
 
 /** Master > Customers. Read and export only -- see the service for why. */
 
@@ -10,6 +10,18 @@ export async function listGlobalUsersController(req, res, next) {
         // keep a copy of it.
         res.setHeader('Cache-Control', 'private, no-store');
         return res.json({ success: true, data });
+    } catch (err) {
+        return next(err);
+    }
+}
+
+/** Block / unblock a customer in every app (body: { blocked: boolean }). */
+export async function setCustomerBlockedController(req, res, next) {
+    try {
+        const result = await setCustomerBlocked(req.params.id, req.body?.blocked === true);
+        if (!result) return res.status(404).json({ success: false, message: 'Customer not found' });
+        logger.info(`globalUsers: customer ${result.id} ${result.isActive ? 'unblocked' : 'blocked'} by admin ${req.user?.userId || req.user?.id || ''}`);
+        return res.json({ success: true, data: result });
     } catch (err) {
         return next(err);
     }

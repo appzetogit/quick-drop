@@ -897,7 +897,18 @@ export default function AdminSidebar({ isOpen = false, onClose, onCollapseChange
                       )}
                     ></span>
                     <span className="text-left flex-1 truncate">{subItem.label}</span>
-                    {getBadgeCount(subItem.label, subItem.path) > 0 && (
+                    {/* Master entries name their own count: a plain total, or one that needs action. */}
+                    {subItem.countKey && badges[subItem.countKey] > 0 && (
+                      <span className="shrink-0 bg-[var(--sb-surface-raised)] border border-[var(--sb-border)] text-[var(--sb-ink-soft)] text-[10px] font-semibold px-1.5 py-0.5 rounded-full ml-1 min-w-[18px] text-center tabular-nums">
+                        {badges[subItem.countKey] > 999 ? "999+" : badges[subItem.countKey]}
+                      </span>
+                    )}
+                    {subItem.alertKey && badges[subItem.alertKey] > 0 && (
+                      <span className="shrink-0 bg-red-600 text-[#FFFFFF] text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 min-w-[18px] text-center">
+                        {badges[subItem.alertKey] > 99 ? "99+" : badges[subItem.alertKey]}
+                      </span>
+                    )}
+                    {!subItem.countKey && !subItem.alertKey && getBadgeCount(subItem.label, subItem.path) > 0 && (
                       <span className="shrink-0 bg-red-600 text-[#FFFFFF] text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 min-w-[18px] text-center">
                         {getBadgeCount(subItem.label, subItem.path) > 99 ? "99+" : getBadgeCount(subItem.label, subItem.path)}
                       </span>

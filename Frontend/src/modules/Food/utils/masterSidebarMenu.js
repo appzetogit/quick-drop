@@ -68,12 +68,14 @@ export const masterSidebarMenu = [
           // them, filtered by vehicle class. It lives on Taxi's screen, which is
           // why it used to be labelled "Taxi · Driver Documents".
           { label: "Partner Documents (all partners)", path: "/taxi/admin/drivers/documents" },
-          { label: "Food · Delivery Partners", path: "/admin/food/delivery-partners" },
-          { label: "Food · Join Requests", path: "/admin/food/delivery-partners/join-request" },
-          { label: "Quick · Delivery Partners", path: "/admin/quick-commerce/delivery-partners" },
-          { label: "Quick · Join Requests", path: "/admin/quick-commerce/delivery-partners/join-request" },
-          { label: "Taxi · Drivers", path: "/taxi/admin/drivers" },
-          { label: "Taxi · Pending Drivers", path: "/taxi/admin/drivers/pending" },
+          // Food, Quick and Medical share one rider pool: every rider signs up and
+          // works on the Food record, and Quick keeps linked copies. One list.
+          // Taxi drivers are a separate pool. countKey / alertKey name the
+          // sidebar-badges total shown beside the entry (alert = needs action).
+          { label: "Delivery Partners (Food, Quick & Medical)", path: "/admin/food/delivery-partners", countKey: "masterRiders" },
+          { label: "Delivery Join Requests", path: "/admin/food/delivery-partners/join-request", alertKey: "masterRiderRequests" },
+          { label: "Taxi · Drivers", path: "/taxi/admin/drivers", countKey: "masterTaxiDrivers" },
+          { label: "Taxi · Pending Drivers", path: "/taxi/admin/drivers/pending", alertKey: "masterTaxiPending" },
           ...sp([{ label: "Services · Workers", path: "/admin/sp/workers/all" }]),
         ],
       },
@@ -159,11 +161,9 @@ export const masterSidebarMenu = [
         label: "Customer Management",
         icon: "Users",
         subItems: [
-          { label: "All Customers", path: "/admin/master/customers" },
-          { label: "Food · Customers", path: "/admin/food/customers" },
-          { label: "Quick · Customers", path: "/admin/quick-commerce/customers" },
-          { label: "Taxi · Users", path: "/taxi/admin/users" },
-          { label: "Taxi · Deletion Requests", path: "/taxi/admin/users/delete-requests" },
+          // Customers are one `users` collection for every app, so one list.
+          { label: "All Customers", path: "/admin/master/customers", countKey: "masterCustomers" },
+          { label: "Account Deletion Requests", path: "/taxi/admin/users/delete-requests", alertKey: "masterDeletionRequests" },
           ...sp([{ label: "Services · Users", path: "/admin/sp/users/all" }]),
         ],
       },

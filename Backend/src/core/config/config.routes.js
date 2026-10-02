@@ -16,7 +16,7 @@ import {
 } from '../settings/platformProfile.controller.js';
 import { listAppLegal, saveAppLegal } from '../settings/appLegal.js';
 import { getEarningsController } from '../finance/earnings.controller.js';
-import { listGlobalUsersController, exportGlobalUsersController } from '../users/globalUsers.controller.js';
+import { listGlobalUsersController, exportGlobalUsersController, setCustomerBlockedController } from '../users/globalUsers.controller.js';
 import { referralOverview } from '../referral/referralSettings.service.js';
 import { platformFeesOverview } from '../finance/platformFees.service.js';
 
@@ -69,6 +69,8 @@ router.get('/orders', async (req, res, next) => {
     }
 });
 router.get('/users/export', requireFinancePermission('PLATFORM_SETTING_SET'), exportGlobalUsersController);
+// Blocking a customer is a write, so it needs the settings permission like every other write here.
+router.patch('/users/:id/status', requireFinancePermission('PLATFORM_SETTING_SET'), setCustomerBlockedController);
 
 // Master > Referral: what each service pays now, and whether Master or the
 // service set it. Declared before '/:key'.

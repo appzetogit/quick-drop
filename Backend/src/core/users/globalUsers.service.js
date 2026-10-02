@@ -51,7 +51,8 @@ const lazy = async (path, name) => {
  * so a search for ten digits has to find all three.
  */
 export function buildUserFilter({ search = '', status = '', from = '', to = '' } = {}) {
-    const filter = {};
+    // A deleted account is not a customer any more.
+    const filter = { deletedAt: null };
 
     const term = String(search || '').trim();
     if (term) {
@@ -361,6 +362,46 @@ export async function streamGlobalUsersCsv(res, query = {}) {
     }
     await flush();
     res.end();
+}
+
+/**
+ * Block or unblock a customer in every app at once.
+ *
+ * The one write this module makes, kept to plain `$set`s on the flags so
+ * neither schema that shares `users` can drop the other's fields: Food reads
+ * `isActive`, Taxi refuses a user when `isActive` or `active` is false. The
+ * customer's Quick record (`qc_users`, linked by platformUserId or phone) gets
+ * the same flag. Blocking signs them out of Food and Quick (refresh tokens
+ * gone); Taxi checks the flag on every request.
+ */
+export async function setCustomerBlocked(id, blocked) {
+    const _id = oid(id);
+    if (!_id) return null;
+    const isActive = !blocked;
+    const users = mongoose.connection.collection('users');
+    const user = await users.findOne({ _id, deletedAt: null }, { projection: { phone: 1 } });
+    if (!user) return null;
+    await users.updateOne({ _id }, { $set: { isActive, active: isActive } });
+
+    const ten = toTenDigits(user.phone);
+    const qcMatch = {
+        $or: [
+            { platformUserId: _id },
+            ...(ten ? [{ phone: { $in: [ten, `+91${ten}`, `91${ten}`] } }] : []),
+        ],
+    };
+    const qcUsers = mongoose.connection.collection('qc_users');
+    const qcIds = (await qcUsers.find(qcMatch, { projection: { _id: 1 } }).toArray()).map((q) => q._id);
+    if (qcIds.length) await qcUsers.updateMany({ _id: { $in: qcIds } }, { $set: { isActive } });
+
+    if (blocked) {
+        const { FoodRefreshToken, QCRefreshToken } = await import('../refreshTokens/refreshToken.model.js');
+        await Promise.all([
+            FoodRefreshToken.deleteMany({ userId: _id }),
+            QCRefreshToken.deleteMany({ userId: { $in: [_id, ...qcIds] } }),
+        ]).catch((err) => logger.warn(`globalUsers: sign-out after block failed: ${err.message}`));
+    }
+    return { id: String(_id), isActive };
 }
 
 export const __testables = { csvCell, escapeRx, CSV_COLUMNS, shape };

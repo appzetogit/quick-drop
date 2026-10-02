@@ -11,10 +11,10 @@ import { Loader2, Search, Download, Users, ChevronLeft, ChevronRight } from "luc
  * by phone. So this screen replaces four per-vertical customer lists that could
  * each only see their own slice of the same person.
  *
- * READ AND EXPORT ONLY. Two schemas share that collection and diverge -- taxi
- * alone holds `password`, `status`, `deletionRequest` -- so a write from here
- * risks dropping fields the other vertical needs. Blocking and editing stay on
- * the screens whose schema owns them, and this page links out to them instead.
+ * One write: Block / Unblock, which the server applies to every app with plain
+ * flag updates (core/users/globalUsers.service.js setCustomerBlocked). Editing
+ * stays on the screens whose schema owns those fields -- two schemas share the
+ * collection and a full-document write from here could drop the other's fields.
  */
 
 const PAGE_SIZE = 25
@@ -63,6 +63,7 @@ export default function GlobalUsers() {
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 })
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [blockingId, setBlockingId] = useState(null)
 
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState("")
@@ -94,6 +95,21 @@ export default function GlobalUsers() {
   useEffect(() => {
     load()
   }, [load])
+
+  const toggleBlocked = async (u) => {
+    const block = u.isActive
+    if (block && !window.confirm(`Block ${u.name || u.phone}? They will be signed out of every Quick Drop app.`)) return
+    setBlockingId(u.id)
+    try {
+      await platformSettingsAPI.setGlobalUserBlocked(u.id, block)
+      setRows((prev) => prev.map((r) => (r.id === u.id ? { ...r, isActive: !block } : r)))
+      toast.success(block ? "Customer blocked in every app" : "Customer unblocked")
+    } catch (err) {
+      toast.error(errText(err, block ? "Could not block this customer" : "Could not unblock this customer"))
+    } finally {
+      setBlockingId(null)
+    }
+  }
 
   // Typing settles before the server is asked, so each keystroke is not a query
   // against every customer on the platform.
@@ -233,6 +249,14 @@ export default function GlobalUsers() {
                           {u.isActive ? "Active" : "Blocked"}
                         </span>
                         {!u.isVerified && <p className="mt-0.5 text-[11px] text-amber-600">Unverified</p>}
+                        <button
+                          type="button"
+                          disabled={blockingId === u.id}
+                          onClick={() => toggleBlocked(u)}
+                          className={`mt-1 block text-xs font-medium underline-offset-2 hover:underline disabled:opacity-50 ${u.isActive ? "text-red-700" : "text-emerald-700"}`}
+                        >
+                          {blockingId === u.id ? "Saving…" : u.isActive ? "Block" : "Unblock"}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -258,8 +282,7 @@ export default function GlobalUsers() {
 
         <p className="px-1 text-xs text-neutral-500">
           Orders counts Food, and Quick Commerce with Medical, from their own order records; the
-          small figures under each total show the split. Blocking and editing a customer stay on that
-          vertical&apos;s own screen.
+          small figures under each total show the split. Blocking here blocks the customer in every app.
         </p>
       </div>
     </div>

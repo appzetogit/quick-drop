@@ -5035,7 +5035,7 @@ export async function deactivateDeliveryPartner(id) {
         await Driver.updateOne({ _id: partner.driverId }, { $set: { isOnline: false, approve: false } }).catch(() => {});
     }
     const { syncQcRiderFromFood } = await import('../../../../core/delivery/qcRiderLink.js');
-    await syncQcRiderFromFood(String(partner._id), { availabilityStatus: 'offline' }).catch(() => {});
+    await syncQcRiderFromFood(String(partner._id), { availabilityStatus: 'offline', status: 'deactivated' }).catch(() => {});
 
     return { _id: partner._id, status: partner.status };
 }
@@ -5067,6 +5067,10 @@ export async function approveDeliveryPartner(id, { serviceCapabilities } = {}) {
     partner.rejectedAt = undefined;
     partner.rejectionReason = undefined;
     await partner.save();
+    {
+        const { syncQcRiderFromFood } = await import('../../../../core/delivery/qcRiderLink.js');
+        await syncQcRiderFromFood(String(partner._id), { status: 'approved' }).catch(() => {});
+    }
 
     try {
         const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
@@ -5168,6 +5172,10 @@ export async function rejectDeliveryPartner(id, reason) {
         // Out at once: no new tokens from the refresh token, and the per-request
         // check (core/auth/auth.middleware.js) stops using its cached "approved".
         await signOutAccount('DELIVERY_PARTNER', updated._id);
+        {
+            const { syncQcRiderFromFood } = await import('../../../../core/delivery/qcRiderLink.js');
+            await syncQcRiderFromFood(String(updated._id), { availabilityStatus: 'offline', status: 'rejected' }).catch(() => {});
+        }
         try {
             const { notifyOwnerSafely } = await import('../../../../core/notifications/firebase.service.js');
             await notifyOwnerSafely(
@@ -5678,6 +5686,38 @@ export async function getCashLimitSettlements(query = {}) {
     };
 }
 
+/**
+ * Totals for the Master menu. Food, Quick and Medical share one rider pool
+ * (every rider signs up and works on the Food record; Quick keeps linked
+ * copies), so riders are counted once, from Food. Taxi drivers are their own
+ * pool. Customers are one collection for every app.
+ */
+async function masterMenuCounts() {
+    try {
+        const db = mongoose.connection.db;
+        const notOwner = { onboarding_role: { $ne: 'owner' } };
+        const [riders, riderRequests, taxiDrivers, taxiPending, customers, deletionRequests] = await Promise.all([
+            FoodDeliveryPartner.countDocuments({ status: 'approved' }),
+            FoodDeliveryPartner.countDocuments({ status: 'pending' }),
+            db.collection('taxidrivers').countDocuments({ approve: true, deletedAt: null, ...notOwner }),
+            db.collection('taxidrivers').countDocuments({ approve: false, deletedAt: null, status: { $nin: ['deactivated'] }, ...notOwner }),
+            FoodUser.countDocuments({ deletedAt: null }), // same rule as Master > All Customers
+            db.collection('users').countDocuments({ 'deletionRequest.status': 'pending', deletedAt: null }),
+        ]);
+        return {
+            masterRiders: riders,
+            masterRiderRequests: riderRequests,
+            masterTaxiDrivers: taxiDrivers,
+            masterTaxiPending: taxiPending,
+            masterCustomers: customers,
+            masterDeletionRequests: deletionRequests,
+        };
+    } catch (error) {
+        console.error('Error counting master menu totals:', error);
+        return {};
+    }
+}
+
 export async function getSidebarBadges() {
     try {
         const [
@@ -5694,7 +5734,8 @@ export async function getSidebarBadges() {
             pendingEarningAddons,
             pendingSafetyReports,
             pendingEmergencyHelp,
-            pendingRestaurantComplaints
+            pendingRestaurantComplaints,
+            masterCounts
         ] = await Promise.all([
             FoodRestaurant.countDocuments({ status: 'pending' }),
             FoodDeliveryPartner.countDocuments({ status: 'pending' }),
@@ -5709,7 +5750,8 @@ export async function getSidebarBadges() {
             FoodEarningAddonHistory.countDocuments({ status: 'pending' }),
             FoodSafetyEmergencyReport.countDocuments({ status: 'pending' }),
             FoodDeliveryEmergencyHelp.countDocuments({ status: 'pending' }),
-            FoodSupportTicket.countDocuments({ status: 'open', restaurantId: { $exists: true } })
+            FoodSupportTicket.countDocuments({ status: 'open', restaurantId: { $exists: true } }),
+            masterMenuCounts()
         ]);
 
         return {
@@ -5726,7 +5768,8 @@ export async function getSidebarBadges() {
             earningAddons: pendingEarningAddons,
             safetyReports: pendingSafetyReports,
             emergencyHelp: pendingEmergencyHelp,
-            restaurantComplaints: pendingRestaurantComplaints
+            restaurantComplaints: pendingRestaurantComplaints,
+            ...masterCounts
         };
     } catch (error) {
         console.error('Error fetching sidebar badges:', error);

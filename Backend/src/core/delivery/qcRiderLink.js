@@ -160,13 +160,17 @@ export async function mirrorQcOfferToFoodRider(qcRiderId, { event, payload, push
  * so Quick's own distance checks (available list, accept) see where they are.
  * Called on every go-online / heartbeat. Never throws.
  */
-export async function syncQcRiderFromFood(foodRiderId, { availabilityStatus, lat, lng } = {}) {
+export async function syncQcRiderFromFood(foodRiderId, { availabilityStatus, lat, lng, status } = {}) {
   try {
     const qcId = await qcRiderIdForFoodRider(foodRiderId);
     if (!qcId) return false;
     const { QcRider } = await models();
     const set = {};
     if (availabilityStatus) set.availabilityStatus = availabilityStatus;
+    // Approval state follows the Food record: a rider deleted, rejected or
+    // re-approved there was left "approved" on the Quick side, so the Quick
+    // rider list kept counting people who no longer work.
+    if (status) set.status = status;
     if (typeof lat === 'number' && typeof lng === 'number') {
       Object.assign(set, {
         lastLat: lat, lastLng: lng, lastLocationAt: new Date(),

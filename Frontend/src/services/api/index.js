@@ -230,6 +230,9 @@ export const platformSettingsAPI = {
     apiClient.get("/platform/settings/orders", { params, contextModule: "admin" }),
   getGlobalUsers: (params = {}) =>
     apiClient.get("/platform/settings/users", { params, contextModule: "admin" }),
+  /** Block or unblock a customer in every app at once. */
+  setGlobalUserBlocked: (id, blocked) =>
+    apiClient.patch(`/platform/settings/users/${id}/status`, { blocked: Boolean(blocked) }, { contextModule: "admin" }),
   /** The same list as a CSV file. Streamed by the server, so kept as a blob. */
   exportGlobalUsers: (params = {}) =>
     apiClient.get("/platform/settings/users/export", {
