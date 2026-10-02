@@ -5040,6 +5040,77 @@ export async function deactivateDeliveryPartner(id) {
     return { _id: partner._id, status: partner.status };
 }
 
+/**
+ * "Delete" on the rider list: removes the rider for good.
+ *
+ * Deleted: the Food rider, its Quick copy, its taxi driver record and hub
+ * profile, its wallet records and its logins. A rider who signs up again on
+ * the same number starts as a brand-new account with nothing carried over.
+ *
+ * Kept: past orders, rides, payouts, bonuses and cash deposits. They are the
+ * platform's and the customers' records, and accounts and reports have to keep
+ * adding up after a rider leaves; they point at an id that no longer exists,
+ * so nothing of theirs reaches a new account.
+ *
+ * Money stops it once: a rider still holding platform cash, or owed a wallet
+ * balance, comes back as { needsConfirm, cashInHand, walletBalance } so the
+ * admin sees the amounts; `force` deletes anyway.
+ */
+export async function deleteDeliveryPartnerPermanently(id, { force = false, skipBusyCheck = false } = {}) {
+    if (!mongoose.Types.ObjectId.isValid(String(id))) return null;
+    const partner = await FoodDeliveryPartner.findById(id).lean();
+    if (!partner) return null;
+
+    if (!skipBusyCheck) {
+        const onFood = await FoodOrder.exists({
+            'dispatch.deliveryPartnerId': partner._id,
+            'dispatch.status': 'accepted',
+            orderStatus: { $nin: ['delivered', 'completed', 'rejected'], $not: /^cancel/ },
+        });
+        const { foodRiderHasQcJob } = await import('../../../../core/delivery/qcRiderLink.js');
+        if (onFood || await foodRiderHasQcJob(partner._id).catch(() => false)) {
+            throw new ValidationError('This rider is carrying an order. Reassign or finish it before deleting them.');
+        }
+    }
+
+    if (!force) {
+        const { getRiderFinance } = await import('../../../../core/finance/riderFinance.service.js');
+        const finance = await getRiderFinance(String(partner._id)).catch(() => null);
+        const cashInHand = Number(finance?.cashInHand) || 0;
+        const walletBalance = Number(finance?.walletBalance) || 0;
+        if (cashInHand > 0 || walletBalance > 0) {
+            return { needsConfirm: true, cashInHand, walletBalance, name: partner.name || '' };
+        }
+    }
+
+    await signOutAccount('DELIVERY_PARTNER', partner._id);
+
+    const db = mongoose.connection.db;
+    const last10 = String(partner.phone || '').replace(/\D/g, '').slice(-10);
+    const byPhone = last10 ? [{ phone: { $regex: `${last10}$` } }] : [];
+    const qcIds = (await db.collection('qc_delivery_partners').find(
+        { $or: [...byPhone, ...(partner.driverId ? [{ driverId: partner.driverId }] : [])] },
+        { projection: { _id: 1 } },
+    ).toArray()).map((q) => q._id);
+    const driverIds = (await db.collection('taxidrivers').find(
+        { $or: [...(partner.driverId ? [{ _id: partner.driverId }] : []), { legacyDeliveryPartnerId: partner._id }] },
+        { projection: { _id: 1 } },
+    ).toArray()).map((d) => d._id);
+
+    await Promise.all([
+        db.collection('food_delivery_partners').deleteOne({ _id: partner._id }),
+        db.collection('food_delivery_wallets').deleteMany({ deliveryPartnerId: partner._id }),
+        qcIds.length ? db.collection('qc_delivery_partners').deleteMany({ _id: { $in: qcIds } }) : null,
+        qcIds.length ? db.collection('qc_delivery_wallets').deleteMany({ deliveryPartnerId: { $in: qcIds } }) : null,
+        driverIds.length ? db.collection('taxidrivers').deleteMany({ _id: { $in: driverIds } }) : null,
+        db.collection('food_delivery_profiles').deleteMany({
+            $or: [{ legacyDeliveryPartnerId: partner._id }, ...(driverIds.length ? [{ driverId: { $in: driverIds } }] : [])],
+        }),
+    ]);
+    console.info(`[admin] delivery partner ${partner._id} (${partner.name || ''}) permanently deleted; quick copies ${qcIds.length}, taxi records ${driverIds.length}`);
+    return { _id: partner._id, deleted: true };
+}
+
 export async function approveDeliveryPartner(id, { serviceCapabilities } = {}) {
     const partner = await FoodDeliveryPartner.findById(id);
     if (!partner) return null;

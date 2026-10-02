@@ -559,9 +559,10 @@ export const adminAPI = {
         contextModule: "admin",
       },
     ),
-  /** Deactivates (keeps wallet and history); the rider list's Delete button. */
-  deleteDeliveryPartner: (id) =>
+  /** Deletes the rider permanently; answers 409 with the amounts when money is on the account (then force). */
+  deleteDeliveryPartner: (id, { force = false } = {}) =>
     apiClient.delete(`/food/admin/delivery/partners/${String(id)}`, {
+      params: force ? { force: 1 } : undefined,
       contextModule: "admin",
     }),
   updateDeliveryPartnerCapabilities: (id, serviceCapabilities) =>

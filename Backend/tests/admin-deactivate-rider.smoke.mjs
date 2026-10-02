@@ -60,19 +60,21 @@ await check('an unknown id is a 404, not a crash', async () => {
   assert.equal(await admin.deactivateDeliveryPartner(String(new mongoose.Types.ObjectId())), null);
 });
 
-await check('a deleted driver can sign up again with the same number: same record, back in Join Requests', async () => {
+await check('a driver deleted the old way signs up again as a NEW account; the old one is gone', async () => {
   const { registerDeliveryPartner } = await import('../src/modules/food/delivery/services/delivery.service.js');
   const again = await registerDeliveryPartner({
     name: 'Rider Again', phone: '9822200001', city: 'Indore', state: 'MP', vehicleType: 'bike',
     vehicleNumber: 'MP09AB1234', drivingLicenseNumber: 'DL123', panNumber: 'ABCDE1234F', aadharNumber: '123412341234',
   }, {});
   const id = String(again?._id || again?.partner?._id || again?.deliveryPartner?._id || '');
-  assert.equal(id, String(rider._id), 'a new record was created instead of reusing the deleted one');
-  const p = await FoodDeliveryPartner.findById(rider._id).lean();
+  assert.ok(id && id !== String(rider._id), 'the deleted account was reused, bringing its old records back');
+  assert.equal(await FoodDeliveryPartner.findById(rider._id).lean(), null);
+  assert.equal(await drivers.findOne({ _id: driverId }), null);
+  const p = await FoodDeliveryPartner.findById(id).lean();
   assert.equal(p.status, 'pending');
   assert.equal(p.name, 'Rider Again');
   const { requests } = await admin.getDeliveryJoinRequests({ status: 'pending' });
-  assert.ok(requests.some((r) => String(r._id) === String(rider._id)), 'not in Join Requests');
+  assert.ok(requests.some((r) => String(r._id) === id), 'not in Join Requests');
 });
 
 await check('the OTP login sends a deleted driver to sign-up, not "pending verification"', async () => {

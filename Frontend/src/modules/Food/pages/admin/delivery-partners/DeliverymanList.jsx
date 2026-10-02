@@ -348,8 +348,9 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
       return
     }
 
+    const name = deliveryman?.name || "this delivery partner"
     const confirmed = window.confirm(
-      `Deactivate ${deliveryman?.name || "this delivery partner"}?\n\nThis will block the account and log them out, while preserving profile, wallet, and history.`,
+      `Permanently delete ${name}?\n\nTheir account, wallet and documents are removed and they are signed out. If they sign up again it is a brand-new account. Past orders stay in your reports. This cannot be undone.`,
     )
 
     if (!confirmed) {
@@ -358,10 +359,24 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
 
     try {
       setDeletingDeliveryId(deliverymanId)
-      const response = await adminAPI.deleteDeliveryPartner(deliverymanId)
+      let response
+      try {
+        response = await adminAPI.deleteDeliveryPartner(deliverymanId)
+      } catch (err) {
+        // Money still on the account: show it, and delete only on a second yes.
+        const money = err?.response?.status === 409 ? err.response.data?.data : null
+        if (!money?.needsConfirm) throw err
+        const rupees = (n) => `\u20B9${Number(n || 0).toLocaleString("en-IN")}`
+        const lines = [
+          money.cashInHand > 0 ? `holds ${rupees(money.cashInHand)} of cash owed to you` : "",
+          money.walletBalance > 0 ? `has ${rupees(money.walletBalance)} in their wallet` : "",
+        ].filter(Boolean).join(" and ")
+        if (!window.confirm(`${name} ${lines}.\n\nDeleting removes this balance for good. Delete anyway?`)) return
+        response = await adminAPI.deleteDeliveryPartner(deliverymanId, { force: true })
+      }
 
       if (!response?.data?.success) {
-        toast.error(response?.data?.message || "Failed to deactivate delivery partner")
+        toast.error(response?.data?.message || "Failed to delete delivery partner")
         return
       }
 
@@ -373,10 +388,10 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
       if (wasViewingDeletedPartner) {
         setIsViewOpen(false)
       }
-      toast.success(response?.data?.message || "Delivery partner deactivated successfully")
+      toast.success(response?.data?.message || "Delivery partner deleted permanently")
     } catch (err) {
       debugError("Error deleting delivery partner:", err)
-      toast.error(err?.response?.data?.message || "Failed to deactivate delivery partner")
+      toast.error(err?.response?.data?.message || "Failed to delete delivery partner")
     } finally {
       setDeletingDeliveryId(null)
     }

@@ -96,11 +96,16 @@ export const registerDeliveryPartner = async (payload, files) => {
             ...(last10 ? [{ phone: { $regex: new RegExp(last10 + "$") } }] : [])
         ]
     });
-    // A driver the admin deleted (deactivated) signs up again on the same
-    // record: it goes back to Join Requests as pending, and keeps its wallet,
-    // cash owed and order history. Refusing them left the number stuck.
-    const reactivating = existing?.status === 'deactivated' ? existing : null;
-    if (existing && !reactivating) {
+    // A rider deleted before delete became permanent is still on file as
+    // 'deactivated'. Signing up again removes that old account for good and
+    // starts a new one: reusing it brought the old wallet, earnings and
+    // history back into the new rider's app.
+    if (existing?.status === 'deactivated') {
+        const { deleteDeliveryPartnerPermanently } = await import('../../admin/services/admin.service.js');
+        await deleteDeliveryPartnerPermanently(String(existing._id), { force: true, skipBusyCheck: true });
+    }
+    const reactivating = null;
+    if (existing && existing.status !== 'deactivated') {
         if (existing.status !== 'rejected') {
             throw new ValidationError('Delivery partner with this phone already exists');
         }

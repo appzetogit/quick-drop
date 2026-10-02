@@ -1460,12 +1460,21 @@ export async function updateSupportTicket(req, res, next) {
 }
 
 // ----- Delivery partners -----
-/** "Delete" on the rider list: deactivates, keeping wallet and history. */
+/** "Delete" on the rider list: removes the rider permanently (?force=1 past a money warning). */
 export async function deactivateDeliveryPartner(req, res, next) {
     try {
-        const data = await adminService.deactivateDeliveryPartner(req.params.id);
+        const force = ['1', 'true'].includes(String(req.query?.force || ''));
+        const data = await adminService.deleteDeliveryPartnerPermanently(req.params.id, { force });
         if (!data) return res.status(404).json({ success: false, message: 'Delivery partner not found' });
-        res.status(200).json({ success: true, message: 'Delivery partner deactivated', data });
+        if (data.needsConfirm) {
+            return res.status(409).json({
+                success: false,
+                needsConfirm: true,
+                message: 'This rider still has money on their account',
+                data,
+            });
+        }
+        res.status(200).json({ success: true, message: 'Delivery partner deleted permanently', data });
     } catch (error) {
         next(error);
     }
