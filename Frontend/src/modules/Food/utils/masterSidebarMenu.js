@@ -63,6 +63,7 @@ export const masterSidebarMenu = [
         subItems: [
           { label: "Delivery Earnings (all services)", path: "/admin/master/delivery-earnings" },
           { label: "Delivery Incentives", path: "/admin/master/delivery-incentives" },
+          { label: "Order Batching", path: "/admin/master/order-batching" },
           // One catalogue for every partner: the partner app's sign-up (Food rider,
           // Quick & Medical rider, bike taxi, cab, parcel) reads it for all of
           // them, filtered by vehicle class. It lives on Taxi's screen, which is

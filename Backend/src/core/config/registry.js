@@ -345,6 +345,49 @@ export const SETTINGS = Object.freeze({
         label: 'Position staleness window (ms)',
     },
 
+    // --- order batching (core/delivery/batching.js) -------------------------
+    'batching.enabled': {
+        type: 'boolean',
+        default: false,
+        scopes: NOT_PER_PARTNER,
+        label: 'Give a rider a second order on the same trip',
+        help: 'Food, Quick and Medical. A rider on the way to a store can be offered another order from the same or a nearby store going the same way. Off: one order per rider.',
+    },
+    'batching.maxOrders': {
+        type: 'number',
+        default: 2,
+        min: 2,
+        max: 3,
+        scopes: NOT_PER_PARTNER,
+        label: 'Most orders on one trip',
+    },
+    'batching.pickupRadiusM': {
+        type: 'number',
+        default: 500,
+        min: 0,
+        max: 3000,
+        scopes: NOT_PER_PARTNER,
+        label: 'Stores at most this far apart (metres)',
+        help: '0 means the same store only.',
+    },
+    'batching.dropRadiusKm': {
+        type: 'number',
+        default: 3,
+        min: 0.2,
+        max: 15,
+        scopes: NOT_PER_PARTNER,
+        label: 'Drops at most this far apart (km)',
+    },
+    'batching.maxWaitMinutes': {
+        type: 'number',
+        default: 10,
+        min: 1,
+        max: 60,
+        scopes: NOT_PER_PARTNER,
+        label: 'Only within this many minutes of the first order being accepted',
+        help: 'Keeps the first customer from waiting on a long detour.',
+    },
+
     // --- partner rules -------------------------------------------------------
     'partner.requireKyc': {
         type: 'boolean',

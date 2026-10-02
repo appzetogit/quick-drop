@@ -1551,6 +1551,11 @@ export async function getCurrentTripDelivery(deliveryPartnerId) {
   return deliveryService.getCurrentTripDelivery(deliveryPartnerId);
 }
 
+/** Every order on the rider's trip (batching). */
+export async function getCurrentTripsDelivery(deliveryPartnerId) {
+  return deliveryService.getCurrentTripsDelivery(deliveryPartnerId);
+}
+
 // ----- Delivery: available, accept, reject, status -----
 export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
   return deliveryService.listOrdersAvailableDelivery(deliveryPartnerId, query);

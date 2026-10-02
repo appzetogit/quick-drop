@@ -109,10 +109,9 @@ async function listNearbyOnlineDeliveryPartners(
   // Driver unification: drop partners whose unified driver is busy on another job or whose
   // work-mode excludes deliveries. Flag-gated; no-op (and no extra query) while disabled.
   const unified = await filterByUnifiedWorkMode(allOnline);
-  // A rider carrying a Quick/Medical order isn't offered Food (see qcRiderLink).
-  const { foodRidersOnQcJobs } = await import('../../../../core/delivery/qcRiderLink.js');
-  const onQc = await foodRidersOnQcJobs(unified.map((p) => p._id)).catch(() => new Set());
-  const eligible = unified.filter((p) => !onQc.has(String(p._id)));
+  // Riders already carrying an order (Food or Quick/Medical) are judged by the
+  // caller against the order itself: core/delivery/batching.js.
+  const eligible = unified;
 
   const scored = [];
   const allowedStatuses = process.env.NODE_ENV === 'production' ? ['approved'] : ['approved', 'pending'];
@@ -400,7 +399,17 @@ export async function tryAutoAssign(orderId, options = {}) {
     if (attempt >= 4) maxKm = 60;
 
     const searchOptions = { maxKm, limit: 15 };
-    const { partners } = await listNearbyOnlineDeliveryPartners(order.restaurantId, searchOptions);
+    let { partners } = await listNearbyOnlineDeliveryPartners(order.restaurantId, searchOptions);
+    // A rider on a trip is offered this order only if it can join that trip
+    // (batching on, same or nearby store, nearby drop, nothing picked up yet).
+    // This also ends the old gap where a rider on a Food trip was offered every
+    // further Food order.
+    {
+      const { foodRidersBlockedFor } = await import('../../../../core/delivery/batching.js');
+      const blocked = await foodRidersBlockedFor((partners || []).map((p) => p.partnerId), order, 'food')
+        .catch(() => new Set());
+      partners = (partners || []).filter((p) => !blocked.has(String(p.partnerId)));
+    }
     
     // TIERED ALERT LOGIC
     // Phase 2: Broadcast to all (Attempt 3+)

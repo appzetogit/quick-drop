@@ -258,6 +258,28 @@ export async function getCurrentTripDelivery(deliveryPartnerId) {
   return sanitizeOrderForDeliveryPartner(mergeTransactionIntoOrder(order, tx));
 }
 
+/** Every order the rider is carrying, first accepted first (see the Food twin). */
+export async function getCurrentTripsDelivery(deliveryPartnerId) {
+  if (!deliveryPartnerId) throw new ValidationError('Delivery partner ID required');
+  const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
+  const orders = await FoodOrder.find({
+    'dispatch.deliveryPartnerId': partnerId,
+    'dispatch.status': 'accepted',
+    orderStatus: { $in: ['confirmed', 'preparing', 'ready_for_pickup', 'picked_up'] },
+  })
+    .select(DELIVERY_ORDER_BASE_SELECT)
+    .populate(DELIVERY_RESTAURANT_POPULATE)
+    .populate({ path: 'userId', select: 'name phone' })
+    .sort({ 'dispatch.acceptedAt': 1, createdAt: 1 })
+    .limit(5)
+    .lean();
+  const txs = await FoodTransaction.find({ orderId: { $in: orders.map((o) => o._id) } })
+    .select(DELIVERY_TRANSACTION_SELECT)
+    .lean();
+  const txOf = new Map(txs.map((t) => [String(t.orderId), t]));
+  return orders.map((order) => sanitizeOrderForDeliveryPartner(mergeTransactionIntoOrder(order, txOf.get(String(order._id)))));
+}
+
 export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
   const { page, limit, skip } = buildPaginationOptions(query);
   const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
@@ -546,10 +568,8 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
       const acceptedOrder = await FoodOrder.findOne(identity).populate('restaurantId userId');
       return acceptedOrder ? sanitizeOrderForDeliveryPartner(acceptedOrder) : null;
     }
-
-    throw new ValidationError(
-      'You already have an active delivery. Complete it before accepting another order.',
-    );
+    // Another live order: allowed only if this one can join the trip -- the
+    // batching check below decides.
   }
 
   const statusHistoryEntry = {
@@ -609,12 +629,24 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
    * Released again below if the order update does not land, so a rider who loses
    * the race for an order is not left holding a lock on it.
    */
-  const lockOrder = await FoodOrder.findOne(identity).select('_id').lean();
-  {
-    // The lock is a no-op for riders without a unified driver record; this isn't.
-    const { qcRiderHasFoodJob } = await import('../../../../../../core/delivery/qcRiderLink.js');
-    if (lockOrder && await qcRiderHasFoodJob(partnerId).catch(() => false)) {
-      throw new ValidationError('You are already on another job');
+  const lockOrder = await FoodOrder.findOne(identity)
+    .select('_id restaurantId deliveryAddress.location zoneId dispatch.assignMode dispatch.deliveryPartnerId')
+    .lean();
+  // An order an admin handed to this rider by hand skips the trip rule (see Food).
+  const assignedByAdmin = lockOrder?.dispatch?.assignMode === 'manual'
+    && String(lockOrder?.dispatch?.deliveryPartnerId || '') === String(partnerId);
+  if (lockOrder && !assignedByAdmin) {
+    // One order at a time across Food and Quick/Medical, unless this one can
+    // join the rider's trip (core/delivery/batching.js). The lock below is a
+    // no-op for riders without a unified driver record; this isn't.
+    const { foodRiderIdForQcRider } = await import('../../../../../../core/delivery/qcRiderLink.js');
+    const foodId = await foodRiderIdForQcRider(partnerId).catch(() => null);
+    if (foodId) {
+      const { canAddToTrip, refusalMessage } = await import('../../../../../../core/delivery/batching.js');
+      const verdict = await canAddToTrip({ foodRiderId: foodId, order: lockOrder, vertical: 'quickCommerce' });
+      if (!verdict.ok) throw new ValidationError(refusalMessage(verdict.reason));
+    } else if (alreadyOnTrip) {
+      throw new ValidationError('You already have an active delivery. Complete it before accepting another order.');
     }
   }
   if (lockOrder && !(await acquireQcLock(partnerId, lockOrder._id))) {

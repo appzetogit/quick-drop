@@ -33,6 +33,7 @@ const MasterOrders = lazy(() => import("@food/pages/admin/master/MasterOrders"))
 const MasterDeliveryEarnings = lazy(() => import("@food/pages/admin/master/DeliveryEarnings"))
 const MasterDeliveryIncentives = lazy(() => import("@food/pages/admin/master/DeliveryIncentives"))
 const MasterPromotions = lazy(() => import("@food/pages/admin/master/PromoCeiling"))
+const OrderBatching = lazy(() => import("@food/pages/admin/master/OrderBatching"))
 // Master's own Delivery Management pages: the same screens as the Food and Taxi
 // panels, opened inside Master (links between them stay in Master).
 const TaxiDriverList = lazy(() => import("@/modules/Taxi/modules/admin/pages/drivers/DriverList"))
@@ -456,6 +457,7 @@ export default function AdminRouter() {
           <Route path="master/delivery-earnings" element={<MasterDeliveryEarnings />} />
           <Route path="master/delivery-incentives" element={<MasterDeliveryIncentives />} />
           <Route path="master/promotions" element={<MasterPromotions />} />
+          <Route path="master/order-batching" element={<OrderBatching />} />
           <Route path="master/delivery-partners" element={<DeliverymanList />} />
           <Route path="master/delivery-partners/join-requests" element={<JoinRequest />} />
           <Route path="master/taxi-drivers" element={<TaxiDriverList />} />

@@ -177,6 +177,43 @@ export async function getCurrentTripDelivery(deliveryPartnerId) {
   return out;
 }
 
+/**
+ * Every order the rider is carrying (a batched trip has more than one),
+ * first accepted first. getCurrentTripDelivery stays as it was for app
+ * builds that know only one order.
+ */
+export async function getCurrentTripsDelivery(deliveryPartnerId) {
+  if (!deliveryPartnerId) throw new ValidationError('Delivery partner ID required');
+  const partnerId = new mongoose.Types.ObjectId(deliveryPartnerId);
+  const orders = await FoodOrder.find({
+    'dispatch.deliveryPartnerId': partnerId,
+    'dispatch.status': 'accepted',
+    orderStatus: { $in: ['confirmed', 'preparing', 'ready_for_pickup', 'picked_up'] },
+  })
+    .populate({
+      path: 'restaurantId',
+      select: 'restaurantName name phone location addressLine1 area city state profileImage',
+    })
+    .populate({ path: 'userId', select: 'name phone' })
+    .sort({ 'dispatch.acceptedAt': 1, createdAt: 1 })
+    .limit(5)
+    .lean();
+  const txs = await FoodTransaction.find({ orderId: { $in: orders.map((o) => o._id) } }).lean();
+  const txOf = new Map(txs.map((t) => [String(t.orderId), t]));
+  return orders.map((order) => {
+    const out = sanitizeOrderForExternal(order);
+    const tx = txOf.get(String(order._id));
+    if (tx) {
+      out.paymentMethod = tx.payment?.method || tx.paymentMethod || out.paymentMethod;
+      out.payment = tx.payment || out.payment;
+      out.pricing = tx.pricing || out.pricing;
+      out.amounts = tx.amounts || out.amounts;
+      out.transactionStatus = tx.status || out.transactionStatus;
+    }
+    return out;
+  });
+}
+
 export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
   const { page, limit, skip } = buildPaginationOptions(query);
 
@@ -351,7 +388,9 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
 
   // Claim the cross-service busy-lock BEFORE assigning, so a driver already on a taxi ride
   // cannot also take this order. No-op while the unified flag is off.
-  const lockOrderId = await FoodOrder.findOne(identity).select('_id payment pricing dispatch').lean();
+  const lockOrderId = await FoodOrder.findOne(identity)
+    .select('_id payment pricing dispatch restaurantId deliveryAddress.location zoneId')
+    .lean();
   const offeredToMe = Boolean(lockOrderId) && (
     (lockOrderId.dispatch?.offeredTo || []).some((o) => String(o?.partnerId) === String(partnerId))
     || String(lockOrderId.dispatch?.deliveryPartnerId || '') === String(partnerId)
@@ -373,11 +412,18 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
     }
   }
   if (lockOrderId && offeredToMe) {
-    // The lock is a no-op for riders without a unified driver record; this isn't.
-    const { foodRiderHasQcJob } = await import('../../../../core/delivery/qcRiderLink.js');
-    if (await foodRiderHasQcJob(partnerId).catch(() => false)) {
-      throw new ValidationError('You are already on another job');
-    }
+    // One order at a time, unless this one can join the rider's trip
+    // (core/delivery/batching.js). Covers Food and Quick/Medical orders alike;
+    // the lock below is a no-op for riders without a unified driver record.
+    const { canAddToTrip, refusalMessage } = await import('../../../../core/delivery/batching.js');
+    // An admin who hands this order to this rider by hand has decided; their
+    // assign screen already warned that the rider is on a trip.
+    const assignedByAdmin = lockOrderId.dispatch?.assignMode === 'manual'
+      && String(lockOrderId.dispatch?.deliveryPartnerId || '') === String(partnerId);
+    const verdict = assignedByAdmin
+      ? { ok: true }
+      : await canAddToTrip({ foodRiderId: partnerId, order: lockOrderId, vertical: 'food' });
+    if (!verdict.ok) throw new ValidationError(refusalMessage(verdict.reason));
   }
   if (lockOrderId && !(await acquireDeliveryLock(partnerId, lockOrderId._id))) {
     throw new ValidationError('You are already on another job');

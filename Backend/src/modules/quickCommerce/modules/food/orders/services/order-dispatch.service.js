@@ -588,6 +588,15 @@ export async function tryAutoAssign(orderId, options = {}) {
       const onFood = await qcRidersOnFoodJobs((partners || []).map((p) => p.partnerId)).catch(() => new Set());
       for (const id of onFood) busyPartnerIds.add(id);
     }
+    // A busy rider stays in only if this order can join their trip (batching).
+    {
+      const { qcRidersBlockedFor } = await import('../../../../../../core/delivery/batching.js');
+      const busyHere = (partners || []).map((p) => String(p.partnerId)).filter((id) => busyPartnerIds.has(id));
+      if (busyHere.length) {
+        const blocked = await qcRidersBlockedFor(busyHere, order).catch(() => new Set(busyHere));
+        for (const id of busyHere) if (!blocked.has(id)) busyPartnerIds.delete(id);
+      }
+    }
 
     // TIERED ALERT LOGIC
     // Phase 2: Broadcast to all (Attempt 3+)

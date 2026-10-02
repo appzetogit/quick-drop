@@ -468,7 +468,13 @@ export async function getCurrentTripDeliveryController(req, res, next) {
         let order = await orderService.getCurrentTripDelivery(deliveryPartnerId);
         // No Food trip: the rider may be on a Quick / Medical one.
         if (!order) order = await quickOrdersForRider(req, (svc, rider) => svc.getCurrentTripDelivery(rider));
-        return sendResponse(res, 200, 'Current trip retrieved', { activeOrder: order || null });
+        // Every order on the trip, Food and Quick/Medical, first accepted first.
+        // `activeOrder` stays for app builds that know only one.
+        const food = await orderService.getCurrentTripsDelivery(deliveryPartnerId).catch(() => []);
+        const quick = (await quickOrdersForRider(req, (svc, rider) => svc.getCurrentTripsDelivery(rider))) || [];
+        const acceptedAt = (o) => new Date(o?.dispatch?.acceptedAt || o?.createdAt || 0).getTime();
+        const activeOrders = [...food, ...quick].sort((a, b) => acceptedAt(a) - acceptedAt(b));
+        return sendResponse(res, 200, 'Current trip retrieved', { activeOrder: order || null, activeOrders });
     } catch (err) {
         next(err);
     }
