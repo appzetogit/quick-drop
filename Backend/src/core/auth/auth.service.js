@@ -503,6 +503,13 @@ export const verifyDeliveryOtpAndLogin = async (phone, otp, fcmToken, platform) 
     return { needsRegistration: true, phone };
   }
 
+  // Deleted by an admin: sign up again (the app shows the sign-up form). This
+  // used to answer "pending admin verification", and the number was stuck:
+  // a deactivated account is not in Join Requests, so nobody could approve it.
+  if (deliveryPartner.status === "deactivated") {
+    return { needsRegistration: true, phone, returning: true };
+  }
+
   // Update FCM token if provided - CRITICAL: do this BEFORE returning pendingApproval
   // so we can notify them when approved.
   if (fcmToken) {

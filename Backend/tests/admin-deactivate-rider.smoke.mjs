@@ -60,6 +60,27 @@ await check('an unknown id is a 404, not a crash', async () => {
   assert.equal(await admin.deactivateDeliveryPartner(String(new mongoose.Types.ObjectId())), null);
 });
 
+await check('a deleted driver can sign up again with the same number: same record, back in Join Requests', async () => {
+  const { registerDeliveryPartner } = await import('../src/modules/food/delivery/services/delivery.service.js');
+  const again = await registerDeliveryPartner({
+    name: 'Rider Again', phone: '9822200001', city: 'Indore', state: 'MP', vehicleType: 'bike',
+    vehicleNumber: 'MP09AB1234', drivingLicenseNumber: 'DL123', panNumber: 'ABCDE1234F', aadharNumber: '123412341234',
+  }, {});
+  const id = String(again?._id || again?.partner?._id || again?.deliveryPartner?._id || '');
+  assert.equal(id, String(rider._id), 'a new record was created instead of reusing the deleted one');
+  const p = await FoodDeliveryPartner.findById(rider._id).lean();
+  assert.equal(p.status, 'pending');
+  assert.equal(p.name, 'Rider Again');
+  const { requests } = await admin.getDeliveryJoinRequests({ status: 'pending' });
+  assert.ok(requests.some((r) => String(r._id) === String(rider._id)), 'not in Join Requests');
+});
+
+await check('the OTP login sends a deleted driver to sign-up, not "pending verification"', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(new URL('../src/core/auth/auth.service.js', import.meta.url), 'utf8');
+  assert.match(src, /status === "deactivated"\) \{\s*return \{ needsRegistration: true/);
+});
+
 await mongoose.disconnect();
 await server.stop();
 console.log(failed ? `\n${failed} FAILED` : '\nall checks passed');

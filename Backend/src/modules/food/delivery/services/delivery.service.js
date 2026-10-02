@@ -96,7 +96,11 @@ export const registerDeliveryPartner = async (payload, files) => {
             ...(last10 ? [{ phone: { $regex: new RegExp(last10 + "$") } }] : [])
         ]
     });
-    if (existing) {
+    // A driver the admin deleted (deactivated) signs up again on the same
+    // record: it goes back to Join Requests as pending, and keeps its wallet,
+    // cash owed and order history. Refusing them left the number stuck.
+    const reactivating = existing?.status === 'deactivated' ? existing : null;
+    if (existing && !reactivating) {
         if (existing.status !== 'rejected') {
             throw new ValidationError('Delivery partner with this phone already exists');
         }
@@ -137,7 +141,7 @@ export const registerDeliveryPartner = async (payload, files) => {
         aadharNumber, panNumber, drivingLicenseNumber,
     });
 
-    const partner = await FoodDeliveryPartner.create({
+    const partnerFields = {
         name,
         phone,
         email: email && String(email).trim() ? String(email).trim() : undefined,
@@ -163,7 +167,19 @@ export const registerDeliveryPartner = async (payload, files) => {
         )),
         status: 'pending',
         ...images
-    });
+    };
+    let partner;
+    if (reactivating) {
+        Object.assign(reactivating, partnerFields, {
+            availabilityStatus: 'offline',
+            approvedAt: undefined,
+            rejectedAt: undefined,
+            rejectionReason: undefined,
+        });
+        partner = await reactivating.save();
+    } else {
+        partner = await FoodDeliveryPartner.create(partnerFields);
+    }
 
     // Update FCM token if provided
     if (fcmToken) {
