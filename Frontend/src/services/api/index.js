@@ -228,6 +228,9 @@ export const platformSettingsAPI = {
   /** Master > Orders: every order, per tab (all | food | quick | medical | taxi | parcel). */
   getMasterOrders: (params = {}) =>
     apiClient.get("/platform/settings/orders", { params, contextModule: "admin" }),
+  /** Delete one order from Master > All Orders (source: food | quick | medical | taxi | parcel). */
+  deleteMasterOrder: (source, id) =>
+    apiClient.delete(`/platform/settings/orders/${source}/${id}`, { contextModule: "admin" }),
   getGlobalUsers: (params = {}) =>
     apiClient.get("/platform/settings/users", { params, contextModule: "admin" }),
   /** Block or unblock a customer in every app at once. */

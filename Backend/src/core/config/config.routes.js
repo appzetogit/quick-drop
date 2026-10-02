@@ -69,6 +69,18 @@ router.get('/orders', async (req, res, next) => {
     }
 });
 router.get('/users/export', requireFinancePermission('PLATFORM_SETTING_SET'), exportGlobalUsersController);
+// Delete one order from All Orders (rules in masterOrders.service.js deleteMasterOrder). A write, so settings permission.
+router.delete('/orders/:source/:id', requireFinancePermission('PLATFORM_SETTING_SET'), async (req, res, next) => {
+    try {
+        const { deleteMasterOrder } = await import('../orders/masterOrders.service.js');
+        const adminId = String(req.user?.userId || req.user?.id || '');
+        const data = await deleteMasterOrder({ source: req.params.source, id: req.params.id, adminId });
+        if (!data) return res.status(404).json({ success: false, message: 'Order not found' });
+        res.json({ success: true, message: 'Order deleted', data });
+    } catch (err) {
+        next(err);
+    }
+});
 // Blocking a customer is a write, so it needs the settings permission like every other write here.
 router.patch('/users/:id/status', requireFinancePermission('PLATFORM_SETTING_SET'), setCustomerBlockedController);
 

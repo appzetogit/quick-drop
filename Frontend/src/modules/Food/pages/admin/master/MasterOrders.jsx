@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import {
-  Bike, ChevronLeft, ChevronRight, Layers, Loader2, Package, Pill, RefreshCw, Search, ShoppingBasket, UtensilsCrossed,
+  Bike, ChevronLeft, ChevronRight, Layers, Loader2, Package, Pill, RefreshCw, Search, ShoppingBasket, Trash2, UtensilsCrossed,
 } from "lucide-react"
 import { platformSettingsAPI } from "@food/api"
 import AssignRiderButton from "@food/components/admin/orders/manual-assign/AssignRiderButton"
@@ -63,6 +63,60 @@ const when = (d) => {
 
 const PAGE_SIZE = 25
 
+/*
+ * Which rows offer Delete. The server has the last word (it also refuses a
+ * paid or delivered order, whose payment and payouts must stay on record);
+ * this only keeps the button off rows it would certainly refuse.
+ */
+const IN_PROGRESS = new Set(["created", "confirmed", "preparing", "ready_for_pickup", "ready", "reached_pickup", "picked_up", "reached_drop",
+  "searching", "accepted", "ongoing", "arriving", "started", "arrived"])
+const canDelete = (o) => {
+  const s = String(o.status || "").toLowerCase()
+  if (IN_PROGRESS.has(s)) return false
+  if (o.vertical === "taxi") return true
+  return s !== "delivered" && String(o.paymentStatus || "").toLowerCase() !== "paid"
+}
+
+/**
+ * A horizontal scrollbar pinned to the bottom of the screen for a wide table,
+ * so the right-hand columns can be reached without scrolling to the table's
+ * end first. It mirrors the table's own scroll position both ways and hides
+ * itself when the table fits.
+ */
+function useFloatingScrollbar() {
+  const tableRef = useRef(null)
+  const barRef = useRef(null)
+  const [width, setWidth] = useState({ inner: 0, outer: 0 })
+  useEffect(() => {
+    const el = tableRef.current
+    if (!el) return undefined
+    const measure = () => setWidth({ inner: el.scrollWidth, outer: el.clientWidth })
+    measure()
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null
+    ro?.observe(el)
+    if (el.firstElementChild) ro?.observe(el.firstElementChild)
+    window.addEventListener("resize", measure)
+    return () => { ro?.disconnect(); window.removeEventListener("resize", measure) }
+  }, [])
+  useEffect(() => {
+    const table = tableRef.current
+    const bar = barRef.current
+    if (!table || !bar) return undefined
+    let syncing = false
+    const follow = (from, to) => () => {
+      if (syncing) { syncing = false; return }
+      syncing = true
+      to.scrollLeft = from.scrollLeft
+    }
+    const onTable = follow(table, bar)
+    const onBar = follow(bar, table)
+    table.addEventListener("scroll", onTable, { passive: true })
+    bar.addEventListener("scroll", onBar, { passive: true })
+    return () => { table.removeEventListener("scroll", onTable); bar.removeEventListener("scroll", onBar) }
+  }, [width.inner > width.outer])
+  return { tableRef, barRef, overflowing: width.inner > width.outer + 1, innerWidth: width.inner }
+}
+
 export default function MasterOrders() {
   const navigate = useNavigate()
   const { tab: tabParam } = useParams()
@@ -80,7 +134,9 @@ export default function MasterOrders() {
   const [search, setSearch] = useState("")
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
+  const [deletingKey, setDeletingKey] = useState("")
   const inFlight = useRef(0)
+  const { tableRef, barRef, overflowing, innerWidth } = useFloatingScrollbar()
 
   const load = useCallback(async ({ quiet = false } = {}) => {
     const ticket = ++inFlight.current
@@ -98,6 +154,23 @@ export default function MasterOrders() {
       if (ticket === inFlight.current) setLoading(false)
     }
   }, [tab, page, status, query])
+
+  const removeOrder = async (o) => {
+    if (!window.confirm(`Delete ${o.orderId}? It disappears from every admin list. This cannot be undone.`)) return
+    const key = `${o.source}-${o._id}`
+    setDeletingKey(key)
+    try {
+      await platformSettingsAPI.deleteMasterOrder(o.source, o._id)
+      setOrders((prev) => prev.filter((x) => `${x.source}-${x._id}` !== key))
+      setTotal((t) => Math.max(0, t - 1))
+      toast.success(`${o.orderId} deleted`)
+      load({ quiet: true })
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Could not delete this order")
+    } finally {
+      setDeletingKey("")
+    }
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -175,9 +248,9 @@ export default function MasterOrders() {
           </select>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] text-sm">
+        <div className="overflow-clip rounded-xl border border-neutral-200 bg-white">
+          <div ref={tableRef} className="overflow-x-auto">
+            <table className="w-full min-w-[1040px] text-sm">
               <thead className="bg-neutral-50 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                 <tr>
                   <th className="px-4 py-3">Order</th>
@@ -187,13 +260,14 @@ export default function MasterOrders() {
                   <th className="px-4 py-3 text-right">Amount</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Assign</th>
+                  <th className="px-4 py-3"><span className="sr-only">Delete</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {loading && orders.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-12 text-center text-neutral-500"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
+                  <tr><td colSpan={8} className="px-4 py-12 text-center text-neutral-500"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
                 ) : orders.length === 0 ? (
-                  <tr><td colSpan={7} className="px-4 py-12 text-center text-neutral-500">No orders here.</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-12 text-center text-neutral-500">No orders here.</td></tr>
                 ) : orders.map((o) => {
                   const src = SOURCE_STYLE[o.source] || SOURCE_STYLE.food
                   const assignable = o.vertical !== "taxi"
@@ -243,12 +317,36 @@ export default function MasterOrders() {
                           </div>
                         )}
                       </td>
+                      <td className="px-4 py-3 text-right">
+                        {canDelete(o) && (
+                          <button
+                            type="button"
+                            onClick={() => removeOrder(o)}
+                            disabled={deletingKey === `${o.source}-${o._id}`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                            title="Delete this order"
+                          >
+                            {deletingKey === `${o.source}-${o._id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                            Delete
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
           </div>
+          {overflowing && (
+            // Pinned to the bottom of the screen while the table runs past it.
+            <div
+              ref={barRef}
+              className="sticky bottom-0 z-10 overflow-x-auto border-t border-neutral-200 bg-white/95 backdrop-blur"
+              aria-hidden="true"
+            >
+              <div style={{ width: innerWidth, height: 1 }} />
+            </div>
+          )}
           <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 text-sm text-neutral-600">
             <span className="tabular-nums">{total} orders</span>
             <div className="flex items-center gap-2">

@@ -55,6 +55,7 @@ const filtersFor = (tab, { status, search }) => {
     });
     const rideBase = (serviceType) => ({
         ...(serviceType === 'parcel' ? { serviceType: 'parcel' } : { serviceType: { $ne: 'parcel' } }),
+        adminHiddenAt: null, // deleted by an admin (taxi keeps the record, hidden)
         ...(rideStatus ? { liveStatus: rideStatus } : {}),
         ...(term && mongoose.Types.ObjectId.isValid(term) ? { _id: new mongoose.Types.ObjectId(term) } : {}),
         ...(term && !mongoose.Types.ObjectId.isValid(term) ? { _id: null } : {}),
@@ -151,6 +152,48 @@ const rideRow = (r, maps) => {
         createdAt: r.createdAt,
     };
 };
+
+/** An order still being worked on: deleting it would strand its rider, store and customer. */
+const ORDER_IN_PROGRESS = ['created', 'confirmed', 'preparing', 'ready_for_pickup', 'ready', 'reached_pickup', 'picked_up', 'reached_drop'];
+const RIDE_IN_PROGRESS = ['searching', 'accepted', 'ongoing', 'arriving', 'started', 'arrived'];
+
+/**
+ * Delete one order from Master > All Orders, through the service that owns it.
+ *
+ * Food, Quick and Medical go to their own admin delete, which returns stock and
+ * refuses an order that was delivered or paid (its payment and payouts stay on
+ * record). Taxi and parcel trips use taxi's own delete, which hides the trip
+ * and keeps its fare records. An order still in progress is refused here:
+ * cancel it first.
+ */
+export async function deleteMasterOrder({ source, id, adminId = '' } = {}) {
+    if (!mongoose.Types.ObjectId.isValid(String(id))) throw new ValidationError('Invalid order id');
+    const { FoodOrder, QcOrder, Ride } = await models();
+
+    if (source === 'taxi' || source === 'parcel') {
+        const ride = await Ride.findById(id).select('status liveStatus adminHiddenAt').lean();
+        if (!ride || ride.adminHiddenAt) return null;
+        const state = String(ride.liveStatus || ride.status || '').toLowerCase();
+        if (RIDE_IN_PROGRESS.includes(state)) {
+            throw new ValidationError('This trip is still in progress. Cancel it first, then delete it.');
+        }
+        const { removeRideFromTrips } = await import('../../modules/taxi/admin/services/adminService.js');
+        return removeRideFromTrips(id, adminId);
+    }
+
+    const isQc = source === 'quick' || source === 'medical';
+    if (!isQc && source !== 'food') throw new ValidationError(`Unknown order type: ${source}`);
+    const order = await (isQc ? QcOrder : FoodOrder).findById(id).select('orderStatus').lean();
+    if (!order) return null;
+    if (ORDER_IN_PROGRESS.includes(String(order.orderStatus))) {
+        throw new ValidationError('This order is still in progress. Cancel it first, then delete it.');
+    }
+    const service = isQc
+        ? await import('../../modules/quickCommerce/modules/food/orders/services/order.service.js')
+        : await import('../../modules/food/orders/services/order.service.js');
+    await service.deleteOrderAdmin(String(id), adminId);
+    return { id: String(id), deleted: true };
+}
 
 /**
  * @param {{tab?, page?, limit?, status?, search?}} query

@@ -2811,6 +2811,21 @@ export async function deleteOrderAdmin(orderId, adminId) {
   const order = await FoodOrder.findOne(identity).lean();
   if (!order) throw new NotFoundError("Order not found");
 
+  // Same rule as Food: deleting removes the order and its ledger row, which on a
+  // delivered or paid order would erase the payment, the rider's earning and
+  // cash owed, and the store's share. Those are cancelled (and refunded) instead.
+  const paymentStatus = String(order.payment?.status || "").toLowerCase();
+  const refundStatus = String(order.payment?.refund?.status || "").toLowerCase();
+  if (
+    order.orderStatus === "delivered" ||
+    ["paid", "authorized", "refunded"].includes(paymentStatus) ||
+    ["pending", "processed"].includes(refundStatus)
+  ) {
+    throw new ValidationError(
+      "This order has been delivered or paid, so it cannot be deleted: its payment and payouts must stay on record. Cancel it instead if it should not stand."
+    );
+  }
+
   // Only an order that never reached the customer has stock to give back. A
   // delivered order's units left on a bike; restocking them because an admin
   // tidied up the record would invent inventory that was genuinely sold.
