@@ -149,6 +149,20 @@ await check('the list shows one row per variant, with status and totals', async 
   assert.equal(attention.rows.length, 1);
 });
 
+await check('the Quick Commerce panel lists every store but pharmacies, Medical only pharmacies', async () => {
+  await mongoose.connection.collection('qc_restaurants').insertMany([
+    { _id: storeA, restaurantName: 'Kirana', storeType: 'kirana' },
+    { _id: storeB, restaurantName: 'Chemist', storeType: 'pharmacy' },
+  ]);
+  const quick = await stock.listStock({ storeType: 'quick' });
+  assert.deepEqual([...new Set(quick.rows.map((r) => r.restaurantId))], [String(storeA)]);
+  const medical = await stock.listStock({ storeType: 'pharmacy' });
+  assert.deepEqual(medical.rows.map((r) => r.itemName), ['Milk']);
+  // A pharmacy picked under Quick Commerce is out of scope: nothing, not everything.
+  assert.equal((await stock.listStock({ storeType: 'quick', restaurantId: String(storeB) })).rows.length, 0);
+  await mongoose.connection.collection('qc_restaurants').deleteMany({});
+});
+
 await check('bulk upload by SKU, with a per-row report', async () => {
   await FoodItem.updateOne({ _id: butter._id, 'variants._id': small._id }, { $set: { 'variants.$.sku': 'AB-100' } });
   const out = await stock.bulkAdjust(

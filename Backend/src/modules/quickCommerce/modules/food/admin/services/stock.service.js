@@ -5,6 +5,7 @@ import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { recordMovement, syncAvailability, alertIfStockCrossed } from '../../orders/services/inventory.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { ApiError } from '../../../../../../utils/ApiError.js';
+import { sellerIdsOfStoreType, applySellerScope } from '../../shared/storeScope.js';
 
 /**
  * Stock management for quick-commerce and medical stores: one row per product
@@ -61,22 +62,22 @@ function rowsOf(doc, storeNames) {
   }));
 }
 
+/*
+ * The panel's storeType goes through the shared scope: Quick Commerce sends
+ * "quick" (every type but pharmacy), which no store literally has, so matching
+ * it as a type listed nothing. A picked store is kept only if it is in scope.
+ */
 async function storeFilter({ restaurantId, storeType }) {
+  const filter = {};
   if (restaurantId) {
     if (!isId(restaurantId)) throw new ValidationError('Pick a valid store');
-    return [oid(restaurantId)];
+    filter.restaurantId = oid(restaurantId);
   }
-  if (storeType) {
-    const ids = await FoodRestaurant.find({ storeType }).select('_id').lean();
-    return ids.map((r) => r._id);
-  }
-  return null;
+  return applySellerScope(filter, await sellerIdsOfStoreType(FoodRestaurant, storeType));
 }
 
 export async function listStock(query = {}) {
-  const stores = await storeFilter(query);
-  const filter = {};
-  if (stores) filter.restaurantId = { $in: stores };
+  const filter = await storeFilter(query);
   const q = String(query.q || '').trim();
   if (q) {
     const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
