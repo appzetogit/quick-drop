@@ -124,8 +124,41 @@ export async function alertIfStockCrossed(doc, { variantId = '', before, after }
   }
 }
 
+/*
+ * What the customer app reads stock from is cached (store menu 10 min, product
+ * list 5, search 30 s), so a count that changed in Mongo kept showing the old
+ * number -- "3 left" on something that had just sold out. Every stock change
+ * passes through recordMovement, so the clear hangs off it.
+ *
+ * Coalesced per store: an order of six lines is one clear, not six KEYS scans.
+ * Quick-commerce URLs only; food's caches share these prefixes.
+ */
+const pendingCacheClears = new Set();
+let cacheClearTimer = null;
+export function invalidateStockCaches(restaurantId) {
+  if (restaurantId) pendingCacheClears.add(String(restaurantId));
+  if (cacheClearTimer) return;
+  cacheClearTimer = setTimeout(async () => {
+    const stores = [...pendingCacheClears];
+    pendingCacheClears.clear();
+    cacheClearTimer = null;
+    try {
+      const { invalidateCache } = await import('../../../../../../middleware/cache.js');
+      await Promise.all([
+        ...stores.map((id) => invalidateCache(`restaurant_menu:GET:/api/v1/qc/restaurant/restaurants/${id}/menu*`)),
+        invalidateCache('public_foods:GET:/api/v1/qc/*'),
+        invalidateCache('search_products:GET:/api/v1/qc/*'),
+      ]);
+    } catch (err) {
+      logger.warn(`[stock] cache clear failed: ${err?.message || err}`);
+    }
+  }, 100);
+  cacheClearTimer.unref?.();
+}
+
 /** One line in the stock record. Never throws. */
 export async function recordMovement(doc, { variantId = '', delta, after, reason, orderId = null, actor = null, note = '' }) {
+  invalidateStockCaches(doc?.restaurantId);
   try {
     const variant = variantOf(doc, variantId);
     await QCStockMovement.create({

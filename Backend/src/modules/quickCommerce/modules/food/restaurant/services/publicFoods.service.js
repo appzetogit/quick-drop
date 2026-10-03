@@ -107,6 +107,7 @@ export async function listPublicFoods(query = {}) {
             packSize: food.packSize || '',
             mrp: food.mrp ?? null,
             stockQty: food.stockQty ?? null,
+            lowStockThreshold: food.lowStockThreshold ?? null,
             maxQtyPerOrder: food.maxQtyPerOrder ?? null,
             expiryDate: food.expiryDate || null,
             foodType: food.foodType || 'Non-Veg',
