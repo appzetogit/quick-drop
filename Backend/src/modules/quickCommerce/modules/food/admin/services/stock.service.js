@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { FoodItem } from '../models/food.model.js';
 import { QCStockMovement } from '../models/stockMovement.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
-import { recordMovement, syncAvailability, alertIfStockCrossed } from '../../orders/services/inventory.service.js';
+import { recordMovement, syncAvailability, alertIfStockCrossed, invalidateStockCaches } from '../../orders/services/inventory.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { ApiError } from '../../../../../../utils/ApiError.js';
 import { sellerIdsOfStoreType, applySellerScope } from '../../shared/storeScope.js';
@@ -195,6 +195,7 @@ export async function adjustStock({ itemId, variantId = '', mode = 'set', value,
     });
   }
   await syncAvailability(res, { revive: true });
+  invalidateStockCaches(res.restaurantId);
   // A count lowered by hand (a damaged box, a miscount) warns like a sale does.
   if (tracked(current) && tracked(after) && Number(after) < Number(current)) {
     void alertIfStockCrossed(res, { variantId: onVariant ? String(variantId) : '', before: current, after });

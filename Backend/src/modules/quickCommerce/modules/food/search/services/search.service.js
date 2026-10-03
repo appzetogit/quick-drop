@@ -3,6 +3,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
 import mongoose from 'mongoose';
 import { QUICK_SHOP_SELLER_FILTER } from '../../shared/storeType.js';
+import { serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
 
 const RESTAURANT_SEARCH_SELECT = [
     'restaurantName',
@@ -241,7 +242,7 @@ export const searchUnified = async (query = {}, options = {}) => {
 };
 
 const PRODUCT_SEARCH_SELECT =
-    '_id restaurantId name brand packSize image images price otherPrice mrp categoryId categoryName foodType rating totalRatings isAvailable stockQty maxQtyPerOrder variants';
+    '_id restaurantId name brand packSize image images price otherPrice mrp categoryId categoryName foodType rating totalRatings isAvailable stockQty lowStockThreshold maxQtyPerOrder variants';
 
 const PRODUCT_SEARCH_PROJECTION = Object.fromEntries(
     PRODUCT_SEARCH_SELECT.split(' ').filter(Boolean).map((field) => [field, 1]),
@@ -374,6 +375,9 @@ export const searchProducts = async (query = {}) => {
         const seller = sellerById.get(String(product.restaurantId));
         return {
             ...product,
+            // Same shape as the store menu: each size with its id, stockQty and inStock.
+            variants: serializeFoodVariants(product.variants),
+            lowStockThreshold: product.lowStockThreshold ?? null,
             inStock: product.isAvailable !== false,
             seller: seller
                 ? {
