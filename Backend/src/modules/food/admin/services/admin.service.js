@@ -3300,6 +3300,12 @@ export async function getFoods(query) {
         showIn99Store: f.showIn99Store === true,
         ninetyNineStoreExcluded: f.ninetyNineStoreExcluded === true,
         freeDelivery: f.freeDelivery === true,
+        // Restaurant-mode packaging: amount per block of units (shared/packagingCharge.js).
+        packagingCharge: {
+            isEnabled: f.packagingCharge?.isEnabled === true,
+            amount: Math.max(0, Number(f.packagingCharge?.amount) || 0),
+            unitsPerCharge: Math.max(1, Number(f.packagingCharge?.unitsPerCharge) || 1)
+        },
         approvalStatus: f.approvalStatus || 'approved',
         createdAt: f.createdAt,
         updatedAt: f.updatedAt
@@ -3576,6 +3582,12 @@ export async function createFood(body) {
     } else if (shouldAutoMark99(doc, await getNinetyNineCap())) {
         doc.showIn99Store = true;
     }
+    {
+        // Packaging charge, the same rules as the restaurant's own form.
+        const { normalizeItemPackagingChargeInput } = await import('../../shared/packagingCharge.js');
+        const packaging = normalizeItemPackagingChargeInput(body.packagingCharge, { label: doc.name || 'This item' });
+        if (packaging) doc.packagingCharge = { unitsPerCharge: 1, ...packaging };
+    }
     if (body.freeDelivery !== undefined) {
         doc.freeDelivery = body.freeDelivery === true || body.freeDelivery === 'true';
     }
@@ -3637,6 +3649,18 @@ export async function updateFood(id, body) {
         // the shelf by hand has to survive a later cap rise, and `false` alone
         // cannot be told apart from "never been eligible".
         doc.ninetyNineStoreExcluded = !wanted;
+    }
+    if (body.packagingCharge !== undefined) {
+        // Packaging charge, the same rules as the restaurant's own form; a form
+        // that does not send "units per charge" keeps the stored one.
+        const { normalizeItemPackagingChargeInput } = await import('../../shared/packagingCharge.js');
+        const packaging = normalizeItemPackagingChargeInput(body.packagingCharge, { label: doc.name || 'This item' });
+        if (packaging) {
+            doc.packagingCharge = {
+                unitsPerCharge: Math.max(1, Number(doc.packagingCharge?.unitsPerCharge) || 1),
+                ...packaging,
+            };
+        }
     }
     // Free delivery. Admin-only for the same reason: the platform absorbs it.
     if (body.freeDelivery !== undefined) {

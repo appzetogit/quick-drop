@@ -33,6 +33,10 @@ const createFoodForm = () => ({
   isAvailable: true,
   showIn99Store: false,
   freeDelivery: false,
+  // Packaging charge: amount for every `packagingUnits` units (1 = per unit).
+  packagingEnabled: false,
+  packagingAmount: "",
+  packagingUnits: "1",
   preparationTime: "",
   stockQty: "",
   lowStockThreshold: "",
@@ -245,6 +249,7 @@ export default function FoodsList() {
               showIn99Store: f.showIn99Store === true,
               ninetyNineStoreExcluded: f.ninetyNineStoreExcluded === true,
               freeDelivery: f.freeDelivery === true,
+              packagingCharge: f.packagingCharge || null,
               stockQty: f.stockQty ?? null,
               lowStockThreshold: f.lowStockThreshold ?? null,
               variants: getStoredFoodVariants(f),
@@ -439,6 +444,9 @@ export default function FoodsList() {
       variantsEnabled: food.variantsEnabled === true || (food.variantsEnabled == null && getStoredFoodVariants(food).length > 0),
       showIn99Store: food.showIn99Store === true,
     freeDelivery: food.freeDelivery === true,
+    packagingEnabled: food.packagingCharge?.isEnabled === true,
+    packagingAmount: Number(food.packagingCharge?.amount) > 0 ? String(food.packagingCharge.amount) : "",
+    packagingUnits: String(Math.max(1, Number(food.packagingCharge?.unitsPerCharge) || 1)),
     description: String(food.description || ""),
       image: String(food.image || ""),
       foodType: String(food.foodType || "Non-Veg"),
@@ -633,6 +641,14 @@ export default function FoodsList() {
         ? { showIn99Store: foodForm.showIn99Store === true }
         : {}),
       freeDelivery: foodForm.freeDelivery === true,
+      // Food items only; the server checks it like the restaurant's own form.
+      ...(isStockPanel ? {} : {
+        packagingCharge: {
+          isEnabled: foodForm.packagingEnabled === true,
+          amount: Number(foodForm.packagingAmount) || 0,
+          unitsPerCharge: Math.max(1, Math.floor(Number(foodForm.packagingUnits) || 1)),
+        },
+      }),
         otherPrice: foodForm.otherPrice === "" ? 0 : Number(foodForm.otherPrice),
         variants: normalizedVariants.map((variant) => ({
           ...(variant.id && !variant.id.startsWith("variant-") ? { _id: variant.id } : {}),
@@ -1286,6 +1302,55 @@ export default function FoodsList() {
                   the platform absorbs it.
                 </p>
               </div>
+              {!isStockPanel && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Packaging charge
+                  </label>
+                  <label className="flex items-center gap-2 px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={foodForm.packagingEnabled === true}
+                      onChange={(e) => setFoodForm((prev) => ({ ...prev, packagingEnabled: e.target.checked }))}
+                      className="h-4 w-4 accent-slate-900"
+                    />
+                    <span>Charge for packaging on this dish</span>
+                  </label>
+                  {foodForm.packagingEnabled && (
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="mb-1 block text-xs text-slate-600">Charge ({"₹"})</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={foodForm.packagingAmount}
+                          onChange={(e) => setFoodForm((prev) => ({ ...prev, packagingAmount: e.target.value }))}
+                          placeholder="e.g. 10"
+                          className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
+                        />
+                      </div>
+                      <div>
+                        <span className="mb-1 block text-xs text-slate-600">Per how many units</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="999"
+                          step="1"
+                          value={foodForm.packagingUnits}
+                          onChange={(e) => setFoodForm((prev) => ({ ...prev, packagingUnits: e.target.value.replace(/[^0-9]/g, "") }))}
+                          className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <p className="mt-1 text-xs text-slate-500">
+                    {foodForm.packagingEnabled && Number(foodForm.packagingUnits) > 1
+                      ? `1${"–"}${foodForm.packagingUnits} units pay one charge, ${Number(foodForm.packagingUnits) + 1}${"–"}${Number(foodForm.packagingUnits) * 2} pay two, and so on.`
+                      : "Applies when packaging is charged by restaurants (Packaging Charges page)."}
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Food Type</label>
                 <select
