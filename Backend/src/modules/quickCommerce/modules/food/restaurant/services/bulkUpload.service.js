@@ -138,9 +138,17 @@ export async function generateBulkMenuTemplate() {
 export async function processBulkMenuUpload(restaurantId, fileBuffer, options = {}) {
     const approvalStatus = options.approvalStatus === 'approved' ? 'approved' : 'pending';
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(fileBuffer);
-    const sheet = workbook.getWorksheet(1);
-    if (!sheet) throw new ValidationError('Invalid Excel file: worksheet missing');
+    try {
+        await workbook.xlsx.load(fileBuffer);
+    } catch {
+        // An .xls, .ods or damaged file: say what to do rather than a 500.
+        throw new ValidationError(describeUnreadableWorkbook(fileBuffer));
+    }
+    // By position, not getWorksheet(1): that argument is a worksheet *id*, and a
+    // workbook whose first sheet carries a different id -- ordinary after sheets
+    // have been deleted and the file re-saved -- came back undefined.
+    const sheet = workbook.worksheets[0];
+    if (!sheet) throw new ValidationError(describeUnreadableWorkbook(fileBuffer));
 
     const normalizeHeader = (value) =>
         String(value || '')
@@ -424,6 +432,8 @@ export async function processBulkMenuUpload(restaurantId, fileBuffer, options = 
             await FoodItem.bulkWrite(bulkOps);
         } catch (bulkErr) {
             console.error('Bulk write failed:', bulkErr.message);
+            // Nothing in this batch was saved, so none of it is a success.
+            results.failed += bulkOps.length;
             results.details.push({ row: 'N/A', error: `Database saving failed: ${bulkErr.message}` });
         }
     }
@@ -432,8 +442,12 @@ export async function processBulkMenuUpload(restaurantId, fileBuffer, options = 
 
     if (results.success > 0) {
         try {
+            // Cache keys are `<prefix>:<METHOD>:<url>`, so the old
+            // `restaurant_menu:<id>` matched nothing and new items reached
+            // customers only when the cache expired (up to 10 minutes).
             const { invalidateCache } = await import('../../../../middleware/cache.js');
-            await invalidateCache(`restaurant_menu:${restaurantId}`);
+            await Promise.all(['public_foods:*', 'restaurant_menu:*', 'restaurant_detail:*', 'restaurants:*']
+                .map((pattern) => invalidateCache(pattern)));
         } catch (cacheErr) {
             console.error('Failed to invalidate cache after bulk upload:', cacheErr);
         }
@@ -441,6 +455,23 @@ export async function processBulkMenuUpload(restaurantId, fileBuffer, options = 
 
     // The panel lists `errors`; `details` is kept for older clients.
     return { ...results, errors: results.details };
+}
+
+/** What to tell a seller whose upload is not a readable .xlsx (as the Food copy does). */
+function describeUnreadableWorkbook(fileBuffer) {
+    const buf = Buffer.isBuffer(fileBuffer) ? fileBuffer : Buffer.from(fileBuffer ?? []);
+    // OLE2 compound-file header: the legacy .xls container.
+    if (buf.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]))) {
+        return 'This is an old-format .xls file, which cannot be read. Open it in Excel, '
+            + 'choose File > Save As > "Excel Workbook (.xlsx)", and upload that instead.';
+    }
+    // Every .xlsx is a zip, so it must start with "PK".
+    if (buf.subarray(0, 2).toString('latin1') !== 'PK') {
+        return 'That file is not an .xlsx workbook. Download the template, fill it in, '
+            + 'and upload it without changing the format.';
+    }
+    return 'This file is not a readable .xlsx workbook. Open it in Excel, choose File > Save As > '
+        + '"Excel Workbook (.xlsx)", and upload that.';
 }
 
 /**
