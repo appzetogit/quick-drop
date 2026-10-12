@@ -5,9 +5,14 @@ import { ValidationError } from '../../../core/auth/errors.js';
  * stored on menu items, and turned into money at checkout.
  *
  * Admin picks who owns the charge (food fee settings -> packagingCharge):
- *   ADMIN      — one flat charge per order, set by admin, kept by the platform.
- *   RESTAURANT — each restaurant sets a per-unit charge on its own menu items
- *                (with a per-item on/off toggle); the money goes to the restaurant.
+ *   ADMIN      — a flat charge set by admin, kept by the platform: once per
+ *                order, or once per `adminItemsPerCharge` items when that is set.
+ *   RESTAURANT — each restaurant sets a charge on its own menu items (with a
+ *                per-item on/off toggle) covering `unitsPerCharge` units of
+ *                that item; the money goes to the restaurant.
+ *
+ * "Per N" means blocks: with N = 3, 1-3 units pay one charge, 4-6 two, 7-9
+ * three -- ceil(quantity / N) charges. N = 1 is a charge per unit, as before.
  *
  * Nothing here reads client input: order lines are stamped from the DB menu item
  * in resolveAuthoritativeItems before pricing runs.
@@ -35,7 +40,8 @@ export function normalizePackagingConfig(feeSettingsDoc = null) {
     return {
         isEnabled: raw.isEnabled === true,
         mode,
-        adminChargePerOrder: Math.max(0, Number(raw.adminChargePerOrder) || 0)
+        adminChargePerOrder: Math.max(0, Number(raw.adminChargePerOrder) || 0),
+        adminItemsPerCharge: Math.max(0, Math.floor(Number(raw.adminItemsPerCharge) || 0))
     };
 }
 
@@ -49,10 +55,16 @@ export function normalizeItemPackagingChargeInput(raw, { label = 'This item' } =
 
     const isEnabled = raw?.isEnabled === true || raw?.isEnabled === 'true';
     const amount = Number(raw?.amount);
+    // Undefined when not sent (older app builds), so the caller keeps the stored value.
+    const unitsPerCharge = normalizeUnitsPerCharge(raw?.unitsPerCharge, label);
 
     if (!isEnabled) {
         // Keep the amount so toggling back on restores what was typed.
-        return { isEnabled: false, amount: Number.isFinite(amount) && amount > 0 ? roundCurrency(amount) : 0 };
+        return {
+            isEnabled: false,
+            amount: Number.isFinite(amount) && amount > 0 ? roundCurrency(amount) : 0,
+            ...(unitsPerCharge !== undefined ? { unitsPerCharge } : {})
+        };
     }
     if (!Number.isFinite(amount) || amount <= 0) {
         throw new ValidationError(`Enter a packaging charge for "${label}" or turn the charge off`);
@@ -60,8 +72,27 @@ export function normalizeItemPackagingChargeInput(raw, { label = 'This item' } =
     if (amount > 10000) {
         throw new ValidationError(`Packaging charge for "${label}" is too high`);
     }
-    return { isEnabled: true, amount: roundCurrency(amount) };
+    return { isEnabled: true, amount: roundCurrency(amount), ...(unitsPerCharge !== undefined ? { unitsPerCharge } : {}) };
 }
+
+function normalizeUnitsPerCharge(raw, label) {
+    if (raw === undefined || raw === null || raw === '') return undefined;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > 999) {
+        throw new ValidationError(`"${label}": one packaging charge must cover 1 to 999 units`);
+    }
+    return n;
+}
+
+/** How many units of this item one packaging charge covers (1 = per unit). */
+export function resolveItemPackagingUnits(foodDoc = null) {
+    const n = Math.floor(Number(foodDoc?.packagingCharge?.unitsPerCharge) || 1);
+    return n >= 1 ? n : 1;
+}
+
+/** ceil(quantity / perCharge) charges; quantity 0 pays nothing. */
+const chargesFor = (quantity, perCharge) =>
+    quantity > 0 ? Math.ceil(quantity / Math.max(1, perCharge)) : 0;
 
 /** Per-unit charge a stored menu item contributes; 0 when the item opted out. */
 export function resolveItemPackagingAmount(foodDoc = null) {
@@ -83,17 +114,32 @@ export function computeFoodPackagingFee({ items = [], config = null } = {}) {
     }
 
     if (packagingConfig.mode === PACKAGING_MODES.ADMIN) {
+        const perOrder = packagingConfig.adminChargePerOrder;
+        const every = packagingConfig.adminItemsPerCharge;
+        const totalQty = lines.reduce((s, it) => s + Math.max(0, Number(it?.quantity) || 0), 0);
         return {
-            packagingFee: roundCurrency(packagingConfig.adminChargePerOrder),
+            packagingFee: roundCurrency(every > 0 ? perOrder * chargesFor(totalQty, every) : perOrder),
             packagingMode: PACKAGING_MODES.ADMIN
         };
     }
 
-    const total = lines.reduce((sum, item) => {
-        const perUnit = Math.max(0, Number(item?.foodPackagingCharge) || 0);
-        const quantity = Math.max(0, Number(item?.quantity) || 0);
-        return sum + perUnit * quantity;
-    }, 0);
+    /*
+     * One item ordered in two sizes is still one item: its quantities are
+     * pooled before the blocks are counted, so 2 small + 1 large of an item at
+     * "one charge per 3" pays one charge, not two.
+     */
+    const pooled = new Map();
+    for (const item of lines) {
+        const perCharge = Math.max(0, Number(item?.foodPackagingCharge) || 0);
+        if (!perCharge) continue;
+        const units = Math.max(1, Math.floor(Number(item?.foodPackagingUnits) || 1));
+        const key = `${String(item?.itemId || item?.foodId || item?.name || '')}|${perCharge}|${units}`;
+        const entry = pooled.get(key) || { perCharge, units, quantity: 0 };
+        entry.quantity += Math.max(0, Number(item?.quantity) || 0);
+        pooled.set(key, entry);
+    }
+    let total = 0;
+    for (const { perCharge, units, quantity } of pooled.values()) total += perCharge * chargesFor(quantity, units);
 
     return {
         packagingFee: roundCurrency(total),

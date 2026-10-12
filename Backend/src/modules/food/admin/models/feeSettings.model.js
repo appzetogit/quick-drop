@@ -120,7 +120,12 @@ const feeSettingsSchema = new mongoose.Schema(
                     isEnabled: { type: Boolean, default: false },
                     mode: { type: String, enum: ['ADMIN', 'RESTAURANT'], default: 'ADMIN' },
                     /** Flat charge added once per order in ADMIN mode. */
-                    adminChargePerOrder: { type: Number, min: 0, default: 0 }
+                    adminChargePerOrder: { type: Number, min: 0, default: 0 },
+                    /**
+                     * ADMIN mode: one charge covers this many items in the order
+                     * (5 = 1-5 items pay one charge, 6-10 two). 0 = once per order.
+                     */
+                    adminItemsPerCharge: { type: Number, min: 0, max: 999, default: 0 }
                 },
                 { _id: false }
             ),

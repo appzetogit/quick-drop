@@ -24,6 +24,7 @@ import {
     computeFoodPackagingFee,
     normalizePackagingConfig,
     resolveItemPackagingAmount,
+    resolveItemPackagingUnits,
     PACKAGING_MODES
 } from '../../shared/packagingCharge.js';
 import { assertFoodAvailableNow } from '../../shared/itemAvailability.js';
@@ -145,6 +146,8 @@ export async function resolveAuthoritativeItems(restaurantId, items) {
       variantName: variantName || it?.variantName || '',
       // Per-unit packaging charge, stamped from the DB item — never client input.
       foodPackagingCharge: resolveItemPackagingAmount(menu),
+      // How many units one charge covers (1 = per unit).
+      foodPackagingUnits: resolveItemPackagingUnits(menu),
       // Read from the menu, never the request: a client that could send
       // this would waive its own delivery fee.
       freeDelivery: menu.freeDelivery === true,

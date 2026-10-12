@@ -29,7 +29,8 @@ const deliveryPartnerIncentiveRuleSchema = z.object({
 const packagingChargeSchema = z.object({
     isEnabled: z.boolean().optional(),
     mode: z.enum(['ADMIN', 'RESTAURANT']).optional(),
-    adminChargePerOrder: z.number().min(0).optional()
+    adminChargePerOrder: z.number().min(0).optional(),
+    adminItemsPerCharge: z.number().int().min(0).max(999).optional()
 });
 
 const otherPlatformPriceSchema = z.object({
@@ -123,6 +124,9 @@ export const validateFeeSettingsUpsertDto = (body) => {
                 mode: body.packagingCharge.mode !== undefined
                     ? String(body.packagingCharge.mode).toUpperCase()
                     : 'ADMIN',
+                ...(body.packagingCharge.adminItemsPerCharge !== undefined && body.packagingCharge.adminItemsPerCharge !== ''
+                    ? { adminItemsPerCharge: Number(body.packagingCharge.adminItemsPerCharge) }
+                    : {}),
                 adminChargePerOrder: body.packagingCharge.adminChargePerOrder !== undefined
                     ? Number(body.packagingCharge.adminChargePerOrder)
                     : 0
@@ -197,7 +201,8 @@ export const validateFeeSettingsUpsertDto = (body) => {
         result.data.packagingCharge = {
             isEnabled: pc.isEnabled === true,
             mode: pc.mode === 'RESTAURANT' ? 'RESTAURANT' : 'ADMIN',
-            adminChargePerOrder: Math.round((Number(pc.adminChargePerOrder || 0)) * 100) / 100
+            adminChargePerOrder: Math.round((Number(pc.adminChargePerOrder || 0)) * 100) / 100,
+            adminItemsPerCharge: Math.max(0, Math.floor(Number(pc.adminItemsPerCharge) || 0))
         };
         if (
             result.data.packagingCharge.isEnabled &&

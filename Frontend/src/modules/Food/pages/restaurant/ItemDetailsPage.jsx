@@ -164,6 +164,8 @@ export default function ItemDetailsPage() {
   const [gstMode, setGstMode] = useState("inherit")
   const [packagingEnabled, setPackagingEnabled] = useState(false)
   const [packagingAmount, setPackagingAmount] = useState("")
+  // One packaging charge covers this many units (1 = a charge per unit).
+  const [packagingUnits, setPackagingUnits] = useState("1")
   const [availabilitySchedule, setAvailabilitySchedule] = useState(() => buildScheduleState(null))
   const [isRecommended, setIsRecommended] = useState(false)
 
@@ -265,6 +267,9 @@ export default function ItemDetailsPage() {
       const amount = Number(packagingAmount)
       if (!Number.isFinite(amount) || amount <= 0)
         fail("packaging", "Enter a packaging charge above 0, or switch it off")
+      const units = Number(packagingUnits)
+      if (!Number.isInteger(units) || units < 1 || units > 999)
+        fail("packaging", "One charge must cover 1 to 999 units")
     }
 
     return { errors, anchors }
@@ -349,6 +354,7 @@ export default function ItemDetailsPage() {
     setPackagingAmount(
       item.packagingCharge?.amount ? String(item.packagingCharge.amount) : ""
     )
+    setPackagingUnits(String(Math.max(1, Number(item.packagingCharge?.unitsPerCharge) || 1)))
     setIsRecommended(item.isRecommended || false)
     setIsInStock(item.isAvailable !== false)
     setSelectedTags(item.tags || [])
@@ -922,6 +928,7 @@ export default function ItemDetailsPage() {
         packagingCharge: {
           isEnabled: packagingEnabled,
           amount: Number(packagingAmount) || 0,
+          unitsPerCharge: Math.max(1, Math.floor(Number(packagingUnits) || 1)),
         },
         // Omitted entirely on "inherit", so the dish keeps deferring to the
         // restaurant rather than being pinned to whatever it resolves to today.
@@ -1926,8 +1933,8 @@ export default function ItemDetailsPage() {
                   <div className="pt-3 border-t border-gray-100">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-semibold text-gray-900">Per-unit Packaging Charge</p>
-                        <p className="text-xs text-gray-500">Apply a direct packaging charge per item unit ordered</p>
+                        <p className="text-sm font-semibold text-gray-900">Packaging Charge</p>
+                        <p className="text-xs text-gray-500">Charged per unit, or once for every so many units (e.g. one box holds 3)</p>
                       </div>
                       <Switch
                         checked={packagingEnabled}
@@ -1936,7 +1943,7 @@ export default function ItemDetailsPage() {
                     </div>
 
                     {packagingEnabled && (
-                      <div className="mt-3 max-w-xs">
+                      <div className="mt-3 grid max-w-md grid-cols-2 gap-3">
                         <div className="relative">
                           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-500 font-semibold">₹</span>
                           <input
@@ -1952,6 +1959,27 @@ export default function ItemDetailsPage() {
                           />
                           <FieldError field="packaging" />
                         </div>
+                        <div>
+                          <div className="relative">
+                            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-semibold">per</span>
+                            <input
+                              type="number"
+                              min="1"
+                              max="999"
+                              step="1"
+                              value={packagingUnits}
+                              onFocus={() => clearError("packaging")}
+                              onChange={(e) => setPackagingUnits(e.target.value.replace(/[^0-9]/g, ""))}
+                              className="w-full pl-10 pr-14 py-2.5 border border-gray-300 rounded-xl text-sm font-semibold text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900 shadow-sm"
+                            />
+                            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-semibold">units</span>
+                          </div>
+                        </div>
+                        <p className="col-span-2 text-xs text-gray-500">
+                          {Number(packagingUnits) > 1
+                            ? `1–${packagingUnits} units pay one charge, ${Number(packagingUnits) + 1}–${Number(packagingUnits) * 2} pay two, and so on.`
+                            : "Charged for every unit ordered."}
+                        </p>
                       </div>
                     )}
                   </div>

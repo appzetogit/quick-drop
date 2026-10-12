@@ -14,6 +14,8 @@ export default function PackagingCharges() {
   const [isEnabled, setIsEnabled] = useState(false)
   const [mode, setMode] = useState("ADMIN")
   const [adminChargePerOrder, setAdminChargePerOrder] = useState("")
+  // One charge covers this many items in the order; blank = once per order.
+  const [adminItemsPerCharge, setAdminItemsPerCharge] = useState("")
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -30,6 +32,7 @@ export default function PackagingCharges() {
             ? String(saved.adminChargePerOrder)
             : ""
         )
+        setAdminItemsPerCharge(Number(saved?.adminItemsPerCharge) > 0 ? String(saved.adminItemsPerCharge) : "")
       } catch (error) {
         toast.error("Failed to load packaging settings")
       } finally {
@@ -45,6 +48,11 @@ export default function PackagingCharges() {
       toast.error("Enter a packaging charge per order, or turn the charge off")
       return
     }
+    const every = adminItemsPerCharge === "" ? 0 : Number(adminItemsPerCharge)
+    if (isEnabled && mode === "ADMIN" && (!Number.isInteger(every) || every < 0 || every > 999)) {
+      toast.error("Items per charge must be a whole number from 1 to 999, or blank for once per order")
+      return
+    }
 
     try {
       setSaving(true)
@@ -53,6 +61,7 @@ export default function PackagingCharges() {
           isEnabled,
           mode,
           adminChargePerOrder: isEnabled && mode === "ADMIN" ? (Number.isFinite(charge) ? charge : 0) : 0,
+          adminItemsPerCharge: isEnabled && mode === "ADMIN" ? every : 0,
         },
       })
       if (response?.data?.success) {
@@ -119,12 +128,12 @@ export default function PackagingCharges() {
                 {
                   value: "ADMIN",
                   title: "Admin",
-                  hint: "One flat charge per order. The platform keeps it.",
+                  hint: "A flat charge per order, or per so many items. The platform keeps it.",
                 },
                 {
                   value: "RESTAURANT",
                   title: "Restaurant",
-                  hint: "Each restaurant sets a per-unit charge on its own items, and keeps it.",
+                  hint: "Each restaurant sets a charge on its own items (per unit, or per so many units), and keeps it.",
                 },
               ].map((option) => (
                 <label
@@ -154,9 +163,10 @@ export default function PackagingCharges() {
             </div>
 
             {mode === "ADMIN" && (
+              <div className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Charge per order (₹)
+                  Packaging charge (₹)
                 </label>
                 <input
                   type="number"
@@ -168,12 +178,34 @@ export default function PackagingCharges() {
                   className="w-full max-w-xs rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-slate-900"
                 />
               </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  One charge covers up to (items)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="999"
+                  step="1"
+                  value={adminItemsPerCharge}
+                  onChange={(e) => setAdminItemsPerCharge(e.target.value.replace(/[^0-9]/g, ""))}
+                  placeholder="Blank = once per order"
+                  className="w-full max-w-xs rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  {Number(adminItemsPerCharge) > 0
+                    ? `1–${adminItemsPerCharge} items pay one charge, ${Number(adminItemsPerCharge) + 1}–${Number(adminItemsPerCharge) * 2} pay two, and so on.`
+                    : "Blank: one charge per order however many items it has."}
+                </p>
+              </div>
+              </div>
             )}
 
             {mode === "RESTAURANT" && (
               <p className="rounded-xl bg-amber-50 p-4 text-xs text-amber-800">
-                Restaurants set the amount per item in their menu. Items with no
-                packaging charge configured add nothing to the order.
+                Restaurants set the amount on each item in their menu, and how many
+                units one charge covers (e.g. one box per 3). Items with no packaging
+                charge configured add nothing to the order.
               </p>
             )}
           </>

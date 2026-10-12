@@ -482,7 +482,13 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
         Object.assign(update, quantityLimits);
     }
     const packagingCharge = normalizeItemPackagingChargeInput(body.packagingCharge, { label: itemLabel });
-    if (packagingCharge) update.packagingCharge = packagingCharge;
+    if (packagingCharge) {
+        // A form that does not know "units per charge" keeps the stored one.
+        if (packagingCharge.unitsPerCharge === undefined) {
+            packagingCharge.unitsPerCharge = Math.max(1, Number(existing?.packagingCharge?.unitsPerCharge) || 1);
+        }
+        update.packagingCharge = packagingCharge;
+    }
 
     // A priceIncludesGst sent from the restaurant panel is ignored: whether
     // prices include GST is the admin's to set, per restaurant.

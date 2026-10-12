@@ -5,7 +5,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
 import { formatOrderQuantityLimits } from '../../shared/orderQuantityRules.js';
-import { resolveItemPackagingAmount } from '../../shared/packagingCharge.js';
+import { resolveItemPackagingAmount, resolveItemPackagingUnits } from '../../shared/packagingCharge.js';
 import { describeTodaysWindow, isFoodAvailableNow } from '../../shared/itemAvailability.js';
 import { getOrderQuantityCeiling } from '../../shared/orderQuantityCeiling.js';
 import { resolveItemDisplayPricing } from '../../shared/itemDiscountPricing.js';
@@ -220,7 +220,8 @@ const buildMenuFromFoods = async (foods = [], { forCustomer = false } = {}) => {
             ...formatOrderQuantityLimits(food, quantityCeiling),
             packagingCharge: {
                 isEnabled: food?.packagingCharge?.isEnabled === true,
-                amount: resolveItemPackagingAmount(food)
+                amount: resolveItemPackagingAmount(food),
+                unitsPerCharge: resolveItemPackagingUnits(food)
             },
             /*
              * Whether this dish's price already contains GST. Null, not false,

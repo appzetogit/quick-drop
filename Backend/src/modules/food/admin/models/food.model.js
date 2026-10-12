@@ -334,7 +334,12 @@ const foodSchema = new mongoose.Schema(
          */
         packagingCharge: {
             isEnabled: { type: Boolean, default: false },
-            amount: { type: Number, min: 0, default: 0 }
+            amount: { type: Number, min: 0, default: 0 },
+            /**
+             * One charge covers this many units of the item: 3 means 1-3 units
+             * pay one charge, 4-6 pay two, and so on. 1 = a charge per unit.
+             */
+            unitsPerCharge: { type: Number, min: 1, max: 999, default: 1 }
         },
         /**
          * Optional per-item availability windows, e.g. breakfast served 08:00-11:30.

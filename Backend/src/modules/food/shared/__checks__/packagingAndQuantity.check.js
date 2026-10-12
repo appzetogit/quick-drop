@@ -77,7 +77,8 @@ assertOrderQuantityRange({ minOrderQuantity: 5, maxOrderQuantity: 0 }); // 0 = u
 assert.deepEqual(normalizePackagingConfig(null), {
     isEnabled: false,
     mode: 'ADMIN',
-    adminChargePerOrder: 0
+    adminChargePerOrder: 0,
+    adminItemsPerCharge: 0
 });
 assert.equal(
     normalizePackagingConfig({ packagingCharge: { mode: 'restaurant' } }).mode,
@@ -127,5 +128,28 @@ assert.equal(
         .packagingFee,
     0
 ); // no items, no fee
+
+// --- one charge per N units ------------------------------------------------
+const restaurantMode = { isEnabled: true, mode: 'RESTAURANT', adminChargePerOrder: 0 };
+const fee = (items, config = restaurantMode) => computeFoodPackagingFee({ items, config }).packagingFee;
+const box = (quantity, extra = {}) => ({ itemId: 'biryani', foodPackagingCharge: 10, foodPackagingUnits: 3, quantity, ...extra });
+assert.equal(fee([box(1)]), 10); // 1-3 -> one charge
+assert.equal(fee([box(3)]), 10);
+assert.equal(fee([box(4)]), 20); // 4-6 -> two
+assert.equal(fee([box(7)]), 30); // 7-9 -> three
+// The same item in two sizes is pooled: 2 + 1 = 3 units -> one charge.
+assert.equal(fee([box(2, { variantName: 'Half' }), box(1, { variantName: 'Full' })]), 10);
+// Different items count separately; no units set = per unit, as before.
+assert.equal(fee([box(2), { itemId: 'raita', foodPackagingCharge: 5, quantity: 2 }]), 20);
+// Admin mode: one charge per N items in the whole order, or once per order when N is 0.
+const adminEvery5 = { isEnabled: true, mode: 'ADMIN', adminChargePerOrder: 15, adminItemsPerCharge: 5 };
+assert.equal(fee([box(3), { itemId: 'raita', quantity: 2 }], adminEvery5), 15); // 5 items
+assert.equal(fee([box(3), { itemId: 'raita', quantity: 3 }], adminEvery5), 30); // 6 items
+assert.equal(fee([box(9)], { ...adminEvery5, adminItemsPerCharge: 0 }), 15);
+// Item input: units kept when sent, undefined when not (stored value is kept), bounds checked.
+assert.equal(normalizeItemPackagingChargeInput({ isEnabled: true, amount: 10, unitsPerCharge: 3 }).unitsPerCharge, 3);
+assert.equal(normalizeItemPackagingChargeInput({ isEnabled: true, amount: 10 }).unitsPerCharge, undefined);
+throws(() => normalizeItemPackagingChargeInput({ isEnabled: true, amount: 10, unitsPerCharge: 0 }));
+throws(() => normalizeItemPackagingChargeInput({ isEnabled: true, amount: 10, unitsPerCharge: 2.5 }));
 
 console.log('packaging + quantity checks passed');
