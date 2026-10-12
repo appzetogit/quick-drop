@@ -1750,7 +1750,7 @@ export default function RestaurantOnboarding() {
             </div>
 
             <div className="relative mt-1 overflow-hidden rounded-md border border-gray-200">
-              <div ref={mapContainerRef} className="h-56 w-full bg-gray-100" />
+              <div ref={mapContainerRef} className="h-[55vh] min-h-[320px] max-h-[560px] w-full bg-gray-100" />
 
               {!isMapReady && !mapError && (
                 <div className="absolute inset-0 flex items-center justify-center bg-gray-50/80 text-[11px] text-gray-500">
@@ -2066,7 +2066,8 @@ export default function RestaurantOnboarding() {
         zoom: hasStored ? MAP_PINNED_ZOOM : MAP_FALLBACK_ZOOM,
         mapTypeControl: false,
         streetViewControl: false,
-        fullscreenControl: false,
+        // Full screen lets an owner place the pin precisely on a small phone.
+        fullscreenControl: true,
         clickableIcons: false,
       })
 
