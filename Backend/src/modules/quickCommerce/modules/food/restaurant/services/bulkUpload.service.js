@@ -4,7 +4,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
-import { categoryAllowsFoodType, normalizeFoodTypeForCategory } from '../../shared/categoryWorkflow.js';
+import { categoryAllowsFoodType, normalizeFoodTypeForCategory, readSheetFoodType } from '../../shared/categoryWorkflow.js';
 import { isHostedUploadUrl, saveImageFromUrl } from '../../../../services/storage.service.js';
 
 const PREP_TIME_OPTIONS = [
@@ -252,11 +252,23 @@ export async function processBulkMenuUpload(restaurantId, fileBuffer, options = 
 
             rowCount++;
 
-            // A pure-veg seller's catalogue holds veg items only, whatever the
-            // category (mixed categories are open to it; see categoryWorkflow.js).
-            if (restaurant.pureVegRestaurant === true && String(data.foodType || '').trim() !== 'Veg') {
-                parsingErrors.push({ row: rowNumber, error: 'Pure veg restaurants can only add veg food' });
+            // Food Type, read forgivingly (readSheetFoodType). A pure-veg
+            // seller's items are veg by definition, so a blank cell there
+            // means Veg and only an explicit non-veg value is refused; elsewhere
+            // a blank keeps the old default of Non-Veg.
+            const sheetFoodType = readSheetFoodType(data.foodType);
+            if (sheetFoodType === null) {
+                parsingErrors.push({ row: rowNumber, error: `Food Type "${data.foodType}" is not recognised. Use Veg or Non-Veg.` });
                 return;
+            }
+            if (restaurant.pureVegRestaurant === true) {
+                if (sheetFoodType === 'Non-Veg') {
+                    parsingErrors.push({ row: rowNumber, error: 'This is a pure veg store, so it cannot add Non-Veg items' });
+                    return;
+                }
+                data.foodType = 'Veg';
+            } else {
+                data.foodType = sheetFoodType || 'Non-Veg';
             }
 
             // Parse Variants (Columns 9 to 14)
@@ -427,7 +439,8 @@ export async function processBulkMenuUpload(restaurantId, fileBuffer, options = 
         }
     }
 
-    return results;
+    // The panel lists `errors`; `details` is kept for older clients.
+    return { ...results, errors: results.details };
 }
 
 /**

@@ -41,6 +41,20 @@ export const PURE_VEG_CATEGORY_FILTER = { foodTypeScope: { $ne: 'Non-Veg' } };
 export const categoryAllowedForPureVeg = (scope) => normalizeCategoryFoodTypeScope(scope, 'Both') !== 'Non-Veg';
 export const pureVegAllowsFoodType = (foodType) => normalizeFoodTypeForCategory(foodType) === 'Veg';
 
+/**
+ * The Food Type cell of a bulk-upload sheet, read the way people type it:
+ * "veg", "VEG", "Veg ", "Vegetarian", "Pure Veg", "Jain" are Veg; "Non Veg",
+ * "non-veg", "NV", "Egg" are Non-Veg. '' for a blank cell, null for anything
+ * else so the row can say what it did not understand.
+ */
+export const readSheetFoodType = (raw) => {
+    const s = String(raw ?? '').trim().toLowerCase().replace(/[\s_.-]+/g, ' ');
+    if (!s) return '';
+    if (/^(veg|v|vegetarian|pure veg|jain|green)$/.test(s)) return 'Veg';
+    if (/^(non ?veg|nv|non ?vegetarian|egg|eggetarian|red)$/.test(s)) return 'Non-Veg';
+    return null;
+};
+
 export const isGlobalCategory = (category = {}) => {
     const restaurantId = category?.restaurantId;
     return !restaurantId;
