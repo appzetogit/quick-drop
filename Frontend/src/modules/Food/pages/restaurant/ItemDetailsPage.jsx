@@ -141,6 +141,14 @@ export default function ItemDetailsPage() {
   // Filters the "Goes well with" picker by dish name.
   const [pairingSearch, setPairingSearch] = useState("")
   const [availableAddons, setAvailableAddons] = useState([])
+  // Filters the add-on pickers by name; add-ons already picked stay visible.
+  const [addonSearch, setAddonSearch] = useState("")
+  const addonVisible = (addon, picked = []) => {
+    const q = addonSearch.trim().toLowerCase()
+    if (!q) return true
+    if ((picked || []).includes(String(addon._id || addon.id || ""))) return true
+    return String(addon.name || addon.draft?.name || addon.published?.name || "").toLowerCase().includes(q)
+  }
   const [variants, setVariants] = useState([])
   const [preparationTime, setPreparationTime] = useState("")
   const [minOrderQuantity, setMinOrderQuantity] = useState("0")
@@ -1735,8 +1743,15 @@ export default function ItemDetailsPage() {
                                     {/* Each selected pairing gets its own price for THIS size --
                                         cheese on a large is more cheese than on a small. Blank
                                         keeps the add-on's usual price. */}
+                                    <input
+                                      type="search"
+                                      value={addonSearch}
+                                      onChange={(e) => setAddonSearch(e.target.value)}
+                                      placeholder="Search add-ons"
+                                      className="mb-2 w-full px-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-white"
+                                    />
                                     <div className="flex flex-wrap gap-1.5">
-                                      {availableAddons.map((addon) => {
+                                      {availableAddons.filter((addon) => addonVisible(addon, variant.addonIds)).map((addon) => {
                                         const addonId = String(addon._id || addon.id || "")
                                         const isChecked = (variant.addonIds || []).includes(addonId)
                                         const addonName = addon.name || addon.draft?.name || addon.published?.name || "Add-on"
@@ -2006,8 +2021,16 @@ export default function ItemDetailsPage() {
                       No restaurant add-ons available. Create add-ons in the Add-ons manager to attach them here.
                     </p>
                   ) : (
+                    <>
+                    <input
+                                      type="search"
+                                      value={addonSearch}
+                                      onChange={(e) => setAddonSearch(e.target.value)}
+                                      placeholder="Search add-ons"
+                                      className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                                    />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {availableAddons.map((addon) => {
+                      {availableAddons.filter((addon) => addonVisible(addon, addonIds)).map((addon) => {
                         const addonId = String(addon._id || addon.id || "")
                         const isChecked = addonIds.includes(addonId)
                         const addonName = addon.name || addon.draft?.name || addon.published?.name || "Add-on"
@@ -2048,6 +2071,7 @@ export default function ItemDetailsPage() {
                         )
                       })}
                     </div>
+                    </>
                   )}
                 </div>
 

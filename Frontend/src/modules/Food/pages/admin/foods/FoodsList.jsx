@@ -503,6 +503,14 @@ export default function FoodsList() {
   // dish's restaurant: an admin edits dishes across restaurants, and offering
   // restaurant A's add-ons on restaurant B's dish would be refused on save.
   const [restaurantAddons, setRestaurantAddons] = useState([])
+  // Filters the add-on pickers by name; add-ons already picked stay visible.
+  const [addonSearch, setAddonSearch] = useState("")
+  const addonVisible = (addon, picked = []) => {
+    const q = addonSearch.trim().toLowerCase()
+    if (!q) return true
+    if ((picked || []).includes(String(addon._id || addon.id || ""))) return true
+    return String(addon.name || addon.draft?.name || addon.published?.name || "").toLowerCase().includes(q)
+  }
   useEffect(() => {
     const rid = String(foodForm.restaurantId || "")
     if (!rid) { setRestaurantAddons([]); return }
@@ -1728,8 +1736,15 @@ export default function FoodsList() {
                                 </span>
                               )}
                             </label>
+                            <input
+                                      type="search"
+                                      value={addonSearch}
+                                      onChange={(e) => setAddonSearch(e.target.value)}
+                                      placeholder="Search add-ons"
+                                      className="mb-2 w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                                    />
                             <div className="flex flex-wrap gap-1.5">
-                              {restaurantAddons.map((addon) => {
+                              {restaurantAddons.filter((addon) => addonVisible(addon, variant.addonIds)).map((addon) => {
                                 const addonId = String(addon._id || addon.id || "")
                                 const isChecked = (variant.addonIds || []).includes(addonId)
                                 const addonName = addon.name || addon.published?.name || addon.draft?.name || "Add-on"
