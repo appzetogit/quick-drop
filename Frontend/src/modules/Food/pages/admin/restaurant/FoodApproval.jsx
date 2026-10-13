@@ -16,8 +16,18 @@ const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
 
+/** "₹10 per unit" / "₹10 per 3 units" / null when the dish charges nothing. */
+const describePackaging = (pc) => {
+  if (!pc?.isEnabled || !(Number(pc.amount) > 0)) return null
+  const units = Math.max(1, Number(pc.unitsPerCharge) || 1)
+  return `₹${Number(pc.amount)} per ${units === 1 ? "unit" : `${units} units`}`
+}
+
 export default function FoodApproval() {
   const [foodRequests, setFoodRequests] = useState([])
+  // Fee Settings packaging mode: RESTAURANT bills each dish's own charge,
+  // ADMIN bills one platform charge instead, OFF bills none.
+  const [packagingMode, setPackagingMode] = useState(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedRequest, setSelectedRequest] = useState(null)
@@ -37,6 +47,7 @@ export default function FoodApproval() {
       const data = response?.data?.data?.requests || response?.data?.requests || []
       if (!isMountedRef.current) return
       setFoodRequests(data)
+      setPackagingMode(response?.data?.data?.packagingMode || null)
     } catch (error) {
       debugError('Error fetching food approval requests:', error)
       if (!isMountedRef.current) return
@@ -317,6 +328,9 @@ export default function FoodApproval() {
                         Price
                       </th>
                       <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Packaging
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                         Requested Date
                       </th>
                       <th className="px-3 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
@@ -327,7 +341,7 @@ export default function FoodApproval() {
                   <tbody className="divide-y divide-gray-200 bg-white">
                     {filteredRequests.length === 0 ? (
                       <tr>
-                        <td colSpan="9" className="px-3 py-8 text-center text-sm text-gray-500">
+                        <td colSpan="10" className="px-3 py-8 text-center text-sm text-gray-500">
                           {loading ? "Loading..." : "No food or add-on records found."}
                         </td>
                       </tr>
@@ -367,6 +381,17 @@ export default function FoodApproval() {
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-700 font-semibold">
                             {request.price !== null && request.price !== undefined ? `Rs ${request.price}` : '-'}
+                          </td>
+                          <td className="px-3 py-3 whitespace-nowrap text-sm">
+                            {request.entityType === 'addon' || !request.packagingCharge ? (
+                              <span className="text-gray-400">—</span>
+                            ) : describePackaging(request.packagingCharge) ? (
+                              <span className="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">
+                                {describePackaging(request.packagingCharge)}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-500">No charge</span>
+                            )}
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
                             {request.requestedAt ? new Date(request.requestedAt).toLocaleDateString() : '-'}
@@ -457,6 +482,35 @@ export default function FoodApproval() {
                 </div>
 
                 <div className="space-y-4">
+                    {selectedRequest.entityType !== 'addon' && selectedRequest.packagingCharge && (
+                        <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
+                            <label className="block text-[10px] font-bold text-orange-700 uppercase tracking-wider mb-1">Packaging Charge</label>
+                            {describePackaging(selectedRequest.packagingCharge) ? (
+                                <>
+                                    <p className="text-base font-bold text-orange-700">{describePackaging(selectedRequest.packagingCharge)}</p>
+                                    {Number(selectedRequest.packagingCharge.unitsPerCharge) > 1 && (
+                                        <p className="text-xs text-gray-600 mt-0.5">
+                                            1–{selectedRequest.packagingCharge.unitsPerCharge} units pay one charge, the next {selectedRequest.packagingCharge.unitsPerCharge} pay another.
+                                        </p>
+                                    )}
+                                    {selectedRequest.price !== null && selectedRequest.price !== undefined && (
+                                        <p className="text-xs text-gray-600 mt-0.5">
+                                            One unit: ₹{Number(selectedRequest.price)} + ₹{Number(selectedRequest.packagingCharge.amount)} packaging = <span className="font-bold">₹{Number(selectedRequest.price) + Number(selectedRequest.packagingCharge.amount)}</span>
+                                        </p>
+                                    )}
+                                </>
+                            ) : (
+                                <p className="text-sm font-semibold text-gray-700">No packaging charge on this dish</p>
+                            )}
+                            <p className={`text-[11px] mt-2 font-medium ${selectedRequest.packagingCharge.billed ? 'text-green-700' : 'text-gray-500'}`}>
+                                {selectedRequest.packagingCharge.billed
+                                    ? 'Billed to customers: Fee Settings has packaging set per restaurant.'
+                                    : packagingMode === 'ADMIN'
+                                        ? 'Not billed right now: Fee Settings uses one platform packaging charge instead.'
+                                        : 'Not billed right now: packaging charges are switched off in Fee Settings.'}
+                            </p>
+                        </div>
+                    )}
                     {selectedRequest.foodType && (
                         <div>
                             <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Food Type</label>

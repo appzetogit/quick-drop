@@ -5,6 +5,7 @@ import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { syncMenuItemApprovalStatus } from '../../restaurant/services/restaurantMenu.service.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from './foodVariant.service.js';
+import { normalizePackagingConfig, PACKAGING_MODES } from '../../shared/packagingCharge.js';
 
 const toRestaurantDisplayId = (mongoId) => {
     const s = String(mongoId || '');
@@ -32,8 +33,16 @@ export async function listPendingFoodApprovals(query = {}) {
         .sort({ requestedAt: -1, createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .select('restaurantId categoryName name price variants image foodType approvalStatus requestedAt createdAt')
+        .select('restaurantId categoryName name price variants image foodType approvalStatus requestedAt createdAt packagingCharge')
         .lean();
+
+    // Whether item packaging charges are billed at all: only when the fee
+    // settings put packaging in RESTAURANT mode (ADMIN mode bills one flat
+    // platform charge instead), so the admin can tell what they are approving.
+    const { FoodFeeSettings } = await import('../models/feeSettings.model.js');
+    const feeDoc = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
+    const packagingConfig = normalizePackagingConfig(feeDoc);
+    const itemPackagingBilled = packagingConfig.isEnabled && packagingConfig.mode === PACKAGING_MODES.RESTAURANT;
 
     const addonList = await FoodAddon.find({ approvalStatus: 'pending' })
         .sort({ requestedAt: -1, createdAt: -1 })
@@ -66,6 +75,13 @@ export async function listPendingFoodApprovals(query = {}) {
         approvalStatus: f.approvalStatus || 'pending',
         price: getFoodDisplayPrice(f),
         variants: serializeFoodVariants(f.variants),
+        packagingCharge: {
+            isEnabled: f.packagingCharge?.isEnabled === true && Number(f.packagingCharge?.amount) > 0,
+            amount: Math.max(0, Number(f.packagingCharge?.amount) || 0),
+            unitsPerCharge: Math.max(1, Math.floor(Number(f.packagingCharge?.unitsPerCharge) || 1)),
+            // False when the fee settings would not bill it, whatever the dish says.
+            billed: itemPackagingBilled,
+        },
         image: f.image || '',
         images: f.image ? [f.image] : [],
         requestedAt: f.requestedAt || f.createdAt,
@@ -97,7 +113,13 @@ export async function listPendingFoodApprovals(query = {}) {
         new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()
     );
 
-    return { requests: allRequests, page, limit, total: allRequests.length };
+    return {
+        requests: allRequests,
+        page,
+        limit,
+        total: allRequests.length,
+        packagingMode: packagingConfig.isEnabled ? packagingConfig.mode : 'OFF',
+    };
 }
 
 /**
