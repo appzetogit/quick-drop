@@ -4,7 +4,6 @@ import {
   BarChart3,
   Check,
   MapPin,
-  Pill,
   ShieldCheck,
   ShoppingBasket,
   Star,
@@ -48,19 +47,12 @@ const OPTIONS = [
       button: "bg-blue-600 hover:bg-blue-700 focus-visible:ring-blue-300",
     },
   },
-  {
-    type: "medical",
-    icon: Pill,
-    image: photo("1584308666744-24d5c474f2ae"),
-    imageAlt: "Strips of medicine",
-    points: ["Prescription orders", "Wide reach", "Trusted & secure"],
-    theme: {
-      card: "from-emerald-50/80",
-      iconBg: "bg-emerald-100 text-emerald-600",
-      tick: "bg-emerald-600",
-      button: "bg-emerald-600 hover:bg-emerald-700 focus-visible:ring-emerald-300",
-    },
-  },
+  /*
+   * The Medical (pharmacy) card is not offered on the public page: the
+   * payment gateway's review asked for no medicine/pharmacy content on the
+   * website, and Medical is switched off in App Services. The medical sign-up
+   * itself still exists (PARTNER_TYPES.medical) for invited pharmacies.
+   */
 ]
 
 const HIGHLIGHTS = [
@@ -161,7 +153,7 @@ export default function ChoosePartner() {
         </section>
 
         {/* ---- partner types ---- */}
-        <section id="choose" className="grid content-start gap-5 md:grid-cols-3">
+        <section id="choose" className="grid content-start gap-5 md:grid-cols-2">
           {OPTIONS.map((option) => (
             <PartnerCard key={option.type} option={option} onStart={open} />
           ))}
