@@ -443,17 +443,6 @@ export default function MenuCategoriesPage() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">Optional Type Label</label>
-                  <input
-                    type="text"
-                    value={formData.type}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, type: e.target.value }))}
-                    placeholder="Examples: Starters, Desserts, Drinks"
-                    className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
-                  />
-                </div>
-
                 <div className="flex items-center gap-3 pt-1">
                   {(imagePreview || formData.image) && (
                     <img
