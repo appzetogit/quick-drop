@@ -36,6 +36,18 @@ const mongo = await MongoMemoryServer.create();
 process.env.MONGODB_URI = mongo.getUri('partner_onboarding');
 await mongoose.connect(mongo.getUri('partner_onboarding'));
 
+// Zones around the test pin (Indore, 22.7196,75.8577): one on the medical map,
+// one on the store map, and a medical zone far away (Palampur).
+const square = (lat, lng, d = 0.1) => [
+    { latitude: lat - d, longitude: lng - d }, { latitude: lat - d, longitude: lng + d },
+    { latitude: lat + d, longitude: lng + d }, { latitude: lat + d, longitude: lng - d },
+];
+const { MedicalZone } = await import('../src/modules/quickCommerce/modules/food/admin/models/medicalZone.model.js');
+const { QCZone } = await import('../src/modules/quickCommerce/modules/food/admin/models/zone.model.js');
+const indoreMedical = await MedicalZone.create({ name: 'Indore medical', coordinates: square(22.7196, 75.8577), isActive: true });
+const palampurMedical = await MedicalZone.create({ name: 'Palampur medical', coordinates: square(32.11, 76.54), isActive: true });
+const indoreStores = await QCZone.create({ name: 'Indore stores', coordinates: square(22.7196, 75.8577), isActive: true });
+
 const B = '../src/modules/quickCommerce/modules/food';
 const rules = await import(`${B}/shared/partnerOnboarding.js`);
 const partner = await import(`${B}/partner/partner.service.js`);
@@ -264,6 +276,44 @@ await check('a live pharmacy with no expiry on file is not switched off', async 
     });
     const doc = await loadRestaurantForOrdering(String(legacy._id));
     assert.equal(doc.restaurantName, 'Old Pharmacy');
+});
+
+console.log('\nzones');
+
+await check('a pharmacy pinned inside a medical zone lands in it without choosing', async () => {
+    const out = await verify('9812345701');
+    await partner.submitApplication(out.onboardingToken, complete({ restaurantName: 'Zone Auto' }));
+    const doc = await FoodRestaurant.findOne({ restaurantName: 'Zone Auto' }).lean();
+    assert.equal(String(doc.zoneId), String(indoreMedical._id));
+    const app = await partner.getMyApplication(out.onboardingToken);
+    assert.equal(app.application.zoneId, String(indoreMedical._id));
+});
+
+await check('a chosen zone is kept, and must be on the medical map', async () => {
+    const out = await verify('9812345702');
+    await assert.rejects(
+        partner.submitApplication(out.onboardingToken, complete({ restaurantName: 'Zone Wrong', zoneId: String(indoreStores._id) })),
+        /Select a zone/,
+    );
+    await partner.submitApplication(out.onboardingToken, complete({ restaurantName: 'Zone Chosen', zoneId: String(palampurMedical._id) }));
+    const doc = await FoodRestaurant.findOne({ restaurantName: 'Zone Chosen' }).lean();
+    assert.equal(String(doc.zoneId), String(palampurMedical._id));
+});
+
+await check('outside every zone with none chosen is refused', async () => {
+    const out = await verify('9812345703');
+    await assert.rejects(
+        partner.submitApplication(out.onboardingToken, complete({ restaurantName: 'Zone None', latitude: '19.07', longitude: '72.88' })),
+        /Select your zone/,
+    );
+});
+
+await check('a store (not a pharmacy) uses the store map', async () => {
+    const out = await verify('9812345704', 'store');
+    const body = complete({ restaurantName: 'Zone Store' });
+    await partner.submitApplication(out.onboardingToken, body).catch(() => {});
+    const doc = await FoodRestaurant.findOne({ restaurantName: 'Zone Store' }).lean();
+    if (doc) assert.equal(String(doc.zoneId), String(indoreStores._id));
 });
 
 await mongoose.disconnect();

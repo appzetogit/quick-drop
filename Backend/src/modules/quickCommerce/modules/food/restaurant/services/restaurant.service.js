@@ -731,19 +731,25 @@ export const createRestaurantOnboardingFeeOrder = async ({ ownerPhone }) => {
  * is stored today. This module tolerates a seller with no zone by design, so
  * refusing the registration would break a case that currently works.
  */
-const resolveOnboardingZoneId = async ({ zoneId, latitude, longitude, storeType }) => {
+export const resolveOnboardingZoneId = async ({ zoneId, latitude, longitude, storeType }) => {
+    const vertical = isMedicalStore(storeType)
+        ? ZONE_VERTICALS.MEDICAL
+        : ZONE_VERTICALS.QUICK;
+
     const explicit = String(zoneId || '').trim();
-    if (explicit && mongoose.Types.ObjectId.isValid(explicit)) {
+    if (explicit) {
+        // A chosen zone must be a live zone on THIS trade's map: a pharmacy
+        // placed in a grocery zone would never be found by a medicine order.
+        const { zoneModelFor } = await import('../../shared/zoneServiceability.js');
+        const ok = mongoose.Types.ObjectId.isValid(explicit)
+            && await zoneModelFor(vertical).exists({ _id: explicit, isActive: { $ne: false } });
+        if (!ok) throw new ValidationError('Select a zone from the list.');
         return new mongoose.Types.ObjectId(explicit);
     }
 
     const lat = toFiniteNumber(latitude);
     const lng = toFiniteNumber(longitude);
     if (lat === null || lng === null) return undefined;
-
-    const vertical = isMedicalStore(storeType)
-        ? ZONE_VERTICALS.MEDICAL
-        : ZONE_VERTICALS.QUICK;
 
     try {
         const zone = await findZoneForPoint(lat, lng, vertical);

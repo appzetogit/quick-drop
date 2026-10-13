@@ -29,6 +29,12 @@ export const partnerApi = {
   webLoginVerifyOtp: (ticket, email, otp, type) =>
     apiClient.post("/qc/partner/web-login/verify-otp", { ticket, email, otp, type }, ctx()).then(unwrap),
   getApplication: (token) => apiClient.get("/qc/partner/application", ctx(token)).then(unwrap),
+  /** Active zones on this trade's map (medical: pharmacies; quick: stores). */
+  zones: (vertical) =>
+    apiClient.get("/qc/zones/public", { ...ctx(), params: { vertical } }).then(unwrap),
+  /** The zone containing a pin on this trade's map, or OUT_OF_SERVICE. */
+  detectZone: (vertical, lat, lng) =>
+    apiClient.get("/qc/zones/detect", { ...ctx(), params: { vertical, lat, lng } }).then(unwrap),
   submitApplication: (token, body) =>
     apiClient.post("/qc/partner/application", body, ctx(token)).then(unwrap),
   upload: (token, file) => {

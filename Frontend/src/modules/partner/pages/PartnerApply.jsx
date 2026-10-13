@@ -37,6 +37,7 @@ const EMPTY = {
   landmark: "",
   latitude: null,
   longitude: null,
+  zoneId: "",
   drugLicenseNumber: "",
   drugLicenseExpiry: "",
   drugLicenseImage: "",
@@ -96,7 +97,7 @@ const STEPS = [
 ]
 
 const STEP_FIELDS = {
-  basic: ["restaurantName", "ownerName", "ownerEmail", "addressLine1", "city", "latitude"],
+  basic: ["restaurantName", "ownerName", "ownerEmail", "zoneId", "addressLine1", "city", "latitude"],
   documents: [
     "drugLicenseNumber", "drugLicenseExpiry", "drugLicenseImage", "panNumber", "panImage",
     "businessRegistrationImage", "pharmacistName", "pharmacistRegistrationNumber", "pharmacistCertificateImage",
@@ -113,6 +114,7 @@ const LABELS = {
   addressLine1: "Store address",
   city: "City",
   latitude: "Location on map",
+  zoneId: "Zone",
   drugLicenseNumber: "Drug licence number",
   drugLicenseExpiry: "Drug licence expiry date",
   drugLicenseImage: "Drug licence document",
@@ -182,6 +184,48 @@ export default function PartnerApply() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [shown, setShown] = useState([])
+  // Zones on this trade's map, and the zone the pin actually falls in.
+  const [zones, setZones] = useState([])
+  const [zonesLoading, setZonesLoading] = useState(true)
+  const [pinZone, setPinZone] = useState(null) // { status, zoneId, name }
+  const zoneVertical = type === "medical" ? "medical" : "quick"
+
+  useEffect(() => {
+    let live = true
+    setZonesLoading(true)
+    partnerApi
+      .zones(zoneVertical)
+      .then((d) => live && setZones(Array.isArray(d?.zones) ? d.zones : []))
+      .catch(() => live && setZones([]))
+      .finally(() => live && setZonesLoading(false))
+    return () => {
+      live = false
+    }
+  }, [zoneVertical])
+
+  // Where the pin is: picks the zone when none is chosen, warns on a mismatch.
+  useEffect(() => {
+    if (!Number.isFinite(form.latitude) || !Number.isFinite(form.longitude)) {
+      setPinZone(null)
+      return undefined
+    }
+    let live = true
+    const t = setTimeout(() => {
+      partnerApi
+        .detectZone(zoneVertical, form.latitude, form.longitude)
+        .then((d) => {
+          if (!live) return
+          const id = d?.zoneId ? String(d.zoneId) : ""
+          setPinZone({ status: d?.status || "", zoneId: id, name: d?.zone?.name || d?.zone?.zoneName || "" })
+          if (id) setForm((f) => (f.zoneId ? f : { ...f, zoneId: id }))
+        })
+        .catch(() => live && setPinZone(null))
+    }, 300)
+    return () => {
+      live = false
+      clearTimeout(t)
+    }
+  }, [form.latitude, form.longitude, zoneVertical])
 
   useEffect(() => {
     if (!session) return
@@ -210,6 +254,7 @@ export default function PartnerApply() {
   const isMedical = type === "medical"
   const set = (key) => (value) => setForm((f) => ({ ...f, [key]: value }))
   const isRequired = (field) => {
+    if (field === "zoneId") return true
     if (field === "gstImage") return form.gstRegistered === true
     if (field === "city") return requiredKeys.has("address")
     return requiredKeys.has(CHECK_KEY[field])
@@ -335,6 +380,29 @@ export default function PartnerApply() {
                 </select>
               </label>
             )}
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-800">
+                Zone<span className="text-rose-600"> *</span>
+              </span>
+              <select
+                value={form.zoneId}
+                onChange={(e) => set("zoneId")(e.target.value)}
+                disabled={zonesLoading}
+                className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3"
+              >
+                <option value="">{zonesLoading ? "Loading zones..." : "Select your zone"}</option>
+                {zones.map((z) => (
+                  <option key={z._id} value={String(z._id)}>
+                    {z.name || z.zoneName || "Zone"}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-slate-500">
+                {!zonesLoading && zones.length === 0
+                  ? "We are not taking new stores here yet. Contact support."
+                  : "The area your store serves. Pinning the store below picks it for you."}
+              </span>
+            </label>
             <TextInput label="Store address" required={isRequired("addressLine1")} value={form.addressLine1} onChange={set("addressLine1")} placeholder="Shop no., building, street" />
             <div className="grid gap-4 md:grid-cols-2">
               <TextInput label="Area / locality" value={form.area} onChange={set("area")} />
@@ -350,7 +418,26 @@ export default function PartnerApply() {
               <MapPinPicker
                 value={{ lat: form.latitude, lng: form.longitude }}
                 onChange={({ lat, lng }) => setForm((f) => ({ ...f, latitude: lat, longitude: lng }))}
+                // A searched address fills the empty address fields; typed ones are kept.
+                onAddress={(addr) =>
+                  setForm((f) => {
+                    const next = { ...f }
+                    for (const [k, v] of Object.entries(addr || {})) if (v && !String(f[k] || "").trim()) next[k] = v
+                    return next
+                  })
+                }
+                zone={zones.find((z) => String(z._id) === String(form.zoneId)) || null}
               />
+              {pinZone?.status === "OUT_OF_SERVICE" && (
+                <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  This pin is outside our service areas. Move it to your store inside the selected zone.
+                </p>
+              )}
+              {pinZone?.zoneId && form.zoneId && pinZone.zoneId !== String(form.zoneId) && (
+                <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  This pin is inside {pinZone.name || "another zone"}, not the zone you selected. Check the zone above, or move the pin.
+                </p>
+              )}
             </div>
           </>
         )}

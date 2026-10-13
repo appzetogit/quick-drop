@@ -109,6 +109,7 @@ export function describeApplication(seller, type) {
             formattedAddress: loc.formattedAddress || '',
             latitude: coords.length === 2 ? coords[1] : null,
             longitude: coords.length === 2 ? coords[0] : null,
+            zoneId: s.zoneId ? String(s.zoneId) : '',
             panNumber: s.panNumber || '',
             nameOnPan: s.nameOnPan || '',
             panImage: s.panImage || '',
@@ -335,6 +336,26 @@ function applied(doc, set) {
  * Submit a new application, or update / resubmit a pending or rejected one.
  * The phone number always comes from the token.
  */
+/**
+ * The zone a sign-up lands in: the one chosen, checked against the trade's
+ * map (pharmacies on the medical map), else the one containing the pin. A
+ * store outside every zone is refused, the same rule as restaurant onboarding:
+ * it could not be shown to any customer.
+ */
+async function zoneForApplication({ body, type, latitude, longitude }) {
+    const { resolveOnboardingZoneId } = await import('../restaurant/services/restaurant.service.js');
+    const zoneId = await resolveOnboardingZoneId({
+        zoneId: body.zoneId,
+        latitude,
+        longitude,
+        storeType: type === 'medical' ? 'pharmacy' : 'grocery',
+    });
+    if (!zoneId) {
+        throw new ValidationError('Select your zone, or pin the store inside one of our service areas.');
+    }
+    return zoneId;
+}
+
 export async function submitApplication(token, body = {}) {
     const { phone, type } = readOnboardingToken(token);
     const seller = await findRestaurantByPhone(phone);
@@ -352,7 +373,11 @@ export async function submitApplication(token, body = {}) {
             primaryContactNumber: phone,
             storeType: type === 'medical' ? 'pharmacy' : (flat.storeType === 'pharmacy' ? 'grocery' : (flat.storeType || 'grocery')),
         });
-        await registerRestaurant(validated, {});
+        // What is missing is reported before the zone, so the applicant hears
+        // everything to fix first; then the store must land in a zone.
+        assertApplicationComplete(type, applied({ storeType: validated.storeType, ownerPhone: phone, primaryContactNumber: phone }, applicationUpdate(body)));
+        const zoneId = await zoneForApplication({ body, type, latitude: body.latitude, longitude: body.longitude });
+        await registerRestaurant({ ...validated, zoneId: String(zoneId) }, {});
         return getMyApplication(token);
     }
 
@@ -364,6 +389,16 @@ export async function submitApplication(token, body = {}) {
     }
 
     const set = applicationUpdate(body);
+    // The zone follows the chosen zone, or the pin when only the pin moved.
+    if (body.zoneId !== undefined || set['location.coordinates']) {
+        const coords = set['location.coordinates'] || seller.location?.coordinates || [];
+        set.zoneId = await zoneForApplication({
+            body: body.zoneId !== undefined ? body : {},
+            type,
+            latitude: coords[1],
+            longitude: coords[0],
+        });
+    }
     const next = applied(seller.toObject(), set);
     assertApplicationComplete(type, next);
 

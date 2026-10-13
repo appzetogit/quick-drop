@@ -2,6 +2,7 @@ import { getRedisClient } from '../../../../config/redis.js';
 import {
     findZoneForPoint,
     getActiveZones,
+    normalizeZoneVertical,
     toFiniteNumber as toFinite
 } from '../../shared/zoneServiceability.js';
 
@@ -17,11 +18,14 @@ const roundCoordinate = (value, precision = 3) => {
     return Number(numeric.toFixed(precision));
 };
 
-const buildZoneDetectCacheKey = (lat, lng) => {
+const buildZoneDetectCacheKey = (lat, lng, vertical = 'quick') => {
     const roundedLat = roundCoordinate(lat, 3);
     const roundedLng = roundCoordinate(lng, 3);
     if (roundedLat === null || roundedLng === null) return null;
-    return `zones:detect:${roundedLat}:${roundedLng}`;
+    // Quick keeps its old key; medical gets its own (a different map).
+    return vertical === 'quick'
+        ? `zones:detect:${roundedLat}:${roundedLng}`
+        : `zones:detect:${vertical}:${roundedLat}:${roundedLng}`;
 };
 
 const getCachedJson = async (key) => {
@@ -53,13 +57,15 @@ export const detectZonePublicController = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'lat and lng are required' });
         }
 
-        const cacheKey = buildZoneDetectCacheKey(lat, lng);
+        // ?vertical=medical asks the pharmacy map; default is Quick's.
+        const vertical = normalizeZoneVertical(req.query.vertical);
+        const cacheKey = buildZoneDetectCacheKey(lat, lng, vertical);
         const cached = await getCachedJson(cacheKey);
         if (cached) {
             return res.status(200).json(cached);
         }
 
-        const zone = await findZoneForPoint(lat, lng);
+        const zone = await findZoneForPoint(lat, lng, vertical);
         if (zone) {
             const response = {
                 success: true,
@@ -83,9 +89,10 @@ export const detectZonePublicController = async (req, res, next) => {
 };
 
 /** GET /zones/public - list active zones for onboarding/selects */
-export const listZonesPublicController = async (_req, res, next) => {
+export const listZonesPublicController = async (req, res, next) => {
     try {
-        const zones = await getActiveZones();
+        // ?vertical=medical lists the pharmacy map; default is Quick's.
+        const zones = await getActiveZones(normalizeZoneVertical(req.query?.vertical));
 
         return res.status(200).json({
             success: true,
