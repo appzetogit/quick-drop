@@ -138,6 +138,8 @@ export default function ItemDetailsPage() {
   // "Goes well with": other dishes of this restaurant shown beside this one.
   const [suggestedItemIds, setSuggestedItemIds] = useState([])
   const [pairingOptions, setPairingOptions] = useState([])
+  // Filters the "Goes well with" picker by dish name.
+  const [pairingSearch, setPairingSearch] = useState("")
   const [availableAddons, setAvailableAddons] = useState([])
   const [variants, setVariants] = useState([])
   const [preparationTime, setPreparationTime] = useState("")
@@ -2069,6 +2071,40 @@ export default function ItemDetailsPage() {
                           made the card as tall as the menu is long, and the
                           dishes already picked were lost among the ones that
                           were not. */}
+                      <input
+                        type="search"
+                        value={pairingSearch}
+                        onChange={(e) => setPairingSearch(e.target.value)}
+                        placeholder="Search dishes"
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                      />
+                      {pairingSearch.trim() && suggestedItemIds.length < 10 && (
+                        <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
+                          {(() => {
+                            const q = pairingSearch.trim().toLowerCase()
+                            const matches = pairingOptions.filter(
+                              (o) => !suggestedItemIds.includes(o.id) && String(o.name || "").toLowerCase().includes(q),
+                            )
+                            if (matches.length === 0) {
+                              return <p className="px-3 py-2 text-xs text-gray-500">No dish matches "{pairingSearch.trim()}".</p>
+                            }
+                            return matches.map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() => {
+                                  setSuggestedItemIds((prev) => (prev.includes(option.id) || prev.length >= 10 ? prev : [...prev, option.id]))
+                                  setPairingSearch("")
+                                }}
+                                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray-900 hover:bg-gray-50"
+                              >
+                                <span className="truncate">{option.name}</span>
+                                {option.price != null && <span className="ml-2 shrink-0 text-xs text-gray-500">Rs {option.price}</span>}
+                              </button>
+                            ))
+                          })()}
+                        </div>
+                      )}
                       <select
                         value=""
                         disabled={suggestedItemIds.length >= 10}

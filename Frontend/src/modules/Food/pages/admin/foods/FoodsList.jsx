@@ -122,6 +122,8 @@ export default function FoodsList() {
   const [foodFormMode, setFoodFormMode] = useState("add")
   const [foodForm, setFoodForm] = useState(createFoodForm())
   const [editingFood, setEditingFood] = useState(null)
+  // Filters the "Goes well with" list by dish name.
+  const [pairingSearch, setPairingSearch] = useState("")
   // Stock is counted in quick commerce and medical, not food (dishes aren't).
   const { pathname } = useLocation()
   const isStockPanel = /^\/admin\/(quick-commerce|medical)(\/|$)/.test(pathname)
@@ -1384,9 +1386,21 @@ export default function FoodsList() {
                   <label className="block text-sm font-medium text-slate-700 mb-1">
                     Goes well with <span className="text-slate-400 font-normal">({foodForm.suggestedItemIds.length}/10, shown both ways)</span>
                   </label>
+                  <input
+                    type="search"
+                    value={pairingSearch}
+                    onChange={(e) => setPairingSearch(e.target.value)}
+                    placeholder="Search dishes"
+                    className="mb-2 w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                  />
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-2">
                     {foods
                       .filter((f) => f.restaurantId === foodForm.restaurantId && f.id !== String(editingFood?.id || editingFood?._id || ""))
+                      // Picked dishes always stay visible, whatever the search.
+                      .filter((f) => {
+                        const q = pairingSearch.trim().toLowerCase()
+                        return !q || foodForm.suggestedItemIds.includes(f.id) || String(f.name || "").toLowerCase().includes(q)
+                      })
                       .map((f) => {
                         const checked = foodForm.suggestedItemIds.includes(f.id)
                         const full = !checked && foodForm.suggestedItemIds.length >= 10
