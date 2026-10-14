@@ -43,8 +43,18 @@ export default function FoodApproval() {
       if (!silent) {
         setLoading(true)
       }
-      const response = await adminAPI.getPendingFoodApprovals()
-      const data = response?.data?.data?.requests || response?.data?.requests || []
+      // Page through every pending request. One call used to return the
+      // server's default 200, so anything past that (a big bulk upload) never
+      // showed here.
+      const PAGE_SIZE = 500
+      const data = []
+      let response = null
+      for (let page = 1; page <= 40; page += 1) {
+        response = await adminAPI.getPendingFoodApprovals({ page, limit: PAGE_SIZE })
+        const body = response?.data?.data || response?.data || {}
+        data.push(...(body.requests || []))
+        if (!body.hasMore) break
+      }
       if (!isMountedRef.current) return
       setFoodRequests(data)
       setPackagingMode(response?.data?.data?.packagingMode || null)

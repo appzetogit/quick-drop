@@ -29,12 +29,15 @@ export async function listPendingFoodApprovals(query = {}) {
         ];
     }
 
-    const foodList = await FoodItem.find(filter)
-        .sort({ requestedAt: -1, createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .select('restaurantId categoryName name price variants image foodType approvalStatus requestedAt createdAt packagingCharge')
-        .lean();
+    const [foodList, foodTotal] = await Promise.all([
+        FoodItem.find(filter)
+            .sort({ requestedAt: -1, createdAt: -1, _id: -1 })
+            .skip(skip)
+            .limit(limit)
+            .select('restaurantId categoryName name price variants image foodType approvalStatus requestedAt createdAt packagingCharge')
+            .lean(),
+        FoodItem.countDocuments(filter),
+    ]);
 
     // Whether item packaging charges are billed at all: only when the fee
     // settings put packaging in RESTAURANT mode (ADMIN mode bills one flat
@@ -44,11 +47,15 @@ export async function listPendingFoodApprovals(query = {}) {
     const packagingConfig = normalizePackagingConfig(feeDoc);
     const itemPackagingBilled = packagingConfig.isEnabled && packagingConfig.mode === PACKAGING_MODES.RESTAURANT;
 
-    const addonList = await FoodAddon.find({ approvalStatus: 'pending' })
-        .sort({ requestedAt: -1, createdAt: -1 })
-        .limit(limit)
-        .select('restaurantId draft isAvailable requestedAt createdAt')
-        .lean();
+    // Add-ons come with the first page only: they are not paged, so later pages
+    // would otherwise repeat them.
+    const addonList = page === 1
+        ? await FoodAddon.find({ approvalStatus: 'pending' })
+            .sort({ requestedAt: -1, createdAt: -1 })
+            .limit(1000)
+            .select('restaurantId draft isAvailable requestedAt createdAt')
+            .lean()
+        : [];
 
     const restaurantIds = Array.from(new Set([
         ...foodList.map((f) => String(f.restaurantId)),
@@ -118,6 +125,10 @@ export async function listPendingFoodApprovals(query = {}) {
         page,
         limit,
         total: allRequests.length,
+        // Every pending dish, not just this page: the page used to ask for the
+        // default 200 and stop, so a bulk upload's dishes past that never showed.
+        foodTotal,
+        hasMore: skip + foodList.length < foodTotal,
         packagingMode: packagingConfig.isEnabled ? packagingConfig.mode : 'OFF',
     };
 }
