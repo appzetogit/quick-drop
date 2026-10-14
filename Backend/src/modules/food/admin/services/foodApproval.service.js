@@ -74,6 +74,8 @@ export async function listPendingFoodApprovals(query = {}) {
         type: 'food',
         restaurantName: restaurantMap.get(String(f.restaurantId)) || 'Unknown Restaurant',
         restaurantId: toRestaurantDisplayId(f.restaurantId),
+        // The full id, for filtering by restaurant and approving one restaurant's items.
+        restaurantRef: String(f.restaurantId || ''),
         category: f.categoryName || '',
         itemName: f.name,
         foodType: f.foodType || 'Non-Veg',
@@ -102,6 +104,7 @@ export async function listPendingFoodApprovals(query = {}) {
         type: 'addon',
         restaurantName: restaurantMap.get(String(a.restaurantId)) || 'Unknown Restaurant',
         restaurantId: toRestaurantDisplayId(a.restaurantId),
+        restaurantRef: String(a.restaurantId || ''),
         category: 'Add-on',
         itemName: a.draft?.name || 'Unnamed Add-on',
         foodType: 'Add-on',

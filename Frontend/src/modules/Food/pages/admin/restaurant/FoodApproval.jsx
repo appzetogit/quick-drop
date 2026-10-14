@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react"
-import { Search, CheckCircle2, XCircle, Eye, Clock, Loader2 } from "lucide-react"
+import { Search, CheckCircle2, XCircle, Eye, Clock, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
 import { Card } from "@food/components/ui/card"
 import {
   Dialog,
@@ -16,6 +16,68 @@ const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
 
+const PAGE_SIZES = [25, 50, 100]
+
+/** Page numbers around the current one, with gaps: 1 … 4 5 [6] 7 8 … 16 */
+const pageWindow = (page, pages) => {
+  const out = []
+  for (let p = 1; p <= pages; p += 1) {
+    if (p === 1 || p === pages || Math.abs(p - page) <= 2) out.push(p)
+    else if (out[out.length - 1] !== "…") out.push("…")
+  }
+  return out
+}
+
+function Pager({ page, pages, total, pageSize, onPage, onPageSize }) {
+  if (total === 0) return null
+  const from = (page - 1) * pageSize + 1
+  const to = Math.min(total, page * pageSize)
+  const btn =
+    "inline-flex h-8 min-w-8 items-center justify-center rounded-md border px-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+  return (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-3 text-sm text-gray-600">
+        <span className="tabular-nums">
+          Showing <b>{from}</b>–<b>{to}</b> of <b>{total}</b>
+        </span>
+        <label className="flex items-center gap-1.5">
+          <span className="text-gray-500">Rows</span>
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSize(Number(e.target.value))}
+            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+          >
+            {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center gap-1">
+        <button type="button" className={`${btn} border-gray-300 bg-white text-gray-700 hover:bg-gray-50`} disabled={page <= 1} onClick={() => onPage(page - 1)} aria-label="Previous page">
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        {pageWindow(page, pages).map((p, i) =>
+          p === "…" ? (
+            <span key={`gap-${i}`} className="px-1 text-gray-400">…</span>
+          ) : (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onPage(p)}
+              aria-current={p === page ? "page" : undefined}
+              className={`${btn} tabular-nums ${p === page ? "border-[#006fbd] bg-[#006fbd] text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
+            >
+              {p}
+            </button>
+          ),
+        )}
+        <button type="button" className={`${btn} border-gray-300 bg-white text-gray-700 hover:bg-gray-50`} disabled={page >= pages} onClick={() => onPage(page + 1)} aria-label="Next page">
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /** "₹10 per unit" / "₹10 per 3 units" / null when the dish charges nothing. */
 const describePackaging = (pc) => {
   if (!pc?.isEnabled || !(Number(pc.amount) > 0)) return null
@@ -30,6 +92,12 @@ export default function FoodApproval() {
   const [packagingMode, setPackagingMode] = useState(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
+  const [restaurantFilter, setRestaurantFilter] = useState("")
+  const [kindFilter, setKindFilter] = useState("all") // all | food | addon
+  const [dietFilter, setDietFilter] = useState("all") // all | Veg | Non-Veg
+  const [categoryFilter, setCategoryFilter] = useState("")
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
@@ -104,22 +172,77 @@ export default function FoodApproval() {
   }, [fetchFoodRequests])
 
   // Filter requests based on search query
-  const filteredRequests = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return foodRequests
+  // Filter options, with how many pending items each holds.
+  const restaurantKey = (r) => r.restaurantRef || r.restaurantId || r.restaurantName
+  const restaurantOptions = useMemo(() => {
+    const byRef = new Map()
+    for (const r of foodRequests) {
+      const ref = restaurantKey(r)
+      const cur = byRef.get(ref) || { ref, name: r.restaurantName || "Unknown Restaurant", count: 0 }
+      cur.count += 1
+      byRef.set(ref, cur)
     }
+    return [...byRef.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [foodRequests])
+
+  const categoryOptions = useMemo(() => {
+    const counts = new Map()
+    for (const r of foodRequests) {
+      if (r.entityType === "addon") continue
+      if (restaurantFilter && restaurantKey(r) !== restaurantFilter) continue
+      const name = r.category || "Uncategorised"
+      counts.set(name, (counts.get(name) || 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [foodRequests, restaurantFilter])
+
+  const filteredRequests = useMemo(() => {
     const query = searchQuery.toLowerCase().trim()
-    return foodRequests.filter((request) =>
-      request.itemName?.toLowerCase().includes(query) ||
-      request.category?.toLowerCase().includes(query) ||
-      request.restaurantName?.toLowerCase().includes(query) ||
-      request.restaurantId?.toLowerCase().includes(query) ||
-      request.approvalStatus?.toLowerCase().includes(query) ||
-      request.entityType?.toLowerCase().includes(query)
-    )
-  }, [foodRequests, searchQuery])
+    return foodRequests.filter((request) => {
+      if (restaurantFilter && restaurantKey(request) !== restaurantFilter) return false
+      if (kindFilter !== "all" && (request.entityType || "food") !== kindFilter) return false
+      if (dietFilter !== "all" && (request.entityType === "addon" || request.foodType !== dietFilter)) return false
+      if (categoryFilter && (request.category || "Uncategorised") !== categoryFilter) return false
+      if (!query) return true
+      return (
+        request.itemName?.toLowerCase().includes(query) ||
+        request.category?.toLowerCase().includes(query) ||
+        request.restaurantName?.toLowerCase().includes(query) ||
+        request.restaurantId?.toLowerCase().includes(query) ||
+        request.approvalStatus?.toLowerCase().includes(query) ||
+        request.entityType?.toLowerCase().includes(query)
+      )
+    })
+  }, [foodRequests, searchQuery, restaurantFilter, kindFilter, dietFilter, categoryFilter])
 
   const totalRequests = filteredRequests.length
+  const pages = Math.max(1, Math.ceil(totalRequests / pageSize))
+  const currentPage = Math.min(page, pages)
+  const rowOffset = (currentPage - 1) * pageSize
+  const pageRows = filteredRequests.slice(rowOffset, rowOffset + pageSize)
+
+  // Any change to what is shown starts again from the first page.
+  useEffect(() => {
+    setPage(1)
+  }, [searchQuery, restaurantFilter, kindFilter, dietFilter, categoryFilter, pageSize])
+
+  // A category picked for another restaurant would hide everything.
+  useEffect(() => {
+    setCategoryFilter("")
+  }, [restaurantFilter])
+
+  const filtersActive = Boolean(searchQuery.trim() || restaurantFilter || kindFilter !== "all" || dietFilter !== "all" || categoryFilter)
+  const clearFilters = () => {
+    setSearchQuery("")
+    setRestaurantFilter("")
+    setKindFilter("all")
+    setDietFilter("all")
+    setCategoryFilter("")
+  }
+
+  // Bulk approval works on everything pending, or on one restaurant's items.
+  const selectedRestaurant = restaurantOptions.find((o) => o.ref === restaurantFilter) || null
+  const bulkCount = selectedRestaurant ? selectedRestaurant.count : foodRequests.length
 
   // Handle approve food item or addon
   /*
@@ -260,17 +383,18 @@ export default function FoodApproval() {
             <div className="flex items-center gap-2">
               <h2 className="text-base font-semibold text-gray-900">Pending Food & Add-on Approvals</h2>
               <span className="inline-flex items-center rounded-full bg-primary-orange/10 px-3 py-1 text-xs font-medium text-accent-orange">
-                {totalRequests}
+                {foodRequests.length}
               </span>
             </div>
-            {totalRequests > 0 && (
+            {bulkCount > 0 && (
               <button
                 onClick={async () => {
-                  if (window.confirm(`Are you sure you want to approve all ${totalRequests} pending items?`)) {
+                  const scope = selectedRestaurant ? ` from ${selectedRestaurant.name}` : ""
+                  if (window.confirm(`Approve all ${bulkCount} pending items${scope}?`)) {
                     try {
                       setProcessing(true)
-                      await adminAPI.bulkApproveFoodItems()
-                      toast.success(`Successfully approved ${totalRequests} items`)
+                      await adminAPI.bulkApproveFoodItems(selectedRestaurant && /^[a-f0-9]{24}$/i.test(selectedRestaurant.ref) ? selectedRestaurant.ref : undefined)
+                      toast.success(`Approved ${bulkCount} items${scope}`)
                       await fetchFoodRequests()
                     } catch (error) {
                       debugError('Bulk approval error:', error)
@@ -284,13 +408,13 @@ export default function FoodApproval() {
                 className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 transition-all shadow-lg shadow-green-100 disabled:opacity-50"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                Bulk Approve All
+                {selectedRestaurant ? `Approve all from ${selectedRestaurant.name}` : "Bulk Approve All"}
               </button>
             )}
           </div>
 
-          {/* Search Bar */}
-          <div className="mb-4">
+          {/* Search and filters */}
+          <div className="mb-4 space-y-3">
             <div className="relative flex-1">
               <span className="absolute inset-y-0 left-2.5 flex items-center text-gray-400">
                 <Search className="w-4 h-4" />
@@ -303,7 +427,65 @@ export default function FoodApproval() {
                 className="w-full rounded-md border border-gray-300 bg-white py-1.5 pl-9 pr-3 text-sm focus:outline-none focus:border-[#006fbd] focus:ring-1 focus:ring-[#006fbd]"
               />
             </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              <select
+                value={restaurantFilter}
+                onChange={(e) => setRestaurantFilter(e.target.value)}
+                aria-label="Filter by restaurant"
+                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm lg:col-span-2"
+              >
+                <option value="">All restaurants ({foodRequests.length})</option>
+                {restaurantOptions.map((o) => (
+                  <option key={o.ref} value={o.ref}>{o.name} ({o.count})</option>
+                ))}
+              </select>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                aria-label="Filter by category"
+                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+              >
+                <option value="">All categories</option>
+                {categoryOptions.map(([name, count]) => (
+                  <option key={name} value={name}>{name} ({count})</option>
+                ))}
+              </select>
+              <select
+                value={kindFilter}
+                onChange={(e) => setKindFilter(e.target.value)}
+                aria-label="Filter by type"
+                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+              >
+                <option value="all">Dishes and add-ons</option>
+                <option value="food">Dishes only</option>
+                <option value="addon">Add-ons only</option>
+              </select>
+              <select
+                value={dietFilter}
+                onChange={(e) => setDietFilter(e.target.value)}
+                aria-label="Filter by veg or non-veg"
+                className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+              >
+                <option value="all">Veg and non-veg</option>
+                <option value="Veg">Veg only</option>
+                <option value="Non-Veg">Non-veg only</option>
+              </select>
+            </div>
+            {filtersActive && (
+              <div className="flex items-center justify-between text-sm text-gray-600">
+                <span><b className="tabular-nums">{totalRequests}</b> of {foodRequests.length} match</span>
+                <button type="button" onClick={clearFilters} className="font-medium text-[#006fbd] hover:underline">
+                  Clear filters
+                </button>
+              </div>
+            )}
           </div>
+
+          {!loading && (
+            <div className="mb-3">
+              <Pager page={currentPage} pages={pages} total={totalRequests} pageSize={pageSize} onPage={setPage} onPageSize={setPageSize} />
+            </div>
+          )}
 
           {/* Table */}
           {loading ? (
@@ -352,14 +534,14 @@ export default function FoodApproval() {
                     {filteredRequests.length === 0 ? (
                       <tr>
                         <td colSpan="10" className="px-3 py-8 text-center text-sm text-gray-500">
-                          {loading ? "Loading..." : "No food or add-on records found."}
+                          {loading ? "Loading..." : filtersActive ? "Nothing matches these filters." : "No food or add-on records found."}
                         </td>
                       </tr>
                     ) : (
-                      filteredRequests.map((request, index) => (
+                      pageRows.map((request, index) => (
                         <tr key={request._id || request.id} className="hover:bg-gray-50">
                           <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-700 font-semibold">
-                            {index + 1}
+                            {rowOffset + index + 1}
                           </td>
                           <td className="px-3 py-3 whitespace-nowrap">
                             <div className="text-sm">
@@ -440,6 +622,11 @@ export default function FoodApproval() {
                   </tbody>
                 </table>
               </div>
+              {pages > 1 && (
+                <div className="mt-3">
+                  <Pager page={currentPage} pages={pages} total={totalRequests} pageSize={pageSize} onPage={setPage} onPageSize={setPageSize} />
+                </div>
+              )}
             </div>
           )}
         </div>
