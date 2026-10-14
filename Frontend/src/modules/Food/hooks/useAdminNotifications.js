@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { adminAPI } from "@food/api";
+import { adminPanelOf } from "@food/utils/adminPanel";
 
 const STORAGE_KEY = "admin_notifications_dismissed_v1";
 const UPDATE_EVENT = "adminNotificationsUpdated";
@@ -113,9 +114,10 @@ const mapFoodApprovals = (response) => {
   }));
 };
 
-const mapDocumentReviews = (responses = []) =>
-  responses.flatMap((response) =>
+const mapDocumentReviews = (tagged = []) =>
+  tagged.flatMap(({ vertical, response }) =>
     (response?.data?.data?.reviews || []).map((row) => {
+      const base = vertical === "food" ? "/admin/food" : row?.storeType === "pharmacy" ? "/admin/medical" : "/admin/quick-commerce"
       const fields = Object.keys(row?.review?.changes || {}).map((f) => row?.labels?.[f] || f)
       const at = row?.review?.requestedAt
       return {
@@ -124,7 +126,7 @@ const mapDocumentReviews = (responses = []) =>
         message: `${row?.name || "An outlet"} changed ${fields.join(", ") || "its documents"}. The outlet is still live.`,
         type: "approval",
         category: "document_review",
-        path: "/admin/food/document-reviews",
+        path: `${base}/document-reviews`,
         createdAt: at,
         timeLabel: toDateLabel(at),
         metaLabel: joinMeta(row?.name, fields[0]),
@@ -252,7 +254,12 @@ export default function useAdminNotifications(options = {}) {
         ...mapUserRestaurantSupport(supportRes),
         ...mapDeliverySupport(deliverySupportRes),
         ...mapExpiredFssai(fssaiExpiredRes),
-        ...mapDocumentReviews([foodDocReviewsRes, qcDocReviewsRes]),
+        // In the store and medical panels a /food call is rewritten to /qc,
+        // so the restaurant list is only real from the Food panel.
+        ...mapDocumentReviews([
+          ...(adminPanelOf().vertical === "food" ? [{ vertical: "food", response: foodDocReviewsRes }] : []),
+          { vertical: "qc", response: qcDocReviewsRes },
+        ]),
       ])
         .filter((item) => !dismissed.has(item.id))
         .sort((a, b) => toDateValue(b.createdAt) - toDateValue(a.createdAt));

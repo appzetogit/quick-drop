@@ -4,9 +4,11 @@ import { Button } from "@food/components/ui/button"
 import { Input } from "@food/components/ui/input"
 import { Label } from "@food/components/ui/label"
 import { adminAPI, restaurantAPI } from "@food/api"
+import { adminPanelOf } from "@food/utils/adminPanel"
 
 /*
- * The admin edits a restaurant's compliance documents directly. Unlike the
+ * The admin edits an outlet's compliance documents directly (restaurant,
+ * store or medical store -- this card sits on the shared Edit page). Unlike the
  * outlet's own edits, these go straight on file: the admin is the reviewer.
  * A change the outlet has waiting is shown so the admin can review it on the
  * Document Reviews page instead of overwriting it here unknowingly.
@@ -24,9 +26,18 @@ const FIELDS = [
   { key: "fssaiImage", label: "FSSAI licence photo", image: true },
 ]
 
+// A pharmacy also files its drug licence; the store API checks it on save.
+const PHARMACY_FIELDS = [
+  { key: "drugLicenseNumber", label: "Drug licence number" },
+  { key: "drugLicenseExpiry", label: "Drug licence expiry", date: true },
+  { key: "drugLicenseImage", label: "Drug licence photo", image: true },
+]
+
+const fieldsFor = (r) => (r?.storeType === "pharmacy" ? [...FIELDS, ...PHARMACY_FIELDS] : FIELDS)
+
 const fromRestaurant = (r) => {
   const out = { gstRegistered: r?.gstRegistered === true }
-  for (const f of FIELDS) {
+  for (const f of fieldsFor(r)) {
     const v = r?.[f.key]
     out[f.key] = f.date ? (v ? String(v).slice(0, 10) : "") : f.image ? (typeof v === "object" ? v?.url || "" : v || "") : v || ""
   }
@@ -44,6 +55,8 @@ export default function AdminRestaurantDocuments({ restaurantId, restaurant, onS
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }))
   const waiting = restaurant?.documentReview?.status === "pending"
+  const fields = fieldsFor(restaurant)
+  const reviewsPath = `${adminPanelOf().base}/document-reviews`
 
   const upload = async (key, file) => {
     if (!file) return
@@ -68,9 +81,19 @@ export default function AdminRestaurantDocuments({ restaurantId, restaurant, onS
   }
 
   const save = async () => {
+    // Only what changed: a medical store's licence is re-checked whenever it is
+    // sent, and an incomplete one on file must not block saving a PAN.
+    const original = fromRestaurant(restaurant)
+    const payload = {}
+    for (const [key, value] of Object.entries(form)) {
+      if (value !== original[key]) payload[key] = key.endsWith("Expiry") ? value || null : value
+    }
+    if (!Object.keys(payload).length) {
+      alert("Nothing changed")
+      return
+    }
     setSaving(true)
     try {
-      const payload = { ...form, fssaiExpiry: form.fssaiExpiry || null }
       const res = await adminAPI.updateRestaurant(restaurantId, payload)
       const updated = res?.data?.data?.restaurant || res?.data?.data || null
       onSaved?.(updated || payload)
@@ -88,12 +111,12 @@ export default function AdminRestaurantDocuments({ restaurantId, restaurant, onS
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Documents</h2>
           <p className="mt-1 text-xs text-slate-500">
-            PAN, GST and FSSAI. Saved here they go straight on file; the outlet stays live.
+            PAN, GST and FSSAI{restaurant?.storeType === "pharmacy" ? ", and the drug licence" : ""}. Saved here they go straight on file; the outlet stays live.
           </p>
           {waiting && (
             <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
               The outlet has a document change waiting. Review it on{" "}
-              <a href="/admin/food/document-reviews" className="underline">Document Reviews</a>.
+              <a href={reviewsPath} className="underline">Document Reviews</a>.
             </p>
           )}
         </div>
@@ -117,7 +140,7 @@ export default function AdminRestaurantDocuments({ restaurantId, restaurant, onS
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        {FIELDS.map((f) => (
+        {fields.map((f) => (
           <div key={f.key}>
             <Label>{f.label}</Label>
             {f.image ? (

@@ -3,6 +3,7 @@ import { CheckCircle2, FileText, Loader2, RefreshCw, XCircle } from "lucide-reac
 import { toast } from "sonner"
 import { Card } from "@food/components/ui/card"
 import { adminAPI } from "@food/api"
+import { adminPanelOf } from "@food/utils/adminPanel"
 
 /*
  * Document change requests from outlets: restaurants (Food) and stores and
@@ -11,10 +12,6 @@ import { adminAPI } from "@food/api"
  * and tells the outlet why. See core/sellerDocuments.js on the server.
  */
 
-const VERTICALS = [
-  { key: "food", label: "Restaurant" },
-  { key: "qc", label: "Store" },
-]
 const STATUSES = [
   { key: "pending", label: "Waiting" },
   { key: "approved", label: "Approved" },
@@ -60,16 +57,19 @@ export default function DocumentReviews() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    // Both verticals; one failing still shows the other.
-    const results = await Promise.allSettled(VERTICALS.map((v) => adminAPI.getDocumentReviews(v.key, status)))
-    const next = []
-    results.forEach((r, i) => {
-      if (r.status !== "fulfilled") return
-      for (const row of r.value?.data?.data?.reviews || []) next.push({ ...row, vertical: VERTICALS[i].key })
-    })
-    next.sort((a, b) => new Date(b.review?.requestedAt || 0) - new Date(a.review?.requestedAt || 0))
-    setRows(next)
-    if (results.every((r) => r.status !== "fulfilled")) toast.error("Could not load document reviews")
+    // Each panel reviews its own outlets: restaurants in Food, stores in Quick
+    // Commerce, pharmacies in Medical (the same store API, narrowed here).
+    const panel = adminPanelOf()
+    try {
+      const res = await adminAPI.getDocumentReviews(panel.vertical, status)
+      const next = (res?.data?.data?.reviews || [])
+        .filter((row) => !panel.pharmacyOnly || row.storeType === "pharmacy")
+        .map((row) => ({ ...row, vertical: panel.vertical }))
+      setRows(next)
+    } catch {
+      toast.error("Could not load document reviews")
+      setRows([])
+    }
     setLoading(false)
   }, [status])
 
@@ -124,7 +124,7 @@ export default function DocumentReviews() {
         <div>
           <h1 className="text-lg font-semibold text-gray-900 sm:text-xl">Document reviews</h1>
           <p className="text-sm text-gray-500">
-            PAN, GST, FSSAI and drug licence changes sent by outlets. Outlets keep taking orders while they wait.
+            PAN, GST, FSSAI and drug licence changes sent by {adminPanelOf().vertical === "food" ? "restaurants" : adminPanelOf().pharmacyOnly ? "medical stores" : "stores"}. They keep taking orders while they wait.
           </p>
         </div>
         <div className="flex items-center gap-2">

@@ -276,6 +276,7 @@ const VERTICAL_BRANDING = {
     onlyPaths: [
       '/admin/food/zone-setup',
       '/admin/food/restaurants',
+      '/admin/food/document-reviews',
     ],
     /*
      * Screens that exist only here. A prescription queue and a drug-licence
