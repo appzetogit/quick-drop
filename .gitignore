@@ -41,3 +41,6 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Private server access and working notes
+SERVER_NOTES.md

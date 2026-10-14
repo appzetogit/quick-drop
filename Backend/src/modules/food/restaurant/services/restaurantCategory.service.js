@@ -5,6 +5,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import {
     backfillLegacyCategoryWorkflow,
+    findCategoriesByName,
     GLOBAL_CATEGORY_FILTER,
     normalizeCategoryFoodTypeScope,
     PURE_VEG_CATEGORY_FILTER,
@@ -235,6 +236,11 @@ export async function createRestaurantCategory(restaurantId, body = {}) {
     }
     if (context.pureVegRestaurant && !categoryAllowedForPureVeg(foodTypeScope)) {
         throw new ValidationError('Pure veg restaurants can create veg or mixed categories only');
+    }
+
+    const [existing] = (await findCategoriesByName(FoodCategory, [name], context)).values();
+    if (existing) {
+        throw new ValidationError(`"${existing.name}" already exists. Pick it from the category list instead of adding it again.`);
     }
 
     const doc = new FoodCategory({

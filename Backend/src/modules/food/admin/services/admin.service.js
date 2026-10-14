@@ -50,6 +50,7 @@ import { FoodDeliveryCashDeposit } from '../../delivery/models/foodDeliveryCashD
 import {
     backfillLegacyCategoryWorkflow,
     categoryAllowsFoodType,
+    categoryNameKey,
     normalizeCategoryFoodTypeScope,
     categoryAllowedForPureVeg,
     pureVegAllowsFoodType,
@@ -2892,6 +2893,23 @@ export async function makeCategoryGlobal(id) {
     }
     if (String(doc.approvalStatus || '') !== 'approved' && doc.isApproved !== true) {
         throw new ValidationError('Only approved categories can be made global');
+    }
+
+    // A global category of this name already exists (another restaurant's copy
+    // was made global first): move this one's dishes into it and drop the copy,
+    // rather than adding a second one every restaurant sees.
+    const nameKey = categoryNameKey(doc.name);
+    const twin = (await FoodCategory.find({
+        _id: { $ne: doc._id },
+        restaurantId: null,
+        zoneId: null,
+        isActive: { $ne: false },
+        approvalStatus: { $ne: 'rejected' },
+    }).sort({ createdAt: 1, _id: 1 }).lean()).find((c) => categoryNameKey(c.name) === nameKey);
+    if (twin) {
+        await FoodItem.updateMany({ categoryId: doc._id }, { $set: { categoryId: twin._id, categoryName: twin.name } });
+        await FoodCategory.deleteOne({ _id: doc._id });
+        return { ...twin, mergedFrom: String(doc._id) };
     }
 
     doc.createdByRestaurantId = doc.createdByRestaurantId || doc.restaurantId;

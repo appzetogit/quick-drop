@@ -4,7 +4,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
-import { categoryAllowsFoodType, normalizeFoodTypeForCategory, readSheetFoodType } from '../../shared/categoryWorkflow.js';
+import { categoryAllowsFoodType, categoryNameKey, findCategoriesByName, normalizeFoodTypeForCategory, readSheetFoodType } from '../../shared/categoryWorkflow.js';
 import { isHostedUploadUrl, saveImageFromUrl } from '../../../../services/storage.service.js';
 
 const PREP_TIME_OPTIONS = [
@@ -319,12 +319,16 @@ export async function processBulkMenuUpload(restaurantId, fileBuffer, options = 
     const categoryCache = new Map();
     const uniqueCategoryNames = [...new Set(items.map(it => it.data.category))];
     
+    // Matched loosely (case, spacing, "&"/"and") against the restaurant's own
+    // and the global categories it can see; a new one only when none matches.
+    const existingCategories = await findCategoriesByName(FoodCategory, uniqueCategoryNames, {
+        restaurantId: restaurant._id,
+        zoneId: restaurant.zoneId,
+    });
     for (const catName of uniqueCategoryNames) {
         const normalized = catName.trim();
-        let cat = await FoodCategory.findOne({
-            name: { $regex: new RegExp(`^${escapeRegExp(normalized)}$`, 'i') },
-            $or: [{ restaurantId: null }, { restaurantId: restaurant._id }]
-        });
+        const key = categoryNameKey(normalized);
+        let cat = existingCategories.get(key);
 
         if (!cat) {
             cat = await FoodCategory.create({
@@ -335,8 +339,9 @@ export async function processBulkMenuUpload(restaurantId, fileBuffer, options = 
                 zoneId: restaurant.zoneId,
                 isActive: true
             });
+            existingCategories.set(key, cat);
         }
-        categoryCache.set(normalized.toLowerCase(), cat);
+        categoryCache.set(key, cat);
     }
 
     // --- OPTIMIZATION: Batch process items with concurrency ---
@@ -354,7 +359,7 @@ export async function processBulkMenuUpload(restaurantId, fileBuffer, options = 
                 const { data, rowNumber } = item;
 
                 // 1. Get Pre-Resolved Category
-                const category = categoryCache.get(data.category.toLowerCase());
+                const category = categoryCache.get(categoryNameKey(data.category));
                 if (!category) throw new Error(`Category ${data.category} could not be resolved`);
 
                 // 2. Handle Image Parallel Upload

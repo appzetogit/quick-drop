@@ -7,6 +7,51 @@ export const GLOBAL_CATEGORY_FILTER = [{ restaurantId: { $exists: false } }, { r
 
 export const toObjectId = (value) => new mongoose.Types.ObjectId(String(value));
 
+/**
+ * One spelling of a category name for matching: "Sweets & Desserts",
+ * "sweets and desserts" and "Sweets  &Desserts " are the same category.
+ */
+export const categoryNameKey = (name) => String(name ?? '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^\p{L}\p{N}]+/gu, '');
+
+/**
+ * The existing categories a seller means by these names, keyed by
+ * categoryNameKey. Its own category wins, then a global one it can see (no
+ * zone, or its zone); the oldest when several qualify. Rejected and inactive
+ * ones are skipped. A name with no match is absent from the map.
+ *
+ * Bulk upload used to look for an exact name among the seller's own and global
+ * categories and create one otherwise, so every restaurant uploading "Rice"
+ * before an admin made one global got its own -- and making each of those
+ * global left four "Rice" categories side by side.
+ */
+export async function findCategoriesByName(Model, names, { restaurantId, zoneId } = {}) {
+    const wanted = new Set((names || []).map(categoryNameKey).filter(Boolean));
+    const found = new Map();
+    if (!wanted.size) return found;
+    const rid = restaurantId ? String(restaurantId) : '';
+    const zid = zoneId ? String(zoneId) : '';
+    const candidates = await Model.find({
+        $or: [{ restaurantId: null }, ...(rid ? [{ restaurantId: toObjectId(rid) }] : [])],
+        isActive: { $ne: false },
+        approvalStatus: { $ne: 'rejected' },
+    })
+        .sort({ createdAt: 1, _id: 1 })
+        .lean();
+    const rank = (c) => (c.restaurantId ? 0 : 1);
+    for (const c of candidates) {
+        const key = categoryNameKey(c.name);
+        if (!wanted.has(key)) continue;
+        if (!c.restaurantId && c.zoneId && String(c.zoneId) !== zid) continue;
+        const best = found.get(key);
+        if (!best || rank(c) < rank(best)) found.set(key, c);
+    }
+    return found;
+}
+
 export const normalizeCategoryApprovalStatus = (value, fallback = 'pending') => {
     const normalized = String(value || '').trim();
     return CATEGORY_APPROVAL_STATUSES.includes(normalized) ? normalized : fallback;
