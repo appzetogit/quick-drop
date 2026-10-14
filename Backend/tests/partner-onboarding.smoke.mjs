@@ -278,6 +278,44 @@ await check('a live pharmacy with no expiry on file is not switched off', async 
     assert.equal(doc.restaurantName, 'Old Pharmacy');
 });
 
+console.log('\nsign in vs register');
+
+await check('register refuses a number that already has a store, before any code is sent', async () => {
+    await OtpRateLimit.deleteMany({});
+    await assert.rejects(
+        () => partner.requestPartnerOtp({ phone: '9812345601', type: 'medical', purpose: 'register' }),
+        /already registered as a medical store\. Sign in instead/,
+    );
+    await assert.rejects(
+        () => partner.requestPartnerOtp({ phone: '9812345601', type: 'store', purpose: 'register' }),
+        /already registered as a medical store\. Use a different number/,
+    );
+});
+
+await check('sign in refuses a number with no store', async () => {
+    await OtpRateLimit.deleteMany({});
+    await assert.rejects(
+        () => partner.requestPartnerOtp({ phone: '9812345799', type: 'medical', purpose: 'login' }),
+        /No medical store is registered on this number\. Register first/,
+    );
+    await assert.rejects(
+        () => partner.verifyPartnerOtp({ phone: '9812345799', otp: '123456', type: 'medical', purpose: 'login' }),
+        /Register first/,
+    );
+});
+
+await check('each page takes its own numbers', async () => {
+    await OtpRateLimit.deleteMany({});
+    const known = await partner.requestPartnerOtp({ phone: '9812345601', type: 'medical', purpose: 'login' });
+    const signedIn = await partner.verifyPartnerOtp({ phone: '9812345601', otp: String(known.otp), type: 'medical', purpose: 'login' });
+    assert.equal(signedIn.state, 'approved');
+    await OtpRateLimit.deleteMany({});
+    const fresh = await partner.requestPartnerOtp({ phone: '9812345798', type: 'medical', purpose: 'register' });
+    const started = await partner.verifyPartnerOtp({ phone: '9812345798', otp: String(fresh.otp), type: 'medical', purpose: 'register' });
+    assert.equal(started.state, 'new');
+    assert.ok(started.onboardingToken);
+});
+
 console.log('\nzones');
 
 await check('a pharmacy pinned inside a medical zone lands in it without choosing', async () => {

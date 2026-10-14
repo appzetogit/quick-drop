@@ -7,8 +7,10 @@ import * as partner from './partner.service.js';
 /**
  * Partner sign-up for stores and medical stores. Mounted at /v1/qc/partner.
  *
- *   POST /request-otp      { phone, type }        send the code
- *   POST /verify-otp       { phone, otp, type }   where this partner stands
+ *   POST /request-otp      { phone, type, purpose? }        send the code
+ *   POST /verify-otp       { phone, otp, type, purpose? }   where this partner stands
+ *                          purpose: 'login' (registered numbers only) or
+ *                          'register' (new numbers only); omitted, either.
  *   GET  /application      (onboarding token)     the saved application + checklist
  *   POST /application      (onboarding token)     submit, update or resubmit
  *   POST /upload           (onboarding token)     one document or photo -> { url }

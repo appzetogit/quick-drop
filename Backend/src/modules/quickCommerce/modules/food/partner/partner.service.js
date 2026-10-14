@@ -74,9 +74,37 @@ const typeOrThrow = (raw) => {
 
 // ------------------------------------------------------------------ phone ---
 
-export async function requestPartnerOtp({ phone, type }) {
-    typeOrThrow(type);
+const TYPE_LABEL = { store: 'store', medical: 'medical store' };
+
+/*
+ * The website keeps signing in and registering apart: 'login' is for a number
+ * that already has a seller, 'register' for one that does not. Checked before
+ * the code is sent, so nobody spends an OTP on the wrong page. No purpose (the
+ * partner app) keeps the one phone check that sorts both.
+ */
+const normalizePurpose = (raw) => {
+    const purpose = String(raw || '').trim().toLowerCase();
+    return purpose === 'login' || purpose === 'register' ? purpose : '';
+};
+
+async function assertPurposeFits(phone, type, purpose) {
+    if (!purpose) return;
+    const seller = await findRestaurantByPhone(phone);
+    if (purpose === 'register' && seller) {
+        const actual = partnerTypeOfSeller(seller);
+        throw new ValidationError(actual === type
+            ? `This number is already registered as a ${TYPE_LABEL[type]}. Sign in instead.`
+            : `This number is already registered as a ${TYPE_LABEL[actual] || 'partner'}. Use a different number.`);
+    }
+    if (purpose === 'login' && !seller) {
+        throw new ValidationError(`No ${TYPE_LABEL[type]} is registered on this number. Register first.`);
+    }
+}
+
+export async function requestPartnerOtp({ phone, type: rawType, purpose }) {
+    const type = typeOrThrow(rawType);
     if (last10Of(phone).length !== 10) throw new ValidationError('Enter a valid 10-digit mobile number.');
+    await assertPurposeFits(phone, type, normalizePurpose(purpose));
     return requestRestaurantOtp(phone);
 }
 
@@ -138,8 +166,9 @@ export function describeApplication(seller, type) {
     };
 }
 
-export async function verifyPartnerOtp({ phone, otp, type: rawType }) {
+export async function verifyPartnerOtp({ phone, otp, type: rawType, purpose }) {
     const type = typeOrThrow(rawType);
+    await assertPurposeFits(phone, type, normalizePurpose(purpose));
     const result = await verifyOtp(phone, otp, 'qc:restaurant');
     if (!result.valid) throw new AuthError(result.reason || 'That code is not right. Try again.');
 

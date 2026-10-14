@@ -13,7 +13,9 @@ const FONT_HREF = "https://fonts.googleapis.com/css2?family=Poppins:wght@400;500
  * /partner -- one door for everyone who sells on Quick Drop.
  *
  *   /partner                 choose Restaurant, Store or Medical store
- *   /partner/login/:type     phone and OTP (restaurants go to their own login)
+ *   /partner/login/:type     sign in: email + password, or phone and OTP
+ *   /partner/register/:type  register a new store: phone and OTP, then apply
+ *                            (restaurants go to their own login and sign-up)
  *   /partner/apply/:type     the application, new or being fixed
  *   /partner/status          waiting for review, rejected, or approved
  */
@@ -86,7 +88,8 @@ export default function PartnerApp() {
         >
           <Routes>
             <Route index element={<ChoosePartner />} />
-            <Route path="login/:type" element={<PartnerLogin />} />
+            <Route path="login/:type" element={<PartnerLogin mode="login" />} />
+            <Route path="register/:type" element={<PartnerLogin mode="register" />} />
             <Route path="apply/:type" element={<PartnerApply />} />
             <Route path="status" element={<PartnerStatus />} />
             <Route path="*" element={<Navigate to="/partner" replace />} />

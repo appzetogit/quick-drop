@@ -7,21 +7,26 @@ import { isSellerApp, SELLER_APP_READY_EVENT, WEB_USE_PASSWORD_MESSAGE } from "@
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 /*
- * Two ways in:
+ * Signing in and registering are separate pages:
  *
- *   website  a registered store signs in with owner email + password, then an
- *            OTP to the phone on file ("email" -> "emailOtp").
- *   phone    registering a new store, and every sign-in inside the partner app
- *            ("phone" -> "otp"). On the website this path is for registering
- *            only: an approved store reaching it is sent back to the password.
+ *   login     /partner/login/:type -- a registered store. On the website, owner
+ *             email + password then an OTP to the phone on file ("email" ->
+ *             "emailOtp"), or phone + OTP for a store with no password yet.
+ *             The phone path only takes numbers that already have a store.
+ *   register  /partner/register/:type -- a new store: phone + OTP, then the
+ *             application. Only takes numbers that have no store yet.
+ *
+ * Inside the partner app the login page keeps its one phone check that sorts
+ * both (no purpose is sent), as the app has no separate sign-up screen.
  */
-export default function PartnerLogin() {
+export default function PartnerLogin({ mode = "login" }) {
   const { type } = useParams()
   const navigate = useNavigate()
+  const isRegister = mode === "register"
   const [inApp, setInApp] = useState(() => isSellerApp())
   const [phone, setPhone] = useState("")
   const [otp, setOtp] = useState("")
-  const [step, setStep] = useState(() => (isSellerApp() ? "phone" : "email"))
+  const [step, setStep] = useState(() => (isRegister || isSellerApp() ? "phone" : "email"))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [devOtp, setDevOtp] = useState("")
@@ -46,10 +51,15 @@ export default function PartnerLogin() {
     return () => window.removeEventListener(SELLER_APP_READY_EVENT, onBridgeReady)
   }, [])
 
-  if (type === "restaurant") return <Navigate to="/food/restaurant/login" replace />
+  if (type === "restaurant") {
+    return <Navigate to={isRegister ? "/food/restaurant/signup" : "/food/restaurant/login"} replace />
+  }
   if (!PARTNER_TYPES[type]) return <Navigate to="/partner" replace />
 
   const digits = phone.replace(/\D/g, "").slice(-10)
+  // What the phone path is for; the backend refuses a number on the wrong page.
+  const purpose = isRegister ? "register" : inApp ? undefined : "login"
+  const label = PARTNER_TYPES[type].label
   const goTo = (next) => {
     setError("")
     setOtp("")
@@ -134,7 +144,7 @@ export default function PartnerLogin() {
     setBusy(true)
     setError("")
     try {
-      const data = await partnerApi.requestOtp(digits, type)
+      const data = await partnerApi.requestOtp(digits, type, purpose)
       setDevOtp(data?.otp ? String(data.otp) : "")
       setStep("otp")
       setCooldown(30)
@@ -154,7 +164,7 @@ export default function PartnerLogin() {
     setBusy(true)
     setError("")
     try {
-      const data = await partnerApi.verifyOtp(digits, otp.trim(), type)
+      const data = await partnerApi.verifyOtp(digits, otp.trim(), type, purpose)
       if (data.state === "other_type") {
         setError(data.message)
         return
@@ -236,13 +246,17 @@ export default function PartnerLogin() {
         <ArrowLeft className="h-4 w-4" /> Back
       </Link>
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">{PARTNER_TYPES[type].label} partner</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {isRegister ? `Register your ${label.toLowerCase()}` : `${label} partner sign in`}
+        </h1>
         <p className="mt-1 text-slate-600">
-          {isEmailFlow
-            ? "Sign in with your registered email and password. We'll send a code to your registered mobile."
-            : inApp
-              ? <>Sign in with your mobile number. If it is new, we&rsquo;ll take you through registration.</>
-              : "Sign in or register with your mobile number."}
+          {isRegister
+            ? "Verify your mobile number to start your application. This number becomes your sign-in."
+            : isEmailFlow
+              ? "Sign in with your registered email and password. We'll send a code to your registered mobile."
+              : inApp
+                ? <>Sign in with your mobile number. If it is new, we&rsquo;ll take you through registration.</>
+                : "Sign in with your registered mobile number."}
         </p>
       </div>
 
@@ -287,9 +301,9 @@ export default function PartnerLogin() {
               {busy && <Loader2 className="h-4 w-4 animate-spin" />} Continue
             </button>
             <p className="text-center text-sm text-slate-600">
-              New, or no password yet?{" "}
+              No password yet?{" "}
               <button type="button" onClick={() => goTo("phone")} className="font-medium text-emerald-700">
-                Continue with your mobile number
+                Sign in with your mobile number
               </button>
             </p>
           </form>
@@ -324,7 +338,7 @@ export default function PartnerLogin() {
             <button type="submit" disabled={busy} className={primaryButton}>
               {busy && <Loader2 className="h-4 w-4 animate-spin" />} Send code
             </button>
-            {!inApp && (
+            {!inApp && !isRegister && (
               <p className="text-center text-sm text-slate-600">
                 Have a password?{" "}
                 <button type="button" onClick={() => goTo("email")} className="font-medium text-emerald-700">
@@ -337,6 +351,18 @@ export default function PartnerLogin() {
 
         {step === "otp" && codeForm(verify, `+91 ${digits}`, sendOtp, () => goTo("phone"))}
       </div>
+
+      {!inApp && (
+        <p className="text-center text-sm text-slate-600">
+          {isRegister ? "Already registered? " : `New ${label.toLowerCase()}? `}
+          <Link
+            to={isRegister ? `/partner/login/${type}` : `/partner/register/${type}`}
+            className="font-semibold text-emerald-700"
+          >
+            {isRegister ? "Sign in" : "Register here"}
+          </Link>
+        </p>
+      )}
     </div>
   )
 }

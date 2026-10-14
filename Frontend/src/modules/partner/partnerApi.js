@@ -17,10 +17,11 @@ const ctx = (token) => ({
 const unwrap = (res) => res?.data?.data ?? res?.data ?? {}
 
 export const partnerApi = {
-  requestOtp: (phone, type) =>
-    apiClient.post("/qc/partner/request-otp", { phone, type }, ctx()).then(unwrap),
-  verifyOtp: (phone, otp, type) =>
-    apiClient.post("/qc/partner/verify-otp", { phone, otp, type }, ctx()).then(unwrap),
+  /** purpose: "login" (registered numbers only), "register" (new only), or omitted for either. */
+  requestOtp: (phone, type, purpose) =>
+    apiClient.post("/qc/partner/request-otp", { phone, type, purpose }, ctx()).then(unwrap),
+  verifyOtp: (phone, otp, type, purpose) =>
+    apiClient.post("/qc/partner/verify-otp", { phone, otp, type, purpose }, ctx()).then(unwrap),
   /** Web dashboard sign-in: owner email + password; the OTP goes to the phone on file. */
   webLoginRequestOtp: (email, password, type) =>
     apiClient.post("/qc/partner/web-login/request-otp", { email, password, type }, ctx()).then(unwrap),
