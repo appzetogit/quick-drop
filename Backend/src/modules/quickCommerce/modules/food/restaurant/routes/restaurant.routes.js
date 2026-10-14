@@ -1,4 +1,7 @@
-import { uploadAttachmentRateLimiter as uploadAttachmentLimiter } from '../../../../../../middleware/rateLimit.js';
+import { uploadAttachmentRateLimiter as uploadAttachmentLimiter, authRateLimiter } from '../../../../../../middleware/rateLimit.js';
+import { createSellerPhoneChange } from '../../../../../../core/auth/sellerPhoneChange.js';
+import { OTP_SERVICES } from '../../../../../../core/otp/otpRateLimit.service.js';
+import { FoodRestaurant } from '../models/restaurant.model.js';
 import express from 'express';
 import { upload } from '../../../../middleware/upload.js';
 import {
@@ -85,7 +88,7 @@ import {
 } from '../../orders/controllers/prescriptionRequest.controller.js';
 import { authMiddleware, optionalAuth } from '../../../../core/auth/auth.middleware.js';
 import { stockRouter } from '../../admin/routes/stock.routes.js';
-import { sendError } from '../../../../utils/response.js';
+import { sendError, sendResponse } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
 import {
     listBannersController,
@@ -164,6 +167,29 @@ router.patch('/profile', authMiddleware, requireRestaurant, async (req, res, nex
     await invalidateCache('restaurant_detail:*');
     next();
 }, updateRestaurantProfileController);
+/*
+ * Change the login number: a code goes to the new number, and only that code
+ * moves the account onto it. See core/auth/sellerPhoneChange.js.
+ */
+const phoneChange = createSellerPhoneChange({ Model: FoodRestaurant, otpScope: 'qc:restaurant_phone_change', otpOptions: { service: OTP_SERVICES.QUICK_COMMERCE } });
+router.post('/profile/phone/request-otp', authRateLimiter, authMiddleware, requireRestaurant, async (req, res, next) => {
+    try {
+        const data = await phoneChange.requestOtp(req.user?.userId, req.body?.phone);
+        return sendResponse(res, 200, `Code sent to ${data.maskedPhone}`, data);
+    } catch (error) {
+        next(error);
+    }
+});
+router.post('/profile/phone/verify', authRateLimiter, authMiddleware, requireRestaurant, async (req, res, next) => {
+    try {
+        const data = await phoneChange.verify(req.user?.userId, req.body?.phone, req.body?.otp);
+        await invalidateCache('restaurants:*');
+        await invalidateCache('restaurant_detail:*');
+        return sendResponse(res, 200, 'Login number changed', data);
+    } catch (error) {
+        next(error);
+    }
+});
 router.patch('/availability', authMiddleware, requireRestaurant, async (req, res, next) => {
     await invalidateCache('restaurants:*');
     await invalidateCache('restaurant_detail:*');

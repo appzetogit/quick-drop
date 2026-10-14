@@ -24,6 +24,7 @@ import { clearModuleAuth } from "@food/utils/auth"
 import { firebaseAuth, ensureFirebaseInitialized } from "@food/firebase"
 
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
+import ChangeLoginNumberDialog from "@food/components/restaurant/ChangeLoginNumberDialog"
 import { isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
 import { toast } from "sonner"
 const debugLog = (...args) => {}
@@ -57,6 +58,19 @@ export default function EditOwner() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isPhotoPickerOpen, setIsPhotoPickerOpen] = useState(false)
+  const [showPhoneDialog, setShowPhoneDialog] = useState(false)
+
+  // The account moved to a verified new number: show it everywhere this page keeps it.
+  const handlePhoneChanged = (phone) => {
+    setOwnerData((prev) => ({ ...prev, phone }))
+    setFormData((prev) => ({ ...prev, phone }))
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null")
+      if (saved) localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...saved, phone }))
+    } catch {
+      // nothing cached to update
+    }
+  }
 
   // Lenis smooth scrolling
   useEffect(() => {
@@ -374,16 +388,27 @@ export default function EditOwner() {
 
               {/* Phone Number Field */}
               <div>
-                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Registered Phone Number</label>
-                <Input
-                  type="tel"
-                  value={loading ? "Loading..." : formData.phone}
-                  placeholder="Enter phone number"
-                  className="w-full bg-gray-50 rounded-xl cursor-not-allowed"
-                  readOnly
-                  disabled={loading || saving}
-                />
-                <p className="text-[11px] text-gray-400 mt-1">Phone number is managed via outlet verification and cannot be changed directly.</p>
+                <label className="text-xs font-semibold text-gray-700 mb-1.5 block">Login Phone Number</label>
+                <div className="flex gap-2">
+                  <Input
+                    type="tel"
+                    value={loading ? "Loading..." : formData.phone}
+                    placeholder="Enter phone number"
+                    className="w-full bg-gray-50 rounded-xl cursor-not-allowed"
+                    readOnly
+                    disabled={loading || saving}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowPhoneDialog(true)}
+                    disabled={loading || saving}
+                    className="shrink-0 rounded-xl font-semibold"
+                  >
+                    Change
+                  </Button>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">You sign in with this number. To change it, we send a code to the new number.</p>
               </div>
 
               {/* Email Field */}
@@ -472,6 +497,13 @@ export default function EditOwner() {
           </div>
         </div>
       </div>
+
+      <ChangeLoginNumberDialog
+        open={showPhoneDialog}
+        onOpenChange={setShowPhoneDialog}
+        currentPhone={String(formData.phone || "").replace(/\D/g, "").slice(-10)}
+        onChanged={handlePhoneChanged}
+      />
 
       <ImageSourcePicker
         isOpen={isPhotoPickerOpen}

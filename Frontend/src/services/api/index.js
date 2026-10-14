@@ -1467,6 +1467,17 @@ export const restaurantAPI = {
     apiClient.get("/food/restaurant/withdrawals", {
       contextModule: "restaurant"
     }),
+  /** Change login number, step 1: a code goes to the new number. */
+  requestPhoneChangeOtp: (phone) =>
+    apiClient.post("/food/restaurant/profile/phone/request-otp", { phone }, { contextModule: "restaurant" }),
+  /** Change login number, step 2: that code moves the account onto the new number. */
+  verifyPhoneChange: (phone, otp) =>
+    apiClient
+      .post("/food/restaurant/profile/phone/verify", { phone, otp }, { contextModule: "restaurant" })
+      .then((res) => {
+        restaurantCurrentCached = null;
+        return res;
+      }),
   /** Update restaurant profile fields (name/cuisines/location/menuImages). */
   updateProfile: (body) =>
     apiClient

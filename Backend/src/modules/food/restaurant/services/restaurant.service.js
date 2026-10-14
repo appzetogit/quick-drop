@@ -1112,21 +1112,16 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
     }
 
     // Note: UI keeps phone read-only, but we accept it safely and normalize if sent.
+    // The login number changes only through the OTP check on the new number
+    // (POST /profile/phone/request-otp, then /verify). Saving the profile used
+    // to accept any ownerPhone, so a session alone could move the login onto a
+    // number nobody proved, or one another account already uses. Sending the
+    // current number is fine; the screens send the whole form.
     if (body.ownerPhone !== undefined) {
-        const { digits, last10 } = normalizePhone(body.ownerPhone);
-        if (!digits || digits.length < 8) {
-            throw new ValidationError('Owner phone is invalid');
-        }
-
-        const currentOwnerPhoneDigits =
-            currentRestaurant.ownerPhoneDigits ||
-            normalizePhone(currentRestaurant.ownerPhone).digits ||
-            '';
-
-        if (digits !== currentOwnerPhoneDigits) {
-            update.ownerPhone = digits;
-            update.ownerPhoneDigits = digits;
-            update.ownerPhoneLast10 = last10 || undefined;
+        const { last10 } = normalizePhone(body.ownerPhone);
+        const currentLast10 = normalizePhone(currentRestaurant.ownerPhone).last10 || '';
+        if (last10 && last10 !== currentLast10) {
+            throw new ValidationError('Change your login number with "Change number": we send a code to the new number first.');
         }
     }
 

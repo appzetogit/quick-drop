@@ -1,4 +1,7 @@
-import { uploadAttachmentRateLimiter as uploadAttachmentLimiter } from '../../../../middleware/rateLimit.js';
+import { uploadAttachmentRateLimiter as uploadAttachmentLimiter, authRateLimiter } from '../../../../middleware/rateLimit.js';
+import { createSellerPhoneChange } from '../../../../core/auth/sellerPhoneChange.js';
+import { OTP_SERVICES } from '../../../../core/otp/otpRateLimit.service.js';
+import { FoodRestaurant } from '../models/restaurant.model.js';
 import express from 'express';
 import { upload } from '../../../../middleware/upload.js';
 import {
@@ -75,7 +78,7 @@ import {
 } from '../controllers/bulkUpload.controller.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
 import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
-import { sendError } from '../../../../utils/response.js';
+import { sendError, sendResponse } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
 import { listPublicFoodsController } from '../controllers/publicFoods.controller.js';
 import {
@@ -176,6 +179,29 @@ router.post('/combos', authMiddleware, requireRestaurant, createComboController)
 router.put('/combos/:comboId', authMiddleware, requireRestaurant, updateComboController);
 router.delete('/combos/:comboId', authMiddleware, requireRestaurant, deleteComboController);
 router.patch('/profile', authMiddleware, requireRestaurant, updateRestaurantProfileController);
+/*
+ * Change the login number: a code goes to the new number, and only that code
+ * moves the account onto it. See core/auth/sellerPhoneChange.js.
+ */
+const phoneChange = createSellerPhoneChange({ Model: FoodRestaurant, otpScope: 'restaurant_phone_change', otpOptions: { service: OTP_SERVICES.FOOD } });
+router.post('/profile/phone/request-otp', authRateLimiter, authMiddleware, requireRestaurant, async (req, res, next) => {
+    try {
+        const data = await phoneChange.requestOtp(req.user?.userId, req.body?.phone);
+        return sendResponse(res, 200, `Code sent to ${data.maskedPhone}`, data);
+    } catch (error) {
+        next(error);
+    }
+});
+router.post('/profile/phone/verify', authRateLimiter, authMiddleware, requireRestaurant, async (req, res, next) => {
+    try {
+        const data = await phoneChange.verify(req.user?.userId, req.body?.phone, req.body?.otp);
+        await invalidateCache('restaurants:*');
+        await invalidateCache('restaurant_detail:*');
+        return sendResponse(res, 200, 'Login number changed', data);
+    } catch (error) {
+        next(error);
+    }
+});
 router.delete('/profile/account', authMiddleware, requireRestaurant, deleteCurrentRestaurantAccountController);
 // Same handler under the name quick-commerce uses. The restaurant app serves both
 // verticals off one set of paths, rewriting only the `/food` prefix to `/qc` — an
