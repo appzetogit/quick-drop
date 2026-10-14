@@ -360,6 +360,12 @@ const restaurantSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    /*
+     * A change to the compliance documents waiting for an admin, kept apart
+     * from the documents on file so the outlet keeps trading meanwhile. See
+     * core/sellerDocuments.js.
+     */
+    documentReview: { type: mongoose.Schema.Types.Mixed, default: undefined },
     panImage: {
       type: String,
     },

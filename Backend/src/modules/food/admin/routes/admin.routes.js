@@ -4,6 +4,8 @@ const foodRiderModel = async () => (await import('../../delivery/models/delivery
 const inZone = riderInZoneGuard('food', foodRiderModel);
 const bonusInZone = riderInZoneGuard('food', foodRiderModel, { idFrom: (req) => req.body?.deliveryPartnerId });
 import express from 'express';
+import { sellerDocuments } from '../../restaurant/services/restaurant.service.js';
+import { sendResponse } from '../../../../utils/response.js';
 import { AuthError } from '../../../../core/auth/errors.js';
 import * as adminController from '../controllers/admin.controller.js';
 import * as serviceRadiusController from '../../restaurant/controllers/serviceRadius.controller.js';
@@ -74,6 +76,15 @@ router.get('/reports/tax', adminController.getTaxReport);
 router.get('/reports/tax/:id', adminController.getTaxReportDetail);
 router.get('/restaurants/pending', adminController.getPendingRestaurants);
 router.get('/restaurants/reviews', adminController.getRestaurantReviews);
+// Before /restaurants/:id, which would otherwise take 'document-reviews' as an id.
+router.get('/restaurants/document-reviews', async (req, res, next) => {
+    try {
+        const reviews = await sellerDocuments.listForAdmin({ status: req.query?.status });
+        return sendResponse(res, 200, 'Document reviews', { reviews });
+    } catch (error) {
+        next(error);
+    }
+});
 router.get('/restaurants/:id', adminController.getRestaurantById);
 router.get('/restaurants/:id/analytics', adminController.getRestaurantAnalytics);
 router.get('/restaurants/:id/menu', adminController.getRestaurantMenuById);
@@ -94,6 +105,21 @@ router.post('/restaurants/:id/combos', adminController.createRestaurantCombo);
 router.put('/restaurants/:id/combos/:comboId', adminController.updateRestaurantCombo);
 router.delete('/restaurants/:id/combos/:comboId', adminController.deleteRestaurantCombo);
 router.post('/restaurants', adminController.createRestaurant);
+// Document change requests from outlets (core/sellerDocuments.js).
+router.post('/restaurants/:id/document-review/approve', async (req, res, next) => {
+    try {
+        return sendResponse(res, 200, 'Documents approved', await sellerDocuments.approve(req.params.id));
+    } catch (error) {
+        next(error);
+    }
+});
+router.post('/restaurants/:id/document-review/reject', async (req, res, next) => {
+    try {
+        return sendResponse(res, 200, 'Document change rejected', await sellerDocuments.reject(req.params.id, req.body?.reason));
+    } catch (error) {
+        next(error);
+    }
+});
 router.patch('/restaurants/:id', adminController.updateRestaurantById);
 router.put('/restaurants/:id/portal-password', adminController.setRestaurantPortalPassword);
 router.patch('/restaurants/:id/status', adminController.updateRestaurantStatus);

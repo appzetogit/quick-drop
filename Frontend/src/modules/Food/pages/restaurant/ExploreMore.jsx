@@ -775,6 +775,7 @@ export default function ExploreMore() {
     { id: "earnings-nav", label: "Earnings", icon: BarChart2, route: "/restaurant/earnings" },
     { id: 1, label: "Outlet info", icon: Info, route: "/restaurant/outlet-info" },
     { id: "owner-nav", label: "Owner & login number", icon: UserRound, route: "/restaurant/edit-owner" },
+    { id: "documents-nav", label: "Documents (PAN, GST, licence)", icon: FileCheck, route: "/restaurant/documents" },
     { id: 2, label: "Outlet timings", icon: Clock, route: "/restaurant/outlet-timings" },
     { id: 3, label: "Dining Reservations", icon: Calendar, route: "/restaurant/reservations" },
     { id: 4, label: "Menu categories", icon: Settings, route: "/restaurant/menu-categories" },

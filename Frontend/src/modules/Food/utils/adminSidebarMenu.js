@@ -35,6 +35,12 @@ export const adminSidebarMenu = [
         icon: "CheckCircle2",
       },
       {
+        type: "link",
+        label: "Document Reviews",
+        path: "/admin/food/document-reviews",
+        icon: "ShieldCheck",
+      },
+      {
         type: "expandable",
         label: "Foods",
         icon: "Utensils",

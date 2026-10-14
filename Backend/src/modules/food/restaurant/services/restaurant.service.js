@@ -2,11 +2,15 @@ import { FoodRestaurant } from '../models/restaurant.model.js';
 import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
 import { ValidationError, NotFoundError } from '../../../../core/auth/errors.js';
 import mongoose from 'mongoose';
+import { createSellerDocuments, pickDocumentFields } from '../../../../core/sellerDocuments.js';
 import { FoodZone } from '../../admin/models/zone.model.js';
 import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { attachOutletOpenState, describeOutletHours } from '../../shared/outletHours.js';
 import { mostSpecificFirst } from '../../../../core/zones/zonePriority.js';
+
+// Compliance documents and their review; see core/sellerDocuments.js.
+export const sellerDocuments = createSellerDocuments({ Model: FoodRestaurant });
 
 const normalizeName = (value) =>
     String(value || '')
@@ -1406,6 +1410,15 @@ export const updateRestaurantProfile = async (restaurantId, body = {}) => {
     }
     if (body.petpoojaOutletId !== undefined) {
         update.petpoojaOutletId = String(body.petpoojaOutletId || '').trim();
+    }
+
+    // Compliance documents are not changed here: they go to the admin as a
+    // change request and the outlet keeps trading (core/sellerDocuments.js).
+    // They used to land in `update` and send the whole outlet to 'pending'.
+    const documentUpdate = pickDocumentFields(update);
+    if (Object.keys(documentUpdate).length) {
+        for (const field of Object.keys(documentUpdate)) delete update[field];
+        await sellerDocuments.requestChange(restaurantId, documentUpdate, { quiet: true });
     }
 
     if (!Object.keys(update).length) {

@@ -45,6 +45,7 @@ const PartnerDocuments = lazy(() => import("@/modules/Taxi/modules/admin/pages/d
 const PartnerDocumentForm = lazy(() => import("@/modules/Taxi/modules/admin/pages/drivers/DriverDocumentForm"))
 const NewRefundRequests = lazy(() => import("@food/pages/admin/refunds/NewRefundRequests"));
 const FoodApproval = lazy(() => import("@food/pages/admin/restaurant/FoodApproval"));
+const DocumentReviews = lazy(() => import("@food/pages/admin/restaurant/DocumentReviews"));
 const OrdersPage = lazy(() => import("@food/pages/admin/orders/OrdersPage"));
 const OrderDetectDelivery = lazy(() => import("@food/pages/admin/OrderDetectDelivery"));
 const Category = lazy(() => import("@food/pages/admin/categories/Category"));
@@ -258,6 +259,7 @@ const verticalAdminRoutes = (
             <Route path="zone-setup/edit/:id" element={<AddZone />} />
             <Route path="zone-setup/view/:id" element={<ViewZone />} />
             <Route path="food-approval" element={<FoodApproval />} />
+            <Route path="document-reviews" element={<DocumentReviews />} />
             {/* The seller pages. Food calls them restaurants; Quick and Medical
                 call them stores, under /stores (a /restaurants address there
                 redirects). Same screens either way, from one list. */}

@@ -7,6 +7,7 @@ import { Button } from "@food/components/ui/button"
 import { Label } from "@food/components/ui/label"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
 import { ArrowLeft, Loader2 } from "lucide-react"
+import AdminRestaurantDocuments from "@food/components/admin/AdminRestaurantDocuments"
 
 const debugError = (..._args) => {}
 
@@ -562,6 +563,12 @@ export default function EditRestaurant() {
                 </div>
               </div>
             </section>
+
+            <AdminRestaurantDocuments
+              restaurantId={restaurantId}
+              restaurant={restaurant}
+              onSaved={(updated) => setRestaurant((prev) => ({ ...(prev || {}), ...(updated || {}) }))}
+            />
 
             <section className="bg-white rounded-xl border border-slate-200 p-6">
               <div className="flex items-center justify-between gap-3 mb-4">

@@ -80,6 +80,7 @@ import * as orderController from '../../orders/controllers/order.controller.js';
 import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
 import { sendError, sendResponse } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
+import { sellerDocuments } from '../services/restaurant.service.js';
 import { createSellerDailyEarnings } from '../../../../core/finance/sellerDailyEarnings.js';
 import { FoodOrder } from '../../orders/models/order.model.js';
 import { FoodTransaction } from '../../orders/models/foodTransaction.model.js';
@@ -217,6 +218,23 @@ router.patch('/dining-settings', authMiddleware, requireRestaurant, updateCurren
 router.get('/outlet-timings', authMiddleware, requireRestaurant, getCurrentRestaurantOutletTimingsController);
 router.put('/outlet-timings', authMiddleware, requireRestaurant, upsertCurrentRestaurantOutletTimingsController);
 router.get('/finance', authMiddleware, requireRestaurant, getRestaurantFinanceController);
+// Compliance documents (PAN, GST, FSSAI, drug licence): edits go to the admin
+// as a change request; the outlet keeps trading. See core/sellerDocuments.js.
+router.get('/documents', authMiddleware, requireRestaurant, async (req, res, next) => {
+    try {
+        return sendResponse(res, 200, 'Documents', await sellerDocuments.get(req.user?.userId));
+    } catch (error) {
+        next(error);
+    }
+});
+router.put('/documents', authMiddleware, requireRestaurant, async (req, res, next) => {
+    try {
+        const data = await sellerDocuments.requestChange(req.user?.userId, req.body || {});
+        return sendResponse(res, 200, 'Sent for review. Your outlet stays live meanwhile.', data);
+    } catch (error) {
+        next(error);
+    }
+});
 // Earnings day by day for the Earnings dashboard; see core/finance/sellerDailyEarnings.js.
 const dailyEarnings = createSellerDailyEarnings({ Order: FoodOrder, Transaction: FoodTransaction });
 router.get('/earnings/daily', authMiddleware, requireRestaurant, async (req, res, next) => {

@@ -162,6 +162,7 @@ const PAGE_RULES = [
   ["/point-of-sale", "pos"],
   ["/status-monitor", "dashboard"],
   ["/food-approval", "foods"],
+  ["/document-reviews", "restaurants"],
   ["/foods", "foods"],
   ["/addons", "foods"],
   ["/global-pricing", "foods"],

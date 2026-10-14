@@ -52,6 +52,7 @@ const getNavSections = (base) => [
     items: [
       { label: "Outlet info", path: `${base}/outlet-info`, icon: Building2 },
       { label: "Owner & login number", path: `${base}/edit-owner`, icon: UserRound },
+      { label: "Documents", path: `${base}/documents`, icon: FileText },
       { label: "Timings", path: `${base}/outlet-timings`, icon: Clock },
       { label: "Zones", path: `${base}/zone-setup`, icon: Map },
       { label: "Manage outlets", path: `${base}/manage-outlets`, icon: Store },

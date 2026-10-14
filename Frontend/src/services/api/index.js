@@ -386,6 +386,13 @@ const adminOrdersBase = (vertical) =>
     : "/food/admin/orders";
 
 export const adminAPI = {
+  /** Outlets' document change requests; vertical "food" (restaurants) or "qc" (stores, medical). */
+  getDocumentReviews: (vertical, status = "pending") =>
+    apiClient.get(`/${vertical === "food" ? "food" : "qc"}/admin/restaurants/document-reviews`, { params: { status }, contextModule: "admin" }),
+  approveDocumentReview: (vertical, id) =>
+    apiClient.post(`/${vertical === "food" ? "food" : "qc"}/admin/restaurants/${encodeURIComponent(id)}/document-review/approve`, {}, { contextModule: "admin" }),
+  rejectDocumentReview: (vertical, id, reason) =>
+    apiClient.post(`/${vertical === "food" ? "food" : "qc"}/admin/restaurants/${encodeURIComponent(id)}/document-review/reject`, { reason }, { contextModule: "admin" }),
   getFoodAssignableZones: () =>
     apiClient.get("/food/admin/admin-management/assignable-zones", { contextModule: "admin" }),
   getFoodPermissions: () =>
@@ -1467,6 +1474,10 @@ export const restaurantAPI = {
     apiClient.get("/food/restaurant/withdrawals", {
       contextModule: "restaurant"
     }),
+  /** Compliance documents and any change waiting for review. */
+  getDocuments: () => apiClient.get("/food/restaurant/documents", { contextModule: "restaurant" }),
+  /** Send document changes for review; the outlet stays live. */
+  updateDocuments: (body) => apiClient.put("/food/restaurant/documents", body, { contextModule: "restaurant" }),
   /** Earnings day by day (7, 30 or 90 days) for the Earnings dashboard. */
   getDailyEarnings: (days = 30) =>
     apiClient.get("/food/restaurant/earnings/daily", { params: { days }, contextModule: "restaurant" }),

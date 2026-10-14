@@ -113,6 +113,25 @@ const mapFoodApprovals = (response) => {
   }));
 };
 
+const mapDocumentReviews = (responses = []) =>
+  responses.flatMap((response) =>
+    (response?.data?.data?.reviews || []).map((row) => {
+      const fields = Object.keys(row?.review?.changes || {}).map((f) => row?.labels?.[f] || f)
+      const at = row?.review?.requestedAt
+      return {
+        id: `docreview-${row?.id}-${at || ""}`,
+        title: "Document change to review",
+        message: `${row?.name || "An outlet"} changed ${fields.join(", ") || "its documents"}. The outlet is still live.`,
+        type: "approval",
+        category: "document_review",
+        path: "/admin/food/document-reviews",
+        createdAt: at,
+        timeLabel: toDateLabel(at),
+        metaLabel: joinMeta(row?.name, fields[0]),
+      }
+    }),
+  );
+
 const mapUserRestaurantSupport = (response) => {
   const payload = response?.data?.data;
   const rows =
@@ -208,6 +227,8 @@ export default function useAdminNotifications(options = {}) {
         supportRes,
         deliverySupportRes,
         fssaiExpiredRes,
+        foodDocReviewsRes,
+        qcDocReviewsRes,
       ] = await Promise.all([
         adminAPI.getPendingRestaurants(),
         adminAPI.getDeliveryPartnerJoinRequests({ page: 1, limit: 50 }),
@@ -215,6 +236,8 @@ export default function useAdminNotifications(options = {}) {
         adminAPI.getSupportTicketsAdmin({ page: 1, limit: 50, source: "all" }),
         adminAPI.getDeliverySupportTickets({ page: 1, limit: 50 }),
         adminAPI.getExpiredFssaiNotifications(),
+        adminAPI.getDocumentReviews("food").catch(() => null),
+        adminAPI.getDocumentReviews("qc").catch(() => null),
       ]);
 
       const restaurantRows =
@@ -229,6 +252,7 @@ export default function useAdminNotifications(options = {}) {
         ...mapUserRestaurantSupport(supportRes),
         ...mapDeliverySupport(deliverySupportRes),
         ...mapExpiredFssai(fssaiExpiredRes),
+        ...mapDocumentReviews([foodDocReviewsRes, qcDocReviewsRes]),
       ])
         .filter((item) => !dismissed.has(item.id))
         .sort((a, b) => toDateValue(b.createdAt) - toDateValue(a.createdAt));
