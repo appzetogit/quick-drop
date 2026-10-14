@@ -90,6 +90,9 @@ import { authMiddleware, optionalAuth } from '../../../../core/auth/auth.middlew
 import { stockRouter } from '../../admin/routes/stock.routes.js';
 import { sendError, sendResponse } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
+import { createSellerDailyEarnings } from '../../../../../../core/finance/sellerDailyEarnings.js';
+import { FoodOrder } from '../../orders/models/order.model.js';
+import { FoodTransaction } from '../../orders/models/foodTransaction.model.js';
 import {
     listBannersController,
     uploadBannersController,
@@ -203,6 +206,17 @@ router.patch('/dining-settings', authMiddleware, requireRestaurant, async (req, 
 router.get('/outlet-timings', authMiddleware, requireRestaurant, getCurrentRestaurantOutletTimingsController);
 router.put('/outlet-timings', authMiddleware, requireRestaurant, upsertCurrentRestaurantOutletTimingsController);
 router.get('/finance', authMiddleware, requireRestaurant, getRestaurantFinanceController);
+// Earnings day by day for the Earnings dashboard; see core/finance/sellerDailyEarnings.js.
+const dailyEarnings = createSellerDailyEarnings({ Order: FoodOrder, Transaction: FoodTransaction });
+router.get('/earnings/daily', authMiddleware, requireRestaurant, async (req, res, next) => {
+    try {
+        const data = await dailyEarnings(req.user?.userId, req.query || {});
+        if (!data) return sendError(res, 404, 'Restaurant not found');
+        return sendResponse(res, 200, 'Daily earnings', data);
+    } catch (error) {
+        next(error);
+    }
+});
 router.post('/withdraw', authMiddleware, requireRestaurant, createWithdrawalRequestController);
 router.get('/withdrawals', authMiddleware, requireRestaurant, listMyWithdrawalsController);
 router.get('/subscription-history', authMiddleware, requireRestaurant, getRestaurantSubscriptionHistoryController);

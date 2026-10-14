@@ -772,6 +772,7 @@ export default function ExploreMore() {
   })()
   // Section data
   const manageOutletItems = [
+    { id: "earnings-nav", label: "Earnings", icon: BarChart2, route: "/restaurant/earnings" },
     { id: 1, label: "Outlet info", icon: Info, route: "/restaurant/outlet-info" },
     { id: "owner-nav", label: "Owner & login number", icon: UserRound, route: "/restaurant/edit-owner" },
     { id: 2, label: "Outlet timings", icon: Clock, route: "/restaurant/outlet-timings" },

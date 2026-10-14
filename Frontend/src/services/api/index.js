@@ -1467,6 +1467,9 @@ export const restaurantAPI = {
     apiClient.get("/food/restaurant/withdrawals", {
       contextModule: "restaurant"
     }),
+  /** Earnings day by day (7, 30 or 90 days) for the Earnings dashboard. */
+  getDailyEarnings: (days = 30) =>
+    apiClient.get("/food/restaurant/earnings/daily", { params: { days }, contextModule: "restaurant" }),
   /** Change login number, step 1: a code goes to the new number. */
   requestPhoneChangeOtp: (phone) =>
     apiClient.post("/food/restaurant/profile/phone/request-otp", { phone }, { contextModule: "restaurant" }),

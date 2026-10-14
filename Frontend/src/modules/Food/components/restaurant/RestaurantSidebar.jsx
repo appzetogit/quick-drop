@@ -41,6 +41,7 @@ const getNavSections = (base) => [
   {
     label: "FINANCE",
     items: [
+      { label: "Earnings", path: `${base}/earnings`, icon: BarChart3 },
       { label: "Payouts", path: `${base}/hub-finance`, icon: Wallet },
       { label: "Withdrawals", path: `${base}/withdrawal-history`, icon: Landmark },
       { label: "Reports", path: `${base}/download-report`, icon: Download },
