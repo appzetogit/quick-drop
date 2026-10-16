@@ -34,12 +34,14 @@ export const searchController = async (req, res, next) => {
  */
 export const searchProductsController = async (req, res, next) => {
     try {
-        const { q, categoryId, zoneId, isVeg, inStockOnly, page, limit } = req.query;
+        const { q, categoryId, zoneId, lat, lng, isVeg, inStockOnly, page, limit } = req.query;
 
         const results = await searchProducts({
             q,
             categoryId,
             zoneId,
+            lat,
+            lng,
             isVeg,
             inStockOnly,
             page: parseInt(page, 10) || 1,

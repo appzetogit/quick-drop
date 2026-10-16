@@ -3,6 +3,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
 import mongoose from 'mongoose';
 import { QUICK_SHOP_SELLER_FILTER } from '../../shared/storeType.js';
+import { findZoneForPoint, ZONE_VERTICALS } from '../../shared/zoneServiceability.js';
 import { serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
 
 const RESTAURANT_SEARCH_SELECT = [
@@ -263,7 +264,8 @@ const PRODUCT_SEARCH_PROJECTION = Object.fromEntries(
  * past the point where that scan is cheap.
  */
 export const searchProducts = async (query = {}) => {
-    const { q, categoryId, zoneId, isVeg, inStockOnly, page = 1, limit = 20 } = query;
+    const { q, categoryId, isVeg, inStockOnly, page = 1, limit = 20 } = query;
+    let { zoneId } = query;
 
     const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
     const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
@@ -276,6 +278,24 @@ export const searchProducts = async (query = {}) => {
     // product query can never surface something nobody can actually deliver --
     // the old search filtered the two queries independently, so a dish could
     // come back from a seller the zone filter had already excluded.
+    //
+    // The customer app sends where it is delivering to rather than a zone id:
+    // the zone is worked out here, most specific first (a city zone beats a
+    // country-wide one). A point outside every store zone gets nothing -- the
+    // app used to send neither, and every store in the country was listed.
+    // A request with neither is unchanged, for older app builds.
+    if (!(zoneId && mongoose.Types.ObjectId.isValid(zoneId))) {
+        const lat = toFiniteNumber(query.lat);
+        const lng = toFiniteNumber(query.lng);
+        if (lat !== null && lng !== null) {
+            const zone = await findZoneForPoint(lat, lng, ZONE_VERTICALS.QUICK);
+            if (!zone) {
+                return { products: [], total: 0, page: pageNumber, limit: limitNumber, outOfService: true };
+            }
+            zoneId = String(zone._id);
+        }
+    }
+
     const sellerFilter = { status: 'approved', ...QUICK_SHOP_SELLER_FILTER };
     if (zoneId && mongoose.Types.ObjectId.isValid(zoneId)) {
         sellerFilter.zoneId = new mongoose.Types.ObjectId(zoneId);
