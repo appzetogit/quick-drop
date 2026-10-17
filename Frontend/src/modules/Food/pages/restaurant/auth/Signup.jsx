@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { Loader2, AlertCircle, User, Phone } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { restaurantAPI } from "@food/api"
+import { clearModuleAuth } from "@food/utils/auth"
 import { useCompanyName } from "@food/hooks/useCompanyName"
 import { motion, AnimatePresence } from "framer-motion"
 import { getRestaurantLogo, loadBusinessSettings, getCachedSettings } from "@food/utils/businessSettings"
@@ -123,6 +124,9 @@ export default function RestaurantSignup() {
     const fullPhone = `${formData.countryCode} ${formData.phone}`.trim()
 
     try {
+      // Registering is a new seller: drop any session already in this browser,
+      // or onboarding opens inside the previous seller's panel.
+      clearModuleAuth("restaurant")
       await restaurantAPI.sendOTP(fullPhone, "register")
       const authData = {
         method: "phone",

@@ -3,6 +3,7 @@ import { Link, Navigate, useNavigate, useParams } from "react-router-dom"
 import { ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react"
 import { PARTNER_TYPES, partnerApi, partnerSession, errorMessage, openSellerDashboard } from "../partnerApi"
 import { isSellerApp, SELLER_APP_READY_EVENT, WEB_USE_PASSWORD_MESSAGE } from "@food/utils/sellerApp"
+import { clearModuleAuth } from "@food/utils/auth"
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -83,6 +84,9 @@ export default function PartnerLogin({ mode = "login" }) {
     setBusy(true)
     setError("")
     try {
+      // A new sign-in: drop any seller session already in this browser, so a
+      // sign-in that ends elsewhere never lands in the previous seller's panel.
+      clearModuleAuth("restaurant")
       const data = await partnerApi.webLoginRequestOtp(normalized, password, type)
       if (!data?.ticket) throw new Error("Could not start sign-in. Try again.")
       setWeb({ ticket: data.ticket, email: normalized, maskedPhone: data.maskedPhone || "" })
@@ -144,6 +148,7 @@ export default function PartnerLogin({ mode = "login" }) {
     setBusy(true)
     setError("")
     try {
+      clearModuleAuth("restaurant") // see startWebLogin
       const data = await partnerApi.requestOtp(digits, type, purpose)
       setDevOtp(data?.otp ? String(data.otp) : "")
       setStep("otp")

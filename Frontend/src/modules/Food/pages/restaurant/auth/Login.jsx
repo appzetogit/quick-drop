@@ -11,6 +11,7 @@ import loginBg from "@food/assets/loginbanner.png"
 import { getRestaurantLogo, loadBusinessSettings, getCachedSettings } from "@food/utils/businessSettings"
 import { useSettings } from "../../../../Taxi/shared/context/SettingsContext"
 import { isSellerApp, SELLER_APP_READY_EVENT } from "@food/utils/sellerApp"
+import { clearModuleAuth } from "@food/utils/auth"
 
 const DEFAULT_COUNTRY_CODE = "+91"
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -82,6 +83,12 @@ export default function RestaurantLogin() {
     try {
       setIsSending(true)
       setError("")
+      // A new sign-in is a different seller until proved otherwise: drop the
+      // session already in this browser first. Left in place, an attempt that
+      // ends without a new session (a new number sent to registration, or a
+      // password holder sent back to email login) landed in the previous
+      // seller's panel -- every login on a shared browser opened one outlet.
+      clearModuleAuth("restaurant")
       const response = await restaurantAPI.webLoginRequestOtp(email, webForm.password)
       const data = response?.data?.data || response?.data || {}
       if (!data.ticket) throw new Error("Could not start login. Please try again.")
@@ -149,6 +156,7 @@ export default function RestaurantLogin() {
 
     try {
       setIsSending(true)
+      clearModuleAuth("restaurant") // see handleWebLogin
       await restaurantAPI.sendOTP(fullPhone, "login")
       sessionStorage.setItem("restaurantAuthData", JSON.stringify({
         method: "phone",
