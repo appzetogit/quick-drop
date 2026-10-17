@@ -4,6 +4,7 @@ import { RefreshCw, AlertCircle, ShieldCheck } from "lucide-react"
 import { Button } from "@food/components/ui/button"
 import { restaurantAPI } from "@food/api"
 import {
+  clearModuleAuth,
   setAuthData as setRestaurantAuthData,
   setRestaurantPendingPhone,
 } from "@food/utils/auth"
@@ -215,6 +216,8 @@ export default function RestaurantOTP() {
       }
 
       if (needsRegistration) {
+        // A new number: no previous seller's session may carry into onboarding.
+        clearModuleAuth("restaurant")
         setRestaurantPendingPhone(normalizedPhone)
         sessionStorage.removeItem("restaurantAuthData")
         sessionStorage.removeItem("restaurantLoginPhone")
@@ -230,6 +233,8 @@ export default function RestaurantOTP() {
       // password (then OTP); the phone path stays open to restaurants an admin
       // has not given a password yet, so nobody is locked out of the panel.
       if (accessToken && restaurant && restaurant.portalPasswordSetAt && authData.method !== "web" && !isSellerApp()) {
+        // Back to the login page signed out, not into whoever was signed in before.
+        clearModuleAuth("restaurant")
         sessionStorage.removeItem("restaurantAuthData")
         setError(WEB_USE_PASSWORD_MESSAGE)
         setTimeout(() => navigate("/food/restaurant/login", { replace: true }), 2500)
