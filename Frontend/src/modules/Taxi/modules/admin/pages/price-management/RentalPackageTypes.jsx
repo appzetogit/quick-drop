@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -43,7 +44,6 @@ const RentalPackageTypes = ({ mode: propMode }) => {
 
   const [loading, setLoading] = useState(true);
   const [packages, setPackages] = useState([]);
-  const [entriesPerPage, setEntriesPerPage] = useState(10);
   const [submitting, setSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -141,6 +141,7 @@ const RentalPackageTypes = ({ mode: propMode }) => {
   const filteredPackages = useMemo(() => {
     return packages.filter(p => (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()));
   }, [packages, searchTerm]);
+  const pagination = usePagination(filteredPackages || [], { storageKey: 'taxi-rental-package-types', resetOn: [filteredPackages.length] });
 
   if (isList) {
     return (
@@ -163,18 +164,6 @@ const RentalPackageTypes = ({ mode: propMode }) => {
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden min-h-[500px]">
               {/* Toolbar */}
               <div className="p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="flex items-center gap-3 text-[13px] text-gray-400 font-medium">
-                  <span>show</span>
-                  <select 
-                    value={entriesPerPage} onChange={(e) => setEntriesPerPage(Number(e.target.value))}
-                    className="bg-white border border-gray-300 rounded-md px-2 py-1 text-slate-700 outline-none focus:border-indigo-500"
-                  >
-                    <option value={10}>10</option>
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                  </select>
-                  <span>entries</span>
-                </div>
 
                 <div className="flex items-center gap-3">
                   <div className="relative">
@@ -199,9 +188,9 @@ const RentalPackageTypes = ({ mode: propMode }) => {
 
               {/* Table */}
               <div className="px-8 pb-8">
-                <div className="overflow-x-auto">
+                <div className={SCROLL_TABLE_CLASS}>
                   <table className="w-full text-left">
-                    <thead>
+                    <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                       <tr className="bg-[#E9E9E9]">
                         <th className="px-6 py-4 text-[13px] font-bold text-slate-700">Name</th>
                         <th className="px-6 py-4 text-[13px] font-bold text-slate-700">Transport Type</th>
@@ -217,7 +206,7 @@ const RentalPackageTypes = ({ mode: propMode }) => {
                           </td>
                         </tr>
                       ) : filteredPackages.length > 0 ? (
-                        filteredPackages.slice(0, entriesPerPage).map(p => (
+                        pagination.pageItems.map(p => (
                           <tr key={p._id || p.id} className="hover:bg-gray-50/50 transition-colors group">
                             <td className="px-6 py-5">
                               <div className="flex items-center gap-3">
@@ -259,6 +248,7 @@ const RentalPackageTypes = ({ mode: propMode }) => {
                     </tbody>
                   </table>
                 </div>
+                  <TablePagination pagination={pagination} label="packages" />
               </div>
             </div>
           </motion.div>

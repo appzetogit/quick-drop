@@ -2,6 +2,7 @@ import React from 'react';
 import { Filter, MoreVertical, Search, Loader2, ChevronRight, Menu, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { adminService } from '../../services/adminService';
+import TablePagination, { useServerPagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 
 const STATUS_STYLES = {
   ACCEPTED: 'bg-[#10B981] text-white', // Emerald/Green from image
@@ -28,7 +29,9 @@ const formatDate = (value) => {
 const Ongoing = () => {
   const [activeTab, setActiveTab] = React.useState('All');
   const [search, setSearch] = React.useState('');
-  const [limit, setLimit] = React.useState(10);
+  // Server-paged: the API returns one page plus paginator.total.
+  const pager = useServerPagination({ storageKey: 'taxi-ongoing-rides', resetOn: [activeTab, search] });
+  const limit = pager.pageSize;
   const [rows, setRows] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -38,18 +41,20 @@ const Ongoing = () => {
     setError('');
     try {
       const response = await adminService.getOngoingRides({
+        page: pager.page,
         limit,
         tab: activeTab.toLowerCase(),
         search,
       });
       const data = response?.data?.data || response?.data || response;
       setRows(data?.results || []);
+      pager.setTotal(Number(data?.paginator?.total) || (data?.results || []).length);
     } catch (err) {
       setError(err?.message || 'Failed to load ongoing rides');
     } finally {
       setLoading(false);
     }
-  }, [activeTab, limit, search]);
+  }, [activeTab, limit, search, pager.page]);
 
   React.useEffect(() => {
     loadRows();
@@ -61,6 +66,7 @@ const Ongoing = () => {
     try {
       await adminService.deleteOngoingRide(ride.id);
       setRows((prev) => prev.filter((row) => row.id !== ride.id));
+      pager.setTotal((t) => Math.max(0, t - 1));
     } catch (err) {
       window.alert(err?.message || 'Failed to delete ride');
     }
@@ -82,19 +88,6 @@ const Ongoing = () => {
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm relative">
           {/* Top Controls Area */}
           <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-6 lg:flex-row lg:items-center">
-            <div className="flex items-center gap-2 text-[14px] font-medium text-slate-500">
-              <span>show</span>
-              <select 
-                value={limit}
-                onChange={(e) => setLimit(Number(e.target.value))}
-                className="h-9 w-16 border border-slate-200 rounded-md bg-white px-2 text-[13px] outline-none"
-              >
-                <option value={10}>10</option>
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-              </select>
-              <span>entries</span>
-            </div>
 
             <div className="flex flex-1 justify-center items-center gap-8">
               {TAB_SET.map((tab) => (
@@ -123,9 +116,9 @@ const Ongoing = () => {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full text-left border-separate border-spacing-0">
-              <thead>
+              <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                 <tr className="bg-slate-50">
                   {['Request Id', 'Date', 'User Name', 'Driver Name', 'Transport Type', 'Trip Status', 'Payment Option', 'Action'].map((h) => (
                     <th key={h} className="px-6 py-4 text-[13px] font-bold text-slate-900 border-b border-slate-100">
@@ -181,6 +174,7 @@ const Ongoing = () => {
               </tbody>
             </table>
           </div>
+          {!loading && <TablePagination pagination={pager} label="rides" />}
 
           {/* Floating Action Button from image */}
           <button className="fixed bottom-10 right-10 w-14 h-14 bg-[#00BFA5] text-white rounded-full flex items-center justify-center shadow-xl hover:scale-105 transition-transform z-50">

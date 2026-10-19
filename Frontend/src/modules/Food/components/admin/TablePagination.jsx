@@ -80,6 +80,45 @@ export function usePagination(items, { storageKey, resetOn = [], defaultPageSize
   }
 }
 
+/**
+ * The same pager for a list the SERVER pages: the page asks the API for
+ * `page`/`pageSize` and reports the server's total with `setTotal`. Works with
+ * <TablePagination pagination={...} /> like usePagination.
+ */
+export function useServerPagination({ storageKey, resetOn = [], defaultPageSize = 10 } = {}) {
+  const [pageSize, setPageSizeState] = useState(() => (storageKey && readStoredSize(storageKey)) || defaultPageSize)
+  const [page, setPageState] = useState(1)
+  const [total, setTotal] = useState(0)
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setPageState(1) }, resetOn)
+  useEffect(() => {
+    if (total > 0 && page > totalPages) setPageState(totalPages)
+  }, [page, total, totalPages])
+
+  return {
+    page,
+    pageSize,
+    total,
+    totalPages,
+    setTotal,
+    rowNumber: (indexOnPage) => (page - 1) * pageSize + indexOnPage + 1,
+    setPage: (p) => setPageState(Math.min(Math.max(1, p), totalPages)),
+    setPageSize: (size) => {
+      setPageSizeState(size)
+      setPageState(1)
+      if (storageKey) {
+        try {
+          localStorage.setItem(`admin_page_size:${storageKey}`, String(size))
+        } catch {
+          // Private mode: the choice just isn't remembered.
+        }
+      }
+    },
+  }
+}
+
 /** Page numbers to show: first, last, and a window around the current page. */
 const pageWindow = (page, totalPages) => {
   const pages = new Set([1, totalPages, page - 1, page, page + 1])

@@ -58,14 +58,7 @@ const DriverRatings = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <span>Show</span>
-            <select className="border border-gray-200 rounded px-2 py-1 text-xs bg-white">
-              <option value={10}>10</option>
-            </select>
-            <span>entries</span>
-          </div>
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between">$1<div />
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input

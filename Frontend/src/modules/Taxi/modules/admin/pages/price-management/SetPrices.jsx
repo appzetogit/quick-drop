@@ -379,17 +379,7 @@ const SetPrices = ({ mode }) => {
                   </div>
 
                   <div className="bg-white rounded-md border border-gray-100 shadow-sm overflow-hidden">
-                     <div className="p-5 flex items-center justify-between border-b border-gray-50 bg-white px-8">
-                        <div className="flex items-center gap-2 text-sm text-slate-400 font-medium">
-                           <span>show</span>
-                           <div className="relative">
-                              <select className="appearance-none bg-white border border-gray-200 rounded px-4 py-1.5 pr-8 focus:outline-none focus:border-indigo-500 cursor-pointer text-slate-700 font-bold text-[13px]">
-                                 <option>10</option>
-                              </select>
-                              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                           </div>
-                           <span>entries</span>
-                        </div>
+                     <div className="p-5 flex items-center justify-between border-b border-gray-50 bg-white px-8">$1<div />
                         <div className="flex items-center gap-3">
                            <button onClick={() => fetchInitialData()} className={`w-10 h-10 flex items-center justify-center bg-white border border-gray-200 rounded-full text-slate-400 hover:text-indigo-600 transition-all shadow-sm ${loading ? 'animate-spin' : ''}`}>
                               {loading ? <Loader2 size={18} /> : <Search size={18} />}

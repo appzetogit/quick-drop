@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 import { getUnifiedAdminToken } from '../../services/adminSession';
 
 const Motion = motion;
@@ -98,6 +99,7 @@ const BannerImage = () => {
   }, [isCreateRoute]);
 
   const rows = useMemo(() => banners, [banners]);
+  const pagination = usePagination(rows || [], { storageKey: 'taxi-banners', resetOn: [rows.length] });
 
   const handleImageChange = (event) => {
     const file = event.target.files?.[0];
@@ -245,15 +247,6 @@ const BannerImage = () => {
           >
             <div className="bg-white rounded-[22px] border border-gray-200 shadow-sm overflow-hidden">
               <div className="p-6 flex items-center justify-between border-b border-gray-100">
-                <div className="flex items-center gap-3 text-sm text-gray-500">
-                  <span>show</span>
-                  <select className="bg-white border border-gray-200 rounded-md px-2 py-1 text-[13px] font-medium outline-none">
-                    <option>10</option>
-                    <option>25</option>
-                    <option>50</option>
-                  </select>
-                  <span>entries</span>
-                </div>
 
                 <button
                   type="button"
@@ -265,9 +258,9 @@ const BannerImage = () => {
                 </button>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className={SCROLL_TABLE_CLASS}>
                 <table className="w-full text-left">
-                  <thead className="bg-gray-50">
+                  <thead className={`bg-gray-50 ${STICKY_THEAD_CLASS}`}>
                     <tr className="text-[13px] font-bold text-gray-700">
                       <th className="px-6 py-4">Icon</th>
                       <th className="px-6 py-4">Status</th>
@@ -288,7 +281,7 @@ const BannerImage = () => {
                         </td>
                       </tr>
                     ) : (
-                      rows.map((item) => (
+                      pagination.pageItems.map((item) => (
                         <tr key={item._id || item.id}>
                           <td className="px-6 py-4">
                             <div className="h-10 w-52 overflow-hidden rounded border border-gray-200 bg-white">
@@ -333,21 +326,8 @@ const BannerImage = () => {
                   </tbody>
                 </table>
               </div>
+                <TablePagination pagination={pagination} label="banners" />
 
-              <div className="p-6 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
-                <span>
-                  Showing {rows.length > 0 ? 1 : 0} to {rows.length} of {rows.length} entries
-                </span>
-                <div className="flex items-center gap-2">
-                  <button className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-400" disabled>
-                    Prev
-                  </button>
-                  <button className="px-4 py-2 rounded-lg bg-[#2D3A6E] text-white">1</button>
-                  <button className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-400" disabled>
-                    Next
-                  </button>
-                </div>
-              </div>
             </div>
           </Motion.div>
         ) : (

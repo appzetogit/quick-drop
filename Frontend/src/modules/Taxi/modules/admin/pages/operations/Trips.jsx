@@ -2,6 +2,7 @@ import React from 'react';
 import { Filter, Search, Loader2, ChevronRight, Menu, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { adminService } from '../../services/adminService';
+import TablePagination, { useServerPagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 
 const STATUS_STYLES = {
   CANCELLED: 'bg-primary-orange/50 text-white',
@@ -50,7 +51,9 @@ const normalizeRow = (row = {}) => ({
 const Trips = () => {
   const [activeTab, setActiveTab] = React.useState('All');
   const [search, setSearch] = React.useState('');
-  const [limit, setLimit] = React.useState(10);
+  // Server-paged: the API returns one page plus paginator.total.
+  const pager = useServerPagination({ storageKey: 'taxi-ride-requests', resetOn: [activeTab, search] });
+  const limit = pager.pageSize;
   const [rows, setRows] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -63,6 +66,7 @@ const Trips = () => {
 
     try {
       const response = await adminService.getRideRequests({
+        page: pager.page,
         limit,
         tab: normalizeTab(activeTab),
         search,
@@ -70,13 +74,14 @@ const Trips = () => {
       const payload = response?.data?.data || response?.data || response || {};
       const results = Array.isArray(payload?.results) ? payload.results : [];
       setRows(results.map(normalizeRow));
+      pager.setTotal(Number(payload?.paginator?.total) || results.length);
     } catch (err) {
       setRows([]);
       setError(err?.message || 'Failed to load trip requests');
     } finally {
       setLoading(false);
     }
-  }, [activeTab, limit, search]);
+  }, [activeTab, limit, search, pager.page]);
 
 
   // A ride still searching or on its way is cancelled first; the ride record is
@@ -91,6 +96,7 @@ const Trips = () => {
     try {
       await adminService.deleteTripRequest(row.id);
       setRows((current) => current.filter((r) => r.id !== row.id));
+      pager.setTotal((t) => Math.max(0, t - 1));
     } catch (err) {
       window.alert(err?.response?.data?.message || err?.message || 'Could not delete this trip');
     } finally {
@@ -115,19 +121,6 @@ const Trips = () => {
 
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm relative">
           <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-6 lg:flex-row lg:items-center">
-            <div className="flex items-center gap-2 text-[14px] font-medium text-slate-500">
-              <span>show</span>
-              <select
-                value={limit}
-                onChange={(e) => setLimit(Number(e.target.value))}
-                className="h-9 w-16 border border-slate-200 rounded-md bg-white px-2 text-[13px] outline-none"
-              >
-                <option value={10}>10</option>
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-              </select>
-              <span>entries</span>
-            </div>
 
             <div className="flex flex-1 justify-center items-center gap-8 flex-wrap">
               {TAB_SET.map((tab) => (
@@ -161,9 +154,9 @@ const Trips = () => {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full text-left border-separate border-spacing-0">
-              <thead>
+              <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                 <tr className="bg-slate-50">
                   {['Request Id', 'Date', 'User Name', 'Driver Name', 'Transport Type', 'Trip Status', 'Payment Option', 'Action'].map((heading) => (
                     <th key={heading} className="px-6 py-4 text-[13px] font-bold text-slate-900 border-b border-slate-100">
@@ -357,6 +350,7 @@ const Trips = () => {
               </tbody>
             </table>
           </div>
+          {!loading && <TablePagination pagination={pager} label="ride requests" />}
 
           <button className="fixed bottom-10 right-10 w-14 h-14 bg-[#00BFA5] text-white rounded-full flex items-center justify-center shadow-xl hover:scale-105 transition-transform z-50">
             <Menu size={24} />

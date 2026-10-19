@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Globe, Trash2, ChevronRight, Loader2, Edit2 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
+import TablePagination, { usePagination } from '@food/components/admin/TablePagination';
 
 import { describeApiError } from '../../../../shared/utils/apiError';
 const StatusToggle = ({ active, onToggle }) => (
@@ -61,6 +62,7 @@ const Languages = () => {
     l.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     l.code?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const pagination = usePagination(filtered, { storageKey: 'taxi-languages', resetOn: [searchQuery] });
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 lg:p-8">
@@ -82,16 +84,7 @@ const Languages = () => {
       {/* Table Card */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {/* Toolbar */}
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <span>Show</span>
-            <select className="border border-gray-200 rounded px-2 py-1 text-xs bg-white">
-              <option>10</option>
-              <option>25</option>
-              <option>50</option>
-            </select>
-            <span>entries</span>
-          </div>
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-4">$1<div />
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -127,7 +120,7 @@ const Languages = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.length > 0 ? filtered.map((lang, idx) => (
+              {filtered.length > 0 ? pagination.pageItems.map((lang, idx) => (
                 <tr key={lang._id || lang.id || idx} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{lang.name}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">{lang.code}</td>
@@ -171,17 +164,8 @@ const Languages = () => {
           </table>
         )}
 
-        {/* Footer */}
-        {!isLoading && filtered.length > 0 && (
-          <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-            <span>Showing 1 to {filtered.length} of {filtered.length} entries</span>
-            <div className="flex items-center gap-1">
-              <button className="px-3 py-1.5 hover:text-gray-600 transition-colors">Prev</button>
-              <button className="w-7 h-7 rounded bg-indigo-600 text-white text-xs font-medium">1</button>
-              <button className="px-3 py-1.5 hover:text-gray-600 transition-colors">Next</button>
-            </div>
-          </div>
-        )}
+
+        {!isLoading && !error && <TablePagination pagination={pagination} label="languages" />}
       </div>
     </div>
   );

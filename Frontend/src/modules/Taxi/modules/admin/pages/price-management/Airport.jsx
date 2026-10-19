@@ -22,6 +22,7 @@ import {
   Info
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 import { DELHI_CENTER, useAppGoogleMapsLoader } from '../../utils/googleMaps';
 
 import { describeApiError } from '../../../../shared/utils/apiError';
@@ -59,7 +60,6 @@ const Airport = ({ mode: initialMode = "list" }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [entriesPerPage, setEntriesPerPage] = useState(10);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [selectedAirportId, setSelectedAirportId] = useState(id || null);
@@ -157,6 +157,7 @@ const Airport = ({ mode: initialMode = "list" }) => {
       return matchesSearch && matchesServiceLocation && matchesStatus;
     });
   }, [airports, filters, searchTerm]);
+  const pagination = usePagination(filteredAirports || [], { storageKey: 'taxi-airports', resetOn: [filteredAirports.length] });
 
   const updatePinnedLocation = (lat, lng) => {
     const nextLat = Number(lat);
@@ -326,18 +327,6 @@ const Airport = ({ mode: initialMode = "list" }) => {
 
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/30">
-                <div className="flex items-center gap-3 text-sm text-gray-500">
-                  <span>Show</span>
-                  <select 
-                    value={entriesPerPage} onChange={(e) => setEntriesPerPage(Number(e.target.value))}
-                    className="border border-gray-200 rounded px-2 py-1 bg-white outline-none focus:border-indigo-500"
-                  >
-                    <option value={10}>10</option>
-                    <option value={20}>20</option>
-                    <option value={50}>50</option>
-                  </select>
-                  <span>entries</span>
-                </div>
                 <div className="flex items-center gap-2">
                   <div className="relative">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -409,9 +398,9 @@ const Airport = ({ mode: initialMode = "list" }) => {
                 </div>
               ) : null}
 
-              <div className="overflow-x-auto">
+              <div className={SCROLL_TABLE_CLASS}>
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <th className="px-6 py-4 text-left font-semibold text-gray-700">Airport Name</th>
                       <th className="px-6 py-4 text-left font-semibold text-gray-700">Service Location</th>
@@ -428,7 +417,7 @@ const Airport = ({ mode: initialMode = "list" }) => {
                         </td>
                       </tr>
                     ) : filteredAirports.length > 0 ? (
-                      filteredAirports.slice(0, entriesPerPage).map(airport => (
+                      pagination.pageItems.map(airport => (
                         <tr key={airport._id || airport.id} className="hover:bg-gray-50/50 transition-colors">
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
@@ -474,6 +463,7 @@ const Airport = ({ mode: initialMode = "list" }) => {
                   </tbody>
                 </table>
               </div>
+                <TablePagination pagination={pagination} label="airports" />
             </div>
           </motion.div>
         ) : (
