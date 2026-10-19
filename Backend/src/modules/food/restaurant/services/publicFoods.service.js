@@ -40,9 +40,19 @@ const buildCategoryKeywords = (categorySlug) => {
  */
 const UNDER_250_MAX_PRICE = 250;
 
-const qualifiesFor99Store = (food, price, cap) =>
-    food?.showIn99Store === true
+/*
+ * On the shelf unless an admin took it off. The admin's dish form shows every
+ * dish at or under the cap as ticked ("added automatically") unless it was
+ * removed by hand, but this used to require the stored flag -- which only a
+ * save, an approval or a cap rise ever set. Dishes older than the shelf, or
+ * whose price came down through the restaurant panel, looked ticked to the
+ * admin and never reached the app. The exclusion flag is the admin's decision;
+ * the cap is applied here, so the shelf follows price changes by itself.
+ */
+const qualifiesFor99Store = (food, price, cap, excluded) =>
+    (food?.showIn99Store === true || !excluded)
     && Number.isFinite(Number(price))
+    && Number(price) > 0
     && Number(price) <= cap;
 
 export async function listPublicFoods(query = {}) {
@@ -135,6 +145,9 @@ export async function listPublicFoods(query = {}) {
         .sort({ createdAt: -1 })
         .limit(isPromoList ? Math.max(limit, 2000) : limit)
         .lean();
+    const excludedFrom99 = new Set(
+        list.filter((food) => food.ninetyNineStoreExcluded === true).map((food) => String(food._id))
+    );
 
     // Which dishes are on a buy-one-get-one right now. One query for the whole
     // page rather than one per kitchen on it, and read at render time so a run
@@ -286,7 +299,9 @@ export async function listPublicFoods(query = {}) {
             // Deliberately NOT dropping out-of-stock dishes here -- the app
             // shows them greyed out. Removing this line was the other half of
             // the query change above; leaving it would have undone it.
-            if (is99StorePromo) return qualifiesFor99Store(food, food.price, ninetyNineCap);
+            if (is99StorePromo) {
+                return qualifiesFor99Store(food, food.price, ninetyNineCap, excludedFrom99.has(String(food._id)));
+            }
             if (isUnder250Promo) {
                 const value = Number(food.price);
                 return Number.isFinite(value) && value <= UNDER_250_MAX_PRICE;
