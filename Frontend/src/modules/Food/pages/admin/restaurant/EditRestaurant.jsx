@@ -86,6 +86,7 @@ const normalizeDetailsFormFromRestaurant = (restaurant) => {
       restaurant?.estimatedDeliveryTime ??
       "",
     offer: restaurant?.offer || "",
+    displayOrder: restaurant?.displayOrder ?? "",
     openingTime: restaurant?.openingTime || restaurant?.deliveryTimings?.openingTime || "",
     closingTime: restaurant?.closingTime || restaurant?.deliveryTimings?.closingTime || "",
     isActive: restaurant?.isActive !== false,
@@ -321,6 +322,8 @@ export default function EditRestaurant() {
             ? undefined
             : Number(detailsForm.estimatedDeliveryTimeMinutes),
         offer: detailsForm.offer,
+        // Blank clears it (the restaurant goes back to the rating order).
+        displayOrder: detailsForm.displayOrder === "" ? null : Number(detailsForm.displayOrder),
         openingTime: detailsForm.openingTime,
         closingTime: detailsForm.closingTime,
         isActive: detailsForm.isActive !== false,
@@ -560,6 +563,20 @@ export default function EditRestaurant() {
                 <div>
                   <Label>Offer</Label>
                   <Input value={detailsForm.offer} onChange={(e) => setDetailsForm((p) => ({ ...p, offer: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Display order in the user app</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1}
+                    placeholder="Blank = by rating"
+                    value={detailsForm.displayOrder}
+                    onChange={(e) => setDetailsForm((p) => ({ ...p, displayOrder: e.target.value.replace(/[^\d]/g, "") }))}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    1 shows first among restaurants in this restaurant's zone, then 2, 3… Restaurants left blank follow, highest rated first.
+                  </p>
                 </div>
               </div>
             </section>

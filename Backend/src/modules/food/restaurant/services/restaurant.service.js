@@ -529,6 +529,14 @@ const attachRecommendedImagesToRestaurants = async (restaurants = []) => {
     }));
 };
 
+/** Sorts a customer picks explicitly; the admin display order stays out of these. */
+const CUSTOMER_CHOSEN_SORTS = new Set(['rating-low', 'price-low', 'price-high', 'newest', 'deliveryTime']);
+/** Restaurants with a display order first (1, 2, 3...), the rest after. */
+const UNORDERED_DISPLAY_RANK = 1e9;
+const DISPLAY_RANK_STAGE = {
+    $addFields: { _displayRank: { $ifNull: ['$displayOrder', UNORDERED_DISPLAY_RANK] } },
+};
+
 const parseSortBy = (value) => {
     const v = String(value || '').trim();
     const allowed = new Set(['nearest', 'rating', 'newest', 'deliveryTime', 'price-low', 'price-high', 'rating-high', 'rating-low']);
@@ -1808,6 +1816,9 @@ export const listApprovedRestaurants = async (query = {}) => {
     // Accept both radiusKm (preferred) and maxDistance (legacy frontend param).
     const radiusKm = toFiniteNumber(query.radiusKm) ?? toFiniteNumber(query.maxDistance);
     const sortBy = parseSortBy(query.sortBy);
+    // The admin's display order leads the app's default listing (rating /
+    // nearest / unspecified); a sort the customer picks is left as chosen.
+    const useDisplayOrder = !CUSTOMER_CHOSEN_SORTS.has(sortBy);
 
     // The restaurant's own delivery radius, when the customer's point is known.
     // Distinct from `radiusKm` above, which is the customer's search filter.
@@ -1883,7 +1894,8 @@ export const listApprovedRestaurants = async (query = {}) => {
                     distanceInKm: { $round: [{ $divide: ['$distanceMeters', 1000] }, 2] }
                 }
             },
-            sortStage
+            ...(useDisplayOrder ? [DISPLAY_RANK_STAGE] : []),
+            useDisplayOrder ? { $sort: { _displayRank: 1, ...sortStage.$sort } } : sortStage
         ];
 
         const [pageDocs, totalDocs] = await Promise.all([
@@ -1916,12 +1928,24 @@ export const listApprovedRestaurants = async (query = {}) => {
     })();
 
     const [restaurantsRaw, total] = await Promise.all([
-        FoodRestaurant.find(filter)
-            .select(Object.keys(projection).join(' '))
-            .sort(sort)
-            .skip(skip)
-            .limit(limit)
-            .lean(),
+        useDisplayOrder
+            // An aggregate, because a plain sort puts restaurants WITHOUT a
+            // display order first (a missing value sorts lowest). The filter is
+            // already fully typed: the geo path hands it to $geoNear as is.
+            ? FoodRestaurant.aggregate([
+                { $match: filter },
+                DISPLAY_RANK_STAGE,
+                { $sort: { _displayRank: 1, ...sort } },
+                { $project: projection },
+                { $skip: skip },
+                { $limit: limit },
+            ])
+            : FoodRestaurant.find(filter)
+                .select(Object.keys(projection).join(' '))
+                .sort(sort)
+                .skip(skip)
+                .limit(limit)
+                .lean(),
         FoodRestaurant.countDocuments(filter)
     ]);
 

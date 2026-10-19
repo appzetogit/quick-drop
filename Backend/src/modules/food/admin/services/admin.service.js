@@ -1,5 +1,5 @@
 import { safeRiderZoneFilter } from '../../../../core/zones/riderZones.js';
-import mongoose from 'mongoose';
+import mongoose from 'mongoose';
 import { referralSettingsFor } from '../../../../core/referral/referralSettings.service.js';
 import { zoneMatchFrom } from '../../../../core/admin/adminZoneScope.js';
 import { shouldAutoMark99, crossedInto99Cap } from '../../shared/ninetyNineStore.js';
@@ -2557,6 +2557,20 @@ export async function updateRestaurantById(id, body = {}) {
 
     if (body.isAcceptingOrders !== undefined) {
         doc.isAcceptingOrders = parseBooleanLike(body.isAcceptingOrders, 'isAcceptingOrders');
+    }
+
+    // Position in the customer app's list for this restaurant's zone; blank clears it.
+    if (body.displayOrder !== undefined) {
+        const raw = body.displayOrder;
+        if (raw === null || raw === '') {
+            doc.displayOrder = null;
+        } else {
+            const n = Number(raw);
+            if (!Number.isInteger(n) || n < 1 || n > 9999) {
+                throw new ValidationError('Display order must be a whole number from 1 to 9999, or blank');
+            }
+            doc.displayOrder = n;
+        }
     }
 
     if (body.cuisines !== undefined) {

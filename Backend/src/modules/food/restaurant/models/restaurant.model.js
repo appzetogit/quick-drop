@@ -69,6 +69,13 @@ const restaurantSchema = new mongoose.Schema(
       select: false,
     },
     portalPasswordSetAt: { type: Date, default: null },
+    /**
+     * Admin-set position in the customer app's restaurant list for this
+     * restaurant's zone: 1 shows first. Restaurants without one follow, in the
+     * app's usual order (rating). Only the default listing sorts use it; a sort
+     * the customer picks (price, delivery time...) is left as they chose.
+     */
+    displayOrder: { type: Number, min: 1, default: null },
     // Normalized fields for fast lookup + uniqueness guarantees.
     // These are derived from restaurantName/ownerPhone at write time.
     restaurantNameNormalized: {
