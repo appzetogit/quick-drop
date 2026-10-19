@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { adminService } from '../../services/adminService';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 const inputClass =
   'w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-800 bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors';
@@ -74,6 +75,7 @@ const DeleteRequestUsers = () => {
       }),
     [searchTerm, users],
   );
+  const pagination = usePagination(filteredUsers || [], { storageKey: "taxi-user-delete-requests", resetOn: [searchTerm] });
 
   const handleReject = async (id) => {
     if (!window.confirm('Reject this account deletion request?')) return;
@@ -171,9 +173,9 @@ const DeleteRequestUsers = () => {
               </div>
             </div>
 
-            <div className="mt-5 overflow-x-auto">
+            <div className={`mt-5 ${SCROLL_TABLE_CLASS}`}>
               <table className="w-full">
-                <thead>
+                <thead className={`bg-gray-50 ${STICKY_THEAD_CLASS}`}>
                   <tr className="bg-gray-50 border-b border-gray-100">
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">User</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Reason</th>
@@ -190,7 +192,7 @@ const DeleteRequestUsers = () => {
                       </td>
                     </tr>
                   ) : (
-                    filteredUsers.map((user) => (
+                    pagination.pageItems.map((user) => (
                       <tr key={user._id} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-3">
@@ -258,23 +260,8 @@ const DeleteRequestUsers = () => {
                 </tbody>
               </table>
             </div>
+            <TablePagination pagination={pagination} label="delete requests" />
 
-            <div className="mt-5 flex flex-col gap-3 border-t border-gray-100 pt-4 text-sm text-gray-500 md:flex-row md:items-center md:justify-between">
-              <span>
-                Showing {filteredUsers.length ? 1 : 0} to {filteredUsers.length} of {filteredUsers.length} entries
-              </span>
-              <div className="flex items-center gap-2">
-                <button className="px-4 py-2 text-sm text-gray-500 bg-white border border-gray-200 rounded-lg disabled:opacity-50" disabled>
-                  Prev
-                </button>
-                <button className="px-4 py-2 text-sm text-white bg-indigo-600 border border-indigo-600 rounded-lg">
-                  1
-                </button>
-                <button className="px-4 py-2 text-sm text-gray-500 bg-white border border-gray-200 rounded-lg disabled:opacity-50" disabled>
-                  Next
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       </div>

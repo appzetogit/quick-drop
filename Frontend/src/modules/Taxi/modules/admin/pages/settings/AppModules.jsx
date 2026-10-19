@@ -352,9 +352,9 @@ const AppModules = ({ mode: propMode }) => {
 
               {/* Table Body matches Image 1 */}
               <div className="px-8 pb-8">
-                <div className="overflow-x-auto">
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-left">
-                    <thead>
+                    <thead className="bg-white sticky top-0 z-10">
                       <tr className="bg-[#E9E9E9]">
                         <th className="px-6 py-4 text-[13px] font-bold text-slate-700">Name</th>
                         <th className="px-6 py-4 text-[13px] font-bold text-slate-700">Module Service</th>

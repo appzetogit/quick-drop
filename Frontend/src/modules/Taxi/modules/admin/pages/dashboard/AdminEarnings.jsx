@@ -389,9 +389,9 @@ const AdminEarnings = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh]">
           <table className="w-full min-w-[1100px] text-left">
-            <thead>
+            <thead className="bg-white sticky top-0 z-10">
               <tr className="bg-slate-50 text-[12px] font-black uppercase tracking-wider text-slate-500">
                 <th className="px-5 py-4">Request</th>
                 <th className="px-5 py-4">Completed</th>

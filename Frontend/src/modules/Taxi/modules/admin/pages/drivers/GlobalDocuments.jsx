@@ -241,9 +241,9 @@ const GlobalDocuments = () => {
             <h2 className="text-base font-semibold text-gray-900">Driver Needed Documents</h2>
             <p className="mt-1 text-sm text-gray-500">Templates used by the documents step of onboarding.</p>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[70vh]">
             <table className="min-w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Name</th>
                   <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Account Type</th>

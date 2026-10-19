@@ -31,6 +31,7 @@ import {
 } from "@react-google-maps/api";
 import { useAppGoogleMapsLoader } from "../../utils/googleMaps";
 import { adminService } from "../../services/adminService";
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 import { describeApiError } from '../../../../shared/utils/apiError';
 import {
   buildCountryBoundaryUrl,
@@ -157,6 +158,7 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
     if (!query) return zones;
     return zones.filter(z => (z.name || z.zone_name || '').toLowerCase().includes(query));
   }, [zones, searchTerm]);
+  const pagination = usePagination(filteredZones || [], { storageKey: "taxi-zones", resetOn: [searchTerm] });
 
   const fitMapToPaths = (paths) => {
     if (!mapRef.current || !window.google || !Array.isArray(paths) || paths.length === 0) {
@@ -896,7 +898,7 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className={SCROLL_TABLE_CLASS}>
                 {loading ? (
                   <div className="flex flex-col items-center justify-center py-20">
                     <Loader2 className="animate-spin text-indigo-600 mb-2" size={32} />
@@ -904,7 +906,7 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
                   </div>
                 ) : filteredZones.length > 0 ? (
                   <table className="w-full text-sm">
-                    <thead>
+                    <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                       <tr className="bg-gray-50/50 border-b border-gray-100">
                         <th className="px-6 py-3.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">S.No</th>
                         <th className="px-6 py-3.5 text-left text-[10px] font-bold text-gray-400 uppercase tracking-widest">Market Zone Identity</th>
@@ -913,9 +915,9 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {filteredZones.map((zone, idx) => (
+                      {pagination.pageItems.map((zone, idx) => (
                         <tr key={zone._id || zone.id} className="hover:bg-gray-50/50 transition-colors group">
-                          <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-400">{(idx + 1).toString().padStart(2, '0')}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-400">{pagination.rowNumber(idx).toString().padStart(2, '0')}</td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-3">
                               <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-100/50 transition-transform group-hover:scale-105">
@@ -957,6 +959,7 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
                   </div>
                 )}
               </div>
+              {!loading && <TablePagination pagination={pagination} label="zones" />}
             </div>
           </motion.div>
         ) : (

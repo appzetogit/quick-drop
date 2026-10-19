@@ -353,9 +353,9 @@ const WithdrawalRequestDetail = () => {
               </div>
             </div>
 
-            <div className="overflow-x-auto no-scrollbar">
+            <div className="overflow-auto max-h-[70vh] no-scrollbar">
               <table className="w-full text-left">
-                <thead>
+                <thead className="bg-white sticky top-0 z-10">
                   <tr className="bg-gray-50/50 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] border-b border-gray-50">
                     <th className="px-8 py-5">Date</th>
                     <th className="px-5 py-5">Name</th>

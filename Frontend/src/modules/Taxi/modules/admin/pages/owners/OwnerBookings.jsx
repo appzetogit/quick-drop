@@ -3,6 +3,7 @@ import { ArrowLeft, Edit2, Loader2, Plus, Save, Search, Trash2, ChevronDown, Che
 import { AnimatePresence, motion } from 'framer-motion';
 import { adminService } from '../../services/adminService';
 import AdminPageHeader from '../../components/ui/AdminPageHeader';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 
 const MotionDiv = motion.div;
 
@@ -112,6 +113,7 @@ const OwnerBookings = () => {
         .some((value) => String(value).toLowerCase().includes(query)),
     );
   }, [bookings, searchTerm]);
+  const pagination = usePagination(filteredBookings || [], { storageKey: 'taxi-owner-bookings', resetOn: [searchTerm] });
 
   const handleEdit = (booking) => {
     setEditingId(booking._id || booking.id);
@@ -229,9 +231,10 @@ const OwnerBookings = () => {
                     <Loader2 className="animate-spin text-slate-400" size={30} />
                   </div>
                 ) : filteredBookings.length > 0 ? (
-                  <div className="overflow-x-auto">
+                  <>
+                  <div className={SCROLL_TABLE_CLASS}>
                     <table className="w-full min-w-[1100px] border-collapse">
-                      <thead>
+                      <thead className={`${STICKY_THEAD_CLASS} bg-white`}>
                         <tr className="border-b border-slate-100 text-left">
                            <th className="px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-400">Reference</th>
                            <th className="px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-400">Owner</th>
@@ -245,7 +248,7 @@ const OwnerBookings = () => {
                          </tr>
                        </thead>
                        <tbody>
-                          {filteredBookings.map((booking) => {
+                          {pagination.pageItems.map((booking) => {
                             const isExpanded = expandedId === (booking._id || booking.id);
                             return (
                               <React.Fragment key={booking._id || booking.id}>
@@ -326,6 +329,8 @@ const OwnerBookings = () => {
                       </tbody>
                     </table>
                   </div>
+                  <TablePagination pagination={pagination} label="bookings" />
+                  </>
                 ) : (
                   <div className="rounded-[28px] border border-dashed border-slate-200 bg-white px-8 py-16 text-center">
                     <h3 className="text-lg font-black text-slate-900">No Bookings Yet</h3>

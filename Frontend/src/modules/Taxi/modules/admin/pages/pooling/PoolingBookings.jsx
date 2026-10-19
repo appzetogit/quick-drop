@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import toast from 'react-hot-toast';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 
 const PoolingBookings = () => {
   const [bookings, setBookings] = useState([]);
@@ -51,6 +52,7 @@ const PoolingBookings = () => {
     b.user?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     b.route?.routeName?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  const pagination = usePagination(filteredBookings || [], { storageKey: 'taxi-pooling-bookings', resetOn: [searchTerm] });
 
   const getStatusStyle = (status) => {
     switch (status) {
@@ -102,9 +104,9 @@ const PoolingBookings = () => {
 
       {/* Bookings Table */}
       <div className="overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-sm">
-        <div className="overflow-x-auto">
+        <div className={SCROLL_TABLE_CLASS}>
           <table className="w-full text-left">
-            <thead>
+            <thead className={`${STICKY_THEAD_CLASS} bg-white`}>
               <tr className="border-b border-slate-50 bg-slate-50/30">
                 <th className="px-6 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Booking ID</th>
                 <th className="px-6 py-5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Customer</th>
@@ -133,7 +135,7 @@ const PoolingBookings = () => {
                   </td>
                 </tr>
               ) : (
-                filteredBookings.map((booking) => (
+                pagination.pageItems.map((booking) => (
                   <tr key={booking._id} className="group transition hover:bg-slate-50/50">
                     <td className="px-6 py-5">
                       <span className="text-xs font-black text-indigo-600 uppercase">#{booking.bookingId || booking._id.slice(-8)}</span>
@@ -219,6 +221,7 @@ const PoolingBookings = () => {
             </tbody>
           </table>
         </div>
+        {!loading && <TablePagination pagination={pagination} label="bookings" />}
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../../../../shared/api/axiosInstance';
 import { adminService } from '../../services/adminService';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition-all focus:border-primary-orange/40 focus:ring-2 focus:ring-primary-orange/10';
 const labelClass = 'mb-2 block text-[12px] font-bold text-slate-700';
@@ -199,6 +200,7 @@ const GoodsTypes = ({ mode }) => {
     if (!query) return goods;
     return goods.filter((item) => item.name.toLowerCase().includes(query));
   }, [goods, searchTerm]);
+  const pagination = usePagination(filteredGoods || [], { storageKey: 'taxi-goods-types', resetOn: [searchTerm] });
 
   const availableForOptions = useMemo(() => {
     const options = [...vehicleOptions];
@@ -404,9 +406,9 @@ const GoodsTypes = ({ mode }) => {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full text-left">
-              <thead className="bg-slate-50">
+              <thead className={`${STICKY_THEAD_CLASS} bg-slate-50`}>
                 <tr>
                   <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Name</th>
                   <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Compatible With</th>
@@ -423,7 +425,7 @@ const GoodsTypes = ({ mode }) => {
                   <tr>
                     <td colSpan={4} className="px-6 py-20 text-center text-sm text-slate-400">No goods types found.</td>
                   </tr>
-                ) : filteredGoods.map((item) => (
+                ) : pagination.pageItems.map((item) => (
                   <tr key={item.id} className="border-t border-slate-100">
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-4">
@@ -466,6 +468,7 @@ const GoodsTypes = ({ mode }) => {
               </tbody>
             </table>
           </div>
+          {!loading && <TablePagination pagination={pagination} label="goods types" />}
         </div>
       </div>
     );

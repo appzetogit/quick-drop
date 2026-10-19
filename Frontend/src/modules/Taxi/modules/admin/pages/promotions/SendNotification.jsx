@@ -17,6 +17,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
 
 import { describeApiError } from '../../../../shared/utils/apiError';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 const Motion = motion;
 const LIST_PATH = '/taxi/admin/promotions/send-notification';
 const CREATE_PATH = '/taxi/admin/promotions/send-notification/create';
@@ -161,6 +162,7 @@ const SendNotification = () => {
       return matchesAudience && matchesLocation;
     });
   }, [filters, notifications]);
+  const pagination = usePagination(rows || [], { storageKey: "taxi-push-notifications", resetOn: [filters.send_to, filters.service_location_id] });
 
   const handleFieldChange = (key, value) => {
     setFormData((current) => ({ ...current, [key]: value }));
@@ -328,9 +330,9 @@ const SendNotification = () => {
             </div>
 
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className={SCROLL_TABLE_CLASS}>
                 <table className="w-full text-left">
-                  <thead className="bg-gray-50">
+                  <thead className={`bg-gray-50 ${STICKY_THEAD_CLASS}`}>
                     <tr className="text-xs font-semibold text-gray-500">
                       <th className="px-6 py-4">Push Title</th>
                       <th className="px-6 py-4">Message</th>
@@ -356,7 +358,7 @@ const SendNotification = () => {
                         </td>
                       </tr>
                     ) : (
-                      rows.map((item) => (
+                      pagination.pageItems.map((item) => (
                         <tr key={item._id || item.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
@@ -386,6 +388,7 @@ const SendNotification = () => {
                   </tbody>
                 </table>
               </div>
+              {!loading && <TablePagination pagination={pagination} label="notifications" />}
             </div>
           </Motion.div>
         ) : (

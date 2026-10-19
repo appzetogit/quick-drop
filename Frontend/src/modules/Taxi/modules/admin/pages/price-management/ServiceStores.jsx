@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { INDIA_CENTER, useAppGoogleMapsLoader } from '../../utils/googleMaps';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 import { describeApiError } from '../../../../shared/utils/apiError';
 const inputClass =
@@ -214,6 +215,7 @@ const ServiceStores = ({ mode: initialMode = 'list' }) => {
         .some((value) => String(value).toLowerCase().includes(query)),
     );
   }, [searchTerm, stores]);
+  const pagination = usePagination(filteredStores || [], { storageKey: "taxi-service-stores", resetOn: [searchTerm] });
 
   const selectedStore = useMemo(
     () =>
@@ -492,7 +494,7 @@ const ServiceStores = ({ mode: initialMode = 'list' }) => {
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className={SCROLL_TABLE_CLASS}>
                 {loading ? (
                   <div className="flex flex-col items-center justify-center py-20">
                     <Loader2 size={32} className="mb-2 animate-spin text-indigo-600" />
@@ -500,7 +502,7 @@ const ServiceStores = ({ mode: initialMode = 'list' }) => {
                   </div>
                 ) : filteredStores.length > 0 ? (
                   <table className="w-full text-sm">
-                    <thead>
+                    <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                       <tr className="border-b border-gray-100 bg-gray-50/60">
                         <th className="px-6 py-3.5 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400">
                           Store
@@ -523,7 +525,7 @@ const ServiceStores = ({ mode: initialMode = 'list' }) => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {filteredStores.map((store) => (
+                      {pagination.pageItems.map((store) => (
                         <tr
                           key={store._id || store.id}
                           className="transition-colors hover:bg-gray-50/50"
@@ -595,6 +597,7 @@ const ServiceStores = ({ mode: initialMode = 'list' }) => {
                   </div>
                 )}
               </div>
+              {!loading && <TablePagination pagination={pagination} label="stores" />}
             </div>
           </motion.div>
         ) : (

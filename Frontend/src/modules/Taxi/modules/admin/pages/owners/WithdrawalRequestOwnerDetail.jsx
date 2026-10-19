@@ -175,9 +175,9 @@ const WithdrawalRequestOwnerDetail = () => {
               </div>
             </div>
 
-            <div className="mt-4 overflow-x-auto">
+            <div className="mt-4 overflow-auto max-h-[70vh]">
               <table className="min-w-full text-left">
-                <thead>
+                <thead className="bg-white sticky top-0 z-10">
                   <tr className="border-b border-gray-100">
                     <th className="py-3 pr-4 text-xs font-semibold text-gray-500">Date</th>
                     <th className="py-3 pr-4 text-xs font-semibold text-gray-500">Reference</th>

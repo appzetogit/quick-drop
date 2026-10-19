@@ -86,9 +86,9 @@ const CountryManagement = () => {
 
         {/* Dynamic Table Card */}
         <div className="bg-white rounded-[32px] border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden">
-           <div className="overflow-x-auto">
+           <div className="overflow-auto max-h-[70vh]">
               <table className="w-full text-left border-collapse">
-                 <thead>
+                 <thead className="bg-white sticky top-0 z-10">
                     <tr className="bg-slate-50/50 border-b border-slate-100">
                        <th className="px-8 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest">Country Name</th>
                        <th className="px-8 py-5 text-[11px] font-black text-slate-500 uppercase tracking-widest text-center">Icon</th>

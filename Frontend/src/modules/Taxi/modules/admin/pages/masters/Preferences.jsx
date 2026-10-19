@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronRight, Upload, Plus, Trash2, Edit2, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 
 import { describeApiError } from '../../../../shared/utils/apiError';
 const StatusToggle = ({ active, onToggle }) => (
@@ -14,6 +15,7 @@ const StatusToggle = ({ active, onToggle }) => (
 
 const Preferences = () => {
   const [preferences, setPreferences] = useState([]);
+  const pagination = usePagination(preferences || [], { storageKey: 'taxi-preferences' });
   const [isLoading, setIsLoading] = useState(true);
   const [formData, setFormData] = useState({ name: '', icon: null });
   const [iconPreview, setIconPreview] = useState(null);
@@ -143,8 +145,10 @@ const Preferences = () => {
             <p className="text-sm text-gray-400">Loading preferences...</p>
           </div>
         ) : (
+          <>
+          <div className={SCROLL_TABLE_CLASS}>
           <table className="w-full">
-            <thead>
+            <thead className={`${STICKY_THEAD_CLASS} bg-gray-50`}>
               <tr className="bg-gray-50 border-b border-gray-100">
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500">#</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500">Name</th>
@@ -154,9 +158,9 @@ const Preferences = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {preferences.length > 0 ? preferences.map((pref, idx) => (
+              {preferences.length > 0 ? pagination.pageItems.map((pref, idx) => (
                 <tr key={pref._id || pref.id || idx} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-6 py-4 text-sm text-gray-500">{idx + 1}</td>
+                  <td className="px-6 py-4 text-sm text-gray-500">{pagination.rowNumber(idx)}</td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{pref.name}</td>
                   <td className="px-6 py-4">
                     <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden border border-gray-200">
@@ -196,6 +200,9 @@ const Preferences = () => {
               )}
             </tbody>
           </table>
+          </div>
+          <TablePagination pagination={pagination} label="preferences" />
+          </>
         )}
       </div>
     </div>

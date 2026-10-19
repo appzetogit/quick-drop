@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2, ChevronRight, Loader2, Pencil, X, Zap } from 'lucide-react';
 import api from '../../../../shared/api/axiosInstance';
 import toast from 'react-hot-toast';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 /*
  * Time-slot surge, zone-wise: in the chosen zones, on the chosen days, between
@@ -90,6 +91,7 @@ const SurgePricing = () => {
   }, []);
 
   const visibleSlots = zoneFilter ? slots.filter((s) => s.zone_ids.includes(zoneFilter)) : slots;
+  const pagination = usePagination(visibleSlots || [], { storageKey: "taxi-surge-slots", resetOn: [zoneFilter] });
 
   const openNew = () => setForm({ ...emptyForm(), zone_ids: zoneFilter ? [zoneFilter] : [] });
   const openEdit = (slot) => setForm({
@@ -170,7 +172,7 @@ const SurgePricing = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+      <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${SCROLL_TABLE_CLASS}`}>
         {visibleSlots.length === 0 ? (
           <div className="py-16 text-center">
             <Zap className="mx-auto text-gray-300 mb-3" size={32} />
@@ -178,7 +180,7 @@ const SurgePricing = () => {
           </div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-[11px] uppercase tracking-wider text-gray-500">
+            <thead className={`bg-gray-50 text-[11px] uppercase tracking-wider text-gray-500 ${STICKY_THEAD_CLASS}`}>
               <tr>
                 <th className="text-left px-4 py-3">Slot</th>
                 <th className="text-left px-4 py-3">Zones</th>
@@ -191,7 +193,7 @@ const SurgePricing = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {visibleSlots.map((slot) => (
+              {pagination.pageItems.map((slot) => (
                 <tr key={slot.id} className={slot.active ? '' : 'opacity-50'}>
                   <td className="px-4 py-3 font-semibold text-gray-800">{slot.name || '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{slot.zone_ids.map((z) => zoneName[z] || 'Unknown').join(', ')}</td>
@@ -224,6 +226,7 @@ const SurgePricing = () => {
           </table>
         )}
       </div>
+      <TablePagination pagination={pagination} label="surge slots" />
 
       {form && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">

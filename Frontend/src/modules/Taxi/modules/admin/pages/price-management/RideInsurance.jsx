@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Trash2, ChevronRight, Loader2, Pencil, X, ShieldCheck } from 'lucide-react';
 import api from '../../../../shared/api/axiosInstance';
 import toast from 'react-hot-toast';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 /*
  * Ride insurance plans a rider can add when booking, for all vehicles or the
@@ -236,6 +237,7 @@ const InsuredRidesTab = ({ plans }) => {
   const [filters, setFilters] = useState({ from: '', to: '', planId: '' });
   const [data, setData] = useState({ rides: [], totals: [] });
   const [loading, setLoading] = useState(true);
+  const pagination = usePagination(data.rides || [], { storageKey: "taxi-ride-insurance-rides", resetOn: [filters] });
 
   useEffect(() => {
     (async () => {
@@ -274,14 +276,14 @@ const InsuredRidesTab = ({ plans }) => {
         ))}
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+      <div className={`bg-white rounded-xl border border-gray-200 shadow-sm ${SCROLL_TABLE_CLASS}`}>
         {loading ? (
           <div className="py-12 flex justify-center"><Loader2 className="animate-spin text-indigo-600" /></div>
         ) : data.rides.length === 0 ? (
           <p className="py-12 text-center text-sm font-bold text-gray-400">No insured rides</p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-[11px] uppercase tracking-wider text-gray-500">
+            <thead className={`bg-gray-50 text-[11px] uppercase tracking-wider text-gray-500 ${STICKY_THEAD_CLASS}`}>
               <tr>
                 <th className="text-left px-4 py-3">Booked</th>
                 <th className="text-left px-4 py-3">Rider</th>
@@ -293,7 +295,7 @@ const InsuredRidesTab = ({ plans }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {data.rides.map((r) => (
+              {pagination.pageItems.map((r) => (
                 <tr key={r.id}>
                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{new Date(r.createdAt).toLocaleString('en-IN')}</td>
                   <td className="px-4 py-3 text-gray-700">{r.rider?.name}<div className="text-xs text-gray-400">{r.rider?.phone}</div></td>
@@ -311,6 +313,7 @@ const InsuredRidesTab = ({ plans }) => {
           </table>
         )}
       </div>
+      {!loading && <TablePagination pagination={pagination} label="insured rides" />}
     </>
   );
 };

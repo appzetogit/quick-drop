@@ -237,9 +237,9 @@ const UserList = () => {
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-visible">
-        <div className="overflow-x-auto overflow-y-visible">
+        <div className="overflow-auto max-h-[70vh] overflow-y-visible">
           <table className="w-full">
-            <thead>
+            <thead className="bg-white sticky top-0 z-10">
               <tr className="bg-gray-50 border-b border-gray-100">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">User</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-900">Gender</th>

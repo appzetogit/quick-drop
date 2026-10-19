@@ -136,9 +136,9 @@ const Deliveries = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto px-5 py-5 lg:px-6">
+        <div className="overflow-auto max-h-[70vh] px-5 py-5 lg:px-6">
           <table className="min-w-full border-separate border-spacing-0">
-            <thead>
+            <thead className="bg-white sticky top-0 z-10">
               <tr className="bg-[#f6f6f8]">
                 {['Request Id', 'Date', 'User Name', 'Driver Name', 'Transport Type', 'Trip Status', 'Payment Option', 'Action'].map((heading, index, array) => (
                   <th

@@ -18,10 +18,12 @@ import {
 
 import { adminService } from '../../services/adminService';
 import { Link } from 'react-router-dom';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 
 const Finance = () => {
   const [settlements, setSettlements] = React.useState([]);
   const [isLoading, setIsLoading] = React.useState(true);
+  const pagination = usePagination(settlements || [], { storageKey: 'taxi-finance-settlements' });
 
   React.useEffect(() => {
     const fetchFinance = async () => {
@@ -164,8 +166,9 @@ const Finance = () => {
             <h3 className="text-lg font-bold text-gray-900">Recent Settlements</h3>
             <button className="text-[11px] font-black text-primary uppercase tracking-widest hover:underline">Full Statement</button>
          </div>
+         <div className={SCROLL_TABLE_CLASS}>
          <table className="w-full text-left">
-            <thead>
+            <thead className={`${STICKY_THEAD_CLASS} bg-white`}>
                <tr className="bg-gray-50/50 text-[10px] font-black text-gray-400 uppercase border-b border-gray-50">
                   <th className="px-6 py-4">Transaction ID</th>
                   <th className="px-6 py-4">Driver</th>
@@ -175,7 +178,7 @@ const Finance = () => {
                </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-               {settlements.map((st, i) => (
+               {pagination.pageItems.map((st, i) => (
                   <tr key={i} className="hover:bg-gray-50/50 transition-all cursor-pointer">
                      <td className="px-6 py-4 text-[12px] font-bold text-gray-900">{st.id}</td>
                      <td className="px-6 py-4">
@@ -200,6 +203,8 @@ const Finance = () => {
                ))}
             </tbody>
          </table>
+         </div>
+         {!isLoading && <TablePagination pagination={pagination} label="settlements" />}
       </div>
     </div>
   );

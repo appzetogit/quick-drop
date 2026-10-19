@@ -219,9 +219,9 @@ const FleetNeededDocuments = () => {
               </div>
 
               <div className="px-5">
-                <div className="overflow-x-auto">
+                <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full text-left">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 sticky top-0 z-10">
                       <tr>
                         <th className="px-3 py-4 text-sm font-bold text-gray-950">Name</th>
                         <th className="px-3 py-4 text-sm font-bold text-gray-950">Document Type</th>

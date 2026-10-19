@@ -22,6 +22,7 @@ import {
   History as HistoryIcon
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 const UserDetails = () => {
   const { id } = useParams();
@@ -33,6 +34,7 @@ const UserDetails = () => {
   
   const [user, setUser] = useState(null);
   const [requests, setRequests] = useState([]);
+  const pagination = usePagination(requests || [], { storageKey: "taxi-user-details-requests", resetOn: [id] });
   const [walletHistory, setWalletHistory] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
@@ -339,9 +341,9 @@ const UserDetails = () => {
             </div>
 
             {/* TABLE */}
-            <div className="overflow-x-auto no-scrollbar">
+            <div className={`${SCROLL_TABLE_CLASS} no-scrollbar`}>
               <table className="w-full text-left">
-                <thead>
+                <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                   <tr className="bg-gray-50/50 text-[11px] font-black text-gray-400 uppercase tracking-widest">
                     <th className="px-5 py-4 first:rounded-l-xl">Request Id</th>
                     <th className="px-5 py-4">Date</th>
@@ -353,7 +355,7 @@ const UserDetails = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {requests.length > 0 ? requests.map((r, i) => (
+                  {requests.length > 0 ? pagination.pageItems.map((r, i) => (
                     <tr key={i} className="group hover:bg-gray-50/30 transition-all">
                       <td className="px-5 py-4 text-[12px] font-bold text-gray-500">#{r.id.slice(-8).toUpperCase()}</td>
                       <td className="px-5 py-4 text-[12px] font-bold text-gray-500">{r.date}</td>
@@ -380,16 +382,8 @@ const UserDetails = () => {
                 </tbody>
               </table>
             </div>
+            <TablePagination pagination={pagination} label="requests" />
 
-            {/* PAGINATION */}
-            <div className="flex items-center justify-between pt-4 border-t border-gray-50">
-              <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">Showing 1 to {requests.length} of {requests.length} entries</p>
-              <div className="flex items-center gap-1">
-                <button className="px-3 py-1.5 rounded-lg text-[11px] font-black text-gray-400 hover:bg-gray-50">Prev</button>
-                <button className="w-8 h-8 rounded-lg bg-indigo-600 text-white text-[11px] font-black">1</button>
-                <button className="px-3 py-1.5 rounded-lg text-[11px] font-black text-gray-400 hover:bg-gray-50">Next</button>
-              </div>
-            </div>
           </div>
         )}
 

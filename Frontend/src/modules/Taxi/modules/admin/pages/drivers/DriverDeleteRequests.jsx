@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, ChevronRight, Search, UserX, CheckCircle2, XCircle } from 'lucide-react';
 import { adminService } from '../../services/adminService';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 
 const DriverDeleteRequests = () => {
   const navigate = useNavigate();
@@ -76,6 +77,7 @@ const DriverDeleteRequests = () => {
     const needle = searchTerm.toLowerCase();
     return name.includes(needle) || mobile.includes(searchTerm) || reason.includes(needle);
   });
+  const pagination = usePagination(filteredDrivers || [], { storageKey: 'taxi-driver-delete-requests', resetOn: [searchTerm] });
 
   const formatDate = (value) => {
     if (!value) return 'N/A';
@@ -138,9 +140,9 @@ const DriverDeleteRequests = () => {
       </div>
 
       <div className="bg-white rounded-[40px] border border-gray-100 shadow-sm overflow-hidden min-h-[420px]">
-        <div className="overflow-x-auto no-scrollbar">
+        <div className={`${SCROLL_TABLE_CLASS} no-scrollbar`}>
           <table className="w-full text-left">
-            <thead>
+            <thead className={`${STICKY_THEAD_CLASS} bg-white`}>
               <tr className="bg-gray-50/50 border-b border-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">
                 <th className="px-8 py-6">Driver</th>
                 <th className="px-6 py-6">Mobile</th>
@@ -160,7 +162,7 @@ const DriverDeleteRequests = () => {
                   </td>
                 </tr>
               ) : (
-                filteredDrivers.map((item) => (
+                pagination.pageItems.map((item) => (
                   <tr key={item._id} className="group hover:bg-rose-50/10 transition-all duration-300">
                     <td className="px-8 py-6">
                       <div className="flex items-center gap-4">
@@ -200,6 +202,7 @@ const DriverDeleteRequests = () => {
             </tbody>
           </table>
         </div>
+        <TablePagination pagination={pagination} label="requests" />
 
         <div className="p-8 bg-gray-50/20 border-t border-gray-50 flex items-center justify-between text-[11px] font-black text-gray-400 uppercase tracking-widest">
           <p>Pending Queue: {filteredDrivers.length} requests</p>

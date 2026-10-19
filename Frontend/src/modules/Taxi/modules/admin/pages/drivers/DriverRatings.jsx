@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ChevronRight, Eye, Loader2, MoreVertical, Search, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 
 const DriverRatings = () => {
   const navigate = useNavigate();
@@ -41,6 +42,7 @@ const DriverRatings = () => {
     d.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     d.mobile.includes(searchTerm)
   );
+  const pagination = usePagination(filtered || [], { storageKey: 'taxi-driver-ratings', resetOn: [searchTerm] });
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 lg:p-8 font-sans text-gray-900">
@@ -76,9 +78,9 @@ const DriverRatings = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className={SCROLL_TABLE_CLASS}>
           <table className="w-full">
-            <thead>
+            <thead className={`${STICKY_THEAD_CLASS} bg-gray-50`}>
               <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500">
                 <th className="px-6 py-3 text-left">Name</th>
                 <th className="px-4 py-3 text-left">Transport Type</th>
@@ -99,7 +101,7 @@ const DriverRatings = () => {
                   <td colSpan="5" className="py-10 text-center text-gray-400">No data found.</td>
                 </tr>
               ) : (
-                filtered.map((driver) => (
+                pagination.pageItems.map((driver) => (
                   <tr key={driver.id} className="hover:bg-gray-50/50">
                     <td className="px-6 py-3">{driver.name}</td>
                     <td className="px-4 py-3 capitalize">{driver.transport}</td>
@@ -137,6 +139,7 @@ const DriverRatings = () => {
             </tbody>
           </table>
         </div>
+        {!isLoading && <TablePagination pagination={pagination} label="drivers" />}
       </div>
     </div>
   );

@@ -28,6 +28,7 @@ import LuxuryIcon from '@/assets/icons/Luxury.png';
 import PremiumIcon from '@/assets/icons/Premium.png';
 import SuvIcon from '@/assets/icons/SUV.png';
 import { useDriverPaths } from './driverPaths';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 
 const mapContainerStyle = { width: '100%', height: '100%' };
 
@@ -317,6 +318,9 @@ const DriverDetails = () => {
   const wallet = profile?.wallet || {};
   const requests = profile?.requests || [];
   const withdrawals = profile?.withdrawals || [];
+  const requestsPagination = usePagination(requests || [], { storageKey: 'taxi-driver-details-requests', resetOn: [id] });
+  const walletPagination = usePagination(walletHistory || [], { storageKey: 'taxi-driver-details-wallet-history', resetOn: [id] });
+  const withdrawalsPagination = usePagination(withdrawals || [], { storageKey: 'taxi-driver-details-withdrawals', resetOn: [id] });
   const normalizedBackRoute = typeof location.state?.from === 'string' ? location.state.from.trim() : '';
   const backRoute = normalizedBackRoute.startsWith('/taxi/admin/')
     ? normalizedBackRoute
@@ -585,9 +589,9 @@ const DriverDetails = () => {
               </div>
 
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className={SCROLL_TABLE_CLASS}>
                   <table className="w-full text-left">
-                    <thead>
+                    <thead className={`${STICKY_THEAD_CLASS} bg-gray-50`}>
                       <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500">
                         <th className="px-6 py-3">Request Id</th>
                         <th className="px-4 py-3">Date</th>
@@ -604,7 +608,7 @@ const DriverDetails = () => {
                           <td colSpan="7" className="px-6 py-12 text-center text-gray-400">No data found.</td>
                         </tr>
                       ) : (
-                        requests.map((item) => (
+                        requestsPagination.pageItems.map((item) => (
                           <tr key={item.request_id}>
                             <td className="px-6 py-3">{item.request_id.slice(-8).toUpperCase()}</td>
                             <td className="px-4 py-3">
@@ -621,6 +625,7 @@ const DriverDetails = () => {
                     </tbody>
                   </table>
                 </div>
+                <TablePagination pagination={requestsPagination} label="requests" />
               </div>
             </div>
           )}
@@ -709,9 +714,9 @@ const DriverDetails = () => {
                 <div className="px-6 py-4 border-b border-gray-100">
                   <h3 className="text-sm font-semibold text-gray-900">Wallet Transactions</h3>
                 </div>
-                <div className="overflow-x-auto">
+                <div className={SCROLL_TABLE_CLASS}>
                   <table className="w-full text-left">
-                    <thead>
+                    <thead className={`${STICKY_THEAD_CLASS} bg-gray-50`}>
                       <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500">
                         <th className="px-6 py-3">Date</th>
                         <th className="px-4 py-3">Type</th>
@@ -725,7 +730,7 @@ const DriverDetails = () => {
                           <td colSpan="4" className="px-6 py-12 text-center text-gray-400">No wallet transactions found.</td>
                         </tr>
                       ) : (
-                        walletHistory.map((item) => (
+                        walletPagination.pageItems.map((item) => (
                           <tr key={item._id}>
                             <td className="px-6 py-3">{item.createdAt ? new Date(item.createdAt).toLocaleString('en-IN') : 'N/A'}</td>
                             <td className="px-4 py-3 capitalize">{String(item.type || '').replace(/_/g, ' ') || 'N/A'}</td>
@@ -739,15 +744,16 @@ const DriverDetails = () => {
                     </tbody>
                   </table>
                 </div>
+                <TablePagination pagination={walletPagination} label="transactions" />
               </div>
             </div>
           )}
 
           {activeTab === 'Withdrawal History' && (
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className={SCROLL_TABLE_CLASS}>
                 <table className="w-full text-left">
-                  <thead>
+                  <thead className={`${STICKY_THEAD_CLASS} bg-gray-50`}>
                     <tr className="bg-gray-50 border-b border-gray-100 text-xs text-gray-500">
                       <th className="px-6 py-3">Date</th>
                       <th className="px-4 py-3">Name</th>
@@ -763,7 +769,7 @@ const DriverDetails = () => {
                         <td colSpan="6" className="px-6 py-12 text-center text-gray-400">No data found.</td>
                       </tr>
                     ) : (
-                      withdrawals.map((item) => (
+                      withdrawalsPagination.pageItems.map((item) => (
                         <tr key={item._id}>
                           <td className="px-6 py-3">{item.date ? new Date(item.date).toLocaleString('en-IN') : 'N/A'}</td>
                           <td className="px-4 py-3">{item.name}</td>
@@ -777,6 +783,7 @@ const DriverDetails = () => {
                   </tbody>
                 </table>
               </div>
+              <TablePagination pagination={withdrawalsPagination} label="withdrawals" />
             </div>
           )}
 

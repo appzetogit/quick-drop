@@ -3,6 +3,7 @@ import { ChevronRight, Loader2, Plus, Search, Ticket } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { adminService } from '../../services/adminService';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 const UserSubscriptions = () => {
   const navigate = useNavigate();
@@ -29,6 +30,7 @@ const UserSubscriptions = () => {
   const filteredPlans = plans.filter((item) =>
     `${item.name || ''} ${item.vehicle_type?.name || ''}`.toLowerCase().includes(searchTerm.toLowerCase()),
   );
+  const pagination = usePagination(filteredPlans || [], { storageKey: "taxi-user-subscription-plans", resetOn: [searchTerm] });
 
   return (
     <div className="space-y-6">
@@ -69,9 +71,10 @@ const UserSubscriptions = () => {
         ) : filteredPlans.length === 0 ? (
           <div className="py-16 text-center text-sm font-semibold text-slate-400">No customer subscription plans found.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead>
+              <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                 <tr className="border-b border-slate-100 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
                   <th className="px-4 py-3">Plan</th>
                   <th className="px-4 py-3">Vehicle Type</th>
@@ -81,7 +84,7 @@ const UserSubscriptions = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredPlans.map((item) => (
+                {pagination.pageItems.map((item) => (
                   <tr key={item._id || item.id} className="border-b border-slate-50">
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-3">
@@ -105,6 +108,8 @@ const UserSubscriptions = () => {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="plans" />
+          </>
         )}
       </div>
     </div>

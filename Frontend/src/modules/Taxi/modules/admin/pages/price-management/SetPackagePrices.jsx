@@ -3,6 +3,7 @@ import { ChevronRight, Edit2, Loader2, MapPin, Plus, Trash2 } from 'lucide-react
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { adminService } from '../../services/adminService';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 const badgeClass = (value) =>
   value === 'available'
@@ -53,6 +54,7 @@ const SetPackagePrices = () => {
         .includes(query)
     );
   }, [items, searchTerm]);
+  const pagination = usePagination(filteredItems || [], { storageKey: "taxi-package-prices", resetOn: [searchTerm] });
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this package pricing?')) return;
@@ -99,9 +101,9 @@ const SetPackagePrices = () => {
           </button>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className={SCROLL_TABLE_CLASS}>
           <table className="w-full min-w-[880px] text-left">
-            <thead className="bg-[#FBFCFF]">
+            <thead className={`bg-[#FBFCFF] ${STICKY_THEAD_CLASS}`}>
               <tr className="border-b border-gray-100 text-[11px] text-slate-800 uppercase font-black tracking-[0.1em]">
                 <th className="px-6 py-4">Package</th>
                 <th className="px-6 py-4">Destination</th>
@@ -127,7 +129,7 @@ const SetPackagePrices = () => {
                   </td>
                 </tr>
               ) : (
-                filteredItems.map((item) => (
+                pagination.pageItems.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="px-6 py-5">
                       <p className="text-sm font-bold text-slate-900">{item.package_type_name || 'Untitled package'}</p>
@@ -176,6 +178,7 @@ const SetPackagePrices = () => {
             </tbody>
           </table>
         </div>
+        {!loading && <TablePagination pagination={pagination} label="package prices" />}
       </div>
     </div>
   );

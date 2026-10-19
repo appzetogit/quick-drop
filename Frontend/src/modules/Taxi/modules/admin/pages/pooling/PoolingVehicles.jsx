@@ -16,6 +16,7 @@ import {
 import { adminService } from '../../services/adminService';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 
 const PoolingVehicles = () => {
   const navigate = useNavigate();
@@ -61,6 +62,7 @@ const PoolingVehicles = () => {
       }),
     [searchTerm, vehicles],
   );
+  const pagination = usePagination(filteredVehicles || [], { storageKey: 'taxi-pooling-vehicles', resetOn: [searchTerm] });
 
   const activeCount = useMemo(
     () => vehicles.filter((vehicle) => vehicle.status === 'active').length,
@@ -186,9 +188,10 @@ const PoolingVehicles = () => {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className={SCROLL_TABLE_CLASS}>
               <table className="min-w-full divide-y divide-slate-100">
-                <thead className="bg-white">
+                <thead className={`${STICKY_THEAD_CLASS} bg-white`}>
                   <tr className="text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
                     <th className="px-5 py-4">Vehicle</th>
                     <th className="px-5 py-4">Type</th>
@@ -200,7 +203,7 @@ const PoolingVehicles = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredVehicles.map((vehicle) => (
+                  {pagination.pageItems.map((vehicle) => (
                     <tr key={vehicle._id} className="transition hover:bg-slate-50/70">
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-4">
@@ -290,6 +293,8 @@ const PoolingVehicles = () => {
                 </tbody>
               </table>
             </div>
+            <TablePagination pagination={pagination} label="vehicles" />
+            </>
           )}
         </div>
       )}

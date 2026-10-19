@@ -128,9 +128,9 @@ const WithdrawalRequestDrivers = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh]">
           <table className="w-full text-left">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr className="text-xs font-semibold text-gray-500">
                 <th className="px-6 py-4">Date</th>
                 <th className="px-6 py-4">Name</th>

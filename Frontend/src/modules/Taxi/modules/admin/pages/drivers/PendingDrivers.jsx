@@ -331,9 +331,9 @@ const PendingDrivers = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-visible">
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[70vh]">
           <table className="w-full text-left border-collapse">
-            <thead>
+            <thead className="bg-white sticky top-0 z-10">
               <tr className="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500">
                 <th className="px-6 py-4">Name</th>
                 <th className="px-4 py-4">Service Location</th>

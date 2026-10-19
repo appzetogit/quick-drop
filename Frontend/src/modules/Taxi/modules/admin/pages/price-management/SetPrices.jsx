@@ -35,6 +35,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE_URL } from '../../../../shared/api/runtimeConfig';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTaxiTransportTypes } from '../../../../shared/hooks/useTaxiTransportTypes';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 const inputClass = "w-full border border-gray-200 rounded-md px-4 py-3 text-sm text-gray-800 bg-white focus:border-indigo-500 transition-all outline-none";
 const labelClass = "block text-[13px] font-semibold text-gray-700 mb-2.5";
@@ -357,6 +358,7 @@ const SetPrices = ({ mode }) => {
       const q = searchTerm.toLowerCase();
       return (p.zone_name || '').toLowerCase().includes(q) || (p.vehicle_type_name || '').toLowerCase().includes(q);
    });
+   const pagination = usePagination(filteredPrizes || [], { storageKey: "taxi-set-prices", resetOn: [searchTerm] });
 
    return (
       <div className="min-h-screen bg-[#F8F9FD] flex flex-col font-sans">
@@ -401,9 +403,9 @@ const SetPrices = ({ mode }) => {
                         </div>
                      </div>
 
-                     <div className="overflow-x-auto">
+                     <div className={SCROLL_TABLE_CLASS}>
                         <table className="w-full text-left">
-                           <thead className="bg-[#FBFCFF]">
+                           <thead className={`bg-[#FBFCFF] ${STICKY_THEAD_CLASS}`}>
                               <tr className="border-b border-gray-100 text-[11px] text-slate-800 uppercase font-black tracking-[0.1em]">
                                  <th className="px-8 py-5">Zone</th>
                                  <th className="px-8 py-5">Transport Type</th>
@@ -418,7 +420,7 @@ const SetPrices = ({ mode }) => {
                               ) : filteredPrizes.length === 0 ? (
                                  <tr><td colSpan="5" className="py-24 text-center text-slate-400 italic">No price rules configured.</td></tr>
                               ) : (
-                                 filteredPrizes.map((prize) => (
+                                 pagination.pageItems.map((prize) => (
                                     <tr key={prize.id || prize._id} className="hover:bg-slate-50/50 transition-colors">
                                        <td className="px-8 py-6 text-sm font-semibold text-slate-700">{prize.zone_name || 'India'}</td>
                                        <td className="px-8 py-6 text-sm text-slate-600 font-medium">
@@ -469,6 +471,7 @@ const SetPrices = ({ mode }) => {
                            </tbody>
                         </table>
                      </div>
+                     {!loading && <TablePagination pagination={pagination} label="price rules" />}
                   </div>
                </motion.div>
             ) : (

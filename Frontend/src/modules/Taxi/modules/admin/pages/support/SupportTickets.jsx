@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Filter, Send } from 'lucide-react';
 import { adminSupportService } from '../../../shared/services/supportTicketService';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 const statusBadgeClass = (status) => {
   if (status === 'closed') return 'bg-emerald-50 text-emerald-600';
@@ -25,6 +26,7 @@ const SupportTickets = () => {
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
+  const pagination = usePagination(tickets || [], { storageKey: "taxi-support-tickets", resetOn: [statusFilter, userTypeFilter, search] });
 
   const loadData = async () => {
     setLoading(true);
@@ -190,9 +192,9 @@ const SupportTickets = () => {
             />
           </div>
 
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead>
+              <thead className={`bg-gray-50 ${STICKY_THEAD_CLASS}`}>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Ticket ID</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Title</th>
@@ -215,7 +217,7 @@ const SupportTickets = () => {
                     </td>
                   </tr>
                 ) : (
-                  tickets.map((ticket) => (
+                  pagination.pageItems.map((ticket) => (
                     <tr key={ticket.id} className="border-b border-gray-50 last:border-b-0">
                       <td className="px-4 py-3 text-xs font-semibold text-gray-700">{ticket.ticketCode}</td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{ticket.title}</td>
@@ -243,6 +245,7 @@ const SupportTickets = () => {
               </tbody>
             </table>
           </div>
+          {!loading && <TablePagination pagination={pagination} label="tickets" />}
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white p-5">

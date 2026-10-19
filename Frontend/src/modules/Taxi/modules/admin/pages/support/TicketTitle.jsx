@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Edit2, Plus, Trash2 } from 'lucide-react';
 import { adminSupportService } from '../../../shared/services/supportTicketService';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 const USER_TYPES = ['user', 'driver', 'owner'];
 
@@ -50,6 +51,7 @@ const TicketTitle = () => {
       ),
     );
   }, [rows, search]);
+  const pagination = usePagination(filteredRows || [], { storageKey: "taxi-support-ticket-titles", resetOn: [search] });
 
   const submitForm = async (event) => {
     event.preventDefault();
@@ -215,9 +217,9 @@ const TicketTitle = () => {
             />
           </div>
 
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead>
+              <thead className={`bg-gray-50 ${STICKY_THEAD_CLASS}`}>
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Title</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">User Type</th>
@@ -239,7 +241,7 @@ const TicketTitle = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredRows.map((row) => (
+                  pagination.pageItems.map((row) => (
                     <tr key={row.id} className="border-b border-gray-50 last:border-b-0">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{row.title}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{row.userType}</td>
@@ -280,6 +282,7 @@ const TicketTitle = () => {
               </tbody>
             </table>
           </div>
+          {!loading && <TablePagination pagination={pagination} label="titles" />}
         </div>
       </div>
     </div>

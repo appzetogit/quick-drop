@@ -23,6 +23,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
 import countryMetadata from '../../constants/countries.json';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 import { describeApiError } from '../../../../shared/utils/apiError';
 const DEFAULT_TIMEZONES = [
@@ -131,6 +132,7 @@ const ServiceLocation = ({ mode }) => {
       return [l.name, l.service_location_name, countryName].some(v => String(v || '').toLowerCase().includes(q));
     });
   }, [locations, searchTerm]);
+  const pagination = usePagination(filteredLocations || [], { storageKey: "taxi-service-locations", resetOn: [searchTerm] });
 
   const handleSave = async (e) => {
     if (e) e.preventDefault();
@@ -227,7 +229,7 @@ const ServiceLocation = ({ mode }) => {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className={SCROLL_TABLE_CLASS}>
               {loading ? (
                  <div className="flex flex-col items-center justify-center py-24 gap-3">
                     <Loader2 className="animate-spin text-indigo-600" size={32} />
@@ -235,7 +237,7 @@ const ServiceLocation = ({ mode }) => {
                  </div>
               ) : filteredLocations.length > 0 ? (
                 <table className="w-full text-left">
-                  <thead>
+                  <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                     <tr className="bg-gray-50/50 border-b border-gray-100 text-[10px] uppercase font-bold text-gray-400 tracking-widest">
                       <th className="px-6 py-4">Sector Name</th>
                       <th className="px-6 py-4">Jurisdiction</th>
@@ -245,7 +247,7 @@ const ServiceLocation = ({ mode }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {filteredLocations.map(l => (
+                    {pagination.pageItems.map(l => (
                       <tr key={l._id || l.id} className="hover:bg-gray-50/20 transition-colors group">
                         <td className="px-6 py-4">
                            <div className="flex items-center gap-3">
@@ -285,6 +287,7 @@ const ServiceLocation = ({ mode }) => {
                 </div>
               )}
             </div>
+            {!loading && <TablePagination pagination={pagination} label="service locations" />}
           </div>
         </div>
       </div>

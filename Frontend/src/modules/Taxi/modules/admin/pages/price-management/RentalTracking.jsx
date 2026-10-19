@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import AdminPageHeader from '../../components/ui/AdminPageHeader';
 import { socketService } from '../../../../shared/api/socket';
 import { adminService } from '../../services/adminService';
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from '@food/components/admin/TablePagination';
 
 const statusTone = {
   active: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -207,6 +208,7 @@ const RentalTracking = () => {
         .some((value) => String(value).toLowerCase().includes(query)),
     );
   }, [items, searchTerm]);
+  const pagination = usePagination(filteredItems || [], { storageKey: 'taxi-rental-tracking', resetOn: [searchTerm] });
 
   return (
     <div className="min-h-screen bg-[#f6f7fb] p-6 lg:p-8">
@@ -273,9 +275,10 @@ const RentalTracking = () => {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            <div className={SCROLL_TABLE_CLASS}>
               <table className="w-full min-w-[1180px] border-collapse">
-                <thead>
+                <thead className={`${STICKY_THEAD_CLASS} bg-white`}>
                   <tr className="border-b border-slate-100 text-left">
                     <th className="px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-400">Booking</th>
                     <th className="px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-400">Customer</th>
@@ -288,7 +291,7 @@ const RentalTracking = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map((item) => {
+                  {pagination.pageItems.map((item) => {
                     const tracking = item?.rentalTracking || {};
                     const activeAlerts = Array.isArray(tracking.alerts) ? tracking.alerts : [];
 
@@ -350,6 +353,8 @@ const RentalTracking = () => {
                 </tbody>
               </table>
             </div>
+            <TablePagination pagination={pagination} label="rentals" />
+            </>
           )}
         </div>
       </div>
