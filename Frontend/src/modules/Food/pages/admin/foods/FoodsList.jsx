@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
 import { useLocation, useSearchParams } from "react-router-dom"
-import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown } from "lucide-react"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 import { adminAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
 import { Switch } from "@food/components/ui/switch"
@@ -153,8 +154,6 @@ export default function FoodsList() {
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false)
   const [selectedImageFile, setSelectedImageFile] = useState(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState("")
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(20)
   const [imageVersion, setImageVersion] = useState(Date.now())
 
   const getItemCreatedMs = (item = {}) => {
@@ -347,25 +346,12 @@ export default function FoodsList() {
     return result
   }, [foods, searchQuery, selectedRestaurant])
 
-  const totalPages = useMemo(() => {
-    if (filteredFoods.length === 0) return 1
-    return Math.ceil(filteredFoods.length / pageSize)
-  }, [filteredFoods.length, pageSize])
-
-  const paginatedFoods = useMemo(() => {
-    const start = (currentPage - 1) * pageSize
-    return filteredFoods.slice(start, start + pageSize)
-  }, [filteredFoods, currentPage, pageSize])
-
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [searchQuery, selectedRestaurant, pageSize])
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages)
-    }
-  }, [currentPage, totalPages])
+  // Shared admin pagination: 5 per page by default, remembered per list.
+  const pagination = usePagination(filteredFoods, {
+    storageKey: "foods",
+    resetOn: [searchQuery, selectedRestaurant],
+  })
+  const paginatedFoods = pagination.pageItems
 
   const restaurantOptions = useMemo(() => {
     return restaurantsForFilter
@@ -815,9 +801,9 @@ export default function FoodsList() {
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className={SCROLL_TABLE_CLASS}>
           <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
               <tr>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   SL
@@ -865,7 +851,7 @@ export default function FoodsList() {
                     className="hover:bg-slate-50 transition-colors"
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-slate-700">{(currentPage - 1) * pageSize + index + 1}</span>
+                      <span className="text-sm font-medium text-slate-700">{pagination.rowNumber(index)}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center">
@@ -933,56 +919,7 @@ export default function FoodsList() {
           </table>
         </div>
 
-        {!loading && filteredFoods.length > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50">
-            <div className="text-sm text-slate-600">
-              Showing{" "}
-              <span className="font-semibold text-slate-800">{(currentPage - 1) * pageSize + 1}</span>
-              {" "}to{" "}
-              <span className="font-semibold text-slate-800">
-                {Math.min(currentPage * pageSize, filteredFoods.length)}
-              </span>
-              {" "}of{" "}
-              <span className="font-semibold text-slate-800">{filteredFoods.length}</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <select
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                className="px-2.5 py-1.5 text-sm rounded-md border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400"
-              >
-                <option value={10}>10 / page</option>
-                <option value={20}>20 / page</option>
-                <option value={50}>50 / page</option>
-              </select>
-
-              <button
-                type="button"
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                Prev
-              </button>
-
-              <span className="px-3 py-1.5 text-sm font-medium text-slate-700">
-                {currentPage} / {totalPages}
-              </span>
-
-              <button
-                type="button"
-                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                disabled={currentPage >= totalPages}
-                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
+        {!loading && <TablePagination pagination={pagination} label="dishes" />}
       </div>
 
       <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>

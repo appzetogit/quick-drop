@@ -14,6 +14,7 @@ import locationIcon from "@food/assets/Dashboard-icons/image1.png"
 import restaurantIcon from "@food/assets/Dashboard-icons/image2.png"
 import inactiveIcon from "@food/assets/Dashboard-icons/image3.png"
 import { PLACEHOLDER_40, PLACEHOLDER_128 } from "@food/utils/imagePlaceholder"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -443,6 +444,12 @@ export default function RestaurantsList() {
 
     return result
   }, [restaurants, searchQuery, filters, sortConfig])
+
+  // Paged (5 by default) so the table's horizontal scrollbar stays on screen.
+  const pagination = usePagination(filteredRestaurants, {
+    storageKey: "restaurants",
+    resetOn: [searchQuery, filters, sortConfig],
+  })
 
   const handleSort = (key) => {
     let direction = "asc"
@@ -1436,8 +1443,8 @@ export default function RestaurantsList() {
             </div>
           </div>
 
-          {/* Table */}
-          <div className="overflow-x-auto">
+          {/* Table: capped height + sticky header keep the horizontal scrollbar on screen */}
+          <div className={SCROLL_TABLE_CLASS}>
             {loading ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -1457,7 +1464,7 @@ export default function RestaurantsList() {
               </div>
             ) : (
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     <th
                       className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors"
@@ -1527,13 +1534,13 @@ export default function RestaurantsList() {
                       </td>
                     </tr>
                   ) : (
-                    filteredRestaurants.map((restaurant, index) => (
+                    pagination.pageItems.map((restaurant, index) => (
                       <tr
                         key={restaurant.id}
                         className="hover:bg-slate-50 transition-colors"
                       >
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-medium text-slate-700">{index + 1}</span>
+                          <span className="text-sm font-medium text-slate-700">{pagination.rowNumber(index)}</span>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -1677,6 +1684,7 @@ export default function RestaurantsList() {
               </table>
             )}
           </div>
+          {!loading && !error && <TablePagination pagination={pagination} label="restaurants" />}
         </div>
       </div>
 
