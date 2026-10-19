@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { BarChart3, Boxes, Building2, ChevronLeft, ChevronRight, Clock, Compass, Copy, Download, FileText, Gift, Landmark, LifeBuoy, Map, Package, Star, Store, Tag, UserRound, Utensils, Wallet } from "lucide-react"
+import { BarChart3, Boxes, Building2, ChevronLeft, ChevronRight, ClipboardList, Clock, Compass, Copy, Download, FileText, Gift, Landmark, LifeBuoy, Map, Package, Star, Store, Tag, UserRound, Utensils, Wallet } from "lucide-react"
 
 /**
  * Desktop sidebar for the restaurant dashboard.
@@ -20,6 +20,7 @@ const getNavSections = (base) => [
       { label: "Orders", path: `${base}`, icon: FileText, exact: true },
       { label: "All orders", path: `${base}/orders/all`, icon: Clock },
       { label: "Inventory", path: `${base}/inventory`, icon: Package },
+      { label: "Menu overview", path: `${base}/menu-overview`, icon: ClipboardList },
       // Stores and medical stores count stock per size; restaurants do not.
       ...(isQcStore() ? [{ label: "Stock", path: `${base}/stock`, icon: Boxes }] : []),
       { label: "Menu categories", path: `${base}/menu-categories`, icon: Utensils },
