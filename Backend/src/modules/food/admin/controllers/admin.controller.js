@@ -601,6 +601,12 @@ export async function updateRestaurantById(req, res, next) {
         if (!updated) {
             return res.status(404).json({ success: false, message: 'Restaurant not found' });
         }
+        // Listing order (display order), name and details are cached for the
+        // customer app; clear so the change shows on the next refresh.
+        try {
+            const { invalidateMenuCaches } = await import('../../../../middleware/cache.js');
+            await invalidateMenuCaches();
+        } catch { /* cache refills within its TTL anyway */ }
         res.status(200).json({ success: true, message: 'Restaurant updated successfully', data: { restaurant: updated } });
     } catch (error) {
         next(error);
