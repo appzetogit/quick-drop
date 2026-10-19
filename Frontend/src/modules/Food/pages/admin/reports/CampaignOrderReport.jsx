@@ -22,6 +22,7 @@ import { emptyCampaignOrderReports, emptyCampaignOrderStats } from "@food/utils/
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { exportReportsToCSV, exportReportsToExcel, exportReportsToPDF, exportReportsToJSON } from "@food/components/admin/reports/reportsExportUtils"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 export default function CampaignOrderReport() {
   const [filters, setFilters] = useState({
@@ -61,6 +62,7 @@ export default function CampaignOrderReport() {
 
     return result
   }, [orders, searchQuery, filters])
+  const pagination = usePagination(filteredOrders, { storageKey: "campaign-order-report", resetOn: [searchQuery, filters] })
 
   const handleExport = (format) => {
     if (filteredOrders.length === 0) {
@@ -354,9 +356,9 @@ export default function CampaignOrderReport() {
           </div>
 
           {/* Only this area scrolls */}
-          <div className="overflow-y-auto overflow-x-auto w-full flex-1">
+          <div className={`${SCROLL_TABLE_CLASS} w-full flex-1`}>
             <table className="w-full" style={{ minWidth: "1000px" }}>
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap">
                     SI
@@ -385,7 +387,7 @@ export default function CampaignOrderReport() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
-                {filteredOrders.map((order) => (
+                {pagination.pageItems.map((order) => (
                   <tr key={order.sl} className="hover:bg-slate-50 transition-colors">
                     <td className="px-3 py-2 whitespace-nowrap">
                       <span className="text-xs font-medium text-slate-700">{order.sl}</span>
@@ -432,6 +434,7 @@ export default function CampaignOrderReport() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="orders" />
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import { adminAPI } from "@food/api"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { exportRestaurantsToPDF } from "@food/components/admin/restaurants/restaurantsExportUtils"
 import { PLACEHOLDER_40 } from "@food/utils/imagePlaceholder"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -157,6 +158,8 @@ export default function DiningList() {
         return result
     }, [restaurants, searchQuery, selectedCategory])
 
+    const pagination = usePagination(filteredRestaurants, { storageKey: "dining-list", resetOn: [searchQuery, selectedCategory] })
+
     const formatRestaurantId = (id) => {
         if (!id) return "REST000000"
         return `REST${String(id).slice(-6).toUpperCase()}`
@@ -307,9 +310,9 @@ export default function DiningList() {
                                 })}
                             </div>
 
-                            <div className="overflow-x-auto">
+                            <div className={SCROLL_TABLE_CLASS}>
                                 <table className="w-full">
-                                    <thead className="bg-slate-50 border-b border-slate-200">
+                                    <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                                         <tr>
                                             <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Restaurant</th>
                                             <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Owner</th>
@@ -337,7 +340,7 @@ export default function DiningList() {
                                                 </td>
                                             </tr>
                                         ) : (
-                                            filteredRestaurants.map((restaurant, index) => (
+                                            pagination.pageItems.map((restaurant, index) => (
                                                 <tr key={restaurant.id} className="hover:bg-slate-50 transition-colors">
                                                     <td className="px-6 py-4">
                                                         <div className="flex items-center gap-3">
@@ -414,6 +417,7 @@ export default function DiningList() {
                                     </tbody>
                                 </table>
                             </div>
+                            <TablePagination pagination={pagination} label="restaurants" />
                         </>
                     )}
                 </div>

@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { adminAPI } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
 import { toast } from "sonner"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -55,6 +56,8 @@ export default function RestaurantCommission() {
       commission.restaurant?.name?.toLowerCase().includes(query)
     )
   }, [commissions, searchQuery])
+
+  const pagination = usePagination(filteredCommissions, { storageKey: "restaurant-commissions", resetOn: [searchQuery] })
 
   const filteredRestaurants = useMemo(() => {
     if (!searchQuery.trim()) {
@@ -381,9 +384,9 @@ export default function RestaurantCommission() {
               <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={SCROLL_TABLE_CLASS}>
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     {visibleColumns.si && (
                       <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
@@ -426,7 +429,7 @@ export default function RestaurantCommission() {
                       </td>
                     </tr>
                   ) : (
-                    filteredCommissions.map((commission) => (
+                    pagination.pageItems.map((commission) => (
                       <tr key={commission._id} className="hover:bg-slate-50 transition-colors">
                         {visibleColumns.si && (
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -499,6 +502,7 @@ export default function RestaurantCommission() {
               </table>
             </div>
           )}
+          {!loading && <TablePagination pagination={pagination} label="commissions" />}
         </div>
       </div>
 

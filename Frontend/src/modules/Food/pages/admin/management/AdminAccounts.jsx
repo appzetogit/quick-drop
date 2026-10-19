@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { adminAccountsAPI } from "@food/api"
 import { refreshAdminAccess } from "@food/utils/adminAccess"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 /**
  * Admin accounts, for every panel.
@@ -658,6 +659,7 @@ export default function AdminAccounts() {
       return true
     })
   }, [rows, q, panel, status])
+  const pagination = usePagination(shown, { storageKey: "admin-accounts", resetOn: [q, panel, status] })
 
   const closeForm = () => navigate(listPath)
   const afterSave = () => {
@@ -788,9 +790,9 @@ export default function AdminAccounts() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={SCROLL_TABLE_CLASS}>
               <table className="w-full min-w-[760px] text-sm">
-                <thead>
+                <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                   <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wider text-neutral-500">
                     <th className="px-4 py-3 font-medium">Admin</th>
                     <th className="px-4 py-3 font-medium">Access</th>
@@ -801,7 +803,7 @@ export default function AdminAccounts() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
-                  {shown.map((r) => {
+                  {pagination.pageItems.map((r) => {
                     const sections = new Set(r.permissions.map((p) => p.split(".")[0])).size
                     const editable = canManage && (r.role !== "owner" || meta?.me?.isOwner)
                     return (
@@ -857,6 +859,7 @@ export default function AdminAccounts() {
               </table>
             </div>
           )}
+          <TablePagination pagination={pagination} label="admins" />
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react"
 import { Search, Download, ChevronDown, Mail, Calendar, Settings } from "lucide-react"
 import { emptySubscribedEmails } from "@food/utils/adminFallbackData"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 export default function SubscribedMailList() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -21,6 +22,8 @@ export default function SubscribedMailList() {
       email.email.toLowerCase().includes(query)
     )
   }, [emails, searchQuery])
+
+  const pagination = usePagination(filteredEmails, { storageKey: "subscribed-mail-list", resetOn: [searchQuery] })
 
   const handleFilterChange = (field, value) => {
     setFilters(prev => ({ ...prev, [field]: value }))
@@ -127,9 +130,9 @@ export default function SubscribedMailList() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">SI</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Email</th>
@@ -137,7 +140,7 @@ export default function SubscribedMailList() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
-                {filteredEmails.map((email) => (
+                {pagination.pageItems.map((email) => (
                   <tr key={email.sl} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-medium text-slate-700">{email.sl}</span>
@@ -153,6 +156,7 @@ export default function SubscribedMailList() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="emails" />
         </div>
       </div>
     </div>

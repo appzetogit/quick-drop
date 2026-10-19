@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/componen
 import { exportTransactionReportToCSV, exportTransactionReportToExcel, exportTransactionReportToPDF, exportTransactionReportToJSON } from "@food/components/admin/reports/reportsExportUtils"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 // Import icons from Transaction-report-icons
 import completedIcon from "@food/assets/Transaction-report-icons/trx1.png"
@@ -130,6 +131,8 @@ export default function TransactionReport() {
   const filteredTransactions = useMemo(() => {
     return transactions // Backend already filters, so just return transactions
   }, [transactions])
+
+  const pagination = usePagination(filteredTransactions, { storageKey: "transaction-report", resetOn: [searchQuery, filters] })
 
   const handleExport = (format) => {
     if (filteredTransactions.length === 0) {
@@ -430,9 +433,9 @@ export default function TransactionReport() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto scrollbar-hide">
+          <div className={`${SCROLL_TABLE_CLASS} scrollbar-hide`}>
             <table className="w-full" style={{ tableLayout: 'fixed', width: '100%' }}>
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '3%' }}>SI</th>
                   <th className="px-1.5 py-1 text-left text-[8px] font-bold text-slate-700 uppercase tracking-wider" style={{ width: '7%' }}>Order Id</th>
@@ -458,13 +461,13 @@ export default function TransactionReport() {
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map((transaction, index) => (
+                  pagination.pageItems.map((transaction, index) => (
                     <tr
                       key={transaction.id}
                       className="hover:bg-slate-50 transition-colors"
                     >
                       <td className="px-1.5 py-1">
-                        <span className="text-[10px] font-medium text-slate-700">{index + 1}</span>
+                        <span className="text-[10px] font-medium text-slate-700">{pagination.rowNumber(index)}</span>
                       </td>
                       <td className="px-1.5 py-1">
                         <span className="text-[10px] text-slate-700">{transaction.orderId}</span>
@@ -510,6 +513,7 @@ export default function TransactionReport() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="transactions" />
         </div>
       </div>
 

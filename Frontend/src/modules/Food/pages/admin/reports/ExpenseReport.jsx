@@ -4,6 +4,7 @@ import { emptyExpenseReports } from "@food/utils/adminFallbackData"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { exportReportsToCSV, exportReportsToExcel, exportReportsToPDF, exportReportsToJSON } from "@food/components/admin/reports/reportsExportUtils"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 export default function ExpenseReport() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -48,6 +49,8 @@ export default function ExpenseReport() {
 
     return result
   }, [expenses, searchQuery, filters])
+
+  const pagination = usePagination(filteredExpenses, { storageKey: "expense-report", resetOn: [searchQuery, filters] })
 
   const totalExpenses = filteredExpenses.length
 
@@ -277,9 +280,9 @@ export default function ExpenseReport() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                     <div className="flex items-center gap-1">
@@ -330,7 +333,7 @@ export default function ExpenseReport() {
                     </td>
                   </tr>
                 ) : (
-                  filteredExpenses.map((expense) => (
+                  pagination.pageItems.map((expense) => (
                     <tr key={expense.sl} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm font-medium text-slate-700">{expense.sl}</span>
@@ -364,6 +367,7 @@ export default function ExpenseReport() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="expenses" />
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { Search } from "lucide-react"
 import { adminAPI } from "@food/api"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -282,6 +283,8 @@ export default function Coupons() {
     )
   }, [offers, searchQuery])
 
+  const pagination = usePagination(filteredOffers, { storageKey: "coupons", resetOn: [searchQuery] })
+
   return (
     <div className="p-4 lg:p-6 bg-slate-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
@@ -544,9 +547,9 @@ export default function Coupons() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={SCROLL_TABLE_CLASS}>
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap">SI</th>
                     <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider whitespace-nowrap">Restaurant</th>
@@ -564,7 +567,7 @@ export default function Coupons() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-100">
-                  {filteredOffers.map((offer) => (
+                  {pagination.pageItems.map((offer) => (
                     <tr key={`${offer.offerId}-${offer.dishId}`} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm font-medium text-slate-700">{offer.sl}</span>
@@ -686,6 +689,7 @@ export default function Coupons() {
               </table>
             </div>
           )}
+          {!loading && !error && <TablePagination pagination={pagination} label="offers" />}
         </div>
       </div>
     </div>

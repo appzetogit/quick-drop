@@ -6,6 +6,7 @@ import { exportCustomersToCSV, exportCustomersToExcel, exportCustomersToPDF } fr
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -82,6 +83,8 @@ export default function Customers() {
 
     return result
   }, [customers, searchQuery, filters])
+
+  const pagination = usePagination(filteredCustomers, { storageKey: "customers", resetOn: [searchQuery, filters] })
 
   const handleFilterChange = (field, value) => {
     setFilters(prev => ({ ...prev, [field]: value }))
@@ -422,9 +425,9 @@ export default function Customers() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full min-w-[980px]">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Sl</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Name</th>
@@ -450,10 +453,10 @@ export default function Customers() {
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map((customer, index) => (
+                  pagination.pageItems.map((customer, index) => (
                     <tr key={customer.id || customer.sl} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-slate-700">{index + 1}</span>
+                        <span className="text-sm font-medium text-slate-700">{pagination.rowNumber(index)}</span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -523,6 +526,7 @@ export default function Customers() {
               </tbody>
             </table>
           </div>
+          {!loading && <TablePagination pagination={pagination} label="customers" />}
         </div>
       </div>
 

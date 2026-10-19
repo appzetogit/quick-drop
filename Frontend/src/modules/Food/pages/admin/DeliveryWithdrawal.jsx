@@ -9,6 +9,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@food/components/ui/dialog"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -78,6 +79,7 @@ export default function DeliveryWithdrawal() {
         r.amount?.toString().includes(q)
     )
   }, [requests, searchQuery])
+  const pagination = usePagination(filteredRequests, { storageKey: "delivery-withdrawals", resetOn: [activeTab, searchQuery] })
 
   const getStatusBadge = (status) => {
     if (status === "Approved" || status === "Processed") return "bg-green-100 text-green-700"
@@ -215,9 +217,9 @@ export default function DeliveryWithdrawal() {
               <p className="text-slate-600">Loading withdrawal requests…</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={SCROLL_TABLE_CLASS}>
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">#</th>
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Amount</th>
@@ -242,9 +244,9 @@ export default function DeliveryWithdrawal() {
                       </td>
                     </tr>
                   ) : (
-                    filteredRequests.map((req, index) => (
+                    pagination.pageItems.map((req, index) => (
                       <tr key={req.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-700">{index + 1}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-700">{pagination.rowNumber(index)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-700">{formatCurrency(req.amount)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-700">{req.deliveryName || "N/A"}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-700">{req.deliveryIdString || "N/A"}</td>
@@ -299,6 +301,7 @@ export default function DeliveryWithdrawal() {
               </table>
             </div>
           )}
+          {!loading && <TablePagination pagination={pagination} label="requests" />}
         </div>
 
         {/* View details dialog */}

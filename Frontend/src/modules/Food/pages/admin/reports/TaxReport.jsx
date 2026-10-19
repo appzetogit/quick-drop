@@ -3,6 +3,7 @@ import { Download, ChevronDown, FileText, DollarSign, Settings, FileSpreadsheet,
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
 import { exportReportsToCSV, exportReportsToExcel, exportReportsToPDF, exportReportsToJSON } from "@food/components/admin/reports/reportsExportUtils"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 
@@ -27,6 +28,8 @@ export default function TaxReport() {
   const [selectedReport, setSelectedReport] = useState(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [reportDetail, setReportDetail] = useState(null)
+
+  const pagination = usePagination(reports, { storageKey: "tax-report", resetOn: [filters] })
 
   const fetchTaxReport = async () => {
     try {
@@ -343,9 +346,9 @@ export default function TaxReport() {
               </div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={SCROLL_TABLE_CLASS}>
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                       SI
@@ -365,7 +368,7 @@ export default function TaxReport() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-100">
-                  {reports.map((report) => (
+                  {pagination.pageItems.map((report) => (
                     <tr key={report.sl} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className="text-sm font-medium text-slate-700">{report.sl}</span>
@@ -393,6 +396,7 @@ export default function TaxReport() {
               </table>
             </div>
           )}
+          <TablePagination pagination={pagination} label="restaurants" />
         </div>
       </div>
 

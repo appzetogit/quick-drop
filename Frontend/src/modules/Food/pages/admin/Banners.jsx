@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react"
 import { Search, Plus, Edit, Trash2, Upload, Image as ImageIcon, Info, Loader2 } from "lucide-react"
 import api from "@food/api"
 import { getModuleToken } from "@food/utils/auth"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 export default function Banners() {
   const [activeLanguage, setActiveLanguage] = useState("default")
@@ -155,6 +156,8 @@ export default function Banners() {
 
     return result
   }, [banners, searchQuery, bannerType, activeModule])
+
+  const pagination = usePagination(filteredBanners, { storageKey: "banners", resetOn: [searchQuery, bannerType, activeModule] })
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -563,7 +566,7 @@ export default function Banners() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
@@ -578,7 +581,7 @@ export default function Banners() {
               </div>
             ) : (
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">SI</th>
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Banner Info</th>
@@ -593,12 +596,12 @@ export default function Banners() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-100">
-                  {filteredBanners.map((banner, index) => {
+                  {pagination.pageItems.map((banner, index) => {
                     const isRestaurantWise = Array.isArray(banner.linkedRestaurantIds) && banner.linkedRestaurantIds.length > 0;
                     return (
                       <tr key={banner._id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-medium text-slate-700">{index + 1}</span>
+                          <span className="text-sm font-medium text-slate-700">{pagination.rowNumber(index)}</span>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -654,6 +657,7 @@ export default function Banners() {
               </table>
             )}
           </div>
+          {!loading && <TablePagination pagination={pagination} label="banners" />}
         </div>
       </div>
     </div>

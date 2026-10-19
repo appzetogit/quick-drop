@@ -5,6 +5,7 @@ import { adminAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
 import { PLACEHOLDER_40, PLACEHOLDER_64 } from "@food/utils/imagePlaceholder"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 const debugError = (...args) => {}
 
@@ -92,6 +93,8 @@ export default function AddonsList() {
     result.sort((a, b) => getItemCreatedMs(b) - getItemCreatedMs(a))
     return result
   }, [addons])
+
+  const pagination = usePagination(filteredAddons, { storageKey: "addons", resetOn: [searchQuery, statusFilter] })
 
   const countLabel = filteredAddons.length
 
@@ -277,9 +280,9 @@ export default function AddonsList() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className={SCROLL_TABLE_CLASS}>
           <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
               <tr>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   SL
@@ -324,10 +327,10 @@ export default function AddonsList() {
                   </td>
                 </tr>
               ) : (
-                filteredAddons.map((addon, index) => (
+                pagination.pageItems.map((addon, index) => (
                   <tr key={String(addon.id || addon._id)} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-sm font-medium text-slate-700">{index + 1}</span>
+                      <span className="text-sm font-medium text-slate-700">{pagination.rowNumber(index)}</span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center">
@@ -426,6 +429,7 @@ export default function AddonsList() {
             </tbody>
           </table>
         </div>
+        {!loading && <TablePagination pagination={pagination} label="add-ons" />}
       </div>
 
       <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>

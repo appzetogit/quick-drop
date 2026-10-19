@@ -5,6 +5,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { exportDeliverymenToExcel, exportDeliverymenToPDF } from "@food/components/admin/deliveryman/deliverymanExportUtils"
 import { toast } from "sonner"
+import { SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugError = () => {}
 
 
@@ -467,7 +468,7 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
           )}
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className={`${SCROLL_TABLE_CLASS}`}>
             {loading ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -475,7 +476,7 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
               </div>
             ) : (
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     {visibleColumns.si && (
                       <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">

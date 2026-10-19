@@ -6,6 +6,7 @@ import { exportReportsToCSV, exportReportsToExcel, exportReportsToPDF, exportRep
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 import { PLACEHOLDER_32 } from "@food/utils/imagePlaceholder"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -78,6 +79,8 @@ export default function RestaurantReport() {
   const filteredRestaurants = useMemo(() => {
     return restaurants // Backend already filters, so just return restaurants
   }, [restaurants])
+
+  const pagination = usePagination(filteredRestaurants, { storageKey: "restaurant-report", resetOn: [searchQuery, filters] })
 
   const totalRestaurants = filteredRestaurants.length
 
@@ -309,9 +312,9 @@ export default function RestaurantReport() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                     <div className="flex items-center gap-1">
@@ -380,7 +383,7 @@ export default function RestaurantReport() {
                     </td>
                   </tr>
                 ) : (
-                  filteredRestaurants.map((restaurant) => (
+                  pagination.pageItems.map((restaurant) => (
                     <tr key={restaurant.sl} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm font-medium text-slate-700">{restaurant.sl}</span>
@@ -439,6 +442,7 @@ export default function RestaurantReport() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="restaurants" />
         </div>
       </div>
 

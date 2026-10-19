@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react"
 import { Search, Download, ChevronDown, ArrowUpDown, Plus, Edit, Trash2, Megaphone, Settings } from "lucide-react"
 import { emptyFoodCampaigns } from "@food/utils/adminFallbackData"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 export default function FoodCampaign() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -16,6 +17,8 @@ export default function FoodCampaign() {
       campaign.title.toLowerCase().includes(query)
     )
   }, [campaigns, searchQuery])
+
+  const pagination = usePagination(filteredCampaigns, { storageKey: "food-campaigns", resetOn: [searchQuery] })
 
   const handleToggleStatus = (sl) => {
     setCampaigns(campaigns.map(campaign =>
@@ -78,9 +81,9 @@ export default function FoodCampaign() {
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-hidden">
+        <div className={SCROLL_TABLE_CLASS}>
           <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
               <tr>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   <div className="flex items-center gap-2">
@@ -132,7 +135,7 @@ export default function FoodCampaign() {
                   </td>
                 </tr>
               ) : (
-                filteredCampaigns.map((campaign) => (
+                pagination.pageItems.map((campaign) => (
                   <tr
                     key={campaign.sl}
                     className="hover:bg-slate-50 transition-colors"
@@ -191,6 +194,7 @@ export default function FoodCampaign() {
             </tbody>
           </table>
         </div>
+        <TablePagination pagination={pagination} label="campaigns" />
       </div>
     </div>
   )

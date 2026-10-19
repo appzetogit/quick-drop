@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react"
 import { Search, Download, ChevronDown, Edit, Trash2, Calendar, RefreshCw } from "lucide-react"
 import { emptyCashbacks } from "@food/utils/adminFallbackData"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -51,6 +52,8 @@ export default function Cashback() {
 
     return result
   }, [cashbacks, searchQuery, cashbackType])
+
+  const pagination = usePagination(filteredCashbacks, { storageKey: "cashbacks", resetOn: [searchQuery, cashbackType] })
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -294,9 +297,9 @@ export default function Cashback() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">SI</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Name</th>
@@ -309,7 +312,7 @@ export default function Cashback() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
-                {filteredCashbacks.map((cashback) => (
+                {pagination.pageItems.map((cashback) => (
                   <tr key={cashback.sl} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-medium text-slate-700">{cashback.sl}</span>
@@ -365,6 +368,7 @@ export default function Cashback() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="cashbacks" />
         </div>
       </div>
     </div>

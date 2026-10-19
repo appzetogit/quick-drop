@@ -4,6 +4,7 @@ import { emptyLoyaltyPointTransactions } from "@food/utils/adminFallbackData"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
 import { exportLoyaltyPointsToCSV, exportLoyaltyPointsToExcel, exportLoyaltyPointsToPDF, exportLoyaltyPointsToJSON } from "@food/components/admin/loyalty-point/loyaltyPointExportUtils"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 export default function Report() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -65,6 +66,7 @@ export default function Report() {
 
     return result
   }, [transactions, searchQuery, filters])
+  const pagination = usePagination(filteredTransactions, { storageKey: "loyalty-point-report", resetOn: [searchQuery, filters] })
 
   const totalDebit = filteredTransactions.reduce((sum, t) => sum + t.debit, 0)
   const totalCredit = filteredTransactions.reduce((sum, t) => sum + t.credit, 0)
@@ -314,9 +316,9 @@ export default function Report() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   {visibleColumns.si && (
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">SI</th>
@@ -355,7 +357,7 @@ export default function Report() {
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map((transaction) => (
+                  pagination.pageItems.map((transaction) => (
                     <tr key={transaction.sl} className="hover:bg-slate-50 transition-colors">
                       {visibleColumns.si && (
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -408,6 +410,7 @@ export default function Report() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="transactions" />
         </div>
       </div>
 

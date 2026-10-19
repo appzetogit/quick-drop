@@ -6,6 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@food/components/ui/dialog"
 import SettingsDialog from "@food/components/admin/orders/SettingsDialog"
 import { exportAdvertisementsToCSV, exportAdvertisementsToExcel, exportAdvertisementsToPDF, exportAdvertisementsToJSON } from "@food/components/admin/advertisements/advertisementsExportUtils"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 export default function AdsList() {
   const navigate = useNavigate()
@@ -76,6 +77,8 @@ export default function AdsList() {
 
     return result
   }, [ads, searchQuery, adsType, filters])
+
+  const pagination = usePagination(filteredAds, { storageKey: "ads-list", resetOn: [searchQuery, adsType, filters] })
 
   const activeFiltersCount = Object.values(filters).filter(v => v).length
 
@@ -264,9 +267,9 @@ export default function AdsList() {
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-hidden">
+        <div className={SCROLL_TABLE_CLASS}>
           <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
               <tr>
                 {visibleColumns.si && <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">SI</th>}
                 {visibleColumns.adsId && <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Ads ID</th>}
@@ -288,7 +291,7 @@ export default function AdsList() {
                   </td>
                 </tr>
               ) : (
-                filteredAds.map((ad) => (
+                pagination.pageItems.map((ad) => (
                   <tr
                     key={ad.sl}
                     className="hover:bg-slate-50 transition-colors"
@@ -398,6 +401,7 @@ export default function AdsList() {
             </tbody>
           </table>
         </div>
+        <TablePagination pagination={pagination} label="ads" />
       </div>
 
       {/* Filter Panel */}

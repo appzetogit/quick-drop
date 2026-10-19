@@ -4,6 +4,7 @@ import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { exportJoinRequestsToExcel, exportJoinRequestsToPDF } from "@food/components/admin/deliveryman/joinRequestExportUtils"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 /**
  * What the applicant answered at onboarding, in words.
  *
@@ -172,6 +173,7 @@ export default function JoinRequest() {
 
     return result
   }, [requests, filters])
+  const pagination = usePagination(filteredRequests, { storageKey: "delivery-join-requests", resetOn: [activeTab, debouncedSearch, filters] })
 
   const handleApprove = (request) => {
     setSelectedRequest(request)
@@ -394,7 +396,7 @@ export default function JoinRequest() {
           )}
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             {loading ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -402,7 +404,7 @@ export default function JoinRequest() {
               </div>
             ) : (
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                       <div className="flex items-center gap-2">
@@ -459,7 +461,7 @@ export default function JoinRequest() {
                       </td>
                     </tr>
                   ) : (
-                    filteredRequests.map((request) => (
+                    pagination.pageItems.map((request) => (
                       <tr key={request._id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm font-medium text-slate-700">{request.sl}</span>
@@ -561,6 +563,7 @@ export default function JoinRequest() {
               </table>
             )}
           </div>
+          {!loading && <TablePagination pagination={pagination} label="requests" />}
         </div>
       </div>
 

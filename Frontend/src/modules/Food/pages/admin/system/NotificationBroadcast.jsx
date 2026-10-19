@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BellRing, Loader2, Search, Send, Trash2 } from "lucide-react";
 import { adminAPI } from "@food/api";
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 const TARGET_OPTIONS = [
   { value: "ALL", label: "All" },
@@ -139,6 +140,8 @@ export default function NotificationBroadcast() {
     () => new Set(selectedRecipients.map((item) => `${item.ownerType}:${item.ownerId}`)),
     [selectedRecipients]
   );
+
+  const pagination = usePagination(history, { storageKey: "notification-broadcast-history" });
 
   const toggleRecipient = (recipient) => {
     const key = `${recipient.ownerType}:${recipient.ownerId}`;
@@ -332,9 +335,10 @@ export default function NotificationBroadcast() {
         ) : history.length === 0 ? (
           <div className="py-10 text-sm text-slate-500">No broadcast notifications found.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="min-w-full text-sm">
-              <thead>
+              <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                 <tr className="text-left text-slate-500 border-b border-slate-200">
                   <th className="py-3 pr-4 font-semibold">Title</th>
                   <th className="py-3 pr-4 font-semibold">Message</th>
@@ -345,7 +349,7 @@ export default function NotificationBroadcast() {
                 </tr>
               </thead>
               <tbody>
-                {history.map((item) => (
+                {pagination.pageItems.map((item) => (
                   <tr key={item?._id} className="border-b border-slate-100 align-top">
                     <td className="py-4 pr-4 font-semibold text-slate-900">{item?.title || "Notification"}</td>
                     <td className="py-4 pr-4 text-slate-600 max-w-sm">{item?.message || "-"}</td>
@@ -367,6 +371,8 @@ export default function NotificationBroadcast() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="notifications" />
+          </>
         )}
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { Loader2, Search, X, MessageSquare, Phone, RefreshCw } from "lucide-react"
 import { supportInboxAPI } from "@food/api"
+import { SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 /**
  * Master > Help & Support: every ticket on the platform in one inbox.
@@ -414,9 +415,9 @@ export default function SupportInbox() {
               <p className="mt-1 text-sm text-neutral-500">New tickets from every app appear here as they come in.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={`${SCROLL_TABLE_CLASS}`}>
               <table className="w-full min-w-[760px] text-sm">
-                <thead>
+                <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                   <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wider text-neutral-500">
                     <th className="px-4 py-3 font-medium">Ticket</th>
                     <th className="px-4 py-3 font-medium">Raised by</th>

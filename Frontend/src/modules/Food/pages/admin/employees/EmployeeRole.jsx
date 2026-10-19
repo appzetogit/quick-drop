@@ -2,6 +2,7 @@ import { useState, useMemo } from "react"
 import { UserCog, ChevronDown, ArrowUpDown, Trash2, Search, Download, Edit, Settings, FileText, FileSpreadsheet, Code, Check, Columns } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -120,6 +121,7 @@ export default function EmployeeRole() {
       role.roleName.toLowerCase().includes(query)
     )
   }, [roles, searchQuery])
+  const pagination = usePagination(filteredRoles, { storageKey: "employee-roles", resetOn: [searchQuery] })
 
   const handleExport = (format) => {
     if (filteredRoles.length === 0) {
@@ -379,9 +381,9 @@ export default function EmployeeRole() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   {visibleColumns.si && (
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
@@ -428,14 +430,14 @@ export default function EmployeeRole() {
                     </td>
                   </tr>
                 ) : (
-                  filteredRoles.map((role, index) => (
+                  pagination.pageItems.map((role, index) => (
                     <tr
                       key={role.id}
                       className="hover:bg-slate-50 transition-colors"
                     >
                       {visibleColumns.si && (
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-medium text-slate-700">{index + 1}</span>
+                          <span className="text-sm font-medium text-slate-700">{pagination.rowNumber(index)}</span>
                         </td>
                       )}
                       {visibleColumns.roleName && (
@@ -487,6 +489,7 @@ export default function EmployeeRole() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="roles" />
         </div>
       </div>
 

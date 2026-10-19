@@ -2,6 +2,7 @@ import { useState, useMemo } from "react"
 import { Search, Plus, Eye, Edit, Settings, ArrowUpDown, Check, Columns } from "lucide-react"
 import { emptyWithdrawMethods } from "@food/utils/adminFallbackData"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 export default function WithdrawMethod() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -27,18 +28,19 @@ export default function WithdrawMethod() {
     )
   }, [methods, searchQuery])
 
-  const handleToggleActive = (index) => {
-    const updated = [...methods]
-    updated[index].activeStatus = !updated[index].activeStatus
-    setMethods(updated)
+  const pagination = usePagination(filteredMethods, { storageKey: "withdraw-methods", resetOn: [searchQuery] })
+
+  // Toggle by the row itself, not its position: positions in a searched or
+  // paged list do not match positions in `methods`, so the wrong row flipped.
+  const handleToggleActive = (method) => {
+    setMethods((prev) => prev.map((m) => (m === method ? { ...m, activeStatus: !m.activeStatus } : m)))
   }
 
-  const handleToggleDefault = (index) => {
-    const updated = [...methods]
-    // Only one can be default, so set all to false first
-    updated.forEach(m => m.defaultMethod = false)
-    updated[index].defaultMethod = !updated[index].defaultMethod
-    setMethods(updated)
+  const handleToggleDefault = (method) => {
+    // Only one can be default.
+    setMethods((prev) => prev.map((m) => (
+      m === method ? { ...m, defaultMethod: !m.defaultMethod } : { ...m, defaultMethod: false }
+    )))
   }
 
   const toggleColumn = (columnKey) => {
@@ -104,9 +106,9 @@ export default function WithdrawMethod() {
 
         {/* Methods Table */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   {visibleColumns.si && (
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
@@ -161,7 +163,7 @@ export default function WithdrawMethod() {
                     </td>
                   </tr>
                 ) : (
-                  filteredMethods.map((method, index) => (
+                  pagination.pageItems.map((method, index) => (
                     <tr key={method.sl} className="hover:bg-slate-50 transition-colors">
                       {visibleColumns.si && (
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -196,7 +198,7 @@ export default function WithdrawMethod() {
                       {visibleColumns.activeStatus && (
                         <td className="px-6 py-4 whitespace-nowrap">
                           <button
-                            onClick={() => handleToggleActive(index)}
+                            onClick={() => handleToggleActive(method)}
                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                               method.activeStatus ? "bg-blue-600" : "bg-slate-300"
                             }`}
@@ -212,7 +214,7 @@ export default function WithdrawMethod() {
                       {visibleColumns.defaultMethod && (
                         <td className="px-6 py-4 whitespace-nowrap">
                           <button
-                            onClick={() => handleToggleDefault(index)}
+                            onClick={() => handleToggleDefault(method)}
                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                               method.defaultMethod ? "bg-blue-600" : "bg-slate-300"
                             }`}
@@ -243,6 +245,7 @@ export default function WithdrawMethod() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="methods" />
         </div>
       </div>
 

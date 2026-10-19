@@ -18,6 +18,7 @@ import { API_BASE_URL } from "@food/api/config"
 import { toast } from "sonner"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 const defaultFormData = {
   name: "",
@@ -121,6 +122,8 @@ export default function Category() {
       )
     })
   }, [categories, searchQuery])
+
+  const pagination = usePagination(filteredCategories, { storageKey: "categories", resetOn: [searchQuery, showPendingOnly] })
 
   const fetchCategories = async () => {
     try {
@@ -429,9 +432,9 @@ export default function Category() {
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
+        <div className={SCROLL_TABLE_CLASS}>
           <table className="min-w-full table-fixed">
-            <thead className="border-b border-slate-200 bg-slate-50">
+            <thead className={`border-b border-slate-200 bg-slate-50 ${STICKY_THEAD_CLASS}`}>
               <tr>
                 <th className="w-[25%] px-5 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-600">Category</th>
                 <th className="w-[17%] px-4 py-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-600">Owner</th>
@@ -458,7 +461,7 @@ export default function Category() {
                   </td>
                 </tr>
               ) : (
-                filteredCategories.map((category) => {
+                pagination.pageItems.map((category) => {
                   const creatorName = category?.createdByRestaurant?.name || category?.restaurant?.name || "Admin"
                   const approvalStatus = category?.approvalStatus || "pending"
                   const isRestaurantCategory = Boolean(category?.createdByRestaurantId || category?.restaurantId)
@@ -584,6 +587,7 @@ export default function Category() {
             </tbody>
           </table>
         </div>
+        {!loading && <TablePagination pagination={pagination} label="categories" />}
       </div>
 
       {typeof window !== "undefined" &&

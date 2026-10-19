@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { exportTransactionsToExcel, exportTransactionsToPDF } from "@food/components/admin/transactions/transactionsExportUtils"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -140,6 +141,8 @@ export default function RestaurantWithdraws() {
 
     return result
   }, [withdraws, searchQuery])
+
+  const pagination = usePagination(filteredWithdraws, { storageKey: "restaurant-withdraws", resetOn: [activeTab, searchQuery] })
 
   const getStatusBadge = (status) => {
     if (status === "Approved") {
@@ -414,9 +417,9 @@ export default function RestaurantWithdraws() {
               <p className="text-slate-600">Loading withdrawal requests...</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={SCROLL_TABLE_CLASS}>
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     {visibleColumns.si && <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                       <div className="flex items-center gap-2">
@@ -444,10 +447,10 @@ export default function RestaurantWithdraws() {
                       </td>
                     </tr>
                   ) : (
-                    filteredWithdraws.map((withdraw, index) => (
+                    pagination.pageItems.map((withdraw, index) => (
                       <tr key={withdraw.id} className="hover:bg-slate-50 transition-colors">
                         {visibleColumns.si && <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm font-medium text-slate-700">{index + 1}</span>
+                          <span className="text-sm font-medium text-slate-700">{pagination.rowNumber(index)}</span>
                         </td>}
                         {visibleColumns.amount && <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm font-medium text-slate-700">
@@ -513,6 +516,7 @@ export default function RestaurantWithdraws() {
               </table>
             </div>
           )}
+          {!loading && <TablePagination pagination={pagination} label="withdraw requests" />}
         </div>
 
         {/* View Withdraw Dialog */}

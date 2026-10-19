@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { supportAPI } from "@food/api"
 import { toast } from "sonner"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 export default function SupportTickets() {
   const [tickets, setTickets] = useState([])
@@ -15,6 +16,8 @@ export default function SupportTickets() {
     const resolved = tickets.filter((t) => t.status === "resolved").length
     return { total, open, inProgress, resolved }
   }, [tickets])
+
+  const pagination = usePagination(tickets, { storageKey: "support-tickets", resetOn: [filters.status, filters.type, filters.source] })
 
   const getUserLabel = (ticket) => {
     if (ticket.source === "restaurant") return "Restaurant Panel"
@@ -128,9 +131,9 @@ export default function SupportTickets() {
           </div>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-0">
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full min-w-[1100px]">
-              <thead>
+              <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                 <tr className="text-left text-xs uppercase text-slate-600">
                   <th className="px-4 py-3">Id</th>
                   <th className="px-4 py-3">Source</th>
@@ -149,7 +152,7 @@ export default function SupportTickets() {
                   <tr><td colSpan={10} className="px-4 py-6 text-center text-slate-500">Loading...</td></tr>
                 ) : tickets.length === 0 ? (
                   <tr><td colSpan={10} className="px-4 py-6 text-center text-slate-500">No tickets</td></tr>
-                ) : tickets.map((t) => (
+                ) : pagination.pageItems.map((t) => (
                   <tr key={t._id}>
                     <td className="px-4 py-3">#{String(t._id).slice(-6)}</td>
                     <td className="px-4 py-3">
@@ -199,6 +202,7 @@ export default function SupportTickets() {
               </tbody>
             </table>
           </div>
+          {!loading && <TablePagination pagination={pagination} label="tickets" />}
         </div>
       </div>
     </div>

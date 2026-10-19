@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react"
 import { Search, Wallet, Info, Calendar, Edit, Trash2 } from "lucide-react"
 import { emptyWalletBonuses } from "@food/utils/adminFallbackData"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -39,6 +40,8 @@ export default function Bonus() {
       bonus.bonusTitle.toLowerCase().includes(query)
     )
   }, [bonuses, searchQuery])
+
+  const pagination = usePagination(filteredBonuses, { storageKey: "wallet-bonuses", resetOn: [searchQuery] })
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -266,9 +269,9 @@ export default function Bonus() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">SI</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Bonus Title</th>
@@ -281,7 +284,7 @@ export default function Bonus() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
-                {filteredBonuses.map((bonus) => (
+                {pagination.pageItems.map((bonus) => (
                   <tr key={bonus.sl} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm font-medium text-slate-700">{bonus.sl}</span>
@@ -337,6 +340,7 @@ export default function Bonus() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="bonuses" />
         </div>
       </div>
     </div>

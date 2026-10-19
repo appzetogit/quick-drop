@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { Loader2, Search, Ticket, Plus, RefreshCw } from "lucide-react"
 import { couponListAPI } from "@food/api"
+import { SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 /**
  * Master > Coupons: every coupon on the platform in one list.
@@ -205,9 +206,9 @@ export default function MasterCoupons() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={`${SCROLL_TABLE_CLASS}`}>
               <table className="w-full min-w-[900px] text-sm">
-                <thead>
+                <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                   <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wider text-neutral-500">
                     <th className="px-4 py-3 font-medium">Code</th>
                     <th className="px-4 py-3 font-medium">Service</th>

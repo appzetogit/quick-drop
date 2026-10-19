@@ -8,6 +8,7 @@ import FilterPanel from "@food/components/admin/orders/FilterPanel"
 import ViewOrderDialog from "@food/components/admin/orders/ViewOrderDialog"
 import SettingsDialog from "@food/components/admin/orders/SettingsDialog"
 import { useGenericTableManagement } from "@food/components/admin/orders/useGenericTableManagement"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -93,6 +94,7 @@ export default function NewRefundRequests() {
     "New Refund Requests",
     ["orderId", "customerName", "restaurant", "customerPhone"]
   )
+  const pagination = usePagination(filteredData || [], { storageKey: "new-refund-requests", resetOn: [searchQuery, filters] })
 
   const restaurants = useMemo(() => {
     return [...new Set(orders.map(o => o.restaurant))]
@@ -183,9 +185,9 @@ export default function NewRefundRequests() {
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full min-w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase">SI</th>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase">Order ID</th>
@@ -206,10 +208,10 @@ export default function NewRefundRequests() {
                     </td>
                   </tr>
                 ) : (
-                  filteredData.map((order, index) => (
+                  pagination.pageItems.map((order, index) => (
                     <tr key={order.orderId} className="hover:bg-slate-50">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-slate-700">{index + 1}</span>
+                        <span className="text-sm font-medium text-slate-700">{pagination.rowNumber(index)}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm font-medium text-slate-900">{order.orderId}</span>
@@ -280,6 +282,7 @@ export default function NewRefundRequests() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="refund requests" />
         </div>
       )}
     </div>

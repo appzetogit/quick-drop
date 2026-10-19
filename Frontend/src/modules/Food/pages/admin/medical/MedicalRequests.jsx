@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Loader2, MapPin, RefreshCw, Save, Send } from "lucide-react"
 import { adminAPI } from "@food/api"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 /**
  * How far a prescription travels, and where each one went.
@@ -58,6 +59,7 @@ export default function MedicalRequests() {
   const [activeTab, setActiveTab] = useState("all")
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
+  const pagination = usePagination(rows, { storageKey: "medical-requests", resetOn: [activeTab] })
 
   const loadSettings = useCallback(async () => {
     try {
@@ -260,9 +262,10 @@ export default function MedicalRequests() {
             No requests here yet.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <thead className={`bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   <th className="px-4 py-2 font-medium">Sent</th>
                   <th className="px-4 py-2 font-medium">Customer</th>
@@ -273,7 +276,7 @@ export default function MedicalRequests() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map((row) => {
+                {pagination.pageItems.map((row) => {
                   const badge = STATUS_BADGE[row.status] || STATUS_BADGE.open
                   const winner = (row.invited || []).find(
                     (i) => String(i.pharmacyId) === String(row.claimedBy),
@@ -319,6 +322,8 @@ export default function MedicalRequests() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="requests" />
+          </>
         )}
       </section>
     </div>

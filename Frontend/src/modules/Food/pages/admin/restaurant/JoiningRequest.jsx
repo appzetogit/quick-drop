@@ -6,6 +6,7 @@ import {
 import { toast } from "sonner"
 import { adminAPI, restaurantAPI } from "@food/api"
 import { PLACEHOLDER_200, PLACEHOLDER_96, placeholderInitials } from "@food/utils/imagePlaceholder"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -131,6 +132,8 @@ export default function JoiningRequest() {
 
     return filtered
   }, [currentRequests, searchQuery, filters])
+
+  const pagination = usePagination(filteredRequests, { storageKey: "restaurant-joining-requests", resetOn: [activeTab, searchQuery, filters] })
 
   const clearFilters = () => {
     setFilters({
@@ -371,9 +374,9 @@ export default function JoiningRequest() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                     <div className="flex items-center gap-1">
@@ -433,10 +436,10 @@ export default function JoiningRequest() {
                     </td>
                   </tr>
                 ) : (
-                  filteredRequests.map((request, index) => (
+                  pagination.pageItems.map((request, index) => (
                     <tr key={request._id || index} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-medium text-slate-700">{request.sl ?? index + 1}</span>
+                        <span className="text-sm font-medium text-slate-700">{request.sl ?? pagination.rowNumber(index)}</span>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -522,6 +525,7 @@ export default function JoiningRequest() {
               </tbody>
             </table>
           </div>
+          {!loading && !error && <TablePagination pagination={pagination} label="requests" />}
         </div>
       </div>
 

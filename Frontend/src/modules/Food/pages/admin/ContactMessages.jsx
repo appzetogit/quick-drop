@@ -1,3 +1,4 @@
+import { SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 import { useState, useEffect, useMemo } from "react"
 import { Search, ArrowUpDown, Settings, Folder, ChevronDown, Eye, Loader2, Star } from "lucide-react"
 import { toast } from "sonner"
@@ -163,9 +164,9 @@ export default function ContactMessages() {
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className={`${SCROLL_TABLE_CLASS}`}>
           <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
               <tr>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   <div className="flex items-center gap-2">

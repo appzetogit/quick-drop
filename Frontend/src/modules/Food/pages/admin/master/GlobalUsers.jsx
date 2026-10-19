@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { platformSettingsAPI } from "@food/api"
 import { toast } from "sonner"
 import { Loader2, Search, Download, Users, ChevronLeft, ChevronRight } from "lucide-react"
+import { SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 /**
  * Master > Customers: every customer on the platform, in one list.
@@ -208,9 +209,9 @@ export default function GlobalUsers() {
           ) : rows.length === 0 ? (
             <p className="px-5 py-12 text-center text-sm text-neutral-500">No customers match these filters.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={`${SCROLL_TABLE_CLASS}`}>
               <table className="w-full min-w-[860px] text-sm">
-                <thead>
+                <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                   <tr className="border-b border-neutral-200 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
                     <th className="px-5 py-2">Customer</th>
                     <th className="px-3 py-2">Apps used</th>

@@ -5,6 +5,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@food/components/ui/dialog"
 import SettingsDialog from "@food/components/admin/orders/SettingsDialog"
 import { exportAdvertisementsToCSV, exportAdvertisementsToExcel, exportAdvertisementsToPDF, exportAdvertisementsToJSON } from "@food/components/admin/advertisements/advertisementsExportUtils"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 export default function AdRequests() {
   const [activeTab, setActiveTab] = useState("new")
@@ -72,6 +73,8 @@ export default function AdRequests() {
     
     return result
   }, [requests, searchQuery, activeTab, filters])
+
+  const pagination = usePagination(filteredRequests, { storageKey: "ad-requests", resetOn: [searchQuery, activeTab, filters] })
 
   const activeFiltersCount = Object.values(filters).filter(v => v).length
 
@@ -255,9 +258,9 @@ export default function AdRequests() {
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-hidden">
+        <div className={SCROLL_TABLE_CLASS}>
           <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
               <tr>
                 {visibleColumns.si && <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">SI</th>}
                 {visibleColumns.adsId && <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Ads ID</th>}
@@ -277,7 +280,7 @@ export default function AdRequests() {
                   </td>
                 </tr>
               ) : (
-                filteredRequests.map((request) => (
+                pagination.pageItems.map((request) => (
                   <tr
                     key={request.sl}
                     className="hover:bg-slate-50 transition-colors"
@@ -365,6 +368,7 @@ export default function AdRequests() {
             </tbody>
           </table>
         </div>
+        <TablePagination pagination={pagination} label="requests" />
       </div>
 
       {/* Filter Panel */}

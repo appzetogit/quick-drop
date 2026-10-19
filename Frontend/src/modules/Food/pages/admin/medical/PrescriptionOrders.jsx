@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { FileText, Loader2, Search, Trash2, X } from "lucide-react"
 import { adminAPI } from "@food/api"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 import AssignRiderButton from "@food/components/admin/orders/manual-assign/AssignRiderButton"
 import RiderAssignmentSection from "@food/components/admin/orders/manual-assign/RiderAssignmentSection"
 
@@ -85,6 +86,7 @@ export default function PrescriptionOrders() {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
   const [removingId, setRemovingId] = useState(null)
+  const pagination = usePagination(orders, { storageKey: "prescription-orders", resetOn: [activeTab, search] })
 
   const load = useCallback(async () => {
     try {
@@ -187,9 +189,10 @@ export default function PrescriptionOrders() {
             Nothing here. Orders appear as customers send prescriptions to a pharmacy.
           </p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   {["Order", "Pharmacy", "Customer", "Prescription", "Waiting on", "Amount", ""].map((heading) => (
                     <th
@@ -202,7 +205,7 @@ export default function PrescriptionOrders() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {orders.map((order) => {
+                {pagination.pageItems.map((order) => {
                   const badge = statusBadge(order.prescription?.status)
                   return (
                     <tr
@@ -259,6 +262,8 @@ export default function PrescriptionOrders() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="orders" />
+          </>
         )}
       </div>
 

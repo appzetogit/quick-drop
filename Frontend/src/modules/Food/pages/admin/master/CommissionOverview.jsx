@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import { Loader2, RefreshCw, ExternalLink, Search, AlertTriangle } from "lucide-react"
 import { commissionOverviewAPI } from "@food/api"
 import { SERVICE_PROVIDER_ENABLED } from "@/config/features"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 /**
  * Master > Report Management > Commission Overview.
@@ -46,13 +47,15 @@ function EditLink({ to, children }) {
   )
 }
 
-function SellerTable({ rows, q, showKind }) {
+function SellerTable({ rows, q, showKind, storageKey }) {
   const shown = rows.filter((r) => !q || r.name.toLowerCase().includes(q))
+  const pagination = usePagination(shown, { storageKey, resetOn: [q] })
   if (!shown.length) return <p className="px-5 py-6 text-sm text-neutral-500">{rows.length ? "No seller matches the search." : "No sellers yet."}</p>
   return (
-    <div className="overflow-x-auto">
+    <>
+    <div className={SCROLL_TABLE_CLASS}>
       <table className="w-full min-w-[680px] text-sm">
-        <thead>
+        <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
           <tr className="border-b border-neutral-100 text-left text-xs uppercase tracking-wider text-neutral-500">
             <th className="px-5 py-2.5 font-medium">Seller</th>
             <th className="px-3 py-2.5 font-medium">Rate now</th>
@@ -62,7 +65,7 @@ function SellerTable({ rows, q, showKind }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-neutral-100">
-          {shown.map((r) => (
+          {pagination.pageItems.map((r) => (
             <tr key={r.id} className={r.source === "none" ? "bg-amber-50/40" : ""}>
               <td className="px-5 py-2.5">
                 <p className="font-medium text-neutral-900">{r.name}</p>
@@ -82,6 +85,8 @@ function SellerTable({ rows, q, showKind }) {
         </tbody>
       </table>
     </div>
+    <TablePagination pagination={pagination} label="sellers" />
+    </>
   )
 }
 
@@ -193,8 +198,8 @@ export default function CommissionOverview() {
                 </div>
               </div>
 
-              {s.key === "food" && <SellerTable rows={s.rows} q={query} />}
-              {s.key === "quick" && <SellerTable rows={s.rows} q={query} showKind />}
+              {s.key === "food" && <SellerTable rows={s.rows} q={query} storageKey="commission-overview-food" />}
+              {s.key === "quick" && <SellerTable rows={s.rows} q={query} showKind storageKey="commission-overview-quick" />}
 
               {s.key === "taxi" &&
                 (s.rows.length ? (

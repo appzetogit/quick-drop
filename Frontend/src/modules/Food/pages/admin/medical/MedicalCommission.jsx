@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { Loader2, Percent, Search, IndianRupee } from "lucide-react"
 import { adminAPI } from "@food/api"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 /**
  * Commission for medical shops: one default every pharmacy pays, and a shop's
@@ -149,6 +150,7 @@ export default function MedicalCommission() {
     const q = search.trim().toLowerCase()
     return (data?.shops || []).filter((s) => !q || s.name.toLowerCase().includes(q) || s.zone.toLowerCase().includes(q))
   }, [data, search])
+  const pagination = usePagination(shops, { storageKey: "medical-commission", resetOn: [search, status] })
   const ownCount = (data?.shops || []).filter((s) => s.source === "own").length
   const defDirty = data && (def.type !== data.default.type || Number(def.value) !== Number(data.default.value))
 
@@ -204,14 +206,14 @@ export default function MedicalCommission() {
               <option value="rejected">Rejected</option>
             </select>
           </div>
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             {!data ? (
               <div className="flex items-center gap-2 p-8 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading pharmacies</div>
             ) : shops.length === 0 ? (
               <p className="p-8 text-center text-sm text-slate-500">No pharmacies match.</p>
             ) : (
               <table className="w-full text-sm">
-                <thead>
+                <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                   <tr className="text-left text-[11px] uppercase tracking-wider text-slate-400">
                     <th className="px-4 py-2 font-semibold">Pharmacy</th>
                     <th className="px-4 py-2 font-semibold">Commission</th>
@@ -219,11 +221,12 @@ export default function MedicalCommission() {
                   </tr>
                 </thead>
                 <tbody>
-                  {shops.map((shop) => <ShopRow key={`${shop.id}:${shop.source}:${shop.rate.type}:${shop.rate.value}`} shop={shop} onSaved={load} />)}
+                  {pagination.pageItems.map((shop) => <ShopRow key={`${shop.id}:${shop.source}:${shop.rate.type}:${shop.rate.value}`} shop={shop} onSaved={load} />)}
                 </tbody>
               </table>
             )}
           </div>
+          {data && <TablePagination pagination={pagination} label="pharmacies" />}
         </section>
       </div>
     </div>

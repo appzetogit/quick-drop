@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
 import { exportReportsToCSV, exportReportsToExcel, exportReportsToPDF, exportReportsToJSON } from "@food/components/admin/reports/reportsExportUtils"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -85,6 +86,8 @@ export default function FeedbackExperienceReport() {
 
     return result
   }, [feedbackExperiences, searchQuery])
+
+  const pagination = usePagination(filteredFeedback, { storageKey: "feedback-experience-report", resetOn: [searchQuery, filters] })
 
   const handleReset = () => {
     setFilters({
@@ -414,9 +417,9 @@ export default function FeedbackExperienceReport() {
               <p className="text-slate-600">Loading...</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={SCROLL_TABLE_CLASS}>
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">SI</th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">User</th>
@@ -438,10 +441,10 @@ export default function FeedbackExperienceReport() {
                       </td>
                     </tr>
                   ) : (
-                    filteredFeedback.map((feedback, idx) => (
+                    pagination.pageItems.map((feedback, idx) => (
                       <tr key={feedback._id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-sm font-medium text-slate-700">{idx + 1}</span>
+                          <span className="text-sm font-medium text-slate-700">{pagination.rowNumber(idx)}</span>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-col">
@@ -497,6 +500,7 @@ export default function FeedbackExperienceReport() {
               </table>
             </div>
           )}
+          {!loading && <TablePagination pagination={pagination} label="feedback entries" />}
         </div>
       </div>
 

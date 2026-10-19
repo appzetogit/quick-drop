@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { Loader2, Search, ShieldCheck } from "lucide-react"
 import { adminAPI } from "@food/api"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 /**
  * Every pharmacy's drug licence, and how long it has left.
@@ -57,6 +58,7 @@ export default function DrugLicences() {
   const [rows, setRows] = useState([])
   const [counts, setCounts] = useState({ all: 0, expired: 0, expiring_soon: 0, missing: 0, valid: 0 })
   const [loading, setLoading] = useState(true)
+  const pagination = usePagination(rows, { storageKey: "drug-licences", resetOn: [activeTab, search] })
 
   const load = useCallback(async () => {
     try {
@@ -147,9 +149,10 @@ export default function DrugLicences() {
             No pharmacy in this state.
           </p>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   {["Pharmacy", "Owner", "Licence", "Expires", "State", "Document"].map((heading) => (
                     <th
@@ -162,7 +165,7 @@ export default function DrugLicences() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map((row) => {
+                {pagination.pageItems.map((row) => {
                   const badge = STATE_BADGE[row.licenceState] || STATE_BADGE.missing
                   return (
                     <tr key={row.id} className="hover:bg-slate-50">
@@ -210,6 +213,8 @@ export default function DrugLicences() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="pharmacies" />
+          </>
         )}
       </div>
 

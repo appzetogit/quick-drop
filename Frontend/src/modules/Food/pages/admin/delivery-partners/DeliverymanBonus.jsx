@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/componen
 import { exportBonusToExcel, exportBonusToPDF } from "@food/components/admin/deliveryman/deliverymanExportUtils"
 import { adminAPI } from "@food/api"
 import { API_BASE_URL } from "@food/api/config"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -118,6 +119,8 @@ export default function DeliverymanBonus() {
       transaction.deliveryId?.toLowerCase().includes(query)
     )
   }, [transactions, searchQuery])
+
+  const pagination = usePagination(filteredTransactions, { storageKey: "deliveryman-bonus", resetOn: [searchQuery] })
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -430,9 +433,9 @@ export default function DeliverymanBonus() {
               <p className="text-lg font-semibold text-slate-700">No Data Found</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={SCROLL_TABLE_CLASS}>
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     {visibleColumns.si && <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">SI</th>}
                     {visibleColumns.transactionId && <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Transaction Id</th>}
@@ -444,7 +447,7 @@ export default function DeliverymanBonus() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-100">
-                  {filteredTransactions.map((transaction) => (
+                  {pagination.pageItems.map((transaction) => (
                     <tr key={transaction.sl} className="hover:bg-slate-50 transition-colors">
                       {visibleColumns.si && (
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -482,6 +485,7 @@ export default function DeliverymanBonus() {
               </table>
             </div>
           )}
+          {!loading && <TablePagination pagination={pagination} label="transactions" />}
         </div>
       </div>
 

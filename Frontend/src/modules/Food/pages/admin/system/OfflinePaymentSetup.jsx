@@ -3,6 +3,7 @@ import { Briefcase, Search, Plus, Pencil, Trash2, Settings, Download, ChevronDow
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
 import { exportPaymentMethodsToCSV, exportPaymentMethodsToExcel, exportPaymentMethodsToPDF, exportPaymentMethodsToJSON } from "@food/components/admin/payment-methods/paymentMethodsExportUtils"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 const paymentMethods = [
   {
@@ -64,6 +65,8 @@ export default function OfflinePaymentSetup() {
     
     return filtered
   }, [methods, activeTab, searchQuery])
+
+  const pagination = usePagination(filteredMethods, { storageKey: "offline-payment-methods", resetOn: [activeTab, searchQuery] })
 
   const handleStatusToggle = (id) => {
     setMethods(prev => prev.map(method => 
@@ -219,9 +222,9 @@ export default function OfflinePaymentSetup() {
               </span>
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                 <tr>
                   {visibleColumns.sl && (
                     <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
@@ -276,11 +279,11 @@ export default function OfflinePaymentSetup() {
                     </td>
                   </tr>
                 ) : (
-                  filteredMethods.map((method, index) => (
+                  pagination.pageItems.map((method, index) => (
                     <tr key={method.id} className="hover:bg-slate-50 transition-colors">
                       {visibleColumns.sl && (
                         <td className="px-3 py-2.5">
-                          <span className="text-xs text-slate-700">{index + 1}</span>
+                          <span className="text-xs text-slate-700">{pagination.rowNumber(index)}</span>
                         </td>
                       )}
                       {visibleColumns.name && (
@@ -333,6 +336,7 @@ export default function OfflinePaymentSetup() {
               </tbody>
             </table>
           </div>
+          <TablePagination pagination={pagination} label="payment methods" />
         </div>
       </div>
 

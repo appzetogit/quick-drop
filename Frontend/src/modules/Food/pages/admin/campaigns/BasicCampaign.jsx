@@ -7,6 +7,7 @@ import AddEditBasicCampaignDialog from "@food/components/admin/campaigns/AddEdit
 import DeleteCampaignDialog from "@food/components/admin/campaigns/DeleteCampaignDialog"
 import CampaignFilterPanel from "@food/components/admin/campaigns/CampaignFilterPanel"
 import SettingsDialog from "@food/components/admin/orders/SettingsDialog"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 export default function BasicCampaign() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -70,6 +71,8 @@ export default function BasicCampaign() {
 
     return result
   }, [campaigns, searchQuery, filters])
+
+  const pagination = usePagination(filteredCampaigns, { storageKey: "basic-campaigns", resetOn: [searchQuery, filters] })
 
   const activeFiltersCount = useMemo(() => {
     return Object.values(filters).filter(value => value !== "" && value !== null && value !== undefined).length
@@ -258,9 +261,9 @@ export default function BasicCampaign() {
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-hidden">
+        <div className={SCROLL_TABLE_CLASS}>
           <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
               <tr>
                 {visibleColumns.si && (
                   <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
@@ -318,7 +321,7 @@ export default function BasicCampaign() {
                   </td>
                 </tr>
               ) : (
-                filteredCampaigns.map((campaign) => (
+                pagination.pageItems.map((campaign) => (
                   <tr
                     key={campaign.sl}
                     className="hover:bg-slate-50 transition-colors"
@@ -387,6 +390,7 @@ export default function BasicCampaign() {
             </tbody>
           </table>
         </div>
+        <TablePagination pagination={pagination} label="campaigns" />
       </div>
 
       {/* Add/Edit Dialog */}

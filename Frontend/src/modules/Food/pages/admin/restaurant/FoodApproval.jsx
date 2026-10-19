@@ -11,6 +11,7 @@ import {
 } from "@food/components/ui/dialog"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
+import { SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -494,9 +495,9 @@ export default function FoodApproval() {
             </div>
           ) : (
             <div className="border-t border-gray-200">
-              <div className="w-full overflow-x-auto">
+              <div className={`w-full ${SCROLL_TABLE_CLASS}`}>
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
-                  <thead style={{ backgroundColor: "rgba(0, 111, 189, 0.1)" }}>
+                  <thead className={STICKY_THEAD_CLASS} style={{ backgroundColor: "#e6f1f8" }}>
                     <tr>
                       <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                         S.No

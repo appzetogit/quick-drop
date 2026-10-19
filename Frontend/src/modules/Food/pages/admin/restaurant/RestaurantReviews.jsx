@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { exportReviewsToCSV, exportReviewsToExcel, exportReviewsToPDF, exportReviewsToJSON } from "@food/components/admin/deliveryman/deliverymanExportUtils"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
@@ -40,6 +41,8 @@ export default function RestaurantReviews() {
       (review.orderId && review.orderId.toLowerCase().includes(query))
     )
   }, [reviews, searchQuery])
+
+  const pagination = usePagination(filteredReviews, { storageKey: "restaurant-reviews", resetOn: [searchQuery] })
 
   const handleExport = (format) => {
     if (filteredReviews.length === 0) {
@@ -193,7 +196,7 @@ export default function RestaurantReviews() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className={SCROLL_TABLE_CLASS}>
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
@@ -205,7 +208,7 @@ export default function RestaurantReviews() {
               </div>
             ) : (
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     {visibleColumns.si && (
                       <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">SI</th>
@@ -231,7 +234,7 @@ export default function RestaurantReviews() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-100">
-                  {filteredReviews.map((review) => (
+                  {pagination.pageItems.map((review) => (
                     <tr key={review.sl || review.orderId} className="hover:bg-slate-50 transition-colors">
                       {visibleColumns.si && <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">{review.sl}</td>}
                       {visibleColumns.orderId && <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-slate-700">{review.orderId}</td>}
@@ -257,6 +260,7 @@ export default function RestaurantReviews() {
               </table>
             )}
           </div>
+          {!isLoading && <TablePagination pagination={pagination} label="reviews" />}
         </div>
       </div>
 

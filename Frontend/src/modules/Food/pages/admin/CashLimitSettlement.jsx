@@ -2,6 +2,7 @@
 import { Search, Receipt, Loader2, Package } from "lucide-react"
 import { adminAPI } from "@food/api"
 import { toast } from "sonner"
+import { SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -115,9 +116,9 @@ export default function CashLimitSettlement() {
               <p className="text-slate-600">Loading…</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className={`${SCROLL_TABLE_CLASS}`}>
               <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
+                <thead className={`bg-slate-50 border-b border-slate-200 ${STICKY_THEAD_CLASS}`}>
                   <tr>
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">#</th>
                     <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">Date</th>

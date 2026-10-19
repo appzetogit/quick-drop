@@ -4,6 +4,7 @@ import { toast } from "sonner"
 import { Loader2, Target, History, Plus, Trash2 } from "lucide-react"
 import ZonePicker from "./ZonePicker"
 import { useAdminAccess, isRestricted, can } from "@food/utils/adminAccess"
+import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 /**
  * Master > Delivery Incentives: an order-count LADDER per duty segment —
@@ -329,6 +330,7 @@ export default function DeliveryIncentives() {
   const [saving, setSaving] = useState(null) // segment id currently saving, or null
   const [active, setActive] = useState([])
   const [recent, setRecent] = useState([])
+  const pagination = usePagination(recent, { storageKey: "delivery-incentives-recent" })
   const [busyId, setBusyId] = useState(null) // rule being turned off or deleted
   const access = useAdminAccess()
   const limited = isRestricted(access)
@@ -447,9 +449,9 @@ export default function DeliveryIncentives() {
 
             {recent.length > 0 && (
               <Card title="Recent ladders" description="Every version saved for either segment, newest first." icon={History}>
-                <div className="overflow-x-auto">
+                <div className={SCROLL_TABLE_CLASS}>
                   <table className="w-full min-w-[640px] text-sm">
-                    <thead>
+                    <thead className={`bg-white ${STICKY_THEAD_CLASS}`}>
                       <tr className="border-b border-neutral-200 text-left text-xs font-medium uppercase tracking-wide text-neutral-500">
                         <th className="pb-2 pr-2">Segment</th>
                         <th className="pb-2 pr-2">Zone</th>
@@ -460,7 +462,7 @@ export default function DeliveryIncentives() {
                       </tr>
                     </thead>
                     <tbody>
-                      {recent.map((r) => (
+                      {pagination.pageItems.map((r) => (
                         <tr key={r._id} className="border-b border-neutral-100 last:border-0">
                           <td className="py-2 pr-2 align-top">{SEGMENTS.find((s) => s.id === r.segment)?.label || r.segment}</td>
                           <td className="py-2 pr-2 align-top text-neutral-600">
@@ -501,6 +503,7 @@ export default function DeliveryIncentives() {
                     </tbody>
                   </table>
                 </div>
+                <TablePagination pagination={pagination} label="ladders" />
               </Card>
             )}
           </>
