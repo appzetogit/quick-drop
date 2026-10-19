@@ -815,6 +815,41 @@ export default function Inventory() {
   const [loadingAddons, setLoadingAddons] = useState(false)
   const [isAddAddonOpen, setIsAddAddonOpen] = useState(false)
 
+  // Export: every item with its category, price, variants and stock, as a CSV
+  // that opens in Excel (the BOM keeps ₹ and non-English names readable).
+  const handleExportItems = () => {
+    const rows = categories.flatMap((cat) => (cat.items || []).map((item) => [
+      cat.name,
+      item.name,
+      item.foodType || "",
+      item.price,
+      (item.variants || [])
+        .map((v) => `${v?.name || v?.size || v?.title || "Variant"}: ${v?.price ?? ""}`)
+        .join(" | "),
+      item.inStock ? "In stock" : "Out of stock",
+      item.stockQuantity ?? "",
+      item.approvalStatus || "",
+      item.isRecommended ? "Yes" : "No",
+      item.description || "",
+    ]))
+    if (!rows.length) {
+      toast.error("No items to export")
+      return
+    }
+    const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`
+    const header = ["Category", "Item", "Type", "Price", "Variants", "Stock status", "Stock quantity", "Approval", "Recommended", "Description"]
+    const csv = "\uFEFF" + [header, ...rows].map((r) => r.map(cell).join(",")).join("\r\n")
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }))
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `inventory-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    toast.success(`Exported ${rows.length} items`)
+  }
+
   // Bulk Upload Handlers
   const handleDownloadTemplate = async () => {
     try {
@@ -2782,6 +2817,22 @@ export default function Inventory() {
                   <div className="text-left">
                     <span className="block text-base font-bold text-gray-900">Bulk Upload</span>
                     <span className="block text-sm text-gray-500 font-medium">Upload multiple items via Excel</span>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsAddPopupOpen(false)
+                    handleExportItems()
+                  }}
+                  className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md hover:border-violet-200 transition-all group"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-violet-50 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                    <Download className="w-6 h-6 text-violet-600" />
+                  </div>
+                  <div className="text-left">
+                    <span className="block text-base font-bold text-gray-900">Export Items</span>
+                    <span className="block text-sm text-gray-500 font-medium">Download all items as an Excel (CSV) file</span>
                   </div>
                 </button>
               </div>

@@ -161,7 +161,7 @@ export default function MenuOverview() {
             </button>
             <button onClick={downloadCsv} disabled={!filtered.length} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-black disabled:opacity-40">
               <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">Download CSV</span>
+              <span>Export</span>
             </button>
           </div>
         </div>
