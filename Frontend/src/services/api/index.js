@@ -386,6 +386,16 @@ const adminOrdersBase = (vertical) =>
     : "/food/admin/orders";
 
 export const adminAPI = {
+  /**
+   * Set a rider's pocket balance and/or cash in hand (Deliveryman list). The
+   * server records the difference as an adjustment; cash can only be lowered.
+   */
+  updateDeliveryBoyWallet: ({ deliveryId, pocketBalance, cashInHand, note } = {}) =>
+    apiClient.patch(
+      `/food/admin/delivery/wallets/${encodeURIComponent(String(deliveryId || ""))}`,
+      { pocketBalance, cashInHand, ...(note ? { note } : {}) },
+      { contextModule: "admin" },
+    ),
   /** Outlets' document change requests; vertical "food" (restaurants) or "qc" (stores, medical). */
   getDocumentReviews: (vertical, status = "pending") =>
     apiClient.get(`/${vertical === "food" ? "food" : "qc"}/admin/restaurants/document-reviews`, { params: { status }, contextModule: "admin" }),

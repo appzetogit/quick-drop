@@ -6,6 +6,7 @@ const bonusInZone = riderInZoneGuard('food', foodRiderModel, { idFrom: (req) => 
 import express from 'express';
 import { sellerDocuments } from '../../restaurant/services/restaurant.service.js';
 import { sendResponse } from '../../../../utils/response.js';
+import { setDeliveryWalletFigures } from '../services/deliveryWalletAdjust.service.js';
 import { AuthError } from '../../../../core/auth/errors.js';
 import * as adminController from '../controllers/admin.controller.js';
 import * as serviceRadiusController from '../../restaurant/controllers/serviceRadius.controller.js';
@@ -264,6 +265,16 @@ router.get('/delivery/cash-limit-settlements', adminController.getCashLimitSettl
 // ----- Delivery partners & general -----
 router.get('/delivery/join-requests', adminController.getDeliveryJoinRequests);
 router.get('/delivery/wallets', adminController.getDeliveryWallets);
+// Set a rider's pocket balance / cash in hand from the Deliveryman list; written
+// as records for the difference (services/deliveryWalletAdjust.service.js).
+router.patch('/delivery/wallets/:deliveryId', async (req, res, next) => {
+    try {
+        const data = await setDeliveryWalletFigures(req.params.deliveryId, req.body || {}, { adminId: req.user?.userId });
+        return sendResponse(res, 200, data.changed ? 'Wallet updated' : 'Nothing changed', data);
+    } catch (error) {
+        next(error);
+    }
+});
 router.get('/delivery/bonus-transactions', adminController.getDeliveryPartnerBonusTransactions);
 router.get('/delivery/earnings', adminController.getDeliveryEarnings);
 router.post('/delivery/bonus', bonusInZone, requireFinancePermission('PARTNER_BONUS_GRANT'), adminController.addDeliveryPartnerBonus);
