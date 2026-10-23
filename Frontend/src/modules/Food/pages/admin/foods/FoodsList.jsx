@@ -217,19 +217,28 @@ export default function FoodsList() {
         return
       }
 
-      // Every page, not the first 1000. One call used to stop there, and with
-      // 1200 dishes the newest restaurants' menus (bulk uploads have no
-      // createdAt, so they sort last) showed "No Data Found".
-      const PAGE_SIZE = 1000
-      const list = []
-      for (let page = 1; page <= 20; page += 1) {
-        const foodsRes = await adminAPI.getFoods({ limit: PAGE_SIZE, page })
-        const body = foodsRes?.data?.data || {}
-        const batch = Array.isArray(body.foods) ? body.foods : []
-        list.push(...batch)
-        const total = Number(body.total) || 0
-        if (batch.length < PAGE_SIZE || (total && list.length >= total)) break
-      }
+      // One request per restaurant rather than one for everything. A single
+      // call stopped at the server's 1000 cap, and paging past it does not
+      // work: the server sorts by createdAt alone, bulk-uploaded dishes have
+      // none, so their order shifts between requests and page 2 repeated
+      // page 1 -- Saini Vaishno Dhaba's 50 dishes never arrived at all.
+      // Filtered by restaurant, each list is complete in one page.
+      const perRestaurant = await Promise.all(
+        restaurants.map((restaurant) => {
+          const restaurantId = String(restaurant?._id || restaurant?.id || "")
+          return adminAPI
+            .getFoods({ restaurantId, limit: 1000 })
+            .then((res) => res?.data?.data?.foods || [])
+            .catch(() => [])
+        }),
+      )
+      const seen = new Set()
+      const list = perRestaurant.flat().filter((f) => {
+        const id = String(f?._id || f?.id || "")
+        if (!id || seen.has(id)) return false
+        seen.add(id)
+        return true
+      })
       const approvedOnly = Array.isArray(list)
         ? list.filter((f) => String(f?.approvalStatus || "").toLowerCase() === "approved")
         : []
