@@ -65,6 +65,7 @@ import {
 import { getPublicPageController } from '../../admin/controllers/pageContent.controller.js';
 import { getPublicReferralSettingsController } from '../controllers/publicReferralSettings.controller.js';
 import { enforceAdminAccess } from '../../../../core/admin/enforceAdminAccess.middleware.js';
+import { getHomepageVideo, saveHomepageVideo } from '../services/homepageVideo.service.js';
 
 
 /*
@@ -86,6 +87,23 @@ import { enforceAdminAccess } from '../../../../core/admin/enforceAdminAccess.mi
 // the admin API (core/admin/adminAccessPolicy.js).
 const adminOnly = [authMiddleware, requireRoles('ADMIN'), enforceAdminAccess('food', () => 'cms')];
 const router = express.Router();
+
+// The website home page's "Video Demo" (Master admin -> Homepage Video).
+router.get('/hero-banners/landing/demo-video', adminOnly, async (_req, res, next) => {
+    try {
+        res.status(200).json({ success: true, message: 'Homepage video', data: await getHomepageVideo() });
+    } catch (error) {
+        next(error);
+    }
+});
+router.put('/hero-banners/landing/demo-video', adminOnly, upload.single('video'), async (req, res, next) => {
+    try {
+        const data = await saveHomepageVideo(req.body || {}, req.file || null);
+        res.status(200).json({ success: true, message: 'Homepage video saved', data });
+    } catch (error) {
+        next(error);
+    }
+});
 
 // Public CMS pages (About + legal). No auth required.
 router.get('/pages/:key', getPublicPageController);

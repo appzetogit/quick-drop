@@ -7,7 +7,13 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 
 gsap.registerPlugin(ScrollTrigger)
 
-export default function VideoSection() {
+// The video built into the site, used until Master admin sets one
+// (Master -> Homepage Video).
+const BUILT_IN_VIDEO = '/food/delivery1.mp4'
+
+export default function VideoSection({ settings }) {
+  const configured = settings?.demo_video || null
+  const videoSrc = configured?.url || BUILT_IN_VIDEO
   const videoRef = useRef(null)
   const containerRef = useRef(null)
   const headerRef = useRef(null)
@@ -22,7 +28,7 @@ export default function VideoSection() {
   const [playbackRate, setPlaybackRate] = useState(1)
   const controlsTimeoutRef = useRef(null)
 
-  const tabs = [
+  const defaultTabs = [
     {
       id: 0, icon: Compass, label: 'Premium Ride Hailing',
       description: 'Book verified professional captains and travel in comfort with live tracking.',
@@ -40,15 +46,33 @@ export default function VideoSection() {
     }
   ]
 
+  // Tab titles, descriptions and jump points from admin, over the built-in
+  // ones (whose icons and colours they keep, by position).
+  const tabs = Array.isArray(configured?.tabs) && configured.tabs.length
+    ? configured.tabs.map((t, i) => {
+        const base = defaultTabs[i % defaultTabs.length]
+        const start = Number(t?.start_percent)
+        return {
+          ...base,
+          id: i,
+          label: t?.label || base.label,
+          description: t?.description || base.description,
+          timePercent: Number.isFinite(start) ? Math.min(1, Math.max(0, start / 100)) : base.timePercent,
+        }
+      })
+    : defaultTabs
+
   const handleTimeUpdate = () => {
     if (videoRef.current) {
       const current = videoRef.current.currentTime
       setCurrentTime(current)
       if (duration > 0) {
         const ratio = current / duration
-        if (ratio < 0.33) setActiveTab(0)
-        else if (ratio < 0.66) setActiveTab(1)
-        else setActiveTab(2)
+        // The last tab whose start point has been reached -- any number of
+        // tabs, at whatever points admin set (the old 0.33/0.66 split assumed three).
+        let next = 0
+        tabs.forEach((tab, i) => { if (ratio >= tab.timePercent) next = i })
+        setActiveTab(next)
       }
     }
   }
@@ -140,7 +164,9 @@ export default function VideoSection() {
     return () => ctx.revert()
   }, [])
 
-  const currentColor = tabs[activeTab].color
+  // Never past the last tab, even if admin just removed one.
+  const activeTabSafe = Math.min(activeTab, tabs.length - 1)
+  const currentColor = tabs[activeTabSafe].color
 
   return (
     <section ref={containerRef} className="relative pt-24 pb-12 bg-slate-950 overflow-hidden text-slate-100" style={{ fontFamily: "'Poppins', sans-serif" }}>
@@ -179,7 +205,7 @@ export default function VideoSection() {
             <div className="space-y-3">
               {tabs.map((tab) => {
                 const IconComponent = tab.icon
-                const isActive = activeTab === tab.id
+                const isActive = activeTabSafe === tab.id
                 const progress = isActive && duration > 0
                   ? Math.min(((currentTime - duration * tab.timePercent) / (duration / 3)) * 100, 100)
                   : 0
@@ -263,7 +289,7 @@ export default function VideoSection() {
               {/* Animated gradient border ring around video */}
               <div
                 className="p-[1.5px] rounded-[28px] transition-all duration-700"
-                style={{ background: `linear-gradient(135deg, ${currentColor}60, transparent 50%, ${tabs[activeTab].accent}40)` }}
+                style={{ background: `linear-gradient(135deg, ${currentColor}60, transparent 50%, ${tabs[activeTabSafe].accent}40)` }}
               >
                 <div
                   className="relative aspect-video w-full rounded-[26px] overflow-hidden bg-slate-950 shadow-2xl group"
@@ -274,7 +300,7 @@ export default function VideoSection() {
 
                   <video
                     ref={videoRef}
-                    src="/food/delivery1.mp4"
+                    src={videoSrc}
                     preload="metadata"
                     loop muted={isMuted} playsInline
                     onTimeUpdate={handleTimeUpdate}
@@ -344,7 +370,7 @@ export default function VideoSection() {
                         </button>
                       </div>
                       <div className="hidden sm:flex items-center gap-1 text-slate-400 text-xs font-medium">
-                        <span className="font-bold" style={{ color: currentColor }}>{tabs[activeTab].label}</span>
+                        <span className="font-bold" style={{ color: currentColor }}>{tabs[activeTabSafe].label}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <button onClick={toggleSpeed} className="px-2.5 py-1 rounded bg-slate-900 border border-slate-800 text-[10px] font-black text-slate-300 hover:text-white hover:border-slate-700 transition-colors">

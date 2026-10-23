@@ -777,6 +777,12 @@ export const adminAPI = {
     apiClient.put(`/food/admin/restaurants/${id}/freebie-offer`, body ?? {}, {
       contextModule: "admin",
     }),
+  /** The website home page's Video Demo (Master -> Homepage Video). */
+  getHomepageVideo: () =>
+    apiClient.get("/food/hero-banners/landing/demo-video", { contextModule: "admin" }),
+  /** FormData: `video` (file) or `url`, `tabs` (JSON), or `reset`. */
+  saveHomepageVideo: (formData) =>
+    apiClient.put("/food/hero-banners/landing/demo-video", formData, { contextModule: "admin", timeout: 300000 }),
   getLandingSettings: () =>
     apiClient.get("/food/hero-banners/landing/settings", { contextModule: "admin" }),
   updateLandingSettings: (body) =>

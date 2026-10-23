@@ -42,6 +42,7 @@ export const masterSidebarMenu = [
           { label: "Platform Fee & GST", path: "/admin/master/fees" },
           { label: "Cancellation Policy", path: "/admin/master/cancellation" },
           { label: "Promo Limits", path: "/admin/master/promotions" },
+          { label: "Homepage Video", path: "/admin/master/homepage-video" },
         ],
       },
       {

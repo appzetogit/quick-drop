@@ -10,6 +10,24 @@ const landingPageSettingSchema = new mongoose.Schema(
     },
     // Media & Video
     video_url: { type: String, default: '' },
+    /*
+     * The website home page's "Video Demo" section, set from Master admin
+     * (modules/food/landing/services/homepageVideo.service.js). Absent = the
+     * video built into the site and its original tab text.
+     */
+    demo_video: {
+      type: new mongoose.Schema({
+        url: { type: String, default: '' },
+        source: { type: String, enum: ['', 'upload', 'link'], default: '' },
+        tabs: [{
+          label: { type: String, default: '' },
+          description: { type: String, default: '' },
+          start_percent: { type: Number, default: 0, min: 0, max: 100 },
+        }],
+        updated_at: { type: Date },
+      }, { _id: false }),
+      default: undefined,
+    },
     logo_url: { type: String, default: '' },
 
     // Hero Section Content

@@ -228,6 +228,7 @@ export function resourceForPath(pathname = "") {
   if (pathname.startsWith("/admin/master/platform-earnings")) return "reports"
   // And home-screen banners, per service, under Banners & pages.
   if (pathname.startsWith("/admin/master/home-screen")) return "cms"
+  if (pathname.startsWith("/admin/master/homepage-video")) return "cms"
   // And the commission overview, under the permission that sets seller rates.
   if (pathname.startsWith("/admin/master/commission")) return "restaurants"
   // Zone settings: a sub-admin sets these for their own zones only (the server
