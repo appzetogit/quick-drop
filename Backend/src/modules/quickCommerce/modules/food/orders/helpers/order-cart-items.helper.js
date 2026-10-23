@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
+import { assertOrderQuantity, resolveOrderQuantityRules } from '../../../../../food/shared/orderQuantityRules.js';
+import { getOrderQuantityCeiling } from '../../../../../food/shared/orderQuantityCeiling.js';
 
 function toObjectIds(ids = []) {
   return [...new Set(ids)]
@@ -137,6 +139,8 @@ export async function resolveOrderCartItems(restaurantId, rawItems = []) {
   };
 
   const resolved = [];
+  // Platform cap on any one line, from fee settings (shared with Food).
+  const quantityCeiling = await getOrderQuantityCeiling();
 
   for (const rawItem of items) {
     const itemId = String(rawItem?.itemId || rawItem?.id || '').trim();
@@ -170,6 +174,10 @@ export async function resolveOrderCartItems(restaurantId, rawItems = []) {
       const sizeTracked = variant && variant.stockQty !== null && variant.stockQty !== undefined;
       const onHand = sizeTracked ? variant.stockQty : foodDoc.stockQty;
       const label = variant ? `${foodDoc.name} (${variant.name})` : foodDoc.name;
+      // Min/max set on the product or this size (a size inherits the product's
+      // limit it does not set). Refused with a message the customer can act
+      // on, as in Food.
+      assertOrderQuantity(quantity, resolveOrderQuantityRules(foodDoc, quantityCeiling, pricing.variantId || null), label);
       if (onHand !== null && onHand !== undefined && Number(onHand) < quantity) {
         throw new ValidationError(
           Number(onHand) > 0

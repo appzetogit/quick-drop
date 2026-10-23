@@ -17,6 +17,11 @@ import {
     listOrderEmergencyRequestsAdmin,
     updateOrderEmergencyRequestAdmin
 } from '../../delivery/services/orderEmergencyRequest.service.js';
+import { FoodItem as QuantityLimitedItem } from '../models/food.model.js';
+import { createFoodQuantityLimits } from '../../../../../food/shared/foodQuantityLimits.js';
+
+// Product-level min/max order quantity, the same rules as Food's editor.
+const quantityLimits = createFoodQuantityLimits(QuantityLimitedItem);
 
 // ----- Customers / Users -----
 export async function getCustomers(req, res, next) {
@@ -585,6 +590,8 @@ export async function deleteRestaurant(req, res, next) {
 export async function getFoods(req, res, next) {
     try {
         const data = await adminService.getFoods(req.query || {});
+        // Product-level quantity limits the editor shows (shared with Food).
+        if (Array.isArray(data?.foods)) data.foods = await quantityLimits.withFoodQuantityLimits(data.foods);
         res.status(200).json({ success: true, message: 'Foods fetched successfully', data });
     } catch (error) {
         next(error);
@@ -593,7 +600,13 @@ export async function getFoods(req, res, next) {
 
 export async function createFood(req, res, next) {
     try {
+        // Checked first, so an invalid min/max never leaves a half-saved product.
+        const limits = await quantityLimits.prepareFoodQuantityLimits(req.body || {});
         const created = await adminService.createFood(req.body || {});
+        if (limits && created?._id) {
+            await quantityLimits.saveFoodQuantityLimits(created._id, limits);
+            Object.assign(created, limits);
+        }
         res.status(201).json({ success: true, message: 'Food created successfully', data: { food: created } });
     } catch (error) {
         next(error);
@@ -606,9 +619,14 @@ export async function updateFood(req, res, next) {
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.status(400).json({ success: false, message: 'Invalid food id' });
         }
+        const limits = await quantityLimits.prepareFoodQuantityLimits(req.body || {}, { foodId: id });
         const updated = await adminService.updateFood(id, req.body || {});
         if (!updated) {
             return res.status(404).json({ success: false, message: 'Food not found' });
+        }
+        if (limits) {
+            await quantityLimits.saveFoodQuantityLimits(id, limits);
+            Object.assign(updated, limits);
         }
         res.status(200).json({ success: true, message: 'Food updated successfully', data: { food: updated } });
     } catch (error) {

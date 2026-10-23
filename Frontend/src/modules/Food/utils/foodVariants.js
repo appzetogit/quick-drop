@@ -51,6 +51,11 @@ export const normalizeFoodVariants = (value) =>
         sku: entry?.sku || "",
         // GST % per size (stores); null = the product's rate.
         gstRate: entry?.gstRate ?? null,
+        // Per-size order limits. Dropped here before, so both editors opened
+        // every size with empty Min/Max boxes and the next save cleared them.
+        // null = this size sets none (the dish's own limit applies).
+        minOrderQuantity: entry?.minOrderQuantity ?? null,
+        maxOrderQuantity: entry?.maxOrderQuantity ?? null,
       }
     })
     .filter(Boolean)

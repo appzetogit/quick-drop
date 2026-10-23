@@ -277,6 +277,9 @@ export default function FoodsList() {
               stockQty: f.stockQty ?? null,
               lowStockThreshold: f.lowStockThreshold ?? null,
               variants: getStoredFoodVariants(f),
+              // Carried so the editor opens with the switch as saved: without it
+              // a dish whose variants are switched off opened (and saved) on.
+              variantsEnabled: f.variantsEnabled,
               foodType: f.foodType || "Non-Veg",
               approvalStatus: f.approvalStatus || "approved",
               description: f.description || "",

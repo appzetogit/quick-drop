@@ -14,7 +14,13 @@ const foodVariantSchema = new mongoose.Schema(
          * GST % for this pack size. null = the product's rate (then the
          * order-wide rate). Sizes of one product can sit in different slabs.
          */
-        gstRate: { type: Number, default: null, min: 0, max: 100 }
+        gstRate: { type: Number, default: null, min: 0, max: 100 },
+        /**
+         * Order limits for this pack size. null = the product's own limit
+         * applies; 0 = none for this size (shared/orderQuantityRules.js in Food).
+         */
+        minOrderQuantity: { type: Number, default: null, min: 0 },
+        maxOrderQuantity: { type: Number, default: null, min: 0 }
     },
     { _id: true }
 );
@@ -51,6 +57,13 @@ const foodSchema = new mongoose.Schema(
          */
         variantsEnabled: { type: Boolean, default: false },
         variants: { type: [foodVariantSchema], default: [] },
+        /**
+         * Product-level order limits, the same pair Food dishes have. 0 = no
+         * minimum / no cap (the platform ceiling applies). A size may override
+         * either. Checked at checkout (orders/helpers/order-cart-items.helper.js).
+         */
+        minOrderQuantity: { type: Number, min: 0, default: 1 },
+        maxOrderQuantity: { type: Number, min: 0, default: 0 },
         /**
          * The dish's primary image, kept as the first entry of [images].
          *

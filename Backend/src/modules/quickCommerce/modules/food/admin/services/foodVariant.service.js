@@ -40,7 +40,8 @@ const carryVariantStock = (variant, existing = []) => {
         || (existing || []).find((e) => toTrimmedString(e?.name).toLowerCase() === variant.name.toLowerCase());
     if (!match) return variant;
     if (variant._id === undefined && match._id) variant._id = match._id;
-    for (const key of ['stockQty', 'lowStockThreshold', 'gstRate']) {
+    // Kept when a save does not send them (an older app), not wiped.
+    for (const key of ['stockQty', 'lowStockThreshold', 'gstRate', 'minOrderQuantity', 'maxOrderQuantity']) {
         if (variant[key] === undefined && match[key] !== undefined) variant[key] = match[key];
     }
     if (variant.sku === undefined && match.sku) variant.sku = match.sku;
@@ -100,6 +101,27 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
             const gst = gstInput(entry?.gstRate);
             if (gst !== undefined) variant.gstRate = gst;
 
+            // Optional per-size order limits, as in Food. Blank or null = not set
+            // (the product's own limit applies); 0 = none for this size.
+            for (const key of ['minOrderQuantity', 'maxOrderQuantity']) {
+                if (entry?.[key] === undefined) continue;
+                const raw = entry[key];
+                if (raw === null || raw === '') { variant[key] = null; continue; }
+                const n = Math.floor(Number(raw));
+                if (!Number.isFinite(n) || n < 0) {
+                    throw new ValidationError(`${key === 'minOrderQuantity' ? 'Minimum' : 'Maximum'} quantity for "${name}" must be 0 or more`);
+                }
+                variant[key] = n;
+            }
+            if (
+                variant.minOrderQuantity != null
+                && variant.maxOrderQuantity != null
+                && variant.maxOrderQuantity > 0
+                && variant.maxOrderQuantity < variant.minOrderQuantity
+            ) {
+                throw new ValidationError(`Maximum quantity for "${name}" cannot be below its minimum`);
+            }
+
             return carryVariantStock(variant, existing);
         })
         .filter(Boolean);
@@ -131,6 +153,8 @@ export const serializeFoodVariants = (value = []) =>
                 sku: toTrimmedString(entry?.sku),
                 // GST % for this size; null = the product's rate.
                 gstRate: entry?.gstRate ?? null,
+                minOrderQuantity: entry?.minOrderQuantity ?? null,
+                maxOrderQuantity: entry?.maxOrderQuantity ?? null,
                 inStock: entry?.stockQty == null || Number(entry.stockQty) > 0
             };
         })
