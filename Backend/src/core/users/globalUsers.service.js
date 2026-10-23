@@ -265,6 +265,22 @@ export async function listGlobalUsers(query = {}) {
     };
 }
 
+/** A saved address as Master > Customers shows it. */
+const shapeAddress = (a = {}) => {
+    const coords = Array.isArray(a?.location?.coordinates) ? a.location.coordinates : [];
+    const lat = Number(a?.location?.latitude ?? coords[1]);
+    const lng = Number(a?.location?.longitude ?? coords[0]);
+    return {
+        id: a?._id ? String(a._id) : '',
+        label: a?.label || '',
+        line: [a?.street, a?.additionalDetails, a?.city, a?.state, a?.zipCode].map((v) => String(v || '').trim()).filter(Boolean).join(', '),
+        phone: a?.phone || '',
+        isDefault: a?.isDefault === true,
+        lat: Number.isFinite(lat) && lat !== 0 ? lat : null,
+        lng: Number.isFinite(lng) && lng !== 0 ? lng : null,
+    };
+};
+
 const shape = (u, e = {}) => ({
     id: String(u._id),
     name: u.name || '',
@@ -274,6 +290,8 @@ const shape = (u, e = {}) => ({
     isVerified: u.isVerified === true,
     joinedAt: u.createdAt || null,
     city: (u.addresses || []).find((a) => a.isDefault)?.city || (u.addresses || [])[0]?.city || '',
+    // Every saved address, default first (they were already read for the city).
+    addresses: [...(u.addresses || [])].sort((a, b) => (b?.isDefault === true) - (a?.isDefault === true)).map(shapeAddress),
     referralCode: u.referralCode || '',
     referralCount: Number(u.referralCount) || 0,
     orders: e?.orders || 0,

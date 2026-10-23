@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from "react"
+import { Fragment, useState, useEffect, useCallback, useRef } from "react"
 import { platformSettingsAPI } from "@food/api"
 import { toast } from "sonner"
-import { Loader2, Search, Download, Users, ChevronLeft, ChevronRight } from "lucide-react"
+import { Loader2, Search, Download, Users, ChevronLeft, ChevronRight, MapPin, ChevronDown } from "lucide-react"
 import { SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 
 /**
@@ -60,6 +60,15 @@ function AppTags({ apps }) {
 }
 
 export default function GlobalUsers() {
+  // Customers whose saved addresses are expanded in the list.
+  const [openAddresses, setOpenAddresses] = useState(() => new Set())
+  const toggleAddresses = (id) =>
+    setOpenAddresses((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   const [rows, setRows] = useState([])
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 })
   const [loading, setLoading] = useState(true)
@@ -224,13 +233,30 @@ export default function GlobalUsers() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((u) => (
-                    <tr key={u.id} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50">
+                  {rows.map((u) => {
+                    const addresses = Array.isArray(u.addresses) ? u.addresses : []
+                    const open = openAddresses.has(u.id)
+                    return (
+                    <Fragment key={u.id}>
+                    <tr className={`border-b border-neutral-100 hover:bg-neutral-50 ${open ? "bg-neutral-50" : ""}`}>
                       <td className="px-5 py-3">
                         <p className="font-medium text-neutral-900">{u.name || "Unnamed"}</p>
                         <p className="text-xs text-neutral-500">{u.phone}</p>
                         {u.email && <p className="text-xs text-neutral-400">{u.email}</p>}
-                        {u.city && <p className="text-xs text-neutral-400">{u.city}</p>}
+                        {addresses.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleAddresses(u.id)}
+                            aria-expanded={open}
+                            className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-neutral-700 hover:text-neutral-900"
+                          >
+                            <MapPin className="h-3.5 w-3.5" />
+                            {addresses.length} saved address{addresses.length === 1 ? "" : "es"}
+                            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+                          </button>
+                        ) : (
+                          <p className="mt-1 text-xs text-neutral-400">No saved address</p>
+                        )}
                       </td>
                       <td className="px-3 py-3"><AppTags apps={u.apps} /></td>
                       <td className="px-3 py-3 text-right tabular-nums">
@@ -260,7 +286,39 @@ export default function GlobalUsers() {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    {open && (
+                      <tr className="border-b border-neutral-100 bg-neutral-50">
+                        <td colSpan={8} className="px-5 pb-4 pt-1">
+                          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {addresses.map((a, i) => (
+                              <li key={a.id || i} className="rounded-lg border border-neutral-200 bg-white p-3 text-sm">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-neutral-900">{a.label || "Address"}</span>
+                                  {a.isDefault && (
+                                    <span className="rounded-full bg-neutral-900 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Default</span>
+                                  )}
+                                </div>
+                                <p className="mt-1 text-neutral-700">{a.line || "No address text"}</p>
+                                {a.phone && <p className="mt-0.5 text-xs text-neutral-500">{a.phone}</p>}
+                                {a.lat != null && a.lng != null && (
+                                  <a
+                                    href={`https://www.google.com/maps?q=${a.lat},${a.lng}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="mt-1 inline-block text-xs font-medium text-neutral-700 underline underline-offset-2 hover:text-neutral-900"
+                                  >
+                                    View on map
+                                  </a>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
