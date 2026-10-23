@@ -674,7 +674,59 @@ async function currentZoneOf(ctx, segment) {
             : null,
     ]);
     const newest = latest.filter(Boolean).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0];
-    return newest?.zoneId || null;
+    if (newest?.zoneId) return newest.zoneId;
+    // No order to read a zone from -- a new rider, or before the first order
+    // of the platform. Every ladder an admin sets is per zone, so without this
+    // the card found none and stayed hidden for every rider. Where they are
+    // now decides instead.
+    return foodZoneOfRiderLocation(ctx);
+}
+
+/** Ray casting over a lat/lng ring (zone.coordinates). */
+function pointInRing(lat, lng, ring) {
+    if (!Array.isArray(ring) || ring.length < 3) return false;
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = Number(ring[i].longitude ?? ring[i].lng);
+        const yi = Number(ring[i].latitude ?? ring[i].lat);
+        const xj = Number(ring[j].longitude ?? ring[j].lng);
+        const yj = Number(ring[j].latitude ?? ring[j].lat);
+        if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+}
+
+/**
+ * The food zone containing the rider's last known location (the delivery
+ * app's, else the linked taxi driver's), most specific zone first; else a zone
+ * they are recorded as working in; else null.
+ */
+async function foodZoneOfRiderLocation(ctx) {
+    try {
+        const partner = ctx.foodPartnerId
+            ? await FoodDeliveryPartner.findById(ctx.foodPartnerId).select('lastLat lastLng lastLocation zoneIds').lean()
+            : null;
+        let lat = Number(partner?.lastLat ?? partner?.lastLocation?.coordinates?.[1]);
+        let lng = Number(partner?.lastLng ?? partner?.lastLocation?.coordinates?.[0]);
+        if ((!Number.isFinite(lat) || !Number.isFinite(lng)) && ctx.taxiDriverId) {
+            const driver = await Driver.findById(ctx.taxiDriverId).select('location').lean();
+            lat = Number(driver?.location?.coordinates?.[1]);
+            lng = Number(driver?.location?.coordinates?.[0]);
+        }
+        if (Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0)) {
+            const [{ FoodZone }, { mostSpecificFirst }] = await Promise.all([
+                import('../../../modules/food/admin/models/zone.model.js'),
+                import('../../zones/zonePriority.js'),
+            ]);
+            const zones = await FoodZone.find({ isActive: true }).select('coordinates').lean();
+            const hit = mostSpecificFirst(zones).find((z) => pointInRing(lat, lng, z.coordinates));
+            if (hit) return hit._id;
+        }
+        return partner?.zoneIds?.[0] || null;
+    } catch (err) {
+        logger.warn(`incentive: rider zone from location failed: ${err?.message || err}`);
+        return null;
+    }
 }
 
 /**
