@@ -174,6 +174,19 @@ export const getRestaurantComplaintsController = async (req, res, next) => {
 export const deleteCurrentRestaurantAccountController = async (req, res, next) => {
     try {
         const restaurantId = req.user?.userId;
+        // Not mid-order, not with a payout waiting, not while still owed money
+        // (core/sellerDeleteGuard.js).
+        const [{ assertSellerCanDelete }, { FoodOrder }, { FoodRestaurantWithdrawal }, { getRestaurantFinance }] = await Promise.all([
+            import('../../../../../../core/sellerDeleteGuard.js'),
+            import('../../orders/models/order.model.js'),
+            import('../models/foodRestaurantWithdrawal.model.js'),
+            import('../services/restaurantFinance.service.js'),
+        ]);
+        await assertSellerCanDelete(restaurantId, {
+            Order: FoodOrder,
+            Withdrawal: FoodRestaurantWithdrawal,
+            owedToSeller: async (id) => (await getRestaurantFinance(String(id)))?.wallet?.withdrawableBalance ?? 0,
+        });
         const result = await deleteCurrentRestaurantAccount(restaurantId);
         return sendResponse(res, 200, 'Restaurant account deleted successfully', result);
     } catch (error) {
