@@ -217,8 +217,19 @@ export default function FoodsList() {
         return
       }
 
-      const foodsRes = await adminAPI.getFoods({ limit: 1000 })
-      const list = foodsRes?.data?.data?.foods || []
+      // Every page, not the first 1000. One call used to stop there, and with
+      // 1200 dishes the newest restaurants' menus (bulk uploads have no
+      // createdAt, so they sort last) showed "No Data Found".
+      const PAGE_SIZE = 1000
+      const list = []
+      for (let page = 1; page <= 20; page += 1) {
+        const foodsRes = await adminAPI.getFoods({ limit: PAGE_SIZE, page })
+        const body = foodsRes?.data?.data || {}
+        const batch = Array.isArray(body.foods) ? body.foods : []
+        list.push(...batch)
+        const total = Number(body.total) || 0
+        if (batch.length < PAGE_SIZE || (total && list.length >= total)) break
+      }
       const approvedOnly = Array.isArray(list)
         ? list.filter((f) => String(f?.approvalStatus || "").toLowerCase() === "approved")
         : []
