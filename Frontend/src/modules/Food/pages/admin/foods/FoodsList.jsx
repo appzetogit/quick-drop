@@ -39,6 +39,9 @@ const createFoodForm = () => ({
   packagingAmount: "",
   packagingUnits: "1",
   preparationTime: "",
+  // Dish-level order limits, as on the restaurant's own item form. 0 = none.
+  minOrderQuantity: "0",
+  maxOrderQuantity: "0",
   stockQty: "",
   lowStockThreshold: "",
   gstRate: "",
@@ -278,6 +281,8 @@ export default function FoodsList() {
               approvalStatus: f.approvalStatus || "approved",
               description: f.description || "",
               preparationTime: f.preparationTime || "",
+              minOrderQuantity: f.minOrderQuantity,
+              maxOrderQuantity: f.maxOrderQuantity,
               availabilitySchedule: f.availabilitySchedule || null,
               isAvailable: f.isAvailable !== false,
               createdAt: f.createdAt,
@@ -460,6 +465,8 @@ export default function FoodsList() {
       foodType: String(food.foodType || "Non-Veg"),
       isAvailable: food.isAvailable !== false,
       preparationTime: String(food.preparationTime || ""),
+      minOrderQuantity: String(food.minOrderQuantity ?? 0),
+      maxOrderQuantity: String(food.maxOrderQuantity ?? 0),
       stockQty: food.stockQty != null ? String(food.stockQty) : "",
       lowStockThreshold: food.lowStockThreshold != null ? String(food.lowStockThreshold) : "",
       gstRate: food.gstRate != null ? String(food.gstRate) : "",
@@ -710,6 +717,8 @@ export default function FoodsList() {
         foodType: foodForm.foodType === "Veg" ? "Veg" : "Non-Veg",
         isAvailable: foodForm.isAvailable !== false,
         preparationTime: String(foodForm.preparationTime || "").trim(),
+        minOrderQuantity: Number(foodForm.minOrderQuantity) || 0,
+        maxOrderQuantity: Number(foodForm.maxOrderQuantity) || 0,
         availabilitySchedule: foodForm.availabilitySchedule,
         ...(Array.isArray(foodForm.suggestedItemIds) ? { suggestedItemIds: foodForm.suggestedItemIds } : {}),
       }
@@ -1458,6 +1467,33 @@ export default function FoodsList() {
                     <option value="35-45 mins">35-45 mins</option>
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                </div>
+                {/* The same pair as the restaurant's item form. Sizes can set
+                    their own limits under Variants. */}
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Min Order Quantity</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="99"
+                      value={foodForm.minOrderQuantity}
+                      onChange={(e) => setFoodForm((prev) => ({ ...prev, minOrderQuantity: e.target.value.replace(/[^0-9]/g, "") }))}
+                      className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Max Order Quantity</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="99"
+                      value={foodForm.maxOrderQuantity}
+                      onChange={(e) => setFoodForm((prev) => ({ ...prev, maxOrderQuantity: e.target.value.replace(/[^0-9]/g, "") }))}
+                      className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white"
+                    />
+                  </div>
+                  <p className="col-span-2 text-xs text-slate-500">0 means no minimum / no limit. Sizes can set their own under Variants.</p>
                 </div>
               </div>
               <div className="md:col-span-2">
