@@ -22,6 +22,10 @@ const ROLE_TO_OWNER_TYPE = {
     delivery: 'DELIVERY_PARTNER',
     ADMIN: 'ADMIN',
     admin: 'ADMIN',
+    // Super admins are admins; the admins collection spells it both ways.
+    SUPER_ADMIN: 'ADMIN',
+    super_admin: 'ADMIN',
+    superadmin: 'ADMIN',
     driver: 'DRIVER',
     owner: 'OWNER',
     bus_driver: 'BUS_DRIVER',

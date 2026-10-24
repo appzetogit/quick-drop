@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 process.env.JWT_ACCESS_SECRET ||= 'test-access-secret';
 process.env.JWT_REFRESH_SECRET ||= 'test-refresh-secret';
 process.env.REDIS_ENABLED = 'false';
+process.env.ADMIN_ALERT_PUSH = 'false';
 
 let failed = 0;
 const check = async (label, fn) => {

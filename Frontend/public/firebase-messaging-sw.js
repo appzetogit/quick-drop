@@ -52,6 +52,11 @@ async function hasVisibleClientForTarget(payload = {}) {
     if (!isVisible) return false;
     try {
       const clientUrl = new URL(client.url);
+      // Admin alerts: any visible admin tab (food, master or taxi admin) is
+      // already ringing for it, so no system popup on top.
+      if (payload?.data?.adminAlert === "1") {
+        return /(^|\/)admin(\/|$)/.test(clientUrl.pathname);
+      }
       if (targetRoot === "/" || !targetRoot) {
         return true;
       }
@@ -147,7 +152,8 @@ async function loadFirebaseWebConfig() {
         tag: notificationKey,
         renotify: false,
         silent: false,
-        requireInteraction: false,
+        // An SOS stays on screen until someone deals with it.
+        requireInteraction: payload?.data?.urgent === "1",
         vibrate: [200, 100, 200, 100, 300],
         data: payload?.data || {},
       });

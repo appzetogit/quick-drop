@@ -260,11 +260,16 @@ const buildMessagePayload = (payload = {}, token) => {
         headers: {
             Urgency: 'high'
         },
-        notification: {
-            title: notification.title,
-            body: notification.body,
-            icon: image || payload.icon || '/favicon.ico'
-        }
+        // `webpushNotification: false` leaves display to the page's service worker
+        // (which tags, de-duplicates and links it) instead of the browser
+        // auto-showing a second, untagged copy.
+        ...(payload.webpushNotification === false ? {} : {
+            notification: {
+                title: notification.title,
+                body: notification.body,
+                icon: image || payload.icon || '/favicon.ico'
+            }
+        })
     };
 
     return message;
@@ -600,7 +605,9 @@ export const notifyOwnersActionableAlert = async (targets = [], payload = {}) =>
 
 export const notifyAdminsSafely = async (payload = {}) => {
     try {
-        const admins = await FoodAdmin.find({ isActive: true }).select('_id').lean();
+        // Not "isActive: true": older admin records (a super admin among them)
+        // carry no isActive at all and were never notified.
+        const admins = await FoodAdmin.find({ isActive: { $ne: false } }).select('_id').lean();
         if (!admins.length) return [];
         
         const targets = admins.map(a => ({

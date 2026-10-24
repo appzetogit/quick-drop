@@ -75,14 +75,41 @@ export function buildAdminAlert({ kind, module, title, body = '', link = '', ref
     };
 }
 
+/**
+ * The same alert as a browser push, for admins whose panel tab is closed (Chrome
+ * still running). Data-only: the service worker shows it, tagged with the alert
+ * id, so an open-but-hidden tab's own notification replaces it rather than
+ * doubling it. Also works from the workers process, which has no socket.
+ */
+function pushToAdmins(alert) {
+    if (process.env.ADMIN_ALERT_PUSH === 'false') return;
+    import('./firebase.service.js')
+        .then(({ notifyAdminsSafely }) => notifyAdminsSafely({
+            title: alert.title,
+            body: alert.body,
+            dataOnly: true,
+            webpushNotification: false,
+            data: {
+                adminAlert: '1',
+                notificationId: alert.id,
+                title: alert.title,
+                body: alert.body,
+                link: alert.link || '/admin',
+                kind: alert.kind,
+                urgent: alert.urgent ? '1' : '0',
+            },
+        }))
+        .catch((err) => logger.warn(`[AdminAlert] push not sent: ${err?.message || err}`));
+}
+
 /** Send an alert to every connected admin. Never throws. */
 export function alertAdmins(input) {
     try {
         const alert = buildAdminAlert(input);
         if (isDuplicate(alert.id, Date.now())) return alert;
         const io = getIO();
-        if (!io) return alert;
-        io.to(rooms.admin()).emit(ADMIN_ALERT_EVENT, alert);
+        if (io) io.to(rooms.admin()).emit(ADMIN_ALERT_EVENT, alert);
+        pushToAdmins(alert);
         return alert;
     } catch (err) {
         logger.warn(`[AdminAlert] not sent: ${err?.message || err}`);

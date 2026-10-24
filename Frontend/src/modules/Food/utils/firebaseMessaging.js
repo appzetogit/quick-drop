@@ -770,3 +770,46 @@ export async function registerWebPushForCurrentModule(pathname = window.location
 
   return null;
 }
+
+/**
+ * Browser push for the admin panel, so alerts still reach an admin whose panel
+ * tab is closed (Chrome running). The other panels go through
+ * registerWebPushForCurrentModule; admin is excluded there on purpose because
+ * the admin alert centre owns sound and foreground display (it listens on the
+ * socket), so this only registers the token -- no foreground listener, no
+ * permission prompt (the alert centre asks on a click).
+ *
+ * @param {string} adminToken  the admin's access token
+ * @returns {Promise<boolean>} true once the token is saved
+ */
+let adminPushRegistered = false;
+export async function registerAdminWebPush(adminToken) {
+  if (adminPushRegistered || !adminToken) return adminPushRegistered;
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
+  if (isFlutterWebView() || !isSupportedBrowser() || !isSecureContextForPush()) return false;
+  try {
+    const firebasePublicEnv = await getFirebasePublicEnv();
+    if (!firebasePublicEnv?.vapidKey) return false;
+    const app = getMessagingFirebaseApp(firebasePublicEnv);
+    if (!app) return false;
+    const { getMessaging, getToken, isSupported } = await import("firebase/messaging");
+    if (!(await isSupported().catch(() => false))) return false;
+    const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    const token = await getToken(getMessaging(app), {
+      vapidKey: firebasePublicEnv.vapidKey,
+      serviceWorkerRegistration: registration,
+    });
+    if (!token) return false;
+    const { API_BASE_URL } = await import("@food/api/config");
+    const res = await fetch(`${API_BASE_URL}/fcm-tokens/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${adminToken}` },
+      body: JSON.stringify({ token, platform: "web" }),
+    });
+    adminPushRegistered = res.ok;
+    return adminPushRegistered;
+  } catch (e) {
+    pushDebugWarn(PUSH_DEBUG_PREFIX, "Admin web push registration failed", { error: e?.message || e });
+    return false;
+  }
+}

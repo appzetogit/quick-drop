@@ -79,7 +79,30 @@ const triggerWebViewNativeNotification = async (orderData = {}) => {
  * Hook for restaurant to receive real-time order notifications with sound
  * @returns {object} - { newOrder, playSound, isConnected }
  */
+/*
+ * The hook is mounted up to three times at once (the app-wide listener, the
+ * Orders page, All orders), each with its own socket and order poll. Only the
+ * oldest live instance makes sound, or one new order rang three times over.
+ */
+const liveInstances = new Set();
+let nextInstanceId = 1;
+const isSoundOwner = (id) => liveInstances.size === 0 || Math.min(...liveInstances) === id;
+// Accepting an order in one instance must silence the one that is ringing.
+const silencers = new Set();
+
 export const useRestaurantNotifications = () => {
+  const instanceIdRef = useRef(0);
+  if (!instanceIdRef.current) instanceIdRef.current = nextInstanceId++;
+  useEffect(() => {
+    const id = instanceIdRef.current;
+    liveInstances.add(id);
+    return () => {
+      liveInstances.delete(id);
+    };
+  }, []);
+  // Orders still waiting for the restaurant, from the last poll; null before
+  // the first poll. The ring stops once the order it rings for leaves this set.
+  const pendingOrderKeysRef = useRef(null);
   const socketRef = useRef(null);
   const [newOrder, setNewOrder] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -94,8 +117,11 @@ export const useRestaurantNotifications = () => {
   const lastAlertAtByOrderRef = useRef(new Map());
   const lastBrowserNotificationAtByOrderRef = useRef(new Map());
   const CONNECT_ERROR_LOG_THROTTLE_MS = 10000;
-  const ALERT_LOOP_INTERVAL_MS = 4500;
-  const ALERT_LOOP_MAX_MS = 120000;
+  // Rings until the order is accepted, rejected or cancelled -- in a visible
+  // tab too, where it used to beep once and go quiet. Capped so an unattended
+  // tablet does not ring forever.
+  const ALERT_LOOP_INTERVAL_MS = 3000;
+  const ALERT_LOOP_MAX_MS = 10 * 60 * 1000;
   const ALERT_DEDUPE_MS = 15000;
   const BROWSER_NOTIFICATION_DEDUPE_MS = 20000;
   const NOTIFICATION_PERMISSION_ASKED_KEY = 'restaurant_notification_permission_asked';
@@ -192,11 +218,18 @@ export const useRestaurantNotifications = () => {
         stopAlertLoop();
         return;
       }
-
-      // Keep re-alerting while order is pending and tab is not visible.
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-        playNotificationSound(activeOrderRef.current);
+      // Accepted / rejected / cancelled since: the last poll no longer lists it.
+      // Only a poll taken after the ring started counts: a brand-new order
+      // reaches the socket before the next poll lists it.
+      const pending = pendingOrderKeysRef.current;
+      const key = getOrderAlertKey(activeOrderRef.current);
+      if (pending && pending.at > alertLoopStartedAtRef.current && key && !pending.keys.has(key)) {
+        stopAlertLoop();
+        activeOrderRef.current = null;
+        return;
       }
+
+      playNotificationSound(activeOrderRef.current);
     }, ALERT_LOOP_INTERVAL_MS);
   };
 
@@ -261,6 +294,16 @@ export const useRestaurantNotifications = () => {
             const bt = b?.updatedAt || b?.createdAt || 0;
             return new Date(bt).getTime() - new Date(at).getTime();
           });
+
+        // Every id a waiting order may be keyed by (socket and REST disagree).
+        pendingOrderKeysRef.current = {
+          at: Date.now(),
+          keys: new Set(
+            confirmed.flatMap((o) => [o?.orderMongoId, o?.order_mongo_id, o?.orderId, o?.order_id, o?._id, o?.id])
+              .filter(Boolean)
+              .map((v) => String(v).trim()),
+          ),
+        };
 
         if (confirmed.length > 0) {
           // Trigger alerts for newest confirmed orders (dedupe prevents spam).
@@ -698,6 +741,7 @@ export const useRestaurantNotifications = () => {
   }, []);
 
   const playNotificationSound = async (orderData = {}) => {
+    if (!isSoundOwner(instanceIdRef.current)) return;
     try {
       const usedNativeBridge = await triggerWebViewNativeNotification(orderData);
       if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
@@ -734,9 +778,19 @@ export const useRestaurantNotifications = () => {
     }
   };
 
-  const clearNewOrder = () => {
+  const silenceHere = () => {
     stopAlertLoop();
     activeOrderRef.current = null;
+  };
+  useEffect(() => {
+    silencers.add(silenceHere);
+    return () => {
+      silencers.delete(silenceHere);
+    };
+  });
+
+  const clearNewOrder = () => {
+    silencers.forEach((silence) => silence());
     setNewOrder(null);
   };
 

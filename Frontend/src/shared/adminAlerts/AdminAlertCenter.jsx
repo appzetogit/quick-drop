@@ -304,6 +304,23 @@ export default function AdminAlertCenter() {
     }
   }
 
+  // Closed-tab alerts: once notifications are allowed, register this browser
+  // for push so the server can still reach it with the panel closed.
+  const [pushReady, setPushReady] = useState(false)
+  useEffect(() => {
+    if (notifPermission !== "granted") return
+    let cancelled = false
+    import("@food/utils/firebaseMessaging")
+      .then((m) => m.registerAdminWebPush(getUnifiedAdminToken()))
+      .then((ok) => {
+        if (!cancelled) setPushReady(Boolean(ok))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [notifPermission])
+
   const showUnlockBar = isSupported() && !unlocked && !settings.muted
 
   return (
@@ -468,6 +485,13 @@ export default function AdminAlertCenter() {
                 <button type="button" onClick={askNotifications} className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50">
                   Allow desktop notifications
                 </button>
+              )}
+              {notifPermission === "granted" && (
+                <p className={`text-[11px] ${pushReady ? "text-emerald-700" : "text-slate-500"}`}>
+                  {pushReady
+                    ? "Alerts also arrive with this tab closed (while Chrome is running)."
+                    : "Setting up alerts for when this tab is closed…"}
+                </p>
               )}
               {notifPermission === "denied" && (
                 <p className="text-[11px] text-amber-700">
