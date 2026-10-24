@@ -17,6 +17,7 @@ import {
     RETURN_STATUS,
     PERISHABILITY,
 } from './returnPolicy.service.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../../../core/notifications/adminAlerts.js';
 
 /**
  * Orchestration for quick-commerce returns.
@@ -191,6 +192,13 @@ export const requestReturn = async ({ userId, orderId, lines, reasonCode, reason
     // order was worth, so the exposure is a duplicate row rather than duplicate money.
     // Move the claim check into a transaction if support starts seeing double filings.
     await doc.save();
+    alertAdmins({
+        kind: ALERT_KINDS.PAYOUT,
+        module: 'quickCommerce',
+        title: `Return / refund request ${doc.returnCode || ''}`.trim(),
+        link: '/admin/quick-commerce/orders/all',
+        refId: String(doc._id),
+    });
     return doc;
 };
 

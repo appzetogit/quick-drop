@@ -58,6 +58,7 @@ import {
   countCouponUseOnPayment,
   releaseCouponUse,
 } from './couponUsage.service.js';
+import { alertAdmins, alertOrderEvent, ALERT_KINDS, line } from '../../../../core/notifications/adminAlerts.js';
 // 🗑️ Moved to foodTransaction.service.js to centralize finance logic.
 
 async function getZoneSurgeSnapshot(zoneId) {
@@ -526,6 +527,7 @@ export async function createOrder(userId, dto) {
       }
 
       await order.save();
+      alertOrderEvent(order, { module: 'food', storeName: restaurant.restaurantName });
     } catch (err) {
       /*
        * The other half of debiting first: if the save fails, the debit is
@@ -674,6 +676,7 @@ export async function verifyPayment(userId, dto) {
     note: "Payment verified, order confirmed",
   });
   await order.save();
+  alertOrderEvent(order, { module: 'food' });
 
   // Paid, so the coupon now counts as used. Idempotent against the webhook.
   await countCouponUseOnPayment(order);
@@ -1017,6 +1020,7 @@ export async function cancelOrder(orderId, userId, reason) {
   await processOrderRefundOnce(order, userId);
 
   await order.save();
+  alertOrderEvent(order, { module: 'food', cancelled: true, by: 'customer' });
 
   // A cancelled order is not a use of its coupon.
   await releaseCouponUse(order);
@@ -1371,6 +1375,9 @@ export async function updateOrderStatusRestaurant(
     note: note || "",
   });
   await order.save();
+  if (String(orderStatus).startsWith('cancel')) {
+    alertOrderEvent(order, { module: 'food', cancelled: true, by: isAdmin ? 'admin' : 'restaurant' });
+  }
 
   // Custom messages / titles for status updates
   let title = `Order ${order._id.toString()} updated`;

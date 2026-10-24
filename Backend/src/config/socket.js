@@ -177,7 +177,9 @@ export const initSocket = async (server) => {
             // A super admin IS an admin (same rule as requireRoles): the token carries
             // the admin document's role, so 'super_admin' joined no admin room and
             // never heard support chat, order or manual-assignment updates.
-            if (['ADMIN', 'SUPER_ADMIN'].includes(String(role).toUpperCase())) socket.join(roomNames.admin());
+            // Spelled both ways in the admins collection ('super_admin' and
+            // 'superadmin'), so compare letters only.
+            if (['ADMIN', 'SUPERADMIN'].includes(String(role).toUpperCase().replace(/[^A-Z]/g, ''))) socket.join(roomNames.admin());
         }
 
         // Explicit join (used by existing restaurant client hook).

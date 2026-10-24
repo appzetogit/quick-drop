@@ -284,6 +284,9 @@ const register = async (req, res) => {
       approvalStatus: VENDOR_STATUS.PENDING,
       isPhoneVerified: true
     });
+    import('../../../../core/notifications/adminAlerts.js')
+      .then(({ alertAdmins }) => alertAdmins({ kind: 'partner', module: 'services', title: 'New service vendor sign-up', body: [vendor.name, vendor.phone].filter(Boolean).join(' · '), link: '/admin/sp/vendors', refId: `vendor:${String(vendor._id)}` }))
+      .catch(() => {});
     await handleAuthFcmToken(Vendor, vendor._id, req);
 
     // Notify Admins

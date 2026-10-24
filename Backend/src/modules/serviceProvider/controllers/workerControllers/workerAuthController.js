@@ -238,6 +238,10 @@ const register = async (req, res) => {
       status: WORKER_STATUS.OFFLINE
     });
 
+    import('../../../../core/notifications/adminAlerts.js')
+      .then(({ alertAdmins }) => alertAdmins({ kind: 'partner', module: 'services', title: 'New service worker sign-up', body: [worker.name, worker.phone].filter(Boolean).join(' · '), link: '/admin/sp/workers', refId: `worker:${String(worker._id)}` }))
+      .catch(() => {});
+
     // Generate JWT tokens with initial session
     const loginSessionId = Date.now().toString();
     await Worker.findByIdAndUpdate(worker._id, { loginSessionId });

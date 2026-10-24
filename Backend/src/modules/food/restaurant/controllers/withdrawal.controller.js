@@ -3,6 +3,7 @@ import { FoodRestaurantWithdrawal } from '../models/foodRestaurantWithdrawal.mod
 import { getRestaurantWithdrawalSettings } from '../../admin/services/admin.service.js';
 import { getRestaurantFinance } from '../services/restaurantFinance.service.js';
 import { withFinanceLock, restaurantWithdrawalLockKey } from '../../../../core/finance/financeLock.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 
 export const createWithdrawalRequestController = async (req, res, next) => {
     try {
@@ -44,6 +45,14 @@ export const createWithdrawalRequestController = async (req, res, next) => {
             });
 
             await withdrawal.save();
+            alertAdmins({
+                kind: ALERT_KINDS.PAYOUT,
+                module: 'food',
+                title: 'Restaurant withdrawal request',
+                body: line(rupees(withdrawal.amount)),
+                link: '/admin/food/restaurant-withdraws',
+                refId: String(withdrawal._id),
+            });
 
             return sendResponse(res, 201, 'Withdrawal request submitted successfully', withdrawal);
         }, { busyMessage: 'Another withdrawal is being processed. Please try again.' });

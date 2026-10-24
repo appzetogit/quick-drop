@@ -15,6 +15,7 @@ import {
 } from '../../orders/services/order.helpers.js';
 import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { DeliveryOrderEmergencyRequest } from '../models/orderEmergencyRequest.model.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 
 const ACTIVE_REQUEST_STATUSES = ['open', 'in_progress'];
 const PRE_PICKUP_ORDER_STATUSES = [
@@ -276,6 +277,14 @@ export async function createOrderEmergencyRequest(deliveryPartnerId, payload = {
             reason,
             activeKey: String(order._id),
             status: 'open'
+        });
+        alertAdmins({
+            kind: ALERT_KINDS.SUPPORT,
+            module: 'food',
+            title: 'Rider asked to hand over an order',
+            body: line(reason),
+            link: '/admin/food/orders/all',
+            refId: String(created._id),
         });
         return serializeRequest(created);
     } catch (error) {

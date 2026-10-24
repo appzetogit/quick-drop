@@ -155,6 +155,15 @@ class BookingScheduler {
                 // A partner accepted, or another tick/instance got there first.
                 return;
               }
+              import('../../../core/notifications/adminAlerts.js')
+                .then(({ alertAdmins }) => alertAdmins({
+                kind: 'cancelled',
+                module: 'services',
+                title: `Service booking ${booking.bookingNumber || ''}: no ${bookingModel} found`,
+                link: '/admin/sp/bookings',
+                refId: `${String(booking._id)}:unmatched`,
+              }))
+                .catch(() => {});
               if (expired.refundAmount > 0) {
                 console.log(`[BookingScheduler] ${booking.bookingNumber}: refunded ₹${expired.refundAmount} to wallet.`);
               }

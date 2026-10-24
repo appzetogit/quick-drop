@@ -5,6 +5,7 @@ import { Delivery } from '../../user/models/Delivery.js';
 import { Ride } from '../../user/models/Ride.js';
 import { User } from '../../user/models/User.js';
 import { emitToAdmins } from '../../services/dispatchService.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 
 const cleanString = (value = '') => String(value || '').trim();
 
@@ -195,6 +196,15 @@ const createAlertRecord = async ({
         message: `SOS triggered from ${sourceApp} app`,
       },
     ],
+  });
+
+  alertAdmins({
+    kind: ALERT_KINDS.SOS,
+    module: created.serviceType === 'parcel' ? 'parcel' : 'taxi',
+    title: `SOS from a ${sourceApp === 'driver' ? 'driver' : 'rider'}`,
+    body: line(sourceApp === 'driver' ? created.driverName : created.riderName, created.tripCode, created.pickupAddress),
+    link: '/taxi/admin/safety/sos',
+    refId: String(created._id),
   });
 
   return SafetyAlert.findById(created._id).lean();

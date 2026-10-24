@@ -13,6 +13,7 @@ import { logger } from '../../../../utils/logger.js';
 // Reaches out of quickCommerce to the platform-wide service on purpose: a rider's
 // balance cannot be per-vertical and still be one balance.
 import { getRiderFinance } from '../../../../../../core/finance/riderFinance.service.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../../../core/notifications/adminAlerts.js';
 
 /**
  * Enhanced wallet fetch for delivery partners.
@@ -257,6 +258,15 @@ export const requestDeliveryWithdrawal = async (deliveryPartnerId, payload) => {
         upiId: partner.upiId,
         upiQrCode: partner.upiQrCode,
         status: 'pending'
+    });
+
+    alertAdmins({
+        kind: ALERT_KINDS.PAYOUT,
+        module: 'quickCommerce',
+        title: 'Rider withdrawal request',
+        body: line(partner?.name, rupees(amount)),
+        link: '/admin/quick-commerce/delivery-withdrawal',
+        refId: String(withdrawal._id),
     });
 
     await FoodDeliveryWallet.findOneAndUpdate(

@@ -41,6 +41,7 @@ import {
 import { normalizeDrugLicenceInput } from '../shared/storeType.js';
 import { createSellerWebLogin } from '../../../../../core/auth/sellerWebLogin.js';
 import { OTP_SERVICES } from '../../../../../core/otp/otpRateLimit.service.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../../core/notifications/adminAlerts.js';
 
 const ONBOARDING_TTL = '6h';
 const onboardingSecret = () => `${config.jwtAccessSecret}:partner-onboarding`;
@@ -438,6 +439,14 @@ export async function submitApplication(token, body = {}) {
             $unset: { rejectionReason: 1, rejectedAt: 1 },
         },
     );
+    alertAdmins({
+        kind: ALERT_KINDS.PARTNER,
+        module: 'quickCommerce',
+        title: 'Seller application submitted',
+        body: line(next.restaurantName, next.ownerName, next.ownerPhone),
+        link: '/admin/quick-commerce/stores/joining-request',
+        refId: `seller-app:${String(seller._id)}`,
+    });
     return getMyApplication(token);
 }
 

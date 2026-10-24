@@ -12,6 +12,7 @@ import {
   SUPPORT_TICKET_USER_TYPES,
   SupportTicketTitle,
 } from '../models/SupportTicketTitle.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 
 const REQUESTER_ROLES = new Set(['user', 'driver', 'owner']);
 const STATUS_SET = new Set(SUPPORT_TICKET_STATUS);
@@ -211,6 +212,15 @@ export const createSupportTicket = async (req, res) => {
       },
     ],
     lastMessageAt: new Date(),
+  });
+
+  alertAdmins({
+    kind: ALERT_KINDS.SUPPORT,
+    module: 'taxi',
+    title: `Support ticket ${ticket.ticketCode || ''}`.trim(),
+    body: line(ticket.requesterName, ticket.requesterRole, ticket.title),
+    link: '/taxi/admin/support/tickets',
+    refId: String(ticket._id),
   });
 
   res.status(201).json({

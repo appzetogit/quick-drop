@@ -10,6 +10,7 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 import { createRazorpayCheckoutOrder, fetchRazorpayPayment, isRazorpayConfigured, verifyPaymentSignature } from '../../orders/helpers/razorpay.helper.js';
 import { getRiderFinance } from '../../../../core/finance/riderFinance.service.js';
 import { withFinanceLock, riderWithdrawalLockKey } from '../../../../core/finance/financeLock.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
@@ -289,7 +290,7 @@ export const requestDeliveryWithdrawal = async (deliveryPartnerId, payload) => {
         const partner = await FoodDeliveryPartner.findById(deliveryPartnerId).lean();
         if (!partner) throw new ValidationError('Delivery partner not found');
 
-        return FoodDeliveryWithdrawal.create({
+        const createdWithdrawal = await FoodDeliveryWithdrawal.create({
             deliveryPartnerId,
             amount,
             paymentMethod,
@@ -303,6 +304,15 @@ export const requestDeliveryWithdrawal = async (deliveryPartnerId, payload) => {
             upiQrCode: partner.upiQrCode,
             status: 'pending'
         });
+        alertAdmins({
+            kind: ALERT_KINDS.PAYOUT,
+            module: 'food',
+            title: 'Rider withdrawal request',
+            body: line(partner.name, rupees(amount)),
+            link: '/admin/food/delivery-withdrawal',
+            refId: String(createdWithdrawal._id),
+        });
+        return createdWithdrawal;
     }, { busyMessage: 'Another withdrawal is being processed. Please try again.' });
 };
 

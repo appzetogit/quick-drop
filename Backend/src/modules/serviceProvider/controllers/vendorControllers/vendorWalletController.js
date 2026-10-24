@@ -327,6 +327,9 @@ const requestWithdrawal = async (req, res) => {
     }
 
     const { withdrawal, vendor } = outcome;
+    import('../../../../core/notifications/adminAlerts.js')
+      .then(({ alertAdmins }) => alertAdmins({ kind: 'payout', module: 'services', title: 'Vendor withdrawal request', body: [vendor && vendor.name, withdrawal && withdrawal.amount ? `₹${withdrawal.amount}` : ''].filter(Boolean).join(' · '), link: '/admin/sp/payments/vendors', refId: String(withdrawal && withdrawal._id) }))
+      .catch(() => {});
 
     // 🔔 NOTIFY ALL ADMINS about withdrawal request
     try {

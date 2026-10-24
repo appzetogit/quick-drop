@@ -26,6 +26,7 @@ import { applyDriverWalletAdjustment } from './walletService.js';
 import { ensureAllDriverCapabilities } from '../../../../core/identity/driverCapabilities.service.js';
 
 import { taxiReferralFor } from '../../../../core/referral/referralSettings.service.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 const OTP_TTL_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DRIVER_NAME_REGEX = /^[A-Za-z]+(?:[ .'-][A-Za-z]+)*$/;
@@ -1120,6 +1121,15 @@ export const completeDriverOnboarding = async ({ registrationId, phone, document
         customFields: session.vehicle.customFields || {},
       },
     },
+  });
+
+  alertAdmins({
+    kind: ALERT_KINDS.PARTNER,
+    module: 'taxi',
+    title: 'New driver sign-up',
+    body: line(driver.name, driver.phone),
+    link: '/taxi/admin/drivers/pending',
+    refId: `driver:${String(driver._id)}`,
   });
 
   if (!String(driver.referralCode || '').trim()) {

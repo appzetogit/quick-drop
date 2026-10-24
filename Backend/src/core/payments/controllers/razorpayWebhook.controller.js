@@ -7,6 +7,7 @@ import { capturedAmountMatches } from '../capturedAmount.js';
 import { safeSignatureEqual } from '../../../utils/safeCompare.js';
 import { config } from '../../../config/env.js';
 import { logger } from '../../../utils/logger.js';
+import { alertAdmins, alertOrderEvent, ALERT_KINDS, line } from '../../../core/notifications/adminAlerts.js';
 
 /**
  * ✅ NEW: Centralized Razorpay Webhook Handler (Core Layer)
@@ -212,6 +213,9 @@ export const handleRazorpayWebhook = async (req, res) => {
 
             if (order) {
                 // ✅ UPDATED: Wrapped in try-catch to prevent secondary failures from breaking the webhook response
+                // Paid via the webhook before the app's /verify: this is the moment
+                // the order becomes real. Same refId as /verify, so it rings once.
+                alertOrderEvent(order);
                 try {
                     const transactionService = await ledger();
                     await transactionService.updateTransactionStatus(order._id, 'captured', {

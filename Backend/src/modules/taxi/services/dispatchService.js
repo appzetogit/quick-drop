@@ -17,6 +17,7 @@ import { getRideRoom, resolveSetPriceForRide } from './rideService.js';
 import { SOCKET_EVENTS } from '../socket/events.js';
 import { resolveTransportDispatchConfig, getTransportRideSettings } from './transportSettingsService.js';
 import { sendPushNotificationToEntities } from './pushNotificationService.js';
+import { alertRideEvent } from '../../../core/notifications/adminAlerts.js';
 
 const activeDispatches = new Map();
 let ioInstance = null;
@@ -682,6 +683,8 @@ const closeRideAsUnmatched = async (rideId) => {
     return;
   }
 
+  alertRideEvent(ride, { event: 'unmatched' });
+
   if (ride.deliveryId) {
     await Delivery.findByIdAndUpdate(ride.deliveryId, {
       status: ride.status,
@@ -874,6 +877,8 @@ export const cancelRideByUser = async ({ rideId, userId, reason = '' }) => {
     const { removeRideFromPoolGroup } = await import('./instantPoolingService.js');
     await removeRideFromPoolGroup(ride.poolGroupId, ride._id, reason || 'User cancelled');
   }
+
+  alertRideEvent(ride, { event: 'cancelled', by: 'customer' });
 
   // Socket emissions (outside the transaction)
   emitToRoom(getUserRoom(ride.userId), 'rideCancelled', {

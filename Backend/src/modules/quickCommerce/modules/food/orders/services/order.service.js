@@ -78,6 +78,7 @@ import {
   isStatusAdvance,
   STATUS_PRIORITY,
 } from './order.helpers.js';
+import { alertAdmins, alertOrderEvent, ALERT_KINDS, line } from '../../../../../../core/notifications/adminAlerts.js';
 
 
 
@@ -518,6 +519,7 @@ async function expireUnacceptedOrders(filter = {}) {
     if (!updated) continue;
 
     await restoreOrderStock(updated);
+    alertOrderEvent(updated, { cancelled: true, by: 'system (store did not accept in time)' });
 
     try {
       await applyCancellationRefund(updated, { cancelledBy: 'auto_cancel' });
@@ -927,6 +929,7 @@ export async function createOrder(userId, dto) {
       await giveBackCoupon();
       throw err;
     }
+    alertOrderEvent(order, { storeName: restaurant?.restaurantName });
 
     // An auto-confirmed order has nobody to wait for, so no timeout is armed.
     if (!isAwaitingOnlinePayment && !autoAccept) {
@@ -1146,6 +1149,7 @@ export async function verifyPayment(userId, dto) {
     note: "Payment verified, order confirmed",
   });
   await order.save();
+  alertOrderEvent(order);
   void addOrderJob(
     {
       action: "ORDER_ACCEPTANCE_TIMEOUT_CHECK",
@@ -1693,6 +1697,7 @@ export async function cancelOrder(orderId, userId, reason) {
   }
 
   await order.save();
+  alertOrderEvent(order, { cancelled: true, by: 'customer' });
 
   enqueueOrderEvent("order_cancelled_by_user", {
     orderMongoId: order._id?.toString?.(),
@@ -2180,6 +2185,7 @@ export async function updateOrderStatusRestaurant(
   }
 
   await order.save();
+  if (isSellerCancel) alertOrderEvent(order, { cancelled: true, by: 'store' });
 
   if (String(orderStatus) === "delivered") {
     try {
@@ -2952,6 +2958,7 @@ export async function updateOrderStatusAdmin(orderId, orderStatus, note = "", ad
     }
 
     await order.save();
+    if (String(orderStatus).includes('cancel')) alertOrderEvent(order, { cancelled: true, by: 'admin' });
 
     if (String(orderStatus) === "delivered") {
         try {

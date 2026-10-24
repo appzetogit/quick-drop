@@ -432,6 +432,17 @@ const createBooking = async (req, res) => {
       booking = await Booking.create(bookingFields);
     }
 
+    import('../../../../core/notifications/adminAlerts.js')
+      .then(({ alertAdmins }) => alertAdmins({
+        kind: 'booking',
+        module: 'services',
+        title: `New service booking ${booking.bookingNumber || ''}`.trim(),
+        body: [booking.serviceName, booking.finalAmount ? `₹${booking.finalAmount}` : ''].filter(Boolean).join(' · '),
+        link: '/admin/sp/bookings',
+        refId: String(booking._id),
+      }))
+      .catch(() => {});
+
     // --- IMMEDIATE RESPONSE ---
     // Send immediate response to the client. All subsequent operations will run in the background.
     res.status(201).json({

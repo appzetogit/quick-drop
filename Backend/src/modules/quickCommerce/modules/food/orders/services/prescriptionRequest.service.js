@@ -25,6 +25,7 @@ import {
     wasInvited,
 } from '../../shared/medicalRequest.js';
 import { createPrescriptionOrder } from './prescriptionOrder.service.js';
+import { alertAdmins, alertOrderEvent, ALERT_KINDS, line } from '../../../../../../core/notifications/adminAlerts.js';
 
 /**
  * The broadcast half of medical ordering: one prescription, every pharmacy in
@@ -325,6 +326,15 @@ export async function createPrescriptionRequest(userId, dto = {}) {
         expiresAt: new Date(now.getTime() + settings.requestExpiryMinutes * 60 * 1000),
         status: REQUEST_STATUS.OPEN,
         invited: invited.map((row) => ({ ...row, notifiedAt: now })),
+    });
+
+    alertAdmins({
+        kind: ALERT_KINDS.ORDER,
+        module: 'medical',
+        title: 'New prescription request',
+        body: line(request.customerName, `sent to ${invited.length} pharmacies`),
+        link: '/admin/medical/orders/all',
+        refId: String(request._id),
     });
 
     emitToPharmacies(invited.map((row) => row.pharmacyId), 'medical:request_opened', {

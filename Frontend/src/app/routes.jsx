@@ -52,6 +52,10 @@ const RedirectToFood = () => {
 
 
 const AdminRouter = lazy(() => import('../modules/Food/components/admin/AdminRouter'))
+// Rings for new orders, rides, SOS and partner requests on every admin page.
+const AdminAlertCenter = lazy(() => import('../shared/adminAlerts/AdminAlertCenter'))
+const ADMIN_PATH = /^\/(taxi\/)?admin(\/|$)/
+const ADMIN_AUTH_PATH = /^\/(taxi\/)?admin\/(login|forgot-password|signup)(\/|$)/
 
 const AppRoutes = () => {
   const location = useLocation()
@@ -177,6 +181,11 @@ const AppRoutes = () => {
         {/* Fallback 404 */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {ADMIN_PATH.test(location.pathname) && !ADMIN_AUTH_PATH.test(location.pathname) && (
+        <Suspense fallback={null}>
+          <AdminAlertCenter />
+        </Suspense>
+      )}
     </>
   )
 }

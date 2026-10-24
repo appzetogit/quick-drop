@@ -43,6 +43,7 @@ import {
     sanitizeOrderForExternal,
 } from './order.helpers.js';
 import { tryAutoAssign } from './order-dispatch.service.js';
+import { alertAdmins, alertOrderEvent, ALERT_KINDS, line } from '../../../../../../core/notifications/adminAlerts.js';
 
 /**
  * Prescription-only orders: placed from a photograph, priced by the pharmacist.
@@ -173,6 +174,7 @@ export async function createPrescriptionOrder(userId, dto = {}) {
     });
 
     await order.save();
+    alertOrderEvent(order, { module: 'medical' });
 
     // The pharmacist has to be told, or the order sits unread: there is no
     // catalogue notification path for an order with no items.

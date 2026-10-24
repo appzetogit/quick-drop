@@ -92,6 +92,7 @@ import {
 } from "../services/driverTodaySummaryService.js";
 
 import { taxiReferralFor } from '../../../../core/referral/referralSettings.service.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 const generateDriverReferralCode = (driver) => {
   const idPart = String(driver?._id || "")
     .slice(-6)
@@ -4682,6 +4683,14 @@ export const createDriverWithdrawalRequest = async (req, res) => {
     amount: Math.round(amount * 100) / 100,
     payment_method: paymentMethod,
     status: 'pending',
+  });
+  alertAdmins({
+    kind: ALERT_KINDS.PAYOUT,
+    module: 'taxi',
+    title: 'Driver withdrawal request',
+    body: line(rupees(created.amount), created.transactionId),
+    link: '/taxi/admin/drivers/wallet/withdrawals',
+    refId: String(created._id),
   });
 
   res.status(201).json({

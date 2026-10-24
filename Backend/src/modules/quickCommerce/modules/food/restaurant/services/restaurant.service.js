@@ -35,6 +35,7 @@ import {
     verifyPaymentSignature,
 } from '../../orders/helpers/razorpay.helper.js';
 import { mostSpecificFirst } from '../../../../../../core/zones/zonePriority.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../../../core/notifications/adminAlerts.js';
 
 // Compliance documents and their review; see core/sellerDocuments.js.
 export const sellerDocuments = createSellerDocuments({ Model: FoodRestaurant });
@@ -1165,6 +1166,18 @@ export const registerRestaurant = async (payload, files) => {
             ...partnerFields,
             ...images
         });
+
+        {
+            const medical = /pharma|medic/i.test(String(restaurant.storeType || ''));
+            alertAdmins({
+                kind: ALERT_KINDS.PARTNER,
+                module: medical ? 'medical' : 'quickCommerce',
+                title: medical ? 'New medical store sign-up' : 'New store sign-up',
+                body: line(restaurant.restaurantName, restaurant.ownerName, restaurant.ownerPhone),
+                link: `/admin/${medical ? 'medical' : 'quick-commerce'}/stores/joining-request`,
+                refId: `seller:${String(restaurant._id)}`,
+            });
+        }
 
         // Seed day-wise outlet timings at onboarding from the initial opening/closing fields.
         // Later manual changes by restaurant are preserved (we only insert if missing).

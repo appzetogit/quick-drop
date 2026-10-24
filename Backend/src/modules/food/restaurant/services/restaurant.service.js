@@ -8,6 +8,7 @@ import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { attachOutletOpenState, describeOutletHours } from '../../shared/outletHours.js';
 import { mostSpecificFirst } from '../../../../core/zones/zonePriority.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 
 // Compliance documents and their review; see core/sellerDocuments.js.
 export const sellerDocuments = createSellerDocuments({ Model: FoodRestaurant });
@@ -864,6 +865,15 @@ export const registerRestaurant = async (payload, files) => {
             accountType,
             menuImages,
             ...images
+        });
+
+        alertAdmins({
+            kind: ALERT_KINDS.PARTNER,
+            module: 'food',
+            title: 'New restaurant sign-up',
+            body: line(restaurant.restaurantName, restaurant.ownerName, restaurant.ownerPhone),
+            link: '/admin/food/restaurants/joining-request',
+            refId: `seller:${String(restaurant._id)}`,
         });
 
         try {

@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { FoodSupportTicket } from '../models/supportTicket.model.js';
 import { sendResponse, sendError } from '../../../../utils/response.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 
 export async function createSupportTicketController(req, res, next) {
     try {
@@ -42,6 +43,14 @@ export async function createSupportTicketController(req, res, next) {
             doc.restaurantId = new mongoose.Types.ObjectId(body.restaurantId);
         }
         const created = await FoodSupportTicket.create(doc);
+        alertAdmins({
+            kind: ALERT_KINDS.SUPPORT,
+            module: 'food',
+            title: 'Customer support ticket',
+            body: line(created.issueType, created.description || created.message),
+            link: '/admin/food/support-tickets',
+            refId: String(created._id),
+        });
         return sendResponse(res, 201, 'Ticket created', { ticket: created.toObject() });
     } catch (e) {
         next(e);

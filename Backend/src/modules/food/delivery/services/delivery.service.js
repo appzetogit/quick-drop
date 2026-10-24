@@ -8,6 +8,7 @@ import { FoodOrder } from '../../orders/models/order.model.js';
 import { uploadImageBuffer } from '../../../../services/cloudinary.service.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 
 /**
  * The documents the admin asked for, as the app sent them.
@@ -185,6 +186,14 @@ export const registerDeliveryPartner = async (payload, files) => {
     } else {
         partner = await FoodDeliveryPartner.create(partnerFields);
     }
+    alertAdmins({
+        kind: ALERT_KINDS.PARTNER,
+        module: 'food',
+        title: 'New delivery partner request',
+        body: line(partner.name, partner.phone, partner.city),
+        link: '/admin/master/delivery-partners/join-requests',
+        refId: `dp:${String(partner._id)}`,
+    });
 
     // Update FCM token if provided
     if (fcmToken) {
@@ -410,6 +419,14 @@ export const createSupportTicket = async (deliveryPartnerId, payload) => {
         category: ['payment', 'account', 'technical', 'order', 'other'].includes(category) ? category : 'other',
         priority: ['low', 'medium', 'high', 'urgent'].includes(priority) ? priority : 'medium',
         status: 'open'
+    });
+    alertAdmins({
+        kind: ALERT_KINDS.SUPPORT,
+        module: 'food',
+        title: `Rider support ticket ${ticket.ticketId || ''}`.trim(),
+        body: line(ticket.category, ticket.subject),
+        link: '/admin/food/delivery-support-tickets',
+        refId: String(ticket._id),
     });
     return ticket.toObject();
 };

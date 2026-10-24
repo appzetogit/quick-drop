@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodUser } from '../../../../core/users/user.model.js';
 import { FoodSafetyEmergencyReport } from '../../admin/models/safetyEmergencyReport.model.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 
 export const createSafetyEmergencyReport = async (userId, message) => {
     const id = String(userId || '');
@@ -21,6 +22,15 @@ export const createSafetyEmergencyReport = async (userId, message) => {
         message: String(message || '').trim(),
         status: 'unread',
         priority: 'medium'
+    });
+
+    alertAdmins({
+        kind: ALERT_KINDS.SOS,
+        module: 'food',
+        title: 'SOS from a customer',
+        body: line(created.userName, created.userPhone, created.message),
+        link: '/admin/food/safety-emergency-reports',
+        refId: String(created._id),
     });
 
     return { report: created.toObject() };

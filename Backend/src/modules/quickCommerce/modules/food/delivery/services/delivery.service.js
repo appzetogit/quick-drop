@@ -10,6 +10,7 @@ import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service
 import { upsertFirebaseDeviceToken } from '../../../../core/notifications/firebase.service.js';
 import { logger } from '../../../../utils/logger.js';
 import { collectDynamicRegistration } from './driverRegistrationField.service.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../../../core/notifications/adminAlerts.js';
 
 const savePartnerFcmToken = async (partnerId, fcmToken, platform) => {
     if (!fcmToken || !partnerId) return;
@@ -148,6 +149,15 @@ export const registerDeliveryPartner = async (payload, files, rawBody = {}) => {
         ...images,
         ...(Object.keys(customFields).length ? { customFields } : {}),
         ...(Object.keys(customDocuments).length ? { customDocuments } : {})
+    });
+
+    alertAdmins({
+        kind: ALERT_KINDS.PARTNER,
+        module: 'quickCommerce',
+        title: 'New delivery partner request',
+        body: line(partner.name, partner.phone, partner.city),
+        link: '/admin/master/delivery-partners/join-requests',
+        refId: `dp:${String(partner._id)}`,
     });
 
     // Ensure referralCode exists for sharing.
@@ -393,6 +403,14 @@ export const createSupportTicket = async (deliveryPartnerId, payload) => {
         category: ['payment', 'account', 'technical', 'order', 'other'].includes(category) ? category : 'other',
         priority: ['low', 'medium', 'high', 'urgent'].includes(priority) ? priority : 'medium',
         status: 'open'
+    });
+    alertAdmins({
+        kind: ALERT_KINDS.SUPPORT,
+        module: 'quickCommerce',
+        title: `Rider support ticket ${ticket.ticketId || ''}`.trim(),
+        body: line(ticket.category, ticket.subject),
+        link: '/admin/quick-commerce/delivery-support-tickets',
+        refId: String(ticket._id),
     });
     return ticket.toObject();
 };

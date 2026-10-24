@@ -6,6 +6,7 @@ import RideCheckLog from '../models/RideCheckLog.js';
 import SafetyTip from '../models/SafetyTip.js';
 import TripShareLink from '../models/TripShareLink.js';
 import EmergencySetting from '../models/EmergencySetting.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 
 class UserSafetyService {
   async getSettings() {
@@ -73,6 +74,14 @@ class UserSafetyService {
     });
     
     await alert.save();
+    alertAdmins({
+      kind: ALERT_KINDS.SOS,
+      module: 'taxi',
+      title: 'SOS from a rider',
+      body: line(data.trip_id ? `Trip ${data.trip_id}` : ''),
+      link: '/taxi/admin/safety/sos',
+      refId: String(alert._id),
+    });
     
     // In future: Trigger SMS/Push notification to trusted contacts and admin
     

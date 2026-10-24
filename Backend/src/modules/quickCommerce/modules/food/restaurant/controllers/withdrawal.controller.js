@@ -1,6 +1,7 @@
 import { sendResponse, sendError } from '../../../../utils/response.js';
 import { FoodRestaurantWithdrawal } from '../models/foodRestaurantWithdrawal.model.js';
 import { getRestaurantFinance } from '../services/restaurantFinance.service.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../../../core/notifications/adminAlerts.js';
 
 export const createWithdrawalRequestController = async (req, res, next) => {
     try {
@@ -37,6 +38,14 @@ export const createWithdrawalRequestController = async (req, res, next) => {
         });
 
         await withdrawal.save();
+        alertAdmins({
+            kind: ALERT_KINDS.PAYOUT,
+            module: 'quickCommerce',
+            title: 'Store withdrawal request',
+            body: line(rupees(withdrawal.amount)),
+            link: '/admin/quick-commerce/restaurant-withdraws',
+            refId: String(withdrawal._id),
+        });
 
         return sendResponse(res, 201, 'Withdrawal request submitted successfully', withdrawal);
     } catch (error) {

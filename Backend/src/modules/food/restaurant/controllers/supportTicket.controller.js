@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { FoodRestaurantSupportTicket } from '../models/supportTicket.model.js';
 import { sendError, sendResponse } from '../../../../utils/response.js';
+import { alertAdmins, ALERT_KINDS, line, rupees } from '../../../../core/notifications/adminAlerts.js';
 
 const ALLOWED_CATEGORIES = ['orders', 'payments', 'menu', 'restaurant', 'technical', 'other'];
 const ALLOWED_PRIORITIES = ['low', 'medium', 'high'];
@@ -39,6 +40,15 @@ export const createRestaurantSupportTicketController = async (req, res, next) =>
             description,
             orderRef,
             priority
+        });
+
+        alertAdmins({
+            kind: ALERT_KINDS.SUPPORT,
+            module: 'food',
+            title: 'Restaurant support ticket',
+            body: line(created.subject, created.issueType),
+            link: '/admin/food/support-tickets',
+            refId: String(created._id),
         });
 
         return sendResponse(res, 201, 'Support ticket created successfully', {

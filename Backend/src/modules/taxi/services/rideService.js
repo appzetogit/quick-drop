@@ -34,6 +34,7 @@ import { measureTrip, measureTripRoad } from '../common/tripMeasure.js';
 
 import { taxiReferralFor } from '../../../core/referral/referralSettings.service.js';
 import { TAXI_SPECIFIC_FIRST } from '../../../core/zones/zonePriority.js';
+import { alertRideEvent } from '../../../core/notifications/adminAlerts.js';
 const clearUserActiveRideIfPresent = async (user) => {
   if (!user?.currentRideId) {
     return;
@@ -1534,6 +1535,7 @@ export const createRideRecord = async ({
     user.currentRideId = ride._id;
     await user.save();
     await syncDeliveryWithRide(ride);
+    alertRideEvent(ride, { customerName: user?.name });
 
     return ride;
   }
@@ -1621,6 +1623,7 @@ export const createRideRecord = async ({
 
       await session.commitTransaction();
       await syncDeliveryWithRide(rideDoc);
+      alertRideEvent(rideDoc, { customerName: user?.name });
       return rideDoc;
     } catch (error) {
       lastError = error;

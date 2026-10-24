@@ -626,79 +626,17 @@ export default function OrdersPage({ statusKey = "all" }) {
   useEffect(() => {
     if (statusKey !== "all") return undefined
 
+    // Refresh only. New orders ring from the admin alert centre on every
+    // page (shared/adminAlerts); ringing here as well rang twice.
     const pollId = setInterval(() => {
-      fetchOrders({ silent: true, withRingCheck: true })
+      fetchOrders({ silent: true, withRingCheck: false })
     }, 5000)
 
     return () => clearInterval(pollId)
   }, [statusKey, fetchOrders])
 
-  useEffect(() => {
-    if (statusKey !== "all") return undefined
-
-    const backendUrl = API_BASE_URL.replace(/\/api\/?$/, "")
-    // Backend disconnected - do not open Socket.IO (new backend in progress)
-    if (!API_BASE_URL || !backendUrl || !backendUrl.startsWith("http")) {
-      return undefined
-    }
-
-    const socket = io(backendUrl, {
-      transports: ["websocket", "polling"],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 20000,
-    })
-    socketRef.current = socket
-
-    const handleIncomingRealtimeOrder = (payload = {}) => {
-      const orderId = payload?.orderId || payload?.orderMongoId || ""
-      if (!orderId) {
-        activeOrderAlertRef.current = payload || { orderId: "socket-new-order" }
-        playDefaultRing()
-        startAlertLoop()
-        toast.info("New order received")
-        showBrowserNotification(
-          "New order received",
-          "A new order arrived",
-          `admin-order-socket-${Date.now()}`,
-        )
-        fetchOrders({ silent: true, withRingCheck: false })
-        return
-      }
-
-      const now = Date.now()
-      const lastHandledAt = recentRealtimeOrderRef.current.get(orderId) || 0
-      if (now - lastHandledAt < 8000) return
-      recentRealtimeOrderRef.current.set(orderId, now)
-
-      const title = "New order received"
-      const body = payload?.restaurantName
-        ? `${payload.restaurantName} • ${orderId}`
-        : `Order ${orderId}`
-
-      activeOrderAlertRef.current = payload || { orderId }
-      playDefaultRing()
-      startAlertLoop()
-      toast.info(title, { description: body })
-      showBrowserNotification(title, body, `admin-order-${orderId}`)
-      fetchOrders({ silent: true, withRingCheck: false })
-    }
-
-    socket.on("connect", () => {
-      socket.emit("join-admin-orders")
-    })
-    socket.on("admin_new_order", handleIncomingRealtimeOrder)
-    socket.on("play_notification_sound", handleIncomingRealtimeOrder)
-
-    return () => {
-      socket.off("admin_new_order", handleIncomingRealtimeOrder)
-      socket.off("play_notification_sound", handleIncomingRealtimeOrder)
-      socket.disconnect()
-      socketRef.current = null
-    }
-  }, [statusKey, fetchOrders, playDefaultRing, showBrowserNotification, startAlertLoop])
+  // Realtime new-order alerts moved to the admin alert centre
+  // (shared/adminAlerts/AdminAlertCenter.jsx), mounted for every admin page.
 
   useEffect(() => {
     const onVisibilityChange = () => {
