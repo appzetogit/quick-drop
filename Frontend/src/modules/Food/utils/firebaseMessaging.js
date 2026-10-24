@@ -390,7 +390,7 @@ async function getFirebasePublicEnv() {
 
   publicEnvPromise = (async () => {
     try {
-      return {
+      const fromBuild = {
         apiKey: sanitize(import.meta.env.VITE_FIREBASE_API_KEY) || DEFAULT_FIREBASE_CONFIG.apiKey,
         authDomain: sanitize(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN) || DEFAULT_FIREBASE_CONFIG.authDomain,
         projectId: sanitize(import.meta.env.VITE_FIREBASE_PROJECT_ID) || DEFAULT_FIREBASE_CONFIG.projectId,
@@ -401,6 +401,32 @@ async function getFirebasePublicEnv() {
         measurementId: sanitize(import.meta.env.VITE_FIREBASE_MEASUREMENT_ID),
         vapidKey: sanitize(import.meta.env.VITE_FIREBASE_VAPID_KEY),
       };
+      /*
+       * The live build carries no VITE_FIREBASE_* values, so web push never
+       * registered for anyone. The server publishes the same public web config
+       * (GET /env/public, already read by the service worker); fill whatever the
+       * build left empty from there.
+       */
+      const missing = ["apiKey", "projectId", "appId", "messagingSenderId", "vapidKey"].some((k) => !fromBuild[k]);
+      if (!missing) return fromBuild;
+      try {
+        const { API_BASE_URL } = await import("@food/api/config");
+        const res = await fetch(`${API_BASE_URL}/env/public`, { cache: "no-store" });
+        const d = (await res.json())?.data || {};
+        const pick = (name) => sanitize(d[`VITE_FIREBASE_${name}`] || d[`FIREBASE_${name}`]);
+        return {
+          apiKey: fromBuild.apiKey || pick("API_KEY"),
+          authDomain: fromBuild.authDomain || pick("AUTH_DOMAIN"),
+          projectId: fromBuild.projectId || pick("PROJECT_ID"),
+          appId: fromBuild.appId || pick("APP_ID"),
+          messagingSenderId: fromBuild.messagingSenderId || pick("MESSAGING_SENDER_ID"),
+          storageBucket: fromBuild.storageBucket || pick("STORAGE_BUCKET"),
+          measurementId: fromBuild.measurementId || pick("MEASUREMENT_ID"),
+          vapidKey: fromBuild.vapidKey || pick("VAPID_KEY"),
+        };
+      } catch {
+        return fromBuild;
+      }
     } catch {
       return {
         ...DEFAULT_FIREBASE_CONFIG,
