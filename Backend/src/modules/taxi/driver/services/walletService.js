@@ -296,7 +296,8 @@ export const applyDriverWalletAdjustment = async ({
       },
       {
         $set: {
-          'wallet.isBlocked': walletEnabled ? { $lte: ['$wallet.balance', minBal] } : true,
+          // Below the minimum, not at it: same rule as riderFinance.resolveBlockState.
+          'wallet.isBlocked': walletEnabled ? { $lt: ['$wallet.balance', minBal] } : true,
         },
       },
     ],

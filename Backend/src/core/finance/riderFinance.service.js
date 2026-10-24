@@ -445,7 +445,10 @@ const resolveBlockState = ({ taxiSigned, cashInHand, cashLimit, rules, snapshotB
     if (!rules.isWalletEnabled) {
         return { isBlocked: true, reason: 'wallet_disabled' };
     }
-    if (taxiSigned <= rules.minimumBalanceForOrders) {
+    // "Minimum balance to get an order" is the least a driver must HAVE, so
+    // exactly the minimum passes. With <= a minimum of 0 still blocked every
+    // driver at Rs 0 -- i.e. every new driver -- which no setting could undo.
+    if (taxiSigned < rules.minimumBalanceForOrders) {
         return { isBlocked: true, reason: 'below_minimum_balance' };
     }
     if (cashLimit > 0 && cashInHand >= cashLimit) {
