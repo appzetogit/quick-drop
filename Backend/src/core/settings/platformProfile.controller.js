@@ -6,6 +6,7 @@ import {
   updatePlatformProfile,
   getPlatformProfile,
   razorpayCredentials,
+  checkRazorpayPair,
   smsCredentials,
 } from './platformProfile.service.js';
 
@@ -44,13 +45,8 @@ export const testRazorpayController = async (req, res) => {
     const keyId = pick(req.body?.keyId, profile.integrations?.razorpay?.keyId || saved.keyId);
     const keySecret = pick(req.body?.keySecret, profile.integrations?.razorpay?.keySecret || saved.keySecret);
     if (!keyId || !keySecret) return sendError(res, 400, 'Enter the key id and key secret first');
-    const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
-    const response = await fetch('https://api.razorpay.com/v1/orders?count=1', {
-      headers: { Authorization: `Basic ${auth}` },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (response.status === 401) return sendError(res, 400, 'Razorpay rejected these keys: the id and secret do not match an account');
-    if (!response.ok) return sendError(res, 400, `Razorpay answered ${response.status}; try again`);
+    const check = await checkRazorpayPair(keyId, keySecret);
+    if (!check.ok) return sendError(res, 400, check.rejected ? check.message : `${check.message}; try again`);
     return sendResponse(res, 200, `Keys work (${keyId.startsWith('rzp_live') ? 'LIVE' : 'TEST'} mode)`, { ok: true });
   } catch (err) {
     return sendError(res, 400, `Could not reach Razorpay: ${err.message}`);

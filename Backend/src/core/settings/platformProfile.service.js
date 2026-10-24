@@ -84,6 +84,52 @@ export const razorpayCredentials = () => {
     source: master ? 'master' : 'env',
   };
 };
+/**
+ * Ask Razorpay whether a key pair works: lists one order, creates nothing.
+ * `{ ok: true }`, `{ ok: false, rejected: true }` for a wrong pair, or
+ * `{ ok: false }` when Razorpay could not be reached (not the keys' fault).
+ */
+let verifyRazorpayPair = async (keyId, keySecret) => {
+  try {
+    const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+    const res = await fetch('https://api.razorpay.com/v1/orders?count=1', {
+      headers: { Authorization: `Basic ${auth}` },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.ok) return { ok: true, message: 'Razorpay accepts the keys' };
+    if (res.status === 401) return { ok: false, rejected: true, message: 'Razorpay rejected the keys: the id and secret do not match an account' };
+    return { ok: false, message: `Razorpay answered ${res.status}` };
+  } catch (err) {
+    return { ok: false, message: `Could not reach Razorpay: ${err.message}` };
+  }
+};
+export const checkRazorpayPair = (keyId, keySecret) => verifyRazorpayPair(keyId, keySecret);
+/** Tests only: swap the network check. */
+export const __setRazorpayVerifier = (fn) => { verifyRazorpayPair = fn; };
+
+/*
+ * The keys in use are re-checked a minute after boot and every 6 hours, so a
+ * key that stops working (rotated, revoked, a test key on the live site) shows
+ * as a red warning in Master settings and in the logs before customers hit
+ * "Authentication failed" at checkout.
+ */
+const HEALTH_MS = 6 * 60 * 60 * 1000;
+let razorpayHealth = null;
+export const checkRazorpayHealth = async () => {
+  const { keyId, keySecret, source } = razorpayCredentials();
+  const result = keyId && keySecret
+    ? await verifyRazorpayPair(keyId, keySecret)
+    : { ok: false, rejected: true, message: 'No Razorpay keys are set' };
+  razorpayHealth = { ...result, keyId, source, checkedAt: new Date().toISOString() };
+  if (result.rejected) logger.error(`Razorpay keys in use (${source}, ${keyId || 'none'}) do not work: ${result.message}. Online payments will fail until valid keys are saved in Master settings.`);
+  return razorpayHealth;
+};
+const healthBoot = setTimeout(() => {
+  checkRazorpayHealth().catch(() => {});
+  setInterval(() => checkRazorpayHealth().catch(() => {}), HEALTH_MS).unref?.();
+}, 60_000);
+healthBoot.unref?.();
+
 export const razorpayKeyId = () => razorpayCredentials().keyId;
 export const razorpayKeySecret = () => razorpayCredentials().keySecret;
 export const razorpayWebhookSecret = () => razorpayCredentials().webhookSecret;
@@ -208,7 +254,13 @@ export const getPlatformProfileForAdmin = async () => {
         keyId: str(i.razorpay?.keyId),
         keySecret: mask(i.razorpay?.keySecret),
         webhookSecret: mask(i.razorpay?.webhookSecret),
-        inUse: { source: rz.source, keyId: rz.keyId, mode: rz.keyId.startsWith('rzp_live') ? 'live' : rz.keyId ? 'test' : 'none' },
+        inUse: {
+          source: rz.source,
+          keyId: rz.keyId,
+          mode: rz.keyId.startsWith('rzp_live') ? 'live' : rz.keyId ? 'test' : 'none',
+          // Last check of the keys in use; dropped when the keys changed since.
+          health: razorpayHealth && razorpayHealth.keyId === rz.keyId && razorpayHealth.source === rz.source ? razorpayHealth : null,
+        },
       },
       sms: {
         apiKey: mask(i.sms?.apiKey),
@@ -281,9 +333,26 @@ export const updatePlatformProfile = async (payload = {}, updatedBy = '') => {
     $set['integrations.razorpay.keySecret'] = '';
   }
   if (!Object.keys($set).length) return getPlatformProfileForAdmin();
+  // A new Razorpay pair is tried with Razorpay before it is saved, so a wrong
+  // pair (or a browser-autofilled login) never replaces keys that work.
+  if ($set['integrations.razorpay.keyId'] || $set['integrations.razorpay.keySecret']) {
+    const saved = (await refreshPlatformProfile()).integrations?.razorpay || {};
+    const keyId = $set['integrations.razorpay.keyId'] ?? str(saved.keyId);
+    const keySecret = $set['integrations.razorpay.keySecret'] ?? str(saved.keySecret);
+    if (keyId && keySecret) {
+      const check = await verifyRazorpayPair(keyId, keySecret);
+      if (check.rejected) {
+        const e = new Error(`${check.message}. Nothing was saved; copy both from Razorpay Dashboard > API Keys.`);
+        e.statusCode = 400;
+        throw e;
+      }
+      if (!check.ok) logger.warn(`platformProfile: saving Razorpay keys unverified (${check.message})`);
+    }
+  }
   $set.updatedBy = str(updatedBy);
   await PlatformProfile.updateOne({ _id: 'platform' }, { $set }, { upsert: true });
   await refreshPlatformProfile();
+  if (Object.keys($set).some((k) => k.startsWith('integrations.razorpay.'))) await checkRazorpayHealth().catch(() => {});
   return getPlatformProfileForAdmin();
 };
 

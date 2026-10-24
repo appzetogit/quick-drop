@@ -21,6 +21,11 @@ await mongoose.connect(server.getUri(), { dbName: 'master_settings' });
 
 const svc = await import('../src/core/settings/platformProfile.service.js');
 const cjs = (await import('module')).createRequire(import.meta.url)('../src/core/settings/platformCredentials.cjs');
+// Stand-in for Razorpay: only the master pair and the .env pair are real accounts.
+const GOOD = new Set(['rzp_live_MASTER:master_secret', 'rzp_test_ENVKEY:env_secret']);
+svc.__setRazorpayVerifier(async (id, secret) => (GOOD.has(`${id}:${secret}`)
+  ? { ok: true, message: 'Razorpay accepts the keys' }
+  : { ok: false, rejected: true, message: 'Razorpay rejected the keys' }));
 
 let failures = 0;
 const check = async (label, fn) => {
@@ -81,6 +86,21 @@ await check('clearing the id drops the pair back to .env', async () => {
 });
 await check('a malformed key id is refused', async () => {
   await assert.rejects(() => save({ integrations: { razorpay: { keyId: 'hello' } } }), /rzp_live_/);
+});
+await check('a pair Razorpay rejects is not saved and the working keys stay', async () => {
+  await save({ integrations: { razorpay: { keyId: 'rzp_live_MASTER', keySecret: 'master_secret' } } });
+  await assert.rejects(() => save({ integrations: { razorpay: { keySecret: 'admin_password' } } }), /rejected/);
+  await assert.rejects(() => save({ integrations: { razorpay: { keyId: 'rzp_live_OTHER' } } }), /rejected/);
+  assert.equal(svc.razorpayKeyId(), 'rzp_live_MASTER');
+  assert.equal(svc.razorpayKeySecret(), 'master_secret');
+});
+await check('the admin view reports whether Razorpay accepts the keys in use', async () => {
+  assert.equal((await svc.getPlatformProfileForAdmin()).integrations.razorpay.inUse.health?.ok, true);
+  svc.__setRazorpayVerifier(async () => ({ ok: false, rejected: true, message: 'Razorpay rejected the keys' }));
+  await svc.checkRazorpayHealth();
+  assert.equal((await svc.getPlatformProfileForAdmin()).integrations.razorpay.inUse.health?.rejected, true);
+  svc.__setRazorpayVerifier(async (id, secret) => (GOOD.has(`${id}:${secret}`) ? { ok: true } : { ok: false, rejected: true, message: 'Razorpay rejected the keys' }));
+  await save({ integrations: { razorpay: { keyId: null } } });
 });
 
 console.log('\nsms and email');

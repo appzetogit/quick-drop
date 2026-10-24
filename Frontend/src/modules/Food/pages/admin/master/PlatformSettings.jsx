@@ -288,6 +288,9 @@ function InUse({ source, children }) {
 
 function IntegrationCard({ kind, title, description, initial, fields, inUse, testExtra, onSaved, saveNote }) {
   const [values, setValues] = useState(initial)
+  // Fields stay read-only until clicked: browsers never autofill a read-only
+  // field, so the saved admin login can't land in a key box.
+  const [editable, setEditable] = useState(() => new Set())
   const [busy, setBusy] = useState("")
   const [extra, setExtra] = useState("")
   const set = (k) => (e) => setValues((o) => ({ ...o, [k]: e.target.value }))
@@ -344,11 +347,18 @@ function IntegrationCard({ kind, title, description, initial, fields, inUse, tes
             ) : (
               <input
                 type={f.secret ? "password" : f.type || "text"}
-                autoComplete="off"
+                name={`${kind}-${f.key}`}
+                autoComplete={f.secret ? "new-password" : "off"}
+                data-1p-ignore
+                data-lpignore="true"
+                readOnly={!editable.has(f.key)}
                 className={inputCls}
                 value={values[f.key] ?? ""}
                 placeholder={f.placeholder}
-                onFocus={(e) => f.secret && String(e.target.value).startsWith("•") && setValues((o) => ({ ...o, [f.key]: "" }))}
+                onFocus={(e) => {
+                  if (!editable.has(f.key)) setEditable((o) => new Set(o).add(f.key))
+                  if (f.secret && String(e.target.value).startsWith("•")) setValues((o) => ({ ...o, [f.key]: "" }))
+                }}
                 onChange={set(f.key)}
               />
             )}
@@ -372,6 +382,14 @@ function IntegrationsTab({ profile, onSaved }) {
           <InUse source={razorpay.inUse.source}>
             Current key: <b>{razorpay.inUse.keyId || "none"}</b>
             {razorpay.inUse.mode === "test" && <span className="ml-1 font-semibold text-amber-700">(TEST mode: no real money is collected)</span>}
+            {razorpay.inUse.health?.rejected && (
+              <span className="mt-1 block font-semibold text-red-700">
+                Razorpay is rejecting these keys, so every online payment fails ("Authentication failed"). Save working keys below.
+              </span>
+            )}
+            {razorpay.inUse.health?.ok && (
+              <span className="mt-1 block text-emerald-700">Razorpay accepted these keys at {new Date(razorpay.inUse.health.checkedAt).toLocaleString()}.</span>
+            )}
           </InUse>
         }
         fields={[
