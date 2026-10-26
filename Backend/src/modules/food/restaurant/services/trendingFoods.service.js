@@ -1,9 +1,14 @@
 /**
- * Trending Now: dishes an admin picked by hand in Admin > Food List.
+ * Recommended dishes: ONE flag, `isRecommended`, for everything that shows them.
  *
- * Separate from `isRecommended`, which each restaurant sets for its own menu's
- * "Recommended" section (and which the bulk-upload sample switches on); Trending
- * Now is the platform's shelf, so only an admin puts dishes on it.
+ *   - the app's home "Trending Now" (this file's list),
+ *   - each restaurant's own "Recommended" menu section (restaurantMenu.service.js),
+ *   - Admin > Food List's orange thumb, and the restaurant's own menu editor,
+ *     which both switch the same flag.
+ *
+ * There used to be a separate admin-only `isTrending` for Trending Now, so a
+ * dish could be recommended in one place and not the other. Its picks were
+ * folded into isRecommended when the two became one.
  *
  * Dishes are serialised by the restaurant-menu builder, the same payload the app
  * already reads for a restaurant's menu, so prices, variants, stock and serving
@@ -13,7 +18,7 @@ import mongoose from 'mongoose';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { buildMenuFromFoods } from './restaurantMenu.service.js';
-import { invalidateCache } from '../../../../middleware/cache.js';
+import { invalidateCache, invalidateMenuCaches } from '../../../../middleware/cache.js';
 
 const MAX_TRENDING = 60;
 
@@ -29,15 +34,17 @@ export async function listTrendingFoods(query = {}) {
     if (!restaurants.length) return { foods: [], total: 0 };
     const nameById = new Map(restaurants.map((r) => [String(r._id), r.restaurantName || '']));
 
-    // Newest pick first. Out-of-stock dishes still come through (the app greys
+    // Newest recommendation first: trendingAt is stamped when the flag is
+    // switched on here; one switched on by a restaurant falls back to when the
+    // dish last changed. Out-of-stock dishes still come through (the app greys
     // them out), as on every other dish list.
     const picked = await FoodItem.find({
         restaurantId: { $in: restaurants.map((r) => r._id) },
-        isTrending: true,
+        isRecommended: true,
         approvalStatus: 'approved',
         isActive: { $ne: false },
     })
-        .sort({ trendingAt: -1, _id: -1 })
+        .sort({ trendingAt: -1, updatedAt: -1, _id: -1 })
         .limit(limit)
         .lean();
     if (!picked.length) return { foods: [], total: 0 };
@@ -57,7 +64,7 @@ export async function listTrendingFoods(query = {}) {
     return { foods, total: foods.length };
 }
 
-/** Admin: put a dish on Trending Now, or take it off. */
+/** Admin: recommend a dish (Trending Now and its restaurant's Recommended), or stop. */
 export async function setFoodTrending(foodId, isTrending) {
     if (!mongoose.Types.ObjectId.isValid(String(foodId || ''))) {
         const e = new Error('Invalid food id');
@@ -67,24 +74,26 @@ export async function setFoodTrending(foodId, isTrending) {
     const on = isTrending === true || isTrending === 'true';
     const food = await FoodItem.findByIdAndUpdate(
         foodId,
-        { $set: { isTrending: on, trendingAt: on ? new Date() : null } },
-        { new: true, projection: { _id: 1, name: 1, isTrending: 1, trendingAt: 1 } }
+        { $set: { isRecommended: on, trendingAt: on ? new Date() : null } },
+        { new: true, projection: { _id: 1, name: 1, isRecommended: 1, trendingAt: 1 } }
     ).lean();
     if (!food) {
         const e = new Error('Food not found');
         e.statusCode = 404;
         throw e;
     }
+    // Both lists read cached feeds: Trending Now, and the restaurant's menu.
     await invalidateCache('public_trending_foods:*').catch(() => {});
-    return food;
+    await invalidateMenuCaches().catch(() => {});
+    return { ...food, isTrending: food.isRecommended === true };
 }
 
-/** Admin list: stamp each dish with whether it is on Trending Now (one query). */
+/** Admin list: stamp each dish with whether it is recommended (one query). */
 export async function withTrendingFlags(foods = []) {
     const ids = foods.map((f) => f?._id || f?.id).filter((id) => mongoose.Types.ObjectId.isValid(String(id || '')));
     if (!ids.length) return foods;
     const on = new Set(
-        (await FoodItem.find({ _id: { $in: ids }, isTrending: true }).select('_id').lean()).map((f) => String(f._id))
+        (await FoodItem.find({ _id: { $in: ids }, isRecommended: true }).select('_id').lean()).map((f) => String(f._id))
     );
     return foods.map((f) => ({ ...f, isTrending: on.has(String(f?._id || f?.id)) }));
 }

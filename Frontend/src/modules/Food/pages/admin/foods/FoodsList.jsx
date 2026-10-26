@@ -640,9 +640,9 @@ export default function FoodsList() {
     try {
       await apiClient.patch(`/food/admin/foods/${food._id || food.id}/trending`, { isTrending: next }, { contextModule: "admin" })
       setFoods((prev) => prev.map((f) => (f.id === food.id ? { ...f, isTrending: next } : f)))
-      toast.success(next ? `${food.name} is now in Trending Now` : `${food.name} removed from Trending Now`)
+      toast.success(next ? `${food.name} recommended: in Trending Now and its restaurant's Recommended` : `${food.name} no longer recommended`)
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Could not update Trending Now")
+      toast.error(error?.response?.data?.message || "Could not update Recommended")
     } finally {
       setTrendingBusyId("")
     }
@@ -971,8 +971,8 @@ export default function FoodsList() {
                   </th>
                 )}
                 {isFoodPanel && (
-                  <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider" title="Recommended dishes show in the app's Trending Now">
-                    Trending Now
+                  <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider" title="One flag: recommended dishes show in the app's Trending Now and in their restaurant's Recommended section. The restaurant's own menu editor switches the same flag.">
+                    Recommended
                   </th>
                 )}
                 <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">
@@ -1064,14 +1064,14 @@ export default function FoodsList() {
                     )}
                     {isFoodPanel && (
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        {/* Thumbs up, filled orange: in the app's Trending Now. Faint outline: not. Click to switch. */}
+                        {/* Thumbs up, filled orange: recommended (Trending Now + the restaurant's Recommended). Faint outline: not. Click to switch. */}
                         <button
                           type="button"
                           onClick={() => toggleTrending(food)}
                           disabled={trendingBusyId === food.id}
                           aria-pressed={food.isTrending === true}
-                          title={food.isTrending ? "In Trending Now — click to remove" : "Not in Trending Now — click to recommend"}
-                          aria-label={food.isTrending ? `Remove ${food.name} from Trending Now` : `Recommend ${food.name} for Trending Now`}
+                          title={food.isTrending ? "Recommended (Trending Now + restaurant's Recommended) — click to remove" : "Not recommended — click to recommend"}
+                          aria-label={food.isTrending ? `Stop recommending ${food.name}` : `Recommend ${food.name}`}
                           className="inline-flex items-center justify-center rounded-full p-1.5 transition-colors hover:bg-slate-100 disabled:opacity-50"
                         >
                           {trendingBusyId === food.id ? (

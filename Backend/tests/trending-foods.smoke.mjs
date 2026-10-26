@@ -1,6 +1,7 @@
 /**
- * Trending Now: only dishes an admin picked, in the customer's zone, newest pick
- * first, in the same shape as a restaurant's menu.
+ * Recommended is one flag: Trending Now lists the recommended dishes in the
+ * customer's zone (newest recommendation first, in the same shape as a
+ * restaurant's menu), whether a restaurant or an admin switched it on.
  *
  * Run: node tests/trending-foods.smoke.mjs
  */
@@ -32,7 +33,7 @@ const r1 = await FoodRestaurant.create({ restaurantName: 'Saini Dhaba', ownerNam
 const r2 = await FoodRestaurant.create({ restaurantName: 'Indore Cafe', ownerName: 'O', ownerPhone: '9700000002', pureVegRestaurant: false, status: 'approved', zoneId: indore });
 const dish = (r, name, extra = {}) => FoodItem.create({ restaurantId: r._id, name, price: 120, foodType: 'Veg', approvalStatus: 'approved', ...extra });
 const paneer = await dish(r1, 'Paneer Tikka');
-const dal = await dish(r1, 'Dal Makhani', { isRecommended: true });
+const dal = await dish(r1, 'Dal Makhani');
 const thali = await dish(r1, 'Thali', {
   variantsEnabled: true,
   variants: [{ name: 'Half', price: 90 }, { name: 'Full', price: 150 }],
@@ -41,8 +42,19 @@ const poha = await dish(r2, 'Poha');
 const hidden = await dish(r1, 'Old Dish', { isActive: false });
 
 console.log('\npicking dishes');
-await check('nothing is trending until an admin picks it (isRecommended does not count)', async () => {
+await check('nothing is trending until a dish is recommended', async () => {
   assert.equal((await svc.listTrendingFoods({ zoneId: String(palampur) })).total, 0);
+});
+await check('a dish the restaurant recommended shows too -- one flag for both', async () => {
+  await FoodItem.updateOne({ _id: dal._id }, { $set: { isRecommended: true } });
+  assert.deepEqual((await svc.listTrendingFoods({ zoneId: String(palampur) })).foods.map((f) => f.name), ['Dal Makhani']);
+  await FoodItem.updateOne({ _id: dal._id }, { $set: { isRecommended: false } });
+});
+await check('the admin thumb switches the same flag the restaurant menu reads', async () => {
+  await svc.setFoodTrending(dal._id, true);
+  assert.equal((await FoodItem.findById(dal._id).lean()).isRecommended, true);
+  await svc.setFoodTrending(dal._id, false);
+  assert.equal((await FoodItem.findById(dal._id).lean()).isRecommended, false);
 });
 await check('a picked dish shows, newest pick first, with restaurant name and variants', async () => {
   await svc.setFoodTrending(paneer._id, true);
