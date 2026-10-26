@@ -160,6 +160,7 @@ export default function FoodsList() {
   // the server applies.
   const [onShelfIds, setOnShelfIds] = useState(() => new Set())
   const [trendingBusyId, setTrendingBusyId] = useState("")
+  const [shelfBusyId, setShelfBusyId] = useState("")
   const [shelfTouched, setShelfTouched] = useState(false)
   const [submittingFood, setSubmittingFood] = useState(false)
   const [categoryOptions, setCategoryOptions] = useState([])
@@ -569,6 +570,28 @@ export default function FoodsList() {
     }))
   }
 
+  // The thumbs-up: adds the dish to the 99 store or takes it off. The server
+  // refuses a dish priced above the store's cap and says why.
+  const toggleShelf = async (food) => {
+    const next = !onShelfIds.has(food.id)
+    setShelfBusyId(food.id)
+    try {
+      await apiClient.patch(`/food/admin/foods/${food._id || food.id}/99-store`, { inStore: next }, { contextModule: "admin" })
+      setOnShelfIds((prev) => {
+        const updated = new Set(prev)
+        if (next) updated.add(food.id)
+        else updated.delete(food.id)
+        return updated
+      })
+      setFoods((prev) => prev.map((f) => (f.id === food.id ? { ...f, showIn99Store: next, ninetyNineStoreExcluded: !next } : f)))
+      toast.success(next ? `${food.name} added to the ₹${shelfCap} store` : `${food.name} removed from the ₹${shelfCap} store`)
+    } catch (error) {
+      toast.error(error?.response?.data?.message || `Could not update the ₹${shelfCap} store`)
+    } finally {
+      setShelfBusyId("")
+    }
+  }
+
   const toggleTrending = async (food) => {
     const next = food.isTrending !== true
     setTrendingBusyId(food.id)
@@ -971,16 +994,24 @@ export default function FoodsList() {
                     </td>
                     {isFoodPanel && (
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        {/* Thumbs up, filled green: the app's store is showing it. Faint outline: it is not. */}
-                        {onShelfIds.has(food.id) ? (
-                          <span className="inline-flex" title={`In the ₹${shelfCap} store`} aria-label={`In the ₹${shelfCap} store`}>
+                        {/* Thumbs up, filled green: in the app's store. Faint outline: not. Click to switch. */}
+                        <button
+                          type="button"
+                          onClick={() => toggleShelf(food)}
+                          disabled={shelfBusyId === food.id}
+                          aria-pressed={onShelfIds.has(food.id)}
+                          title={onShelfIds.has(food.id) ? `In the ₹${shelfCap} store — click to remove` : `Not in the ₹${shelfCap} store — click to add`}
+                          aria-label={onShelfIds.has(food.id) ? `Remove ${food.name} from the ₹${shelfCap} store` : `Add ${food.name} to the ₹${shelfCap} store`}
+                          className="inline-flex items-center justify-center rounded-full p-1.5 transition-colors hover:bg-slate-100 disabled:opacity-50"
+                        >
+                          {shelfBusyId === food.id ? (
+                            <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                          ) : onShelfIds.has(food.id) ? (
                             <ThumbsUp className="w-5 h-5 text-emerald-600 fill-emerald-100" />
-                          </span>
-                        ) : (
-                          <span className="inline-flex" title={`Not in the ₹${shelfCap} store`} aria-label={`Not in the ₹${shelfCap} store`}>
-                            <ThumbsUp className="w-5 h-5 text-slate-300" />
-                          </span>
-                        )}
+                          ) : (
+                            <ThumbsUp className="w-5 h-5 text-slate-300 hover:text-emerald-500" />
+                          )}
+                        </button>
                       </td>
                     )}
                     {isFoodPanel && (
