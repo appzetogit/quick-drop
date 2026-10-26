@@ -12,7 +12,8 @@
  *   - Within the base distance the fare is the base price alone.
  *   - Past it: base + (km past the base) x per-km + minutes x per-minute.
  *   - Service tax on that subtotal, then the platform fee on top, untaxed.
- *   - Rounded to a whole rupee, then the zone's surge added.
+ *   - Rounded to a whole rupee, then the zone's surge (also whole rupees) added,
+ *     so the total a rider is charged never carries paise.
  *
  * Returns null when there is nothing to charge from: no row, or a row whose
  * prices are all zero. A caller must refuse the ride then -- never fall back to
@@ -58,7 +59,7 @@ export function computeRideFare({
     const serviceTax = (subtotal * serviceTaxPercent) / 100;
     const platformFee = resolvePlatformFee(pricingRule, subtotal);
     const fareBeforeSurge = Math.max(0, Math.round(subtotal + serviceTax + platformFee));
-    const surge = money(Math.max(0, Number(surgeAmount) || 0));
+    const surge = Math.round(Math.max(0, Number(surgeAmount) || 0));
 
     const lines = {
         baseFare: money(basePrice),

@@ -995,8 +995,9 @@ export const resolveRideSurge = ({ surgeZone, pricingRule, slots = [], vehicleTy
       slotName: slot.name || `${slot.start_time}-${slot.end_time}`,
     };
   }
+  // Whole rupees, like every other part of a ride's fare.
   const amount = surgeZone?.ride_surge_enabled
-    ? Math.max(0, Number(pricingRule?.ride_surge_amount || 0))
+    ? Math.round(Math.max(0, Number(pricingRule?.ride_surge_amount || 0)))
     : 0;
   return { amount, percent: 0, slotId: null, slotName: '' };
 };
@@ -1281,7 +1282,7 @@ export const createRideRecord = async ({
   // Parcels ('delivery') have no price rows yet and still take the app's
   // figure, as they always have. That path is just as open to a doctored fare
   // and needs its own prices before it can be closed.
-  const safeFare = fareQuote ? fareQuote.fareBeforeSurge : clientFare;
+  const safeFare = fareQuote ? fareQuote.fareBeforeSurge : Math.round(clientFare);
 
   const normalizedPaymentMethod = normalizeRidePaymentMethod(paymentMethod);
   const resolvedRequestedPaymentMethod = allowedPaymentMethods.includes(normalizedPaymentMethod)
@@ -2244,7 +2245,8 @@ const computeRideWaitingCharge = (ride) => {
   const waitedMs = new Date(ride.startedAt).getTime() - new Date(ride.arrivedAt).getTime();
   const waitedMinutes = Number.isFinite(waitedMs) ? Math.max(0, Math.ceil(waitedMs / 60000)) : 0;
 
-  return roundRideMoney(Math.max(0, waitedMinutes - freeMinutes) * ratePerMinute);
+  // Whole rupees, so the completed fare stays a whole rupee.
+  return Math.round(Math.max(0, waitedMinutes - freeMinutes) * ratePerMinute);
 };
 
 /*

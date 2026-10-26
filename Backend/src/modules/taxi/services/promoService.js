@@ -94,7 +94,13 @@ export const computePromoDiscount = ({ fare, promo, userCounter }) => {
   const usedCumulative = Math.max(0, Number(userCounter?.cumulative_discount_amount || 0));
   const remainingCumulative = cumulativeCap > 0 ? Math.max(0, cumulativeCap - usedCumulative) : null;
 
-  const finalDiscount = remainingCumulative !== null ? Math.min(cappedDiscount, remainingCumulative) : cappedDiscount;
+  // Whole rupees, so the fare after the promo is a whole rupee too (10% off
+  // Rs 51 is Rs 5, not Rs 5.10). Rounded to the nearest rupee, but never past
+  // a cap or the fare itself.
+  let discountLimit = safeFare;
+  if (maximumDiscountAmount > 0) discountLimit = Math.min(discountLimit, maximumDiscountAmount);
+  if (remainingCumulative !== null) discountLimit = Math.min(discountLimit, remainingCumulative);
+  const finalDiscount = Math.max(0, Math.min(Math.round(rawDiscount), Math.floor(discountLimit)));
   const fareAfter = Math.max(0, safeFare - finalDiscount);
 
   return {
