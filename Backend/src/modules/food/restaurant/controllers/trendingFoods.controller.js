@@ -12,7 +12,7 @@ export const listTrendingFoodsController = async (req, res, next) => {
 export const setFoodTrendingController = async (req, res, next) => {
     try {
         const food = await setFoodTrending(req.params.id, req.body?.isTrending);
-        return sendResponse(res, 200, food.isTrending ? 'Recommended: shows in Trending Now and its restaurant's Recommended' : 'No longer recommended', { food });
+        return sendResponse(res, 200, food.isTrending ? "Recommended: shows in Trending Now and its restaurant's Recommended" : 'No longer recommended', { food });
     } catch (error) {
         if (error.statusCode) return sendError(res, error.statusCode, error.message);
         next(error);
