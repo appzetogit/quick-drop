@@ -6,6 +6,7 @@ import landingRoutes from '../modules/food/landing/routes/landing.routes.js';
 import { getPublicDiningRestaurants } from '../modules/food/dining/controllers/diningPublic.controller.js';
 import uploadRoutes from '../modules/uploads/routes/upload.routes.js';
 import restaurantAdminRoutes from '../modules/food/admin/routes/admin.routes.js';
+import { setFoodTrendingController } from '../modules/food/restaurant/controllers/trendingFoods.controller.js';
 import userRoutes from '../modules/food/user/routes/user.routes.js';
 import chatRoutes from '../modules/food/chat/routes/chat.routes.js';
 import orderUserRoutes from '../modules/food/orders/routes/order.routes.user.js';
@@ -160,6 +161,9 @@ router.get('/v1/food/admin/business-settings/public', businessSettingsController
 router.get('/v1/food/admin/fee-settings/public', getPublicFeeSettingsController);
 router.get('/v1/food/admin/cashback-settings/public', getCashbackSettingsPublicController);
 
+// Admin > Food List's Trending Now toggle. Declared here with the same guards as
+// the admin block below rather than inside admin.routes.js.
+router.patch('/v1/food/admin/foods/:id/trending', authMiddleware, requireRoles('ADMIN'), requireServiceAccess('food'), adminZoneScope('food'), setFoodTrendingController);
 router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN'), requireServiceAccess('food'), adminZoneScope('food'), restaurantAdminRoutes);
 router.use('/v1/food/user', authMiddleware, requireRoles('USER'), userRoutes);
 // router.use('/v1/food/user', userRoutes);

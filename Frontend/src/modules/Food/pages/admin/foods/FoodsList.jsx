@@ -1,8 +1,10 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
 import { useLocation, useSearchParams } from "react-router-dom"
-import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown } from "lucide-react"
+import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown, Check, Flame } from "lucide-react"
 import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 import { adminAPI, uploadAPI } from "@food/api"
+import apiClient from "@food/api/axios"
+import { adminPanelOf } from "@food/utils/adminPanel"
 import { toast } from "sonner"
 import { Switch } from "@food/components/ui/switch"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
@@ -150,6 +152,14 @@ export default function FoodsList() {
    * into this form.
    */
   const shelfCap = useValueShelfCap()
+  // The 99 store and Trending Now are food-app shelves; the quick-commerce and
+  // medical panels reuse this screen without them.
+  const isFoodPanel = adminPanelOf().vertical === "food"
+  // Dishes the app's 99 store is showing right now, read from the same public
+  // feed the app reads, so the tick matches what customers see whatever rule
+  // the server applies.
+  const [onShelfIds, setOnShelfIds] = useState(() => new Set())
+  const [trendingBusyId, setTrendingBusyId] = useState("")
   const [shelfTouched, setShelfTouched] = useState(false)
   const [submittingFood, setSubmittingFood] = useState(false)
   const [categoryOptions, setCategoryOptions] = useState([])
@@ -184,6 +194,15 @@ export default function FoodsList() {
     try {
       setLoading(true)
 
+      if (isFoodPanel) {
+        apiClient
+          .get("/food/restaurant/public/foods", { params: { promo: "switch99", limit: 1000 } })
+          .then((res) => {
+            const shelf = res?.data?.data?.foods || res?.data?.foods || []
+            setOnShelfIds(new Set(shelf.map((f) => String(f?._id || f?.id || ""))))
+          })
+          .catch(() => setOnShelfIds(new Set()))
+      }
       const [activeRestaurantsResponse, inactiveRestaurantsResponse] = await Promise.all([
         adminAPI.getRestaurants({ limit: 1000 }),
         adminAPI.getRestaurants({ limit: 1000, status: "inactive" }),
@@ -272,6 +291,7 @@ export default function FoodsList() {
               // Carried so the edit form opens with the shelf box as it really is.
               showIn99Store: f.showIn99Store === true,
               ninetyNineStoreExcluded: f.ninetyNineStoreExcluded === true,
+              isTrending: f.isTrending === true,
               freeDelivery: f.freeDelivery === true,
               packagingCharge: f.packagingCharge || null,
               stockQty: f.stockQty ?? null,
@@ -547,6 +567,31 @@ export default function FoodsList() {
         variant.id === variantId ? { ...variant, [field]: value } : variant,
       ),
     }))
+  }
+
+  const toggleTrending = async (food) => {
+    const next = food.isTrending !== true
+    setTrendingBusyId(food.id)
+    try {
+      await apiClient.patch(`/food/admin/foods/${food._id || food.id}/trending`, { isTrending: next }, { contextModule: "admin" })
+      setFoods((prev) => prev.map((f) => (f.id === food.id ? { ...f, isTrending: next } : f)))
+      toast.success(next ? `${food.name} is now in Trending Now` : `${food.name} removed from Trending Now`)
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Could not update Trending Now")
+    } finally {
+      setTrendingBusyId("")
+    }
+  }
+
+  // Turns variants on with a first empty size, and brings the variant editor
+  // into view -- from the price field, where an admin looks for it.
+  const startVariants = () => {
+    setFoodForm((prev) => ({
+      ...prev,
+      variantsEnabled: true,
+      variants: Array.isArray(prev.variants) && prev.variants.length ? prev.variants : [createVariantDraft()],
+    }))
+    setTimeout(() => document.getElementById("food-variants")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50)
   }
 
   const handleAddVariant = () => {
@@ -852,6 +897,16 @@ export default function FoodsList() {
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Category
                 </th>
+                {isFoodPanel && (
+                  <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider" title="Showing in the app's under-price store right now">
+                    {"₹"}{shelfCap} Store
+                  </th>
+                )}
+                {isFoodPanel && (
+                  <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider" title="Recommended dishes show in the app's Trending Now">
+                    Trending Now
+                  </th>
+                )}
                 <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Action
                 </th>
@@ -860,7 +915,7 @@ export default function FoodsList() {
             <tbody className="bg-white divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={isFoodPanel ? 8 : 6} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-2" />
                       <p className="text-sm text-slate-500">Loading foods...</p>
@@ -869,7 +924,7 @@ export default function FoodsList() {
                 </tr>
               ) : filteredFoods.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center">
+                  <td colSpan={isFoodPanel ? 8 : 6} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <p className="text-lg font-semibold text-slate-700 mb-1">No Data Found</p>
                       <p className="text-sm text-slate-500">No food items match your search or restaurant filter</p>
@@ -914,6 +969,36 @@ export default function FoodsList() {
                         <span className="text-sm font-medium text-slate-800">{food.categoryName || "-"}</span>
                       </div>
                     </td>
+                    {isFoodPanel && (
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        {onShelfIds.has(food.id) ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700" title={`Showing in the ₹${shelfCap} store`}>
+                            <Check className="w-3.5 h-3.5" />
+                            Showing
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400" title={`Not in the ₹${shelfCap} store`}>—</span>
+                        )}
+                      </td>
+                    )}
+                    {isFoodPanel && (
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleTrending(food)}
+                          disabled={trendingBusyId === food.id}
+                          aria-pressed={food.isTrending === true}
+                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-50 ${
+                            food.isTrending
+                              ? "border-orange-500 bg-orange-500 text-white hover:bg-orange-600"
+                              : "border-slate-300 bg-white text-slate-700 hover:border-orange-400 hover:text-orange-600"
+                          }`}
+                        >
+                          {trendingBusyId === food.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Flame className="w-3.5 h-3.5" />}
+                          {food.isTrending ? "Recommended" : "Recommend"}
+                        </button>
+                      </td>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap text-center">
                       <div className="flex items-center justify-center gap-2">
                         <button
@@ -1128,7 +1213,18 @@ export default function FoodsList() {
                 />
                 {foodForm.variantsEnabled === true ? (
                   <p className="mt-1 text-xs text-slate-500">Selling by variants: customers see the lowest variant price as the starting price.</p>
-                ) : null}
+                ) : (
+                  <button
+                    type="button"
+                    onClick={startVariants}
+                    className="mt-2 inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    {Array.isArray(foodForm.variants) && foodForm.variants.length
+                      ? `Sell by variants (${foodForm.variants.length} saved)`
+                      : "Add variants (Half / Full, sizes)"}
+                  </button>
+                )}
                 <p className="mt-1 text-xs text-slate-500">
                   The restaurant&rsquo;s own price. Global Price Adjustment never changes it.
                 </p>
@@ -1570,7 +1666,7 @@ export default function FoodsList() {
                 className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm bg-white resize-none"
               />
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+            <div id="food-variants" className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Variants</p>

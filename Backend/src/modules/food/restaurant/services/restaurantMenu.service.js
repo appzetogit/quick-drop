@@ -39,7 +39,7 @@ const resolveStockResumeAt = (food) => {
     return when.getTime() > Date.now() ? when.toISOString() : null;
 };
 
-const buildMenuFromFoods = async (foods = [], { forCustomer = false } = {}) => {
+export const buildMenuFromFoods = async (foods = [], { forCustomer = false } = {}) => {
     // Admin-configurable platform cap, so the limits the seller UI shows match
     // what checkout will actually enforce. Read once per menu, not per item.
     const quantityCeiling = await getOrderQuantityCeiling();

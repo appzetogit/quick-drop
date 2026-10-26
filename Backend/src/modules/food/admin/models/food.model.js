@@ -258,6 +258,11 @@ const foodSchema = new mongoose.Schema(
          */
         stockResumeAt: { type: Date, default: null },
         isRecommended: { type: Boolean, default: false, index: true },
+        // Admin's pick for the app's Trending Now (restaurant/services/
+        // trendingFoods.service.js). Separate from isRecommended, which the
+        // restaurant sets for its own menu. trendingAt orders the shelf.
+        isTrending: { type: Boolean, default: false, index: true },
+        trendingAt: { type: Date, default: null },
         /**
          * Admin-curated shelf for the Rs 99 store in the app. The admin decides
          * which dishes are eligible; the price ceiling is enforced separately at

@@ -10,6 +10,7 @@ import { validateFeeSettingsUpsertDto } from '../validators/feeSettings.validato
 import { validateDeliveryEmergencyHelpUpsertDto } from '../validators/deliveryEmergencyHelp.validator.js';
 import { validateReferralSettingsUpsertDto } from '../validators/referralSettings.validator.js';
 import { withFoodQuantityLimits, prepareFoodQuantityLimits, saveFoodQuantityLimits } from '../services/adminFoodQuantity.service.js';
+import { withTrendingFlags } from '../../restaurant/services/trendingFoods.service.js';
 
 // ----- Customers / Users -----
 export async function getCustomers(req, res, next) {
@@ -669,7 +670,7 @@ export async function getFoods(req, res, next) {
     try {
         const data = await adminService.getFoods(req.query || {});
         // The dish-level quantity limits the editor shows (adminFoodQuantity.service.js).
-        if (Array.isArray(data?.foods)) data.foods = await withFoodQuantityLimits(data.foods);
+        if (Array.isArray(data?.foods)) data.foods = await withTrendingFlags(await withFoodQuantityLimits(data.foods));
         res.status(200).json({ success: true, message: 'Foods fetched successfully', data });
     } catch (error) {
         next(error);

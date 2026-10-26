@@ -85,6 +85,7 @@ import { createSellerDailyEarnings } from '../../../../core/finance/sellerDailyE
 import { FoodOrder } from '../../orders/models/order.model.js';
 import { FoodTransaction } from '../../orders/models/foodTransaction.model.js';
 import { listPublicFoodsController } from '../controllers/publicFoods.controller.js';
+import { listTrendingFoodsController } from '../controllers/trendingFoods.controller.js';
 import {
     getMediaController,
     uploadCoverImageController,
@@ -144,6 +145,8 @@ router.get('/offers', cacheResponse(PRICE_TTL, 'offers'), listPublicOffersContro
 // the under-250 promo. Declared before the ':id' routes above cannot swallow it --
 // '/public/foods' has two segments, so there is no collision either way.
 router.get('/public/foods', cacheResponse(PRICE_TTL, 'public_foods'), listPublicFoodsController);
+// Public: the dishes an admin put on Trending Now (Admin > Food List).
+router.get('/public/trending-foods', cacheResponse(PRICE_TTL, 'public_trending_foods'), listTrendingFoodsController);
 // Public: categories list (zone-aware; returns zone categories + global)
 router.get('/categories/public', cacheResponse(SLOW_TTL, 'categories'), listCategoriesController);
 
