@@ -3,6 +3,14 @@ import { managedBrand } from '../../../../core/settings/platformProfile.service.
 import { safeSignatureEqual } from '../../../../utils/safeCompare.js';
 import mongoose from "mongoose";
 import QRCode from "qrcode";
+import {
+  RazorpayQrError,
+  createUpiQr,
+  fetchUpiQr,
+  closeUpiQr,
+  isQrPaid,
+  isQrLive,
+} from "../../../../core/payments/razorpayQr.js";
 import { env } from "../../../../config/env.js";
 import { mirrorTaxiPayment } from '../../services/paymentMirror.service.js';
 import {
@@ -52,6 +60,7 @@ import {
   serializeDriverWallet,
   topUpDriverWallet,
   creditOnlineRideEarnings,
+  reclassifyCashRidePaidByQr,
 } from "../services/walletService.js";
 import {
   startDriverLoginOtp,
@@ -1334,12 +1343,15 @@ const serializeDriverPaymentCollection = (collection = {}) => {
     amount: Number(collection.amount || 0),
     currency: collection.currency || "INR",
     linkUrl: collection.linkUrl || "",
+    imageUrl: collection.linkUrl || "",
+    upiString: collection.upiString || "",
+    closeBy: collection.closeBy || null,
     paidAt: collection.paidAt || null,
     updatedAt: collection.updatedAt || null,
   };
 };
 
-const refreshDriverPaymentCollection = async (ride) => {
+export const refreshDriverPaymentCollection = async (ride) => {
   const collection = ride?.driverPaymentCollection || {};
   const providerId = String(collection.providerId || "").trim();
 
@@ -1372,6 +1384,10 @@ const refreshDriverPaymentCollection = async (ride) => {
     amount: Number(collection.amount || 0),
     currency: collection.currency || "INR",
     linkUrl: collection.linkUrl || providerPayload?.short_url || providerPayload?.url || "",
+    upiString: collection.upiString || "",
+    closeBy: collection.closeBy || null,
+    previousProviderIds: collection.previousProviderIds || [],
+    reclassifiedAt: collection.reclassifiedAt || null,
     paidAt: isPaid ? collection.paidAt || new Date() : collection.paidAt || null,
     updatedAt: new Date(),
   };
@@ -1391,6 +1407,8 @@ const refreshDriverPaymentCollection = async (ride) => {
       requireConfirmedCollection: true,
       source: "driver_payment_qr",
     });
+    // Booked as cash and already settled as cash: the platform holds the fare.
+    await reclassifyCashRidePaidByQr({ rideId: ride._id });
   }
 
   return serializeDriverPaymentCollection(nextCollection);
@@ -4740,8 +4758,33 @@ export const topUpMyWallet = async (req, res) => {
   });
 };
 
+const qrCollectionPayload = (collection = {}, extra = {}) => ({
+  id: collection.providerId || "",
+  entity: "qr_code",
+  status: normalizeCollectionStatus(collection.status),
+  imageUrl: collection.linkUrl || "",
+  linkUrl: collection.linkUrl || "",
+  // The upi://pay string the QR encodes. Draw this; imageUrl is Razorpay's picture of it.
+  upiString: collection.upiString || "",
+  amount: Number(collection.amount || 0),
+  currency: collection.currency || "INR",
+  closeBy: collection.closeBy ? Math.floor(new Date(collection.closeBy).getTime() / 1000) : null,
+  rawStatus: collection.status || "",
+  providerMode: collection.providerMode || "",
+  paid: PAYMENT_PAID_STATUSES.has(normalizeCollectionStatus(collection.status)),
+  ...extra,
+});
+
+/**
+ * The QR a driver shows to collect a ride's (or parcel's) fare.
+ *
+ * The amount is the ride's own fare. It used to be whatever the driver's app
+ * sent, so any figure could be collected; an `amount` in the body is now only
+ * compared and logged. One QR per ride at a time: the same one comes back while
+ * it is live and the fare has not changed, and an old one is closed before a
+ * new one is made, so a rider can never pay twice.
+ */
 export const createDriverPaymentQr = async (req, res) => {
-  const amountInPaise = normalizePaymentAmount(req.body.amount);
   const rideId = String(req.body.rideId || "").trim();
 
   if (!rideId) {
@@ -4752,89 +4795,125 @@ export const createDriverPaymentQr = async (req, res) => {
     _id: rideId,
     driverId: req.auth.sub,
   })
-    .select("_id fare paymentMethod serviceType driverPaymentCollection");
+    .select("_id fare paymentMethod serviceType status liveStatus driverPaymentCollection walletSettledAt");
 
   if (!ride) {
     throw new ApiError(404, "Ride not found for this driver");
   }
+  if (String(ride.status || ride.liveStatus || "").toLowerCase().startsWith("cancel")) {
+    throw new ApiError(400, "This ride was cancelled; there is nothing to collect");
+  }
 
-  let payload;
+  const amountInPaise = normalizePaymentAmount(ride.fare);
+  const claimed = Number(req.body.amount);
+  if (Number.isFinite(claimed) && claimed > 0 && Math.round(claimed * 100) !== amountInPaise) {
+    console.warn(`[DriverQr] ride ${rideId}: app asked for Rs ${claimed}, fare is Rs ${amountInPaise / 100}; using the fare`);
+  }
+
+  const current = ride.driverPaymentCollection?.toObject?.() || ride.driverPaymentCollection || {};
+  const currentPaise = Math.round(Number(current.amount || 0) * 100);
+
+  if (PAYMENT_PAID_STATUSES.has(normalizeCollectionStatus(current.status)) && currentPaise >= amountInPaise) {
+    res.json({ success: true, data: qrCollectionPayload(current) });
+    return;
+  }
+
+  if (current.providerMode === "razorpay_qr" && current.providerId) {
+    const previous = await fetchUpiQr(current.providerId).catch(() => null);
+    if (previous && isQrPaid(previous, currentPaise)) {
+      // Paid while the driver was asking for a new one.
+      const collection = await refreshDriverPaymentCollection(ride);
+      if (currentPaise >= amountInPaise) {
+        res.json({ success: true, data: qrCollectionPayload({ ...current, status: "paid" }, collection) });
+        return;
+      }
+      throw new ApiError(
+        409,
+        `The rider already paid Rs ${currentPaise / 100} by UPI. Collect the remaining Rs ${(amountInPaise - currentPaise) / 100} in cash.`,
+      );
+    }
+    if (previous && currentPaise === amountInPaise && isQrLive(previous)) {
+      res.json({ success: true, data: qrCollectionPayload(current) });
+      return;
+    }
+    await closeUpiQr(current.providerId).catch((error) =>
+      console.warn(`[DriverQr] could not close old QR ${current.providerId}: ${error.message}`));
+  }
+
+  const previousProviderIds = [...(current.previousProviderIds || []), current.providerId]
+    .filter(Boolean)
+    .slice(-10);
+  let collection;
 
   try {
     const appName = await getConfiguredAppName();
-    const qr = await razorpayRequest({
-      method: "POST",
-      path: "/payments/qr_codes",
-      body: {
-        type: "upi_qr",
-        name: `${appName} Taxi Fare`,
-        usage: "single_use",
-        fixed_amount: true,
-        payment_amount: amountInPaise,
-        description: `Taxi fare for ride ${rideId}`,
-        close_by: Math.floor(Date.now() / 1000) + 30 * 60,
-        notes: {
-          rideId,
-          driverId: String(req.auth.sub),
-          serviceType: ride.serviceType || "ride",
-          source: "driver_collect_amount",
-        },
+    const qr = await createUpiQr({
+      amountPaise: amountInPaise,
+      name: `${appName} Fare`,
+      description: `Fare for ride ${rideId}`,
+      notes: {
+        kind: "taxi_ride",
+        refId: rideId,
+        driverId: String(req.auth.sub),
+        serviceType: ride.serviceType || "ride",
       },
     });
-
-    payload = {
-      id: qr.id,
-      entity: qr.entity,
-      status: qr.status,
-      imageUrl: qr.image_url,
-      linkUrl: qr.image_url,
+    collection = {
+      provider: "razorpay",
+      providerId: qr.id,
+      providerMode: "razorpay_qr",
+      status: normalizeCollectionStatus(qr.status),
       amount: amountInPaise / 100,
       currency: "INR",
-      description: qr.description,
-      closeBy: qr.close_by || null,
-      rawStatus: qr.status,
-      providerMode: "razorpay_qr",
+      linkUrl: qr.imageUrl,
+      upiString: qr.upiString,
+      closeBy: qr.closeBy,
     };
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn("Razorpay QR failed, falling back to dummy QR for development", error.message);
+    if (!(error instanceof RazorpayQrError) || !error.unavailable) {
+      throw new ApiError(error.statusCode || 502, error.message || "Could not create the payment QR");
+    }
+    if (process.env.NODE_ENV === "development") {
+      // Never in production: a QR nobody can pay into.
+      console.warn("Razorpay QR unavailable, using a dummy QR for development", error.message);
       const dummyUrl = `upi://pay?pa=test@upi&pn=Test&am=${amountInPaise / 100}`;
-      const imageUrl = await QRCode.toDataURL(dummyUrl);
-      payload = {
-        id: 'qr_dummy_' + Date.now(),
-        entity: 'qr_code',
-        status: 'active',
-        imageUrl,
-        linkUrl: dummyUrl,
+      collection = {
+        provider: "razorpay",
+        providerId: "qr_dummy_" + Date.now(),
+        providerMode: "razorpay_qr",
+        status: "active",
         amount: amountInPaise / 100,
-        currency: 'INR',
-        description: 'Dummy QR for development',
-        closeBy: Math.floor(Date.now() / 1000) + 30 * 60,
-        rawStatus: 'active',
-        providerMode: 'razorpay_qr',
+        currency: "INR",
+        linkUrl: await QRCode.toDataURL(dummyUrl),
+        upiString: dummyUrl,
+        closeBy: new Date(Date.now() + 30 * 60 * 1000),
       };
     } else {
-      if (!shouldFallbackToPaymentLinkQr(error)) {
-        throw error;
-      }
-
-      payload = await createPaymentLinkQr({
+      // No QR Codes on this Razorpay account: a payment link's QR instead.
+      const link = await createPaymentLinkQr({
         amountInPaise,
         rideId,
         driverId: req.auth.sub,
         serviceType: ride.serviceType,
       });
+      collection = {
+        provider: "razorpay",
+        providerId: link.id,
+        providerMode: link.providerMode,
+        status: normalizeCollectionStatus(link.rawStatus || link.status),
+        amount: link.amount,
+        currency: link.currency || "INR",
+        linkUrl: link.linkUrl || "",
+        upiString: "",
+        closeBy: link.closeBy ? new Date(link.closeBy * 1000) : null,
+      };
     }
   }
 
   ride.driverPaymentCollection = {
-    provider: "razorpay",
-    providerId: payload.id,
-    providerMode: payload.providerMode,
-    status: normalizeCollectionStatus(payload.rawStatus || payload.status),
-    amount: payload.amount,
-    currency: payload.currency || "INR",
-    linkUrl: payload.linkUrl || "",
+    ...collection,
+    previousProviderIds,
+    reclassifiedAt: current.reclassifiedAt || null,
     paidAt: null,
     updatedAt: new Date(),
   };
@@ -4842,7 +4921,7 @@ export const createDriverPaymentQr = async (req, res) => {
 
   res.json({
     success: true,
-    data: payload,
+    data: qrCollectionPayload(ride.driverPaymentCollection),
   });
 };
 

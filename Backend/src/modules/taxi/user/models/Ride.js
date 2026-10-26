@@ -419,6 +419,27 @@ const rideSchema = new mongoose.Schema(
         default: 'INR',
         trim: true,
       },
+      // The upi://pay string a dynamic UPI QR encodes, so the app can draw it.
+      upiString: {
+        type: String,
+        default: '',
+      },
+      closeBy: {
+        type: Date,
+        default: null,
+      },
+      // QRs this ride showed before the current one (closed when replaced), so
+      // a payment that still lands on one can be traced and refunded.
+      previousProviderIds: {
+        type: [String],
+        default: [],
+      },
+      // Set once a cash-settled ride paid by QR has been moved to online
+      // (walletService.reclassifyCashRidePaidByQr).
+      reclassifiedAt: {
+        type: Date,
+        default: null,
+      },
       linkUrl: {
         type: String,
         default: '',

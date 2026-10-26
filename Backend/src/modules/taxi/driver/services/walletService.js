@@ -480,7 +480,9 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
       type: commissionConfig.type,
       value: commissionConfig.value,
     });
-    const paymentMethod = normalizePaymentMethod(ride.paymentMethod);
+    // A ride booked as cash that the rider paid by the driver's UPI QR (already
+    // confirmed with Razorpay) is an online ride: the money is with the platform.
+    const paymentMethod = isOnlineCollectionConfirmed(ride) ? 'online' : normalizePaymentMethod(ride.paymentMethod);
     const cancellationFeeGoesTo = ride?.pricingSnapshot?.cancellation_fee_goes_to === 'driver' ? 'driver' : 'admin';
     /*
      * The platform incentive, from Master > Delivery Earnings.
@@ -625,6 +627,64 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
  * `requireConfirmedCollection` is for the QR path, where the payment is only
  * proven by the ride's own verified collection record.
  */
+/**
+ * A cash ride the rider then paid by the driver's UPI QR, after completion had
+ * already settled it as cash. Cash settlement moved the driver's wallet by
+ * (earnings - fare), as though he kept the fare; the platform has it instead,
+ * so he is owed the fare. Credited once, and the ride is re-marked online so
+ * cash-in-hand totals stop counting it.
+ */
+export const reclassifyCashRidePaidByQr = async ({ rideId, source = 'driver_payment_qr' }) => {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const current = await Ride.findById(rideId).session(session);
+    if (!current || !isOnlineCollectionConfirmed(current)) {
+      await session.abortTransaction();
+      return null;
+    }
+    const ride = await Ride.findOneAndUpdate(
+      {
+        _id: rideId,
+        driverId: { $ne: null },
+        walletSettledAt: { $ne: null },
+        paymentMethod: 'cash',
+        'driverPaymentCollection.reclassifiedAt': null,
+      },
+      { $set: { paymentMethod: 'online', 'driverPaymentCollection.reclassifiedAt': new Date() } },
+      { returnDocument: 'after', session },
+    );
+    const fare = normalizeAmount(ride?.fare || 0, 'fare');
+    if (!ride || !fare) {
+      await session.commitTransaction();
+      return null;
+    }
+    const result = await applyDriverWalletAdjustment({
+      driverId: ride.driverId,
+      rideId: ride._id,
+      amount: fare,
+      type: 'ride_earning',
+      description: 'Rider paid by UPI QR: fare moved from cash to online',
+      metadata: {
+        source,
+        fare,
+        driverEarnings: Number(ride.driverEarnings || 0),
+        paymentMethod: 'online',
+        reclassifiedFrom: 'cash',
+        providerId: ride.driverPaymentCollection?.providerId || '',
+      },
+      session,
+    });
+    await session.commitTransaction();
+    return result;
+  } catch (error) {
+    await session.abortTransaction().catch(() => {});
+    throw error;
+  } finally {
+    session.endSession();
+  }
+};
+
 export const creditOnlineRideEarnings = async ({ rideId, session = null, requireConfirmedCollection = false, source = '' }) => {
   if (!session) {
     const ownSession = await mongoose.startSession();

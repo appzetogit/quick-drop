@@ -155,7 +155,13 @@ const paymentSchema = new mongoose.Schema(
             signature: { type: String }
         },
         qr: {
+            // 'upi_qr' (dynamic UPI QR) or 'payment_link'; core/payments/orderCollectQr.js.
+            kind: { type: String },
             qrId: { type: String },
+            upiString: { type: String },
+            amountPaise: { type: Number },
+            paymentId: { type: String },
+            previousQrIds: { type: [String], default: undefined },
             imageUrl: { type: String },
             paymentLinkId: { type: String },
             shortUrl: { type: String },

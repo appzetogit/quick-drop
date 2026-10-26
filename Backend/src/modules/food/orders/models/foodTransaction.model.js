@@ -58,7 +58,13 @@ const foodTransactionSchema = new mongoose.Schema({
             signature: { type: String, default: '' }
         },
         qr: {
+            // 'upi_qr' (dynamic UPI QR) or 'payment_link'; core/payments/orderCollectQr.js.
+            kind: { type: String, default: '' },
             qrId: { type: String, default: '' },
+            upiString: { type: String, default: '' },
+            amountPaise: { type: Number, default: 0 },
+            paymentId: { type: String, default: '' },
+            previousQrIds: { type: [String], default: [] },
             imageUrl: { type: String, default: '' },
             paymentLinkId: { type: String, default: '' },
             shortUrl: { type: String, default: '' },

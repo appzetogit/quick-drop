@@ -8,6 +8,7 @@ import { safeSignatureEqual } from '../../../utils/safeCompare.js';
 import { config } from '../../../config/env.js';
 import { logger } from '../../../utils/logger.js';
 import { alertAdmins, alertOrderEvent, ALERT_KINDS, line } from '../../../core/notifications/adminAlerts.js';
+import { handleQrCodeCredited } from '../qrCreditWebhook.js';
 
 /**
  * ✅ NEW: Centralized Razorpay Webhook Handler (Core Layer)
@@ -91,11 +92,30 @@ export const handleRazorpayWebhook = async (req, res) => {
     logger.info(`Razorpay Webhook Received: ${event}`);
 
     try {
+        // --- Dynamic UPI QR paid (driver/rider collection; core/payments/qrCreditWebhook.js) ---
+        if (event === 'qr_code.credited') {
+            const outcome = await handleQrCodeCredited(payload);
+            logger.info(`Webhook [qr_code.credited]: ${payload?.qr_code?.entity?.id || '?'} -> ${outcome}`);
+            return res.status(200).json({ status: 'ok' });
+        }
+
         // --- 🟢 Handle Payment Captured (Success) ---
         if (event === 'payment.captured') {
             const paymentObj = payload.payment.entity;
             const rzOrderId = paymentObj.order_id;
             const rzPaymentId = paymentObj.id;
+
+            /*
+             * A payment with no Razorpay order -- a UPI QR payment, settled by
+             * qr_code.credited above -- belongs to no checkout. Looking it up
+             * by a missing order id matched every order that has none (every
+             * cash order), and the branches below would then refund it or
+             * mark that unrelated order failed.
+             */
+            if (!rzOrderId) {
+                logger.info(`Webhook [payment.captured]: ${rzPaymentId} has no order (QR or direct payment); not a checkout`);
+                return res.status(200).json({ status: 'ok' });
+            }
 
             /*
              * Cross-check the captured amount against the order total before marking paid.
