@@ -115,6 +115,48 @@ const createVariantDraft = (variant = {}) => ({
   ),
 })
 
+const rupees = (value) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? `₹${n % 1 === 0 ? n : n.toFixed(2)}` : "-"
+}
+
+/**
+ * The dish's base price -- the restaurant's own figure -- and, where it
+ * differs, what the customer pays. A dish sold in sizes lists every size.
+ */
+function BasePriceCell({ food }) {
+  const variants = Array.isArray(food.variants) ? food.variants : []
+  const byVariants = food.variantsEnabled !== false && variants.length > 0
+  if (byVariants) {
+    return (
+      <div className="flex flex-col gap-0.5">
+        {variants.map((v, i) => {
+          const base = v.basePrice ?? v.price
+          const sells = Number(v.price)
+          return (
+            <span key={v.id || v._id || i} className="text-xs text-slate-700">
+              <span className="font-medium text-slate-900">{v.name || `Size ${i + 1}`}</span> {rupees(base)}
+              {Number.isFinite(sells) && sells > 0 && sells !== Number(base) && (
+                <span className="text-slate-400"> · sells {rupees(sells)}</span>
+              )}
+            </span>
+          )
+        })}
+      </div>
+    )
+  }
+  const base = Number(food.basePrice)
+  const sells = Number(food.price)
+  return (
+    <div className="flex flex-col">
+      <span className="text-sm font-semibold text-slate-900">{rupees(base)}</span>
+      {Number.isFinite(sells) && sells > 0 && sells !== base && (
+        <span className="text-xs text-slate-400">sells at {rupees(sells)}</span>
+      )}
+    </div>
+  )
+}
+
 export default function FoodsList() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedRestaurant, setSelectedRestaurant] = useState("all")
@@ -920,6 +962,9 @@ export default function FoodsList() {
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Category
                 </th>
+                <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider" title="The restaurant's own price; what the customer pays is shown under it when different">
+                  Base Price
+                </th>
                 {isFoodPanel && (
                   <th className="px-6 py-4 text-center text-[10px] font-bold text-slate-700 uppercase tracking-wider" title="Showing in the app's under-price store right now">
                     {"₹"}{shelfCap} Store
@@ -938,7 +983,7 @@ export default function FoodsList() {
             <tbody className="bg-white divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={isFoodPanel ? 8 : 6} className="px-6 py-20 text-center">
+                  <td colSpan={isFoodPanel ? 9 : 7} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-2" />
                       <p className="text-sm text-slate-500">Loading foods...</p>
@@ -947,7 +992,7 @@ export default function FoodsList() {
                 </tr>
               ) : filteredFoods.length === 0 ? (
                 <tr>
-                  <td colSpan={isFoodPanel ? 8 : 6} className="px-6 py-20 text-center">
+                  <td colSpan={isFoodPanel ? 9 : 7} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center justify-center">
                       <p className="text-lg font-semibold text-slate-700 mb-1">No Data Found</p>
                       <p className="text-sm text-slate-500">No food items match your search or restaurant filter</p>
@@ -991,6 +1036,9 @@ export default function FoodsList() {
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-slate-800">{food.categoryName || "-"}</span>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <BasePriceCell food={food} />
                     </td>
                     {isFoodPanel && (
                       <td className="px-6 py-4 whitespace-nowrap text-center">
