@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
 import { useLocation, useSearchParams } from "react-router-dom"
-import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown, Flame, ThumbsUp } from "lucide-react"
+import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown, ThumbsUp } from "lucide-react"
 import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 import { adminAPI, uploadAPI } from "@food/api"
 import apiClient from "@food/api/axios"
@@ -1016,19 +1016,23 @@ export default function FoodsList() {
                     )}
                     {isFoodPanel && (
                       <td className="px-6 py-4 whitespace-nowrap text-center">
+                        {/* Thumbs up, filled orange: in the app's Trending Now. Faint outline: not. Click to switch. */}
                         <button
                           type="button"
                           onClick={() => toggleTrending(food)}
                           disabled={trendingBusyId === food.id}
                           aria-pressed={food.isTrending === true}
-                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-50 ${
-                            food.isTrending
-                              ? "border-orange-500 bg-orange-500 text-white hover:bg-orange-600"
-                              : "border-slate-300 bg-white text-slate-700 hover:border-orange-400 hover:text-orange-600"
-                          }`}
+                          title={food.isTrending ? "In Trending Now — click to remove" : "Not in Trending Now — click to recommend"}
+                          aria-label={food.isTrending ? `Remove ${food.name} from Trending Now` : `Recommend ${food.name} for Trending Now`}
+                          className="inline-flex items-center justify-center rounded-full p-1.5 transition-colors hover:bg-slate-100 disabled:opacity-50"
                         >
-                          {trendingBusyId === food.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Flame className="w-3.5 h-3.5" />}
-                          {food.isTrending ? "Recommended" : "Recommend"}
+                          {trendingBusyId === food.id ? (
+                            <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                          ) : food.isTrending ? (
+                            <ThumbsUp className="w-5 h-5 text-orange-500 fill-orange-100" />
+                          ) : (
+                            <ThumbsUp className="w-5 h-5 text-slate-300 hover:text-orange-500" />
+                          )}
                         </button>
                       </td>
                     )}
