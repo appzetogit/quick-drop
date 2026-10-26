@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
 import { useLocation, useSearchParams } from "react-router-dom"
-import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown, Check, Flame } from "lucide-react"
+import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown, Flame, ThumbsUp } from "lucide-react"
 import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 import { adminAPI, uploadAPI } from "@food/api"
 import apiClient from "@food/api/axios"
@@ -971,13 +971,15 @@ export default function FoodsList() {
                     </td>
                     {isFoodPanel && (
                       <td className="px-6 py-4 whitespace-nowrap text-center">
+                        {/* Thumbs up, filled green: the app's store is showing it. Faint outline: it is not. */}
                         {onShelfIds.has(food.id) ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700" title={`Showing in the ₹${shelfCap} store`}>
-                            <Check className="w-3.5 h-3.5" />
-                            Showing
+                          <span className="inline-flex" title={`In the ₹${shelfCap} store`} aria-label={`In the ₹${shelfCap} store`}>
+                            <ThumbsUp className="w-5 h-5 text-emerald-600 fill-emerald-100" />
                           </span>
                         ) : (
-                          <span className="text-xs text-slate-400" title={`Not in the ₹${shelfCap} store`}>—</span>
+                          <span className="inline-flex" title={`Not in the ₹${shelfCap} store`} aria-label={`Not in the ₹${shelfCap} store`}>
+                            <ThumbsUp className="w-5 h-5 text-slate-300" />
+                          </span>
                         )}
                       </td>
                     )}
