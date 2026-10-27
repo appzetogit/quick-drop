@@ -6,6 +6,25 @@ import { FoodRestaurantWithdrawal } from '../models/foodRestaurantWithdrawal.mod
 import { getRestaurantWithdrawalSettings } from '../../admin/services/admin.service.js';
 import { getRestaurantCommissionSnapshot } from '../../orders/services/foodTransaction.service.js';
 import { COMMISSION_SOURCES } from '../../shared/commissionSchedule.js';
+import { buildRestaurantPayoutBreakdown } from '../../shared/restaurantPayout.js';
+
+/**
+ * The restaurant's side of one order, for the payouts screen: the food net of
+ * GST, the GST on it (the platform pays that to the government, so it is not
+ * in the payout), the restaurant's packing charge, the commission and the
+ * payout. Commission and payout are the ledger's own figures, so the screen
+ * shows exactly what is credited.
+ */
+const round2 = (n) => Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100;
+function restaurantSideOfOrder(tx, order) {
+    const b = buildRestaurantPayoutBreakdown(order || {});
+    return {
+        foodValue: b.taxableFoodValue,
+        gstOnFood: b.gstOnFood,
+        pricesIncludeGst: b.pricesIncludeGst,
+        packaging: b.packagingCharge,
+    };
+}
 
 function toTwoDigitYearString(dateObj) {
     const y = String(dateObj.getFullYear());
@@ -170,6 +189,7 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
             totalAmount: tx.amounts?.totalCustomerPaid || 0,
             payout: tx.amounts?.restaurantShare || 0,
             commission: tx.amounts?.restaurantCommission || 0,
+            ...restaurantSideOfOrder(tx, order),
             paymentMethod: tx.paymentMethod || order?.payment?.method,
             orderStatus: order?.orderStatus || order?.deliveryState?.currentPhase || order?.deliveryState?.status,
             status: tx.status
@@ -251,7 +271,15 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         count: currentCycleOrders.length,
         subtotal: currentCycleOrders.reduce((sum, o) => sum + (Number(o.orderTotal) || 0), 0),
         taxes: currentCycleOrders.reduce((sum, o) => sum + Math.max(0, (Number(o.totalAmount) || 0) - (Number(o.orderTotal) || 0)), 0),
-        gross: currentCycleOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0)
+        gross: currentCycleOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0),
+        // The restaurant's side (above is the customer's bill, kept for older
+        // app builds): food sales net of GST, the GST on them, commission and
+        // payout. foodSales + packaging - commission - restaurant coupons = payout.
+        foodSales: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.foodValue) || 0), 0)),
+        gstOnFood: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.gstOnFood) || 0), 0)),
+        packaging: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.packaging) || 0), 0)),
+        commission: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.commission) || 0), 0)),
+        payout: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.payout) || 0), 0))
     };
 
     // Past cycles: build from provided startDate/endDate query.
@@ -287,6 +315,7 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
                 totalAmount: tx.amounts?.totalCustomerPaid || 0,
                 payout: tx.amounts?.restaurantShare || 0,
                 commission: tx.amounts?.restaurantCommission || 0,
+                ...restaurantSideOfOrder(tx, order),
                 paymentMethod: tx.paymentMethod || order?.payment?.method,
                 orderStatus: order?.orderStatus || order?.deliveryState?.currentPhase || order?.deliveryState?.status,
                 status: tx.status
