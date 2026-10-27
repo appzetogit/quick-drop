@@ -159,7 +159,7 @@ const isCashOrder = (order) => {
  * Bounded by the number of live trips, not riders. Quick trips are stored
  * against the Quick rider record and mapped back (cached in qcRiderLink).
  */
-async function foodRidersOnTrip() {
+export async function foodRidersOnTrip() {
   const [{ FoodOrder }, { FoodOrder: QcOrder }] = await Promise.all([
     import('../../modules/food/orders/models/order.model.js'),
     import('../../modules/quickCommerce/modules/food/orders/models/order.model.js'),

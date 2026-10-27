@@ -62,6 +62,7 @@ export const masterSidebarMenu = [
         label: "Delivery Management",
         icon: "Truck",
         subItems: [
+          { label: "Live Drivers", path: "/admin/master/live-drivers" },
           { label: "Delivery Earnings (all services)", path: "/admin/master/delivery-earnings" },
           { label: "Delivery Incentives", path: "/admin/master/delivery-incentives" },
           { label: "Order Batching", path: "/admin/master/order-batching" },
