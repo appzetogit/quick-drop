@@ -58,6 +58,10 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
   const [saving, setSaving] = useState(false);
   const [enablePeakZoneGlobal, setEnablePeakZoneGlobal] = useState(true);
   const [editingId, setEditingId] = useState(id || null);
+  // Set when the Google map has mounted (mapRef is a ref, so effects cannot
+  // see it change). The saved shape is drawn once both it and the zone exist,
+  // in whichever order they arrive.
+  const [mapReady, setMapReady] = useState(false);
   const [mapCenter, setMapCenter] = useState({ lat: 21.1458, lng: 79.0882 }); 
   const [zoom, setZoom] = useState(12);
   const [autocomplete, setAutocomplete] = useState(null);
@@ -855,7 +859,7 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
         }
       }, 500);
     }
-  }, [editingId, boundaryMode, polygonCoords.length, isLoaded]);
+  }, [editingId, boundaryMode, polygonCoords.length, isLoaded, mapReady]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 lg:p-8 animate-in fade-in duration-500">
@@ -1364,6 +1368,7 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
                            }}
                            onLoad={m => {
                              mapRef.current = m;
+                             setMapReady(true);
                              window.google.maps.event.addListener(m, 'click', (event) => {
                                handleMapClick(event);
                              });
