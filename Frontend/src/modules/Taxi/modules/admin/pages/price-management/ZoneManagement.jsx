@@ -798,6 +798,23 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
 
   const selectedServiceLocation = serviceLocations.find(l => String(l._id || l.id) === String(formData.service_location_id));
   const selectedCountry = selectedServiceLocation?.country || selectedServiceLocation?.name || '';
+  // The service location's own point. A zone is drawn inside a city or
+  // district, so the map opens there -- the country outline is only context.
+  const serviceLocationPoint = (() => {
+    const lat = Number(selectedServiceLocation?.latitude);
+    const lng = Number(selectedServiceLocation?.longitude);
+    return Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0) ? { lat, lng } : null;
+  })();
+
+  useEffect(() => {
+    // Not over a zone being edited: that one opens on its own shape.
+    if (view === 'list' || editingId || !serviceLocationPoint) return;
+    setMapCenter(serviceLocationPoint);
+    setZoom(11);
+    mapRef.current?.panTo(serviceLocationPoint);
+    mapRef.current?.setZoom(11);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceLocationPoint?.lat, serviceLocationPoint?.lng, view, editingId]);
 
   useEffect(() => {
     if (view === 'list' || !selectedCountry) return;
@@ -812,7 +829,9 @@ const ZoneManagement = ({ mode: initialMode = "list" }) => {
         const nextPaths = normalizeBoundaryRings(feature?.geojson);
         if (!cancelled) {
           setCountryBoundaryPaths(nextPaths);
-          if (nextPaths.length > 0) fitMapToPaths(nextPaths);
+          // Zoom out to the whole country only when the service location has
+          // no point of its own to open on.
+          if (nextPaths.length > 0 && !serviceLocationPoint && !editingId) fitMapToPaths(nextPaths);
         }
       } catch (error) {
         if (!cancelled) setCountryBoundaryPaths([]);

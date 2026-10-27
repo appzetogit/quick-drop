@@ -26,6 +26,7 @@ import countryMetadata from '../../constants/countries.json';
 import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination";
 
 import { describeApiError } from '../../../../shared/utils/apiError';
+import { useAppGoogleMapsLoader } from '../../utils/googleMaps';
 const DEFAULT_TIMEZONES = [
   'Asia/Kolkata',
   'Asia/Dubai',
@@ -61,6 +62,8 @@ const ServiceLocation = ({ mode }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeLangTab, setActiveLangTab] = useState('English');
   const [formData, setFormData] = useState(defaultFormData);
+  // Loaded only to look the place up on save; see locateServiceLocation.
+  const { isLoaded: mapsLoaded } = useAppGoogleMapsLoader();
 
   const fetchData = async () => {
     setLoading(true);
@@ -134,17 +137,42 @@ const ServiceLocation = ({ mode }) => {
   }, [locations, searchTerm]);
   const pagination = usePagination(filteredLocations || [], { storageKey: "taxi-service-locations", resetOn: [searchTerm] });
 
+  /*
+   * Where the service location is, from its name and country ("Distt kangra,
+   * India"). The form has no map, and the server used to fill in Indore for a
+   * location saved without coordinates -- so every new one opened the zone
+   * map on Indore. Null when Maps is not loaded or cannot find it; the server
+   * then keeps what it had.
+   */
+  const locateServiceLocation = async (name, countryName) => {
+    if (!mapsLoaded || !window.google?.maps?.Geocoder) return null;
+    try {
+      const { results } = await new window.google.maps.Geocoder().geocode({
+        address: [name, countryName].filter(Boolean).join(', '),
+      });
+      const hit = results?.[0];
+      const point = hit?.geometry?.location;
+      if (!point) return null;
+      return { latitude: point.lat(), longitude: point.lng(), address: hit.formatted_address || '' };
+    } catch {
+      return null;
+    }
+  };
+
   const handleSave = async (e) => {
     if (e) e.preventDefault();
     if (!formData.name || !formData.country) return alert("Required fields missing");
     setSaving(true);
     try {
       const selectedCountry = countries.find(c => (c._id || c.id) === formData.country);
+      const countryName = selectedCountry?.name || formData.country;
+      const found = await locateServiceLocation(formData.name.trim(), countryName);
       const payload = {
         ...formData,
         currency_code: formData.currency_code.toUpperCase(),
-        country: selectedCountry?.name || formData.country,
-        currency_name: formData.currency_code.toUpperCase()
+        country: countryName,
+        currency_name: formData.currency_code.toUpperCase(),
+        ...(found || {}),
       };
 
       const res = isEdit ? await adminService.updateServiceLocation(id, payload) : await adminService.createServiceLocation(payload);
