@@ -23,6 +23,8 @@ function restaurantSideOfOrder(tx, order) {
         gstOnFood: b.gstOnFood,
         pricesIncludeGst: b.pricesIncludeGst,
         packaging: b.packagingCharge,
+        // GST paid to a GST-registered restaurant with the food (in `payout`).
+        gstPaidToRestaurant: Number(tx?.amounts?.restaurantGstPassThrough) || 0,
     };
 }
 
@@ -279,7 +281,11 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         gstOnFood: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.gstOnFood) || 0), 0)),
         packaging: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.packaging) || 0), 0)),
         commission: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.commission) || 0), 0)),
-        payout: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.payout) || 0), 0))
+        payout: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.payout) || 0), 0)),
+        // The part of gstOnFood paid to the restaurant (GST-registered) rather
+        // than remitted by the platform. foodSales + packaging - commission
+        // + gstPaidToYou - restaurant coupons = payout.
+        gstPaidToYou: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.gstPaidToRestaurant) || 0), 0))
     };
 
     // Past cycles: build from provided startDate/endDate query.

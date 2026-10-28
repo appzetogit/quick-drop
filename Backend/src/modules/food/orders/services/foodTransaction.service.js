@@ -8,6 +8,8 @@ import {
   resolveCommissionRate,
 } from '../../shared/commissionSchedule.js';
 import mongoose from 'mongoose';
+import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
+import { buildRestaurantPayoutBreakdown } from '../../shared/restaurantPayout.js';
 
 export const MONETIZATION_MODES = Object.freeze({ COMMISSION: 'commission', PLAN: 'plan' });
 
@@ -372,6 +374,24 @@ export async function createInitialTransaction(order) {
     }
 
     /*
+     * GST on the food, for a GST-registered restaurant: theirs to file, so it
+     * is paid out with the food (Rs 100 incl. 5% at 10% commission pays 90.47
+     * rather than 85.71). An unregistered restaurant is paid without it; the
+     * platform remits that GST. Read once, here, so a later change to the
+     * restaurant's registration does not rewrite orders already placed.
+     */
+    let restaurantGstPassThrough = 0;
+    try {
+        const restaurant = await FoodRestaurant.findById(order.restaurantId).select('gstRegistered').lean();
+        if (restaurant?.gstRegistered === true) {
+            restaurantGstPassThrough = Number(buildRestaurantPayoutBreakdown(order).gstOnFood) || 0;
+        }
+    } catch {
+        restaurantGstPassThrough = 0;
+    }
+    restaurantNet += restaurantGstPassThrough;
+
+    /*
      * Finite and rounded, but NOT floored at zero.
      *
      * Either side can end an order out of pocket when it funded a coupon worth
@@ -443,7 +463,8 @@ export async function createInitialTransaction(order) {
             riderTipPay: riderTipPay,
             riderTotalPayout: riderTotalPayout,
             platformNetProfit: platformNetProfit,
-            taxAmount: tax
+            taxAmount: tax,
+            restaurantGstPassThrough: Math.round(restaurantGstPassThrough * 100) / 100
         },
         gateway: {
             razorpayOrderId: order.payment?.razorpay?.orderId,

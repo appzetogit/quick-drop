@@ -1,3 +1,5 @@
+import mongoose from 'mongoose';
+
 /**
  * What the restaurant earns on one order, line by line.
  *
@@ -54,7 +56,7 @@ const finite = (value, fallback = 0) => {
  *   own coupons cost the restaurant nothing and must not appear here -- see
  *   resolveRestaurantFundedDiscounts.
  */
-export function buildRestaurantPayoutBreakdown(order, { restaurantFundedDiscount = 0 } = {}) {
+export function buildRestaurantPayoutBreakdown(order, { restaurantFundedDiscount = 0, gstPaidToRestaurant = 0 } = {}) {
     const pricing = order?.pricing || {};
 
     const subTotal = round2(finite(pricing.subtotal));
@@ -118,7 +120,14 @@ export function buildRestaurantPayoutBreakdown(order, { restaurantFundedDiscount
 
     const fundedDiscount = round2(Math.max(0, finite(restaurantFundedDiscount)));
 
-    const payout = round2(taxableFoodValue + packagingCharge - commissionAmount - fundedDiscount);
+    const payoutWithoutGst = round2(taxableFoodValue + packagingCharge - commissionAmount - fundedDiscount);
+    /*
+     * A GST-registered restaurant is paid the food's GST too (it files it).
+     * The amount comes from the ledger row, which decided it when the order
+     * was placed, so the bill and the payout cannot disagree.
+     */
+    const gstPaid = round2(Math.max(0, finite(gstPaidToRestaurant)));
+    const payout = round2(payoutWithoutGst + gstPaid);
 
     return {
         pricesIncludeGst,
@@ -133,6 +142,9 @@ export function buildRestaurantPayoutBreakdown(order, { restaurantFundedDiscount
         commissionPercent,
         /** Only ever a coupon the restaurant itself created. */
         discountFundedByRestaurant: fundedDiscount,
+        payoutWithoutGst,
+        /** GST on the food included in `payout`; 0 when the platform remits it. */
+        gstPaidToRestaurant: gstPaid,
         payout,
         currency: pricing.currency || 'INR',
     };
@@ -192,13 +204,32 @@ export async function resolveRestaurantFundedDiscounts(orders = []) {
 }
 
 /** Attach the breakdown to each restaurant-facing order in a list. */
+async function resolveGstPaidToRestaurant(orders = []) {
+    const ids = orders.map((o) => o?._id).filter((id) => id && mongoose.Types.ObjectId.isValid(String(id)));
+    if (!ids.length) return new Map();
+    try {
+        const { FoodTransaction } = await import('../orders/models/foodTransaction.model.js');
+        const rows = await FoodTransaction.find({ orderId: { $in: ids }, 'amounts.restaurantGstPassThrough': { $gt: 0 } })
+            .select('orderId amounts.restaurantGstPassThrough')
+            .lean();
+        return new Map(rows.map((r) => [String(r.orderId), Number(r.amounts?.restaurantGstPassThrough) || 0]));
+    } catch {
+        return new Map();
+    }
+}
+
 export async function attachRestaurantPayout(orders = []) {
     const list = Array.isArray(orders) ? orders : [];
-    const funded = await resolveRestaurantFundedDiscounts(list);
+    const [funded, gstPaid] = await Promise.all([
+        resolveRestaurantFundedDiscounts(list),
+        resolveGstPaidToRestaurant(list),
+    ]);
     for (const order of list) {
         if (!order || typeof order !== 'object') continue;
+        const key = String(order._id || order.orderMongoId || '');
         order.restaurantPayout = buildRestaurantPayoutBreakdown(order, {
-            restaurantFundedDiscount: funded.get(String(order._id || order.orderMongoId || '')) || 0,
+            restaurantFundedDiscount: funded.get(key) || 0,
+            gstPaidToRestaurant: gstPaid.get(key) || 0,
         });
     }
     return list;

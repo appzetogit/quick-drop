@@ -89,6 +89,8 @@ const foodTransactionSchema = new mongoose.Schema({
          * what was lost, which is the answer wanted.
          */
         restaurantShare: { type: Number, required: true },
+        // GST on the food paid to a GST-registered restaurant, inside restaurantShare.
+        restaurantGstPassThrough: { type: Number, default: 0 },
         restaurantCommission: { type: Number, required: true, min: 0 },
         riderShare: { type: Number, required: true, min: 0 },
         riderDeliveryFeeShare: { type: Number, default: 0, min: 0 },
