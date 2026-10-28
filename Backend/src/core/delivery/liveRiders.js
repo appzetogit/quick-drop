@@ -16,6 +16,7 @@
  * online at the last place it reported.
  */
 import { foodRidersOnTrip } from './manualAssign.js';
+import { loadLiveRiderZones, shapeContains } from './liveRiderZones.js';
 
 export const FRESH_MS = 10 * 60 * 1000;
 
@@ -45,6 +46,7 @@ export async function listLiveRiders({ now = Date.now() } = {}) {
             .lean(),
         foodRidersOnTrip().catch(() => new Set()),
     ]);
+    const zoneList = await loadLiveRiderZones().catch(() => []);
 
     // A partner online on the food side whose linked driver is offline still
     // needs that driver's record for the merge; fetch just those.
@@ -99,6 +101,9 @@ export async function listLiveRiders({ now = Date.now() } = {}) {
             lng: where?.lng ?? null,
             lastSeenAt: at ? new Date(at).toISOString() : null,
             live: Boolean(at) && now - at <= FRESH_MS,
+            // Every zone the current position is inside (taxi, food and quick
+            // zones overlap, so a rider is often in one of each).
+            zones: where ? zoneList.filter((z) => shapeContains(z.shape, where.lat, where.lng)).map((z) => z.id) : [],
         });
     };
 
@@ -127,6 +132,13 @@ export async function listLiveRiders({ now = Date.now() } = {}) {
             delivery: count((r) => r.services.includes('delivery')),
         },
         freshMinutes: FRESH_MS / 60000,
+        zones: zoneList.map(({ id, name, kind, outline }) => ({
+            id,
+            name,
+            kind,
+            outline,
+            online: count((r) => r.zones.includes(id)),
+        })),
         riders,
         at: new Date(now).toISOString(),
     };

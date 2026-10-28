@@ -31,9 +31,16 @@ await raw(Driver, { name: 'Anil kumar', phone: '9000007210', isOnline: true, isO
 // Ravi: food only, free, fresh, no linked driver.
 await raw(FoodDeliveryPartner, { name: 'Ravi', phone: '9000001111', status: 'approved', availabilityStatus: 'online', lastLat: 32.1, lastLng: 76.5, lastLocationAt: new Date(now - 120_000) });
 // Not shown: offline driver, suspended driver, pending partner.
-await raw(Driver, { name: 'Off', isOnline: false, location: { type: 'Point', coordinates: [76, 32] } });
-await raw(Driver, { name: 'Suspended', isOnline: true, approve: false, location: { type: 'Point', coordinates: [76, 32] } });
+await raw(Driver, { name: 'Off', phone: '9000000001', isOnline: false, location: { type: 'Point', coordinates: [76, 32] } });
+await raw(Driver, { name: 'Suspended', phone: '9000000002', isOnline: true, approve: false, location: { type: 'Point', coordinates: [76, 32] } });
 await raw(FoodDeliveryPartner, { name: 'Pending', status: 'pending', availabilityStatus: 'online' });
+
+// Zones: a taxi polygon around jk and Anil, a food circle around Ravi only.
+const { Zone } = await import('../src/modules/taxi/driver/models/Zone.js');
+const { FoodZone } = await import('../src/modules/food/admin/models/zone.model.js');
+const palampur = (await raw(Zone, { name: 'Palampur', active: true, geometry: { type: 'Polygon', coordinates: [[[76.52, 32.10], [76.56, 32.10], [76.56, 32.12], [76.52, 32.12], [76.52, 32.10]]] } })).insertedId;
+const raviZone = (await raw(FoodZone, { name: 'Ravi Food', isActive: true, boundary_mode: 'circle', circle_center: { lat: 32.1, lng: 76.5 }, circle_radius_meters: 500 })).insertedId;
+await raw(Zone, { name: 'Switched off', active: false, geometry: { type: 'Polygon', coordinates: [[[76, 32], [77, 32], [77, 33], [76, 33], [76, 32]]] } });
 
 const result = await listLiveRiders({ now });
 const byName = Object.fromEntries(result.riders.map((r) => [r.name, r]));
@@ -64,6 +71,18 @@ await check('the counts add up, live ones listed first', async () => {
     [3, 2, 1, 0, 2, 1],
   );
   assert.equal(result.riders[result.riders.length - 1].name, 'Anil kumar');
+});
+
+await check('each rider is tagged with the zones their position is inside', async () => {
+  assert.deepEqual(byName.jk.zones, [`taxi:${palampur}`]);
+  assert.deepEqual(byName['Anil kumar'].zones, [`taxi:${palampur}`]);
+  assert.deepEqual(byName.Ravi.zones, [`food:${raviZone}`]);
+});
+await check('the zone list has active zones only, with how many riders are in each', async () => {
+  const z = Object.fromEntries(result.zones.map((x) => [x.name, x]));
+  assert.deepEqual(Object.keys(z).sort(), ['Palampur', 'Ravi Food']);
+  assert.deepEqual([z.Palampur.kind, z.Palampur.online, z['Ravi Food'].online], ['Taxi', 2, 1]);
+  assert.equal(z.Palampur.outline.paths[0][0][0], 32.10);
 });
 
 await mongoose.disconnect();

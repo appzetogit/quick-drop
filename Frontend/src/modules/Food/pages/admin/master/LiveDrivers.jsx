@@ -11,6 +11,9 @@ import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
  * and where they are (core/delivery/liveRiders.js). Refreshes every 10 seconds.
  * A position older than the server's "fresh" window is shown as stale: the
  * app was likely closed without going offline.
+ *
+ * The zone filter narrows the list, the counts and the map to riders whose
+ * current position is inside one taxi, food or quick zone, and outlines it.
  */
 
 const REFRESH_MS = 10_000
@@ -65,6 +68,7 @@ export default function LiveDrivers() {
   const [error, setError] = useState("")
   const [filter, setFilter] = useState("all")
   const [q, setQ] = useState("")
+  const [zoneId, setZoneId] = useState("all")
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [mapState, setMapState] = useState("loading") // loading | ready | nokey | error
   const mapEl = useRef(null)
@@ -72,6 +76,7 @@ export default function LiveDrivers() {
   const markersRef = useRef(new Map())
   const infoRef = useRef(null)
   const fittedRef = useRef(false)
+  const zoneShapesRef = useRef([])
 
   const load = useCallback(async () => {
     try {
@@ -125,8 +130,68 @@ export default function LiveDrivers() {
     }
   }, [])
 
-  const riders = data?.riders || []
-  const stats = data?.stats || {}
+  const zones = data?.zones || []
+  const zone = zoneId === "all" ? null : zones.find((z) => z.id === zoneId) || null
+  const riders = useMemo(() => {
+    const all = data?.riders || []
+    return zoneId === "all" ? all : all.filter((r) => (r.zones || []).includes(zoneId))
+  }, [data, zoneId])
+
+  // Counted here rather than read from the server so they follow the zone.
+  const stats = useMemo(() => {
+    if (!data) return {}
+    const count = (fn) => riders.filter(fn).length
+    return {
+      online: riders.length,
+      free: count((r) => r.status === "free"),
+      onRide: count((r) => r.status === "on_ride"),
+      onDelivery: count((r) => r.status === "on_delivery"),
+      stale: count((r) => !r.live),
+    }
+  }, [data, riders])
+
+  const zoneGroups = useMemo(() => {
+    const groups = new Map()
+    for (const z of zones) {
+      if (!groups.has(z.kind)) groups.set(z.kind, [])
+      groups.get(z.kind).push(z)
+    }
+    return [...groups]
+  }, [zones])
+
+  // The selected zone's outline, drawn and framed when the choice changes
+  // (not on every refresh, so the map stays where the admin moved it).
+  const zoneKey = zone ? zone.id : "all"
+  const zoneRef = useRef(null)
+  zoneRef.current = zone
+  useEffect(() => {
+    const google = window.google
+    const map = mapRef.current
+    if (mapState !== "ready" || !map || !google?.maps) return
+    for (const shape of zoneShapesRef.current) shape.setMap(null)
+    zoneShapesRef.current = []
+    const z = zoneRef.current
+    if (!z?.outline) {
+      fittedRef.current = false // frame everyone again on the next refresh
+      return
+    }
+    const style = { map, strokeColor: "#171717", strokeOpacity: 0.8, strokeWeight: 2, fillColor: "#171717", fillOpacity: 0.06, clickable: false }
+    const bounds = new google.maps.LatLngBounds()
+    if (z.outline.circle) {
+      const { lat, lng, r } = z.outline.circle
+      const c = new google.maps.Circle({ ...style, center: { lat, lng }, radius: r })
+      zoneShapesRef.current.push(c)
+      bounds.union(c.getBounds())
+    } else {
+      for (const path of z.outline.paths || []) {
+        const points = path.map(([lat, lng]) => ({ lat, lng }))
+        zoneShapesRef.current.push(new google.maps.Polygon({ ...style, paths: points }))
+        for (const pt of points) bounds.extend(pt)
+      }
+    }
+    if (!bounds.isEmpty()) map.fitBounds(bounds, 40)
+    fittedRef.current = true
+  }, [zoneKey, mapState])
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -216,7 +281,24 @@ export default function LiveDrivers() {
               Everyone online now across food, quick and taxi, and where they are. Updates every 10 seconds.
             </p>
           </div>
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <select
+              value={zoneId}
+              onChange={(e) => setZoneId(e.target.value)}
+              aria-label="Zone"
+              className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-800"
+            >
+              <option value="all">All zones</option>
+              {zoneGroups.map(([kind, list]) => (
+                <optgroup key={kind} label={`${kind} zones`}>
+                  {list.map((z) => (
+                    <option key={z.id} value={z.id}>
+                      {z.name} ({z.online} online)
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
             {data?.at && <span className="text-neutral-500">Updated {ago(data.at)}</span>}
             <label className="inline-flex items-center gap-1.5 text-neutral-700">
               <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
@@ -318,7 +400,11 @@ export default function LiveDrivers() {
                 ) : shown.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-12 text-center text-neutral-500">
-                      {riders.length === 0 ? "No driver is online right now." : "No driver matches this filter."}
+                      {riders.length === 0
+                        ? zone
+                          ? `No driver is online in ${zone.name} right now.`
+                          : "No driver is online right now."
+                        : "No driver matches this filter."}
                     </td>
                   </tr>
                 ) : (
