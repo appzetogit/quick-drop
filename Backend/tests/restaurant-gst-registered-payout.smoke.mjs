@@ -1,6 +1,8 @@
 /**
- * A GST-registered restaurant is paid the GST on its food; an unregistered one
- * is not (the platform remits it). Rs 100 incl. 5% GST at 10% commission:
+ * The admin decides who pays the GST on a restaurant's food (gstPayout). Set
+ * to 'restaurant', the GST is paid to it; set to 'platform' (the default), it
+ * is not and the platform remits it -- whatever "GST registered?" says, since
+ * the restaurant can edit that itself. Rs 100 incl. 5% GST at 10% commission:
  * registered 90.48, unregistered 85.72 (commission rounds to 9.52).
  *
  * Run: node tests/restaurant-gst-registered-payout.smoke.mjs
@@ -24,9 +26,9 @@ const check = async (label, fn) => {
     catch (err) { failures += 1; console.log(`  FAIL ${label}\n       ${err.message}`); }
 };
 const oid = () => new mongoose.Types.ObjectId();
-const restaurant = async (gstRegistered) => (await FoodRestaurant.collection.insertOne({
-    _id: oid(), restaurantName: gstRegistered ? 'Registered' : 'Unregistered', ownerPhone: String(Math.random()).slice(2, 12),
-    status: 'approved', gstRegistered, createdAt: new Date(),
+const restaurant = async (gstPayout, extra = {}) => (await FoodRestaurant.collection.insertOne({
+    _id: oid(), restaurantName: gstPayout === 'restaurant' ? 'Registered' : 'Unregistered', ownerPhone: String(Math.random()).slice(2, 12),
+    status: 'approved', gstRegistered: true, gstNumber: '02ABCDE1234F1Z5', ...(gstPayout ? { gstPayout } : {}), createdAt: new Date(), ...extra,
 })).insertedId;
 const userId = FoodUser ? (await FoodUser.collection.insertOne({ _id: oid(), phone: '9000000000' })).insertedId : oid();
 const order = (restaurantId) => ({
@@ -35,10 +37,11 @@ const order = (restaurantId) => ({
     payment: { method: 'cash', status: 'pending' },
 });
 
-const reg = order(await restaurant(true));
-const unreg = order(await restaurant(false));
+const reg = order(await restaurant('restaurant'));
+// Registered, with a GSTIN, but the admin has not chosen 'restaurant'.
+const unreg = order(await restaurant(undefined));
 let regTx; let unregTx;
-await check('the ledger pays a registered restaurant the food\'s GST, and not an unregistered one', async () => {
+await check('the ledger pays the GST only where the admin chose the restaurant pays it', async () => {
     regTx = await createInitialTransaction(reg);
     unregTx = await createInitialTransaction(unreg);
     assert.deepEqual([regTx.amounts.restaurantShare, regTx.amounts.restaurantGstPassThrough], [90.48, 4.76]);
@@ -48,6 +51,24 @@ await check('the restaurant\'s bill shows the same payout as the ledger', async 
     const [a, b] = await attachRestaurantPayout([{ ...reg }, { ...unreg }]);
     assert.deepEqual([a.restaurantPayout.payoutWithoutGst, a.restaurantPayout.gstPaidToRestaurant, a.restaurantPayout.payout], [85.72, 4.76, 90.48]);
     assert.deepEqual([b.restaurantPayout.gstPaidToRestaurant, b.restaurantPayout.payout], [0, 85.72]);
+});
+
+const gst = await import('../src/modules/food/restaurant/services/gstPayout.service.js');
+await check('the admin cannot choose "restaurant pays" for a restaurant with no GSTIN', async () => {
+    const noGstin = await restaurant(undefined, { gstNumber: '' });
+    await assert.rejects(gst.setRestaurantGstPayout(String(noGstin), 'restaurant'), /no GSTIN/);
+    const ok = await gst.setRestaurantGstPayout(String(unreg.restaurantId), 'restaurant', { actor: 'Platform Admin' });
+    assert.deepEqual([ok.gstPayout, ok.updatedBy], ['restaurant', 'Platform Admin']);
+    await gst.setRestaurantGstPayout(String(unreg.restaurantId), 'platform');
+});
+await check('the filing totals split GST into owed by the platform and paid to restaurants', async () => {
+    const { FoodOrder } = await import('../src/modules/food/orders/models/order.model.js');
+    await FoodOrder.collection.insertMany([
+        { ...reg, orderStatus: 'delivered', createdAt: new Date() },
+        { ...unreg, orderStatus: 'delivered', createdAt: new Date() },
+    ]);
+    const t = await gst.gstTotals({ from: new Date(Date.now() - 3600_000), to: new Date() });
+    assert.deepEqual([t.total.orders, t.total.gstOnFood, t.total.paidToRestaurants, t.total.owedByPlatform], [2, 9.52, 4.76, 4.76]);
 });
 
 await mongoose.disconnect();

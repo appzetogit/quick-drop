@@ -152,6 +152,21 @@ const restaurantSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    /*
+     * Who pays the GST on this restaurant's food -- an admin decision, set
+     * only from the admin panel (Master > Restaurant GST, or Edit Restaurant),
+     * never from the restaurant app. 'platform': the restaurant is paid
+     * without the GST and the platform remits it. 'restaurant': the GST is
+     * paid to the restaurant with its payout and it files it (needs a GSTIN).
+     * Read once per order, when its ledger row is created.
+     */
+    gstPayout: {
+      type: String,
+      enum: ['platform', 'restaurant'],
+      default: 'platform',
+    },
+    gstPayoutUpdatedAt: { type: Date, default: null },
+    gstPayoutUpdatedBy: { type: String, default: '' },
     gstNumber: {
       type: String,
     },

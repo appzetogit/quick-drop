@@ -44,6 +44,7 @@ export const masterSidebarMenu = [
           { label: "Promo Limits", path: "/admin/master/promotions" },
           { label: "Homepage Video", path: "/admin/master/homepage-video" },
           { label: "Delivery Radius", path: "/admin/master/delivery-radius" },
+          { label: "Restaurant GST", path: "/admin/master/restaurant-gst" },
         ],
       },
       {

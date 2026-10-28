@@ -153,7 +153,7 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
 
     // Fetch restaurant profile for header display.
     const restaurant = await FoodRestaurant.findById(rid)
-        .select('restaurantName addressLine1 addressLine2 area city state pincode location')
+        .select('restaurantName addressLine1 addressLine2 area city state pincode location gstPayout')
         .lean();
 
     const address =
@@ -338,7 +338,9 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
         restaurant: {
             name: restaurant?.restaurantName || '',
             restaurantId: restaurant?._id ? `REST${restaurant._id.toString().slice(-6).padStart(6, '0')}` : 'N/A',
-            address
+            address,
+            // Who pays the GST on this restaurant's food on new orders (admin's choice).
+            gstPayout: restaurant?.gstPayout === 'restaurant' ? 'restaurant' : 'platform'
         },
         // `wallet` is what the seller app parses; `currentCycle` is what this
         // module has always sent. One object, both names -- exactly the pairing

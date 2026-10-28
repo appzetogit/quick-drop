@@ -5,6 +5,7 @@ import { Input } from "@food/components/ui/input"
 import { Label } from "@food/components/ui/label"
 import { adminAPI, restaurantAPI } from "@food/api"
 import { adminPanelOf } from "@food/utils/adminPanel"
+import GstPayoutControl from "@food/components/admin/GstPayoutControl"
 
 /*
  * The admin edits an outlet's compliance documents directly (restaurant,
@@ -125,7 +126,7 @@ export default function AdminRestaurantDocuments({ restaurantId, restaurant, onS
         </Button>
       </div>
 
-      <div className="mb-1 flex items-center gap-3">
+      <div className="mb-4 flex items-center gap-3">
         <Label>GST registered?</Label>
         {[true, false].map((v) => (
           <button
@@ -138,13 +139,15 @@ export default function AdminRestaurantDocuments({ restaurantId, restaurant, onS
           </button>
         ))}
       </div>
-      {/* What the switch does to money (food/orders/services/foodTransaction.service.js). */}
-      <p className="mb-4 text-xs text-slate-500">
-        {form.gstRegistered
-          ? "Yes: the GST on this restaurant's food is paid to it with each payout (e.g. Rs 100 incl. 5% GST at 10% commission pays Rs 90.48), and it files that GST itself."
-          : "No: the restaurant is paid without the GST on its food (Rs 100 incl. 5% GST at 10% commission pays Rs 85.72); the platform pays that GST to the government."}{" "}
-        Applies to orders placed after you save.
-      </p>
+      {/* Food restaurants only: Quick and Medical stores share this page and have no such setting. */}
+      {adminPanelOf().vertical === "food" && (
+        <GstPayoutControl
+          restaurantId={restaurantId}
+          value={restaurant?.gstPayout}
+          hasGstin={Boolean(String(form.gstNumber || restaurant?.gstNumber || "").trim())}
+          onChanged={(saved) => onSaved?.({ gstPayout: saved?.gstPayout })}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {fields.map((f) => (

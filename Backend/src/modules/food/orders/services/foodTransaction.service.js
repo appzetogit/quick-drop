@@ -374,16 +374,18 @@ export async function createInitialTransaction(order) {
     }
 
     /*
-     * GST on the food, for a GST-registered restaurant: theirs to file, so it
-     * is paid out with the food (Rs 100 incl. 5% at 10% commission pays 90.47
-     * rather than 85.71). An unregistered restaurant is paid without it; the
-     * platform remits that GST. Read once, here, so a later change to the
-     * restaurant's registration does not rewrite orders already placed.
+     * GST on the food, when the admin has set this restaurant to pay its own
+     * GST (gstPayout 'restaurant'): theirs to file, so it is paid out with the
+     * food (Rs 100 incl. 5% at 10% commission pays 90.48 rather than 85.72).
+     * Otherwise the restaurant is paid without it and the platform remits it.
+     * It is the admin's setting, not "GST registered?", because the restaurant
+     * can edit the latter from its own app. Read once, here, so a later change
+     * does not rewrite orders already placed.
      */
     let restaurantGstPassThrough = 0;
     try {
-        const restaurant = await FoodRestaurant.findById(order.restaurantId).select('gstRegistered').lean();
-        if (restaurant?.gstRegistered === true) {
+        const restaurant = await FoodRestaurant.findById(order.restaurantId).select('gstPayout').lean();
+        if (restaurant?.gstPayout === 'restaurant') {
             restaurantGstPassThrough = Number(buildRestaurantPayoutBreakdown(order).gstOnFood) || 0;
         }
     } catch {
