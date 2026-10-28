@@ -28,7 +28,7 @@ const dayInput = (d) => {
   return local.toISOString().slice(0, 10)
 }
 
-function Choice({ value, hasGstin, busy, onChoose }) {
+function Choice({ value, decided, hasGstin, busy, onChoose }) {
   const options = [
     { key: "platform", label: "Quickdrops pays" },
     { key: "restaurant", label: "Restaurant pays" },
@@ -46,7 +46,7 @@ function Choice({ value, hasGstin, busy, onChoose }) {
             aria-checked={on}
             disabled={blocked || busy}
             title={blocked ? "No GSTIN saved for this restaurant" : undefined}
-            onClick={() => !on && onChoose(o.key)}
+            onClick={() => (!on || !decided) && onChoose(o.key)}
             className={`px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed ${
               on ? "bg-neutral-900 text-white" : "bg-white text-neutral-700 hover:bg-neutral-100"
             } ${blocked ? "opacity-40" : ""}`}
@@ -270,6 +270,7 @@ export default function MasterRestaurantGst() {
                         <div className="flex items-center gap-2">
                           <Choice
                             value={r.gstPayout}
+                            decided={r.decided}
                             hasGstin={Boolean(r.gstNumber)}
                             busy={savingId === r.restaurantId}
                             onChoose={(key) => choose(r, key)}
@@ -278,7 +279,11 @@ export default function MasterRestaurantGst() {
                         </div>
                       </td>
                       <td className="px-4 py-2.5 text-xs text-neutral-500">
-                        {r.updatedAt ? `${r.updatedBy || "admin"} · ${whenLabel(r.updatedAt)}` : "—"}
+                        {r.decided
+                          ? r.updatedAt
+                            ? `${r.updatedBy || "admin"} · ${whenLabel(r.updatedAt)}`
+                            : "—"
+                          : <span className="text-amber-700">Not set yet: follows &ldquo;GST registered&rdquo;. Click a choice to set it.</span>}
                       </td>
                     </tr>
                   ))

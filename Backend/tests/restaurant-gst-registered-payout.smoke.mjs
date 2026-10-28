@@ -38,14 +38,23 @@ const order = (restaurantId) => ({
 });
 
 const reg = order(await restaurant('restaurant'));
-// Registered, with a GSTIN, but the admin has not chosen 'restaurant'.
-const unreg = order(await restaurant(undefined));
+// Registered, with a GSTIN, but the admin chose the platform pays.
+const unreg = order(await restaurant('platform'));
+// Registered, with a GSTIN, and no admin choice yet: the old rule (GST to it).
+const undecided = order(await restaurant(undefined));
 let regTx; let unregTx;
 await check('the ledger pays the GST only where the admin chose the restaurant pays it', async () => {
     regTx = await createInitialTransaction(reg);
     unregTx = await createInitialTransaction(unreg);
     assert.deepEqual([regTx.amounts.restaurantShare, regTx.amounts.restaurantGstPassThrough], [90.48, 4.76]);
     assert.deepEqual([unregTx.amounts.restaurantShare, unregTx.amounts.restaurantGstPassThrough], [85.72, 0]);
+});
+await check('a restaurant the admin has not set yet keeps the old rule (registered with a GSTIN: GST paid to it)', async () => {
+    const tx = await createInitialTransaction(undecided);
+    assert.deepEqual([tx.amounts.restaurantShare, tx.amounts.restaurantGstPassThrough], [90.48, 4.76]);
+    const { listRestaurantGst } = await import('../src/modules/food/restaurant/services/gstPayout.service.js');
+    const row = (await listRestaurantGst()).find((r) => r.restaurantId === String(undecided.restaurantId));
+    assert.deepEqual([row.gstPayout, row.decided], ['restaurant', false]);
 });
 await check('the restaurant\'s bill shows the same payout as the ledger', async () => {
     const [a, b] = await attachRestaurantPayout([{ ...reg }, { ...unreg }]);

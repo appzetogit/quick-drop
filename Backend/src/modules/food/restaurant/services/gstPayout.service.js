@@ -21,6 +21,16 @@ import { buildRestaurantPayoutBreakdown } from '../../shared/restaurantPayout.js
 
 export const GST_PAYOUT_OPTIONS = Object.freeze(['platform', 'restaurant']);
 
+/**
+ * Who pays the GST on this restaurant's food on a new order. The admin's
+ * choice when there is one; until then, as before the setting existed: paid
+ * to a restaurant marked "GST registered" that has a GSTIN, else the platform.
+ */
+export function effectiveGstPayout(r) {
+    if (r?.gstPayout === 'restaurant' || r?.gstPayout === 'platform') return r.gstPayout;
+    return r?.gstRegistered === true && String(r?.gstNumber || '').trim() ? 'restaurant' : 'platform';
+}
+
 export class GstPayoutError extends Error {}
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -32,7 +42,9 @@ const describe = (r) => ({
     status: r.status || '',
     gstRegistered: r.gstRegistered === true,
     gstNumber: String(r.gstNumber || '').trim(),
-    gstPayout: r.gstPayout === 'restaurant' ? 'restaurant' : 'platform',
+    gstPayout: effectiveGstPayout(r),
+    /** False until an admin picks one; the value above is then the old rule's. */
+    decided: r.gstPayout === 'restaurant' || r.gstPayout === 'platform',
     updatedAt: r.gstPayoutUpdatedAt || null,
     updatedBy: r.gstPayoutUpdatedBy || '',
 });

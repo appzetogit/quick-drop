@@ -7,6 +7,7 @@ import { getRestaurantWithdrawalSettings } from '../../admin/services/admin.serv
 import { getRestaurantCommissionSnapshot } from '../../orders/services/foodTransaction.service.js';
 import { COMMISSION_SOURCES } from '../../shared/commissionSchedule.js';
 import { buildRestaurantPayoutBreakdown } from '../../shared/restaurantPayout.js';
+import { effectiveGstPayout } from './gstPayout.service.js';
 
 /**
  * The restaurant's side of one order, for the payouts screen: the food net of
@@ -153,7 +154,7 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
 
     // Fetch restaurant profile for header display.
     const restaurant = await FoodRestaurant.findById(rid)
-        .select('restaurantName addressLine1 addressLine2 area city state pincode location gstPayout')
+        .select('restaurantName addressLine1 addressLine2 area city state pincode location gstPayout gstRegistered gstNumber')
         .lean();
 
     const address =
@@ -340,7 +341,7 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
             restaurantId: restaurant?._id ? `REST${restaurant._id.toString().slice(-6).padStart(6, '0')}` : 'N/A',
             address,
             // Who pays the GST on this restaurant's food on new orders (admin's choice).
-            gstPayout: restaurant?.gstPayout === 'restaurant' ? 'restaurant' : 'platform'
+            gstPayout: restaurant ? effectiveGstPayout(restaurant) : 'platform'
         },
         // `wallet` is what the seller app parses; `currentCycle` is what this
         // module has always sent. One object, both names -- exactly the pairing

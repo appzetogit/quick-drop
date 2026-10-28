@@ -379,13 +379,17 @@ export async function createInitialTransaction(order) {
      * food (Rs 100 incl. 5% at 10% commission pays 90.48 rather than 85.72).
      * Otherwise the restaurant is paid without it and the platform remits it.
      * It is the admin's setting, not "GST registered?", because the restaurant
-     * can edit the latter from its own app. Read once, here, so a later change
-     * does not rewrite orders already placed.
+     * can edit the latter from its own app; a restaurant the admin has not set
+     * yet keeps the old rule (effectiveGstPayout). Read once, here, so a later
+     * change does not rewrite orders already placed.
      */
     let restaurantGstPassThrough = 0;
     try {
-        const restaurant = await FoodRestaurant.findById(order.restaurantId).select('gstPayout').lean();
-        if (restaurant?.gstPayout === 'restaurant') {
+        const restaurant = await FoodRestaurant.findById(order.restaurantId)
+            .select('gstPayout gstRegistered gstNumber')
+            .lean();
+        const { effectiveGstPayout } = await import('../../restaurant/services/gstPayout.service.js');
+        if (restaurant && effectiveGstPayout(restaurant) === 'restaurant') {
             restaurantGstPassThrough = Number(buildRestaurantPayoutBreakdown(order).gstOnFood) || 0;
         }
     } catch {
