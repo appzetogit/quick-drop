@@ -15,6 +15,23 @@ const formatCurrency = (amount) => {
   return `\u20B9${numericAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+// Two grouped capability boxes, matching the approval screen: the whole
+// delivery side is one decision, bike taxi the other. Each toggles its full
+// capability set on the flat serviceCapabilities list the backend stores.
+const CAPABILITY_GROUPS = [
+  {
+    key: 'delivery_group',
+    label: 'Food + Quick Commerce + Medical + Bike Porter',
+    caps: ['delivery', 'quickCommerce', 'parcel'],
+  },
+  {
+    key: 'taxi_group',
+    label: 'Taxi (Bike Taxi)',
+    caps: ['taxi'],
+  },
+]
+const groupIsOn = (group, caps) => group.caps.some((c) => (caps || []).includes(c))
+
 export default function DeliverymanList() {
   // Verticals the driver may work, editable here after approval.
   const [capEdit, setCapEdit] = useState([])
@@ -355,32 +372,15 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
     )
 
     if (!confirmed) {
+      // Also what a blocked dialog returns, instantly and without showing.
+      toast.info(`${name} not deleted: cancelled. If no confirm box appeared, Chrome is blocking this site's pop-ups; reload the page.`)
       return
     }
 
-    try {
-      setDeletingDeliveryId(deliverymanId)
-      let response
-      try {
-        response = await adminAPI.deleteDeliveryPartner(deliverymanId)
-      } catch (err) {
-        // Money still on the account: show it, and delete only on a second yes.
-        const money = err?.response?.status === 409 ? err.response.data?.data : null
-        if (!money?.needsConfirm) throw err
-        const rupees = (n) => `\u20B9${Number(n || 0).toLocaleString("en-IN")}`
-        const lines = [
-          money.cashInHand > 0 ? `holds ${rupees(money.cashInHand)} of cash owed to you` : "",
-          money.walletBalance > 0 ? `has ${rupees(money.walletBalance)} in their wallet` : "",
-        ].filter(Boolean).join(" and ")
-        if (!window.confirm(`${name} ${lines}.\n\nDeleting removes this balance for good. Delete anyway?`)) return
-        response = await adminAPI.deleteDeliveryPartner(deliverymanId, { force: true })
-      }
-
-      if (!response?.data?.success) {
-        toast.error(response?.data?.message || "Failed to delete delivery partner")
-        return
-      }
-
+    // Every way this can end says so on screen: a delete that quietly did
+    // nothing (a cancelled second prompt, or Chrome blocking the site's
+    // dialogs) looked exactly like a broken button.
+    const removeFromList = (message) => {
       const wasViewingDeletedPartner = Boolean(
         viewDetails && String(viewDetails._id) === deliverymanId,
       )
@@ -389,10 +389,62 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
       if (wasViewingDeletedPartner) {
         setIsViewOpen(false)
       }
-      toast.success(response?.data?.message || "Delivery partner deleted permanently")
-    } catch (err) {
+      toast.success(message || `${name} deleted permanently`)
+    }
+    const failed = (err) => {
       debugError("Error deleting delivery partner:", err)
-      toast.error(err?.response?.data?.message || "Failed to delete delivery partner")
+      const status = err?.response?.status
+      const message = err?.response?.data?.message
+      if (message) toast.error(`${name} not deleted: ${message}`)
+      else if (status === 403) toast.error(`${name} not deleted: your admin account is not allowed to delete riders here.`)
+      else if (status === 404) toast.error(`${name} was not found. They may already be deleted; refresh the list.`)
+      else if (!err?.response) toast.error(`${name} not deleted: no connection to the server. Check the internet and try again.`)
+      else toast.error(`${name} not deleted: the server returned an error (${status}). Try again.`)
+    }
+    const forceDelete = async () => {
+      setDeletingDeliveryId(deliverymanId)
+      try {
+        const response = await adminAPI.deleteDeliveryPartner(deliverymanId, { force: true })
+        if (!response?.data?.success) throw { response: { status: response?.status, data: response?.data } }
+        removeFromList(response?.data?.message)
+      } catch (err) {
+        failed(err)
+      } finally {
+        setDeletingDeliveryId(null)
+      }
+    }
+
+    try {
+      setDeletingDeliveryId(deliverymanId)
+      let response
+      try {
+        response = await adminAPI.deleteDeliveryPartner(deliverymanId)
+      } catch (err) {
+        // Money still on the account: say how much, and delete only on a
+        // second yes, given from the message itself rather than a browser
+        // dialog that Chrome may have been told to block.
+        const money = err?.response?.status === 409 ? err.response.data?.data : null
+        if (!money?.needsConfirm) throw err
+        const rupees = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`
+        const lines = [
+          money.cashInHand > 0 ? `holds ${rupees(money.cashInHand)} of cash owed to you` : "",
+          money.walletBalance > 0 ? `has ${rupees(money.walletBalance)} in their wallet` : "",
+        ].filter(Boolean).join(" and ")
+        toast.warning(`${name} not deleted yet: they ${lines}.`, {
+          description: "Settle it first, or delete anyway and that balance is removed for good.",
+          duration: 15000,
+          action: { label: "Delete anyway", onClick: () => forceDelete() },
+        })
+        return
+      }
+
+      if (!response?.data?.success) {
+        toast.error(`${name} not deleted: ${response?.data?.message || "the server did not confirm the delete. Try again."}`)
+        return
+      }
+      removeFromList(response?.data?.message)
+    } catch (err) {
+      failed(err)
     } finally {
       setDeletingDeliveryId(null)
     }
@@ -783,25 +835,24 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
                     <div className="col-span-2">
                       <label className="text-xs font-semibold text-slate-500 uppercase">Takes orders for</label>
                       <div className="mt-1 flex flex-wrap gap-2">
-                        {[
-                          ["delivery", "Food delivery"],
-                          ["quickCommerce", "Quick Commerce"],
-                          ["taxi", "Taxi rides"],
-                        ].map(([key, label]) => {
+                        {CAPABILITY_GROUPS.map((group) => {
                           const current = capEdit.length ? capEdit : (viewDetails.serviceCapabilities || ["delivery"])
-                          const on = current.includes(key)
+                          const on = groupIsOn(group, current)
                           return (
-                            <label key={key} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm cursor-pointer ${on ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700"}`}>
+                            <label key={group.key} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm cursor-pointer ${on ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700"}`}>
                               <input
                                 type="checkbox"
                                 className="hidden"
                                 checked={on}
                                 onChange={() => {
                                   const base = capEdit.length ? capEdit : (viewDetails.serviceCapabilities || ["delivery"])
-                                  setCapEdit(on ? base.filter((c) => c !== key) : [...base, key])
+                                  const set = new Set(base)
+                                  if (on) group.caps.forEach((c) => set.delete(c))
+                                  else group.caps.forEach((c) => set.add(c))
+                                  setCapEdit([...set])
                                 }}
                               />
-                              {label}
+                              {group.label}
                             </label>
                           )
                         })}
