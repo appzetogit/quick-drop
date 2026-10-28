@@ -62,16 +62,20 @@ await check('the newer position wins (the food app pinged after the driver recor
 await check('a position older than the fresh window is marked stale', async () => {
   assert.equal(byName['Anil kumar'].live, false);
   assert.equal(byName['Anil kumar'].status, 'free');
-  assert.equal(FRESH_MS, 10 * 60 * 1000);
+  assert.equal(FRESH_MS, 5 * 60 * 1000);
 });
 await check('a food-only rider is listed with their own position', async () => {
   assert.deepEqual(byName.Ravi.services, ['delivery']);
   assert.deepEqual([byName.Ravi.lat, byName.Ravi.lng, byName.Ravi.live], [32.1, 76.5, true]);
 });
+await check('a rider whose app stopped checking in is not counted online', async () => {
+  assert.equal(byName['Anil kumar'].live, false);
+  assert.equal(result.stats.online, result.riders.filter((r) => r.live).length);
+});
 await check('the counts add up, live ones listed first', async () => {
   assert.deepEqual(
     [result.stats.online, result.stats.free, result.stats.onRide, result.stats.onDelivery, result.stats.live, result.stats.stale],
-    [4, 3, 1, 0, 3, 1],
+    [3, 2, 1, 0, 3, 1],
   );
   assert.equal(result.riders[result.riders.length - 1].name, 'Anil kumar');
 });
@@ -90,7 +94,7 @@ await check('each rider is tagged with the zones their position is inside', asyn
 await check('the zone list has active zones only, with how many riders are in each', async () => {
   const z = Object.fromEntries(result.zones.map((x) => [x.name, x]));
   assert.deepEqual(Object.keys(z).sort(), ['Palampur', 'Ravi Food']);
-  assert.deepEqual([z.Palampur.kind, z.Palampur.online, z['Ravi Food'].online], ['Taxi', 2, 1]);
+  assert.deepEqual([z.Palampur.kind, z.Palampur.online, z['Ravi Food'].online], ['Taxi', 1, 1]);
   assert.equal(z.Palampur.outline.paths[0][0][0], 32.10);
 });
 

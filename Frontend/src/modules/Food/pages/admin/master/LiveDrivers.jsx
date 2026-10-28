@@ -26,11 +26,12 @@ const STATUS = {
 const STALE_COLOR = "#9ca3af"
 
 const FILTERS = [
-  { key: "all", label: "All online" },
+  { key: "all", label: "Everyone" },
+  { key: "online", label: "Online" },
   { key: "free", label: "Free" },
   { key: "on_ride", label: "On a ride" },
   { key: "on_delivery", label: "On a delivery" },
-  { key: "stale", label: "Location stale" },
+  { key: "stale", label: "App not responding" },
 ]
 
 const ago = (iso) => {
@@ -185,10 +186,10 @@ export default function LiveDrivers() {
     if (!data) return {}
     const count = (fn) => riders.filter(fn).length
     return {
-      online: riders.length,
-      free: count((r) => r.status === "free"),
-      onRide: count((r) => r.status === "on_ride"),
-      onDelivery: count((r) => r.status === "on_delivery"),
+      online: count((r) => r.live),
+      free: count((r) => r.live && r.status === "free"),
+      onRide: count((r) => r.live && r.status === "on_ride"),
+      onDelivery: count((r) => r.live && r.status === "on_delivery"),
       stale: count((r) => !r.live),
     }
   }, [data, riders])
@@ -239,8 +240,11 @@ export default function LiveDrivers() {
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase()
     return riders.filter((r) => {
+      // A rider whose app stopped checking in is not online, whatever the
+      // switch on the server still says.
       if (filter === "stale" && r.live) return false
-      if (filter !== "all" && filter !== "stale" && r.status !== filter) return false
+      if (filter === "online" && !r.live) return false
+      if (STATUS[filter] && (!r.live || r.status !== filter)) return false
       if (!needle) return true
       return `${r.name} ${r.phone} ${r.vehicle}`.toLowerCase().includes(needle)
     })
@@ -358,11 +362,11 @@ export default function LiveDrivers() {
         {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <Stat label="Online" value={stats.online ?? "—"} active={filter === "all"} onClick={() => setFilter("all")} />
+          <Stat label="Online" value={stats.online ?? "—"} active={filter === "online"} onClick={() => setFilter("online")} />
           <Stat label="Free" value={stats.free ?? "—"} tone="text-emerald-700" active={filter === "free"} onClick={() => setFilter("free")} />
           <Stat label="On a ride" value={stats.onRide ?? "—"} tone="text-sky-700" active={filter === "on_ride"} onClick={() => setFilter("on_ride")} />
           <Stat label="On a delivery" value={stats.onDelivery ?? "—"} tone="text-amber-700" active={filter === "on_delivery"} onClick={() => setFilter("on_delivery")} />
-          <Stat label="Location stale" value={stats.stale ?? "—"} tone="text-neutral-500" active={filter === "stale"} onClick={() => setFilter("stale")} />
+          <Stat label="App not responding" value={stats.stale ?? "—"} tone="text-neutral-500" active={filter === "stale"} onClick={() => setFilter("stale")} />
         </div>
 
         <div className="relative overflow-hidden rounded-lg border border-neutral-200 bg-white">
@@ -387,7 +391,7 @@ export default function LiveDrivers() {
             ))}
             <span className="inline-flex items-center gap-1.5">
               <img src={riderPinUrl(STALE_COLOR)} alt="" className="h-4 w-auto" />
-              Location older than {data?.freshMinutes ?? 10} min
+              App not responding (no check-in for {data?.freshMinutes ?? 5} min)
             </span>
           </div>
         </div>
@@ -449,7 +453,9 @@ export default function LiveDrivers() {
                   </tr>
                 ) : (
                   shown.map((r) => {
-                    const s = STATUS[r.status] || { label: r.status, pill: "bg-neutral-100 text-neutral-700" }
+                    const s = r.live
+                      ? STATUS[r.status] || { label: r.status, pill: "bg-neutral-100 text-neutral-700" }
+                      : { label: "App not responding", pill: "bg-neutral-100 text-neutral-600" }
                     const hasPoint = r.lat != null && r.lng != null
                     return (
                       <tr
@@ -507,7 +513,7 @@ export default function LiveDrivers() {
                         </td>
                         <td className={`px-4 py-2.5 text-xs tabular-nums ${r.live ? "text-neutral-700" : "text-neutral-400"}`}>
                           {ago(r.lastSeenAt)}
-                          {!r.live && r.lastSeenAt && <span className="ml-1 rounded bg-neutral-100 px-1 py-0.5 text-[10px] text-neutral-500">stale</span>}
+                          {!r.live && r.lastSeenAt && <span className="ml-1 rounded bg-neutral-100 px-1 py-0.5 text-[10px] text-neutral-500">no signal</span>}
                         </td>
                       </tr>
                     )

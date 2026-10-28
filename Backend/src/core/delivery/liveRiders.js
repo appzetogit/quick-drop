@@ -11,14 +11,16 @@
  * assignment, or a food/quick order accepted and not yet finished
  * (manualAssign.foodRidersOnTrip).
  *
- * "Live" is a position updated within FRESH_MS. An older one is still shown,
- * marked stale: an app that was closed without going offline leaves a rider
- * online at the last place it reported.
+ * "Live" is a check-in within FRESH_MS. The driver app checks in every 3
+ * minutes while online (and on every move), so two missed check-ins means the
+ * app was closed or killed without going offline: the switch still reads
+ * online on the server, but nobody is there. Those riders are listed apart as
+ * not responding and are not counted as online.
  */
 import { foodRidersOnTrip } from './manualAssign.js';
 import { loadLiveRiderZones, shapeContains } from './liveRiderZones.js';
 
-export const FRESH_MS = 10 * 60 * 1000;
+export const FRESH_MS = 5 * 60 * 1000;
 
 const point = (lat, lng) => {
     const a = Number(lat);
@@ -142,10 +144,10 @@ export async function listLiveRiders({ now = Date.now() } = {}) {
     const count = (fn) => riders.filter(fn).length;
     return {
         stats: {
-            online: riders.length,
-            free: count((r) => r.status === 'free'),
-            onRide: count((r) => r.status === 'on_ride'),
-            onDelivery: count((r) => r.status === 'on_delivery'),
+            online: count((r) => r.live),
+            free: count((r) => r.live && r.status === 'free'),
+            onRide: count((r) => r.live && r.status === 'on_ride'),
+            onDelivery: count((r) => r.live && r.status === 'on_delivery'),
             live: count((r) => r.live),
             stale: count((r) => !r.live),
             noLocation: count((r) => r.lat == null),
@@ -158,7 +160,7 @@ export async function listLiveRiders({ now = Date.now() } = {}) {
             name,
             kind,
             outline,
-            online: count((r) => r.zones.includes(id)),
+            online: count((r) => r.live && r.zones.includes(id)),
         })),
         riders,
         at: new Date(now).toISOString(),
