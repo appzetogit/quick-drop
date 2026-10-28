@@ -45,7 +45,8 @@ export const SERVICE_CAPABILITIES = Object.freeze({
  */
 export const DRIVER_INTENTS = Object.freeze({
     // ---- I have a 2 wheeler -------------------------------------------------
-    // A two-wheeler rider picks ONE of these two (see oneTwoWheelerIntent).
+    // A two-wheeler rider may register for BOTH of these (the delivery group
+    // and Bike Taxi); an admin then grants the capabilities for whichever.
     // Bike parcel goes with the delivery rider; Bike Taxi is passengers only,
     // a commercial registration of its own (client, 2026-10-01). A delivery
     // rider holding `parcel` is kept on work mode 'all' so the app also comes
@@ -150,19 +151,13 @@ export const normalizeDriverIntents = (value, driverClass = null) => {
 };
 
 /**
- * The two 2-wheeler options are one choice, not two: keep the first picked.
- * Applied when a rider registers; riders already on file are left as they are.
+ * A two-wheeler rider may now register for BOTH options (Food + Daily needs +
+ * Medical + Bike parcel AND Bike Taxi), so both intents are kept. Previously
+ * only the first was retained; this is now a pass-through, left in place so the
+ * registration call site (and its import) need not change. Riders already on
+ * file are unaffected either way.
  */
-const TWO_WHEELER_INTENTS = ['food_daily_medical_parcel', 'bike_taxi_parcel'];
-export const oneTwoWheelerIntent = (intents = []) => {
-    let seen = false;
-    return intents.filter((key) => {
-        if (!TWO_WHEELER_INTENTS.includes(key)) return true;
-        if (seen) return false;
-        seen = true;
-        return true;
-    });
-};
+export const oneTwoWheelerIntent = (intents = []) => intents;
 
 /**
  * What the admin could grant for these intents.

@@ -13,7 +13,7 @@ const EARTH_RADIUS_METERS = 6371000;
 
 const normalizeVehicleKey = (value = '') => String(value || '').trim().toLowerCase();
 
-const normalizeVehicleKeys = (vehicles = []) => {
+export const normalizeVehicleKeys = (vehicles = []) => {
   const keys = vehicles.flatMap((vehicle) => [
     vehicle?.name,
     vehicle?.vehicle_type,

@@ -36,7 +36,9 @@ import {
   restartRideDispatchWithLatestFare,
   startDispatchFlow,
 } from '../../services/dispatchService.js';
-import { buildDriverMatchFilters } from '../../services/matchingService.js';
+import { buildDriverMatchFilters, normalizeVehicleKeys } from '../../services/matchingService.js';
+import { Vehicle as DispatchVehicle } from '../../admin/models/Vehicle.js';
+import { resolveTransportDispatchConfig } from '../../services/transportSettingsService.js';
 import { SOCKET_EVENTS } from '../../socket/events.js';
 import { getTipSettings } from '../../services/appSettingsService.js';
 import { Ride } from '../models/Ride.js';
@@ -1284,12 +1286,30 @@ export const listAvailableDrivers = async (req, res) => {
     },
   };
 
-  if (Number.isFinite(distance) && distance > 0) {
-    near.$maxDistance = Math.min(distance, 25000);
+  // Always bounded. With no limit $near returns the closest driver ANYWHERE, so
+  // a city with no driver online still showed every vehicle as "nearby" because
+  // someone in another city was online. With no radius asked for, use the same
+  // search radius the dispatcher uses, so "a driver is available" here means
+  // the booking will actually find one.
+  let searchRadiusMeters = Number.isFinite(distance) && distance > 0
+    ? Math.min(distance, 25000)
+    : null;
+  if (!searchRadiusMeters) {
+    const dispatchConfig = await resolveTransportDispatchConfig();
+    searchRadiusMeters = Math.min(Number(dispatchConfig.maxDistanceMeters) || 10000, 50000);
   }
+  near.$maxDistance = searchRadiusMeters;
 
+  /*
+   * The vehicle list a customer picks from: a vehicle is offered only when a
+   * rider of THAT vehicle is nearby. Matching on the shared class as well
+   * (Bike, Scooty and EV Scooty are one class) made one EV Scooty rider light
+   * up Bike and Scooty too, each at its own price, while EV Scooty itself was
+   * the only one actually there. Every approved driver has vehicleTypeId set.
+   */
   const driverMatchFilters = buildDriverMatchFilters({
     vehicleTypeId,
+    vehicleTypeKeys: [],
     transportType: transport_type,
     // Without this, a delivery-only driver (parcel capability, no taxi) is
     // always filtered out of this lookup -- the unified-dispatch capability
