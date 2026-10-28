@@ -74,7 +74,7 @@ const normalizeServiceCategories = (value, fallback = 'taxi') => {
 };
 
 const getVehicleTypeId = (item = {}) => String(item?._id || item?.id || '');
-const getVehicleTypeLabel = (item = {}) => item?.vehicle_type || item?.name || item?.type || 'Vehicle';
+const getVehicleTypeLabel = (item = {}) => item?.name || item?.vehicle_type || item?.type || 'Vehicle';
 
 const EditDriver = () => {
   const navigate = useNavigate();
@@ -225,9 +225,11 @@ const EditDriver = () => {
 
   useEffect(() => {
     const fetchVehiclesForArea = async () => {
-      if (!formData.area || !formData.transportType) return;
+      // Not gated on the service area: the request does not use it, and a
+      // driver saved without one got no list at all -- only their class
+      // ("bike") as a fallback, so Scooty / EV Scooty could not be picked.
       try {
-        const typeFilter = formData.transportType.toLowerCase() === 'delivery' ? 'delivery' : 'taxi';
+        const typeFilter = String(formData.transportType || '').toLowerCase() === 'delivery' ? 'delivery' : 'taxi';
         const res = await api.get(`/admin/types/vehicle-types/list`, { params: { transport_type: typeFilter } });
         const data = res.data || res;
         if (data.success || Array.isArray(data.data) || Array.isArray(data.results)) {
@@ -238,7 +240,7 @@ const EditDriver = () => {
       }
     };
     fetchVehiclesForArea();
-  }, [formData.area, formData.transportType]);
+  }, [formData.transportType]);
 
   useEffect(() => {
     if (!vehicleTypes.length || !formData.vehicleType) return;
