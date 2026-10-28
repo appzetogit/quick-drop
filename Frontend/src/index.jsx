@@ -5,10 +5,13 @@ import App from './app/App.jsx'
 import { isModuleAuthenticated } from './modules/Food/utils/auth.js'
 import { applySavedTheme } from './shared/utils/theme.js'
 import { installStaleBuildReload } from './app/staleBuildReload.js'
+import { installPlacesCompat } from './shared/utils/placesCompat.js'
 import './shared/styles/global.css'
 
 // Installed before anything lazy-loads, so a chunk failure is always seen.
 installStaleBuildReload()
+// Before any map loads: place search runs on the new Places API (see the file).
+installPlacesCompat()
 
 const NATIVE_LAST_ROUTE_KEY = 'native_last_route'
 
