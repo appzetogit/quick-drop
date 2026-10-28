@@ -84,3 +84,12 @@ export const updateServiceRadiusSettingsAdminController = async (req, res, next)
         next(error);
     }
 };
+
+export const listRestaurantServiceRadiiAdminController = async (req, res, next) => {
+    try {
+        const data = await serviceRadius.listRestaurantServiceRadii();
+        return res.status(200).json({ success: true, message: 'Delivery radii fetched successfully', data });
+    } catch (error) {
+        next(error);
+    }
+};

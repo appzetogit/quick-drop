@@ -34,6 +34,7 @@ const MasterOrders = lazy(() => import("@food/pages/admin/master/MasterOrders"))
 const MasterDeliveryEarnings = lazy(() => import("@food/pages/admin/master/DeliveryEarnings"))
 const MasterDeliveryIncentives = lazy(() => import("@food/pages/admin/master/DeliveryIncentives"))
 const MasterLiveDrivers = lazy(() => import("@food/pages/admin/master/LiveDrivers"))
+const MasterDeliveryRadius = lazy(() => import("@food/pages/admin/master/MasterDeliveryRadius"))
 const MasterPromotions = lazy(() => import("@food/pages/admin/master/PromoCeiling"))
 const OrderBatching = lazy(() => import("@food/pages/admin/master/OrderBatching"))
 // Master's own Delivery Management pages: the same screens as the Food and Taxi
@@ -462,6 +463,7 @@ export default function AdminRouter() {
           <Route path="master/delivery-earnings" element={<MasterDeliveryEarnings />} />
           <Route path="master/delivery-incentives" element={<MasterDeliveryIncentives />} />
           <Route path="master/live-drivers" element={<MasterLiveDrivers />} />
+          <Route path="master/delivery-radius" element={<MasterDeliveryRadius />} />
           <Route path="master/promotions" element={<MasterPromotions />} />
           <Route path="master/order-batching" element={<OrderBatching />} />
           <Route path="master/delivery-partners" element={<DeliverymanList />} />

@@ -43,6 +43,7 @@ export const masterSidebarMenu = [
           { label: "Cancellation Policy", path: "/admin/master/cancellation" },
           { label: "Promo Limits", path: "/admin/master/promotions" },
           { label: "Homepage Video", path: "/admin/master/homepage-video" },
+          { label: "Delivery Radius", path: "/admin/master/delivery-radius" },
         ],
       },
       {

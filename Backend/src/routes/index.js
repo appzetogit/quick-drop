@@ -7,6 +7,8 @@ import { getPublicDiningRestaurants } from '../modules/food/dining/controllers/d
 import uploadRoutes from '../modules/uploads/routes/upload.routes.js';
 import restaurantAdminRoutes from '../modules/food/admin/routes/admin.routes.js';
 import { setFoodTrendingController } from '../modules/food/restaurant/controllers/trendingFoods.controller.js';
+import { requireSuperAdmin } from '../core/admin/requireSuperAdmin.js';
+import { listRestaurantServiceRadiiAdminController } from '../modules/food/restaurant/controllers/serviceRadius.controller.js';
 import { setFoodInNinetyNineStoreController } from '../modules/food/admin/services/ninetyNineShelf.service.js';
 import userRoutes from '../modules/food/user/routes/user.routes.js';
 import chatRoutes from '../modules/food/chat/routes/chat.routes.js';
@@ -170,6 +172,9 @@ router.get('/v1/food/admin/cashback-settings/public', getCashbackSettingsPublicC
 router.patch('/v1/food/admin/foods/:id/trending', authMiddleware, requireRoles('ADMIN'), requireServiceAccess('food'), adminZoneScope('food'), setFoodTrendingController);
 // Admin > Food List's thumbs-up for the Rs 99 store.
 router.patch('/v1/food/admin/foods/:id/99-store', authMiddleware, requireRoles('ADMIN'), requireServiceAccess('food'), adminZoneScope('food'), setFoodInNinetyNineStoreController);
+// Master > Delivery Radius: every restaurant's radius in one list (saving one
+// row uses the existing PUT /food/admin/restaurants/:id/service-radius).
+router.get('/v1/food/admin/service-radius/restaurants', authMiddleware, requireRoles('ADMIN'), requireSuperAdmin, listRestaurantServiceRadiiAdminController);
 router.use('/v1/food/admin', authMiddleware, requireRoles('ADMIN'), requireServiceAccess('food'), adminZoneScope('food'), restaurantAdminRoutes);
 router.use('/v1/food/user', authMiddleware, requireRoles('USER'), userRoutes);
 // router.use('/v1/food/user', userRoutes);

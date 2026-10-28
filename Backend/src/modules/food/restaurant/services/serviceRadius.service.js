@@ -96,6 +96,21 @@ export async function getRestaurantServiceRadius(restaurantId) {
 }
 
 /**
+ * Every restaurant's radius in one list, for Master > Delivery Radius, where
+ * an admin sets them row by row instead of one restaurant at a time.
+ */
+export async function listRestaurantServiceRadii() {
+    const [restaurants, settings] = await Promise.all([
+        FoodRestaurant.find({}).select(`${SELECT} status`).sort({ restaurantName: 1 }).lean(),
+        loadServiceRadiusSettings(),
+    ]);
+    return {
+        settings,
+        restaurants: restaurants.map((r) => ({ ...describe(r, settings), status: r.status || '' })),
+    };
+}
+
+/**
  * Save a restaurant's radius, from either side.
  *
  * `value` blank clears it. A radius cannot be set on a restaurant with no
