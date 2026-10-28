@@ -986,6 +986,30 @@ async function processOrderRefundOnce(order, refundUserId) {
   order.payment.refund = refundPatch["payment.refund"];
 }
 
+
+/**
+ * Free the rider of an order that has just been cancelled, for taxi rides too.
+ *
+ * Accepting a delivery puts a busy lock on the rider's unified driver record;
+ * a cancel did not take it off, so the rider stayed "on a delivery" for the
+ * taxi side and was never offered a ride (FOD-7701814, 28 Oct). The reconciler
+ * only clears a lock whose job is finished or cancelled, so this is safe to
+ * call on any cancel. Runs after the order is saved, which is what it reads.
+ */
+async function freeRiderOfCancelledOrder(order) {
+  try {
+    const partnerId = order?.dispatch?.deliveryPartnerId;
+    if (!partnerId) return;
+    const { FoodDeliveryPartner } = await import('../../delivery/models/deliveryPartner.model.js');
+    const partner = await FoodDeliveryPartner.findById(partnerId).select('driverId').lean();
+    if (!partner?.driverId) return;
+    const { reconcileDriverAssignment } = await import('../../../taxi/driver/services/driverAssignmentService.js');
+    await reconcileDriverAssignment(partner.driverId);
+  } catch (err) {
+    logger.warn(`freeRiderOfCancelledOrder failed for ${order?._id}: ${err?.message || err}`);
+  }
+}
+
 export async function cancelOrder(orderId, userId, reason) {
   const identity = buildOrderIdentityFilter(orderId);
   if (!identity) throw new ValidationError("Order id required");
@@ -1021,6 +1045,7 @@ export async function cancelOrder(orderId, userId, reason) {
 
   await order.save();
   alertOrderEvent(order, { module: 'food', cancelled: true, by: 'customer' });
+  await freeRiderOfCancelledOrder(order);
 
   // A cancelled order is not a use of its coupon.
   await releaseCouponUse(order);
@@ -1461,6 +1486,7 @@ export async function updateOrderStatusRestaurant(
       } catch (err) {
         logger.warn(`updateOrderStatusRestaurant transaction sync failed: ${err?.message || err}`);
       }
+      await freeRiderOfCancelledOrder(order);
     }
 
     await notifyOwnersSafely(
