@@ -808,16 +808,17 @@ export const resolveSetPriceForRide = async ({ serviceLocationId = null, zoneId 
 
   const filters = [];
 
-  // Priority 1: Zone match
-  for (const tFilter of transportFilters) {
-    filters.push({
-      vehicle_type: vehicleTypeId,
-      active: 1,
-      status: 'active',
-      ...(serviceLocationId ? { service_location_id: serviceLocationId } : {}),
-      ...(zoneId ? { zone_id: zoneId } : {}),
-      ...tFilter,
-    });
+  /*
+   * Priority 1: the pickup zone's own row, matched on the zone alone. The
+   * service location is not required to agree: rows saved with the zone's id
+   * in service_location_id (Palampur's are) never matched, and the lookup fell
+   * through to priority 3 -- whichever Bike row anywhere was edited last, so
+   * saving Indore's price changed what Palampur riders were charged.
+   */
+  if (zoneId) {
+    for (const tFilter of transportFilters) {
+      filters.push({ vehicle_type: vehicleTypeId, active: 1, status: 'active', zone_id: zoneId, ...tFilter });
+    }
   }
 
   // Priority 2: Fallback to service location (no zone)
@@ -832,12 +833,15 @@ export const resolveSetPriceForRide = async ({ serviceLocationId = null, zoneId 
     });
   }
 
-  // Priority 3: Global fallback
+  // Priority 3: a row not tied to any zone. Only a pickup outside every zone
+  // may borrow another zone's row (as it always could); a pickup inside a zone
+  // never prices from a different zone.
   for (const tFilter of transportFilters) {
     filters.push({
       vehicle_type: vehicleTypeId,
       active: 1,
       status: 'active',
+      ...(zoneId ? { zone_id: null } : {}),
       ...tFilter,
     });
   }
@@ -955,6 +959,23 @@ const normalizeRideTransportType = (value = 'taxi') => {
  * The active zone a pickup falls in, which decides surge. Rides only: parcels
  * have never carried surge.
  */
+/**
+ * The active zone the pickup is in, for pricing. Tried within the service
+ * location first, then on the map alone: a zone saved without its service
+ * location (Palampur's) was otherwise never found, for any ride. Unlike the
+ * surge zone this is found for parcels too, so they price from their own zone.
+ */
+export const findPricingZoneForPickup = async ({ pickupPoint, serviceLocationId = null }) => {
+  if (!Array.isArray(pickupPoint) || pickupPoint.length !== 2) return null;
+  const at = { $geoIntersects: { $geometry: { type: 'Point', coordinates: pickupPoint } } };
+  const scoped = serviceLocationId
+    ? await Zone.findOne({ service_location_id: serviceLocationId, active: true, geometry: at })
+      .sort(TAXI_SPECIFIC_FIRST).select('_id name ride_surge_enabled').lean()
+    : null;
+  return scoped || Zone.findOne({ active: true, geometry: at })
+    .sort(TAXI_SPECIFIC_FIRST).select('_id name ride_surge_enabled').lean();
+};
+
 const findSurgeZoneForPickup = async ({ pickupPoint, serviceLocationId = null, transportType = 'taxi' }) => {
   if (transportType === 'delivery') {
     return null;
@@ -1035,6 +1056,7 @@ export const quoteRideFares = async ({
     await assertTripInsidePickupZone({ pickupCoords: pickupPoint, dropCoords: dropPoint, stops });
   }
   const surgeZone = await findSurgeZoneForPickup({ pickupPoint, serviceLocationId, transportType });
+  const pricingZone = await findPricingZoneForPickup({ pickupPoint, serviceLocationId });
   const surgeSlots = await loadZoneSurgeSlots(surgeZone?._id);
   // Parcels carry no ride insurance.
   const insurancePlans = transportType === 'delivery' ? [] : await RideInsurancePlan.find({ active: true }).lean();
@@ -1052,7 +1074,7 @@ export const quoteRideFares = async ({
   return Promise.all(ids.map(async (vehicleTypeId) => {
     const { pricingRule } = await getAllowedRidePaymentMethodsForPricing({
       serviceLocationId,
-      zoneId: surgeZone?._id || null,
+      zoneId: pricingZone?._id || null,
       transportType,
       vehicleTypeId,
     });
@@ -1241,9 +1263,10 @@ export const createRideRecord = async ({
     transportType: normalizedTransportType,
   });
 
+  const pricingZone = await findPricingZoneForPickup({ pickupPoint, serviceLocationId: resolvedServiceLocationId });
   const { pricingRule, allowedPaymentMethods } = await getAllowedRidePaymentMethodsForPricing({
     serviceLocationId: resolvedServiceLocationId,
-    zoneId: surgeZone?._id || null,
+    zoneId: pricingZone?._id || null,
     transportType: normalizedTransportType,
     vehicleTypeId: primaryVehicleTypeId,
   });
