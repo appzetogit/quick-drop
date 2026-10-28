@@ -29,6 +29,7 @@ import webhookRoutes from '../core/payments/routes/webhook.routes.js'; // ✅ NE
 import petpoojaWebhookRoutes from '../modules/food/orders/routes/petpooja.routes.js';
 import searchRoutes from '../modules/food/search/routes/search.routes.js';
 import { taxiRouter } from '../modules/taxi/routes/index.js';
+import { setPriceGuard } from '../modules/taxi/admin/setPriceGuard.js';
 import { promotionsRouter as taxiPromotionsRouter } from '../modules/taxi/admin/promotions/routes/index.js';
 // Service-Provider module is CommonJS (see modules/serviceProvider/package.json).
 // ESM importing CJS yields module.exports as the default export.
@@ -201,6 +202,8 @@ router.get('/env/public', getPublicEnvController);
 router.get('/v1/admin/queues', authMiddleware, requireRoles('ADMIN'), getQueuesController);
 router.use('/v1', taxiPromotionsRouter);
 
+// Keeps taxi price rows in a shape the ride lookup reads right (see the file).
+router.use('/v1/taxi/admin/types/set-prices', setPriceGuard);
 router.use('/v1/taxi', requireModuleEnabled(MODULES.TAXI), taxiRouter);
 
 // ─── Cross-vertical customer feed ──────────────────────────────────────────
