@@ -60,6 +60,19 @@ export async function listLiveRiders({ now = Date.now() } = {}) {
     const driverById = new Map([...drivers, ...linkedOffline].map((d) => [String(d._id), d]));
     const onlineDriverIds = knownDriverIds;
 
+    // The other way round: a driver online for taxi whose delivery toggle is
+    // off still has a partner record, and its toggle is shown as off.
+    const onlinePartnerDriverIds = new Set(partners.filter((p) => p.driverId).map((p) => String(p.driverId)));
+    const offlinePartnerOf = new Map(
+        (await FoodDeliveryPartner.find({
+            driverId: { $in: drivers.map((d) => d._id).filter((id) => !onlinePartnerDriverIds.has(String(id))) },
+        })
+            .select('driverId')
+            .lean()
+            .catch(() => []))
+            .map((p) => [String(p.driverId), p]),
+    );
+
     const rows = new Map();
     const add = ({ driver = null, partner = null }) => {
         const key = driver ? `d:${driver._id}` : `p:${partner._id}`;
@@ -85,6 +98,13 @@ export async function listLiveRiders({ now = Date.now() } = {}) {
         if (driver && onlineDriverIds.has(String(driver._id))) services.push('taxi');
         if (partner) services.push('delivery');
 
+        // Each app's online switch: true on, false off, null when the person is
+        // not registered on that side at all.
+        const toggles = {
+            taxi: driver ? onlineDriverIds.has(String(driver._id)) : null,
+            delivery: partner ? true : driver && offlinePartnerOf.has(String(driver._id)) ? false : null,
+        };
+
         rows.set(key, {
             id: key,
             driverId: driver ? String(driver._id) : null,
@@ -92,6 +112,7 @@ export async function listLiveRiders({ now = Date.now() } = {}) {
             name: partner?.name || driver?.name || 'Unnamed',
             phone: partner?.phone || driver?.phone || '',
             services,
+            toggles,
             workMode: driver?.workMode || null,
             vehicle: [driver?.vehicleType || partner?.vehicleType, driver?.vehicleNumber || partner?.vehicleNumber]
                 .filter(Boolean)

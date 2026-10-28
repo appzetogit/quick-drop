@@ -44,6 +44,49 @@ const ago = (iso) => {
   return `${Math.round(h / 24)} days ago`
 }
 
+/*
+ * A delivery rider on a scooter with a parcel box, white on the status colour,
+ * in a map pin. One drawing serves the map marker (as a data URL) and the list.
+ */
+const RIDER_GLYPH = `
+  <rect x="8.5" y="11" width="8" height="7" rx="1" fill="#fff"/>
+  <circle cx="12" cy="25.5" r="3.2" fill="none" stroke="#fff" stroke-width="2"/>
+  <circle cx="28" cy="25.5" r="3.2" fill="none" stroke="#fff" stroke-width="2"/>
+  <path d="M12 25.5h9l3.5-7.5h3.5M24.5 18l1.5-5h3.5M28 25.5l-2.5-7.5M16 20h7" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M21.5 12.5l-2 7M21 14.5l5.5-1" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="22" cy="9.5" r="2.6" fill="#fff"/>`
+
+const riderPinUrl = (color) =>
+  "data:image/svg+xml;charset=UTF-8," +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="50" viewBox="0 0 40 50">
+      <path d="M20 48c-1.2-4-5-7.4-8.4-10.2A18 18 0 1 1 28.4 37.8C25 40.6 21.2 44 20 48z" fill="${color}" stroke="#fff" stroke-width="2"/>
+      ${RIDER_GLYPH}
+    </svg>`,
+  )
+
+function RiderAvatar({ color }) {
+  return (
+    <svg width="32" height="32" viewBox="2 2 36 36" className="shrink-0" aria-hidden="true">
+      <circle cx="20" cy="20" r="17" fill={color} />
+      <g dangerouslySetInnerHTML={{ __html: RIDER_GLYPH }} />
+    </svg>
+  )
+}
+
+/** Read-only picture of one app's online switch. */
+function Toggle({ label, on }) {
+  if (on == null) return null
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-neutral-700">
+      <span className={`relative inline-block h-4 w-7 rounded-full transition-colors ${on ? "bg-emerald-500" : "bg-neutral-300"}`}>
+        <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow ${on ? "left-3.5" : "left-0.5"}`} />
+      </span>
+      {label} <span className={on ? "font-medium text-emerald-700" : "text-neutral-500"}>{on ? "On" : "Off"}</span>
+    </span>
+  )
+}
+
 const serviceLabel = (services = []) =>
   services.length === 2 ? "Taxi + Delivery" : services[0] === "taxi" ? "Taxi" : services[0] === "delivery" ? "Delivery" : "—"
 
@@ -215,12 +258,9 @@ export default function LiveDrivers() {
       keep.add(r.id)
       const color = r.live ? (STATUS[r.status]?.color || STALE_COLOR) : STALE_COLOR
       const icon = {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: color,
-        fillOpacity: 1,
-        strokeColor: "#ffffff",
-        strokeWeight: 2,
+        url: riderPinUrl(color),
+        scaledSize: new google.maps.Size(34, 42),
+        anchor: new google.maps.Point(17, 41),
       }
       let m = markers.get(r.id)
       if (!m) {
@@ -341,12 +381,12 @@ export default function LiveDrivers() {
           <div className="flex flex-wrap gap-4 border-t border-neutral-100 px-4 py-2 text-xs text-neutral-600">
             {Object.values(STATUS).map((s) => (
               <span key={s.label} className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />
+                <img src={riderPinUrl(s.color)} alt="" className="h-4 w-auto" />
                 {s.label}
               </span>
             ))}
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: STALE_COLOR }} />
+              <img src={riderPinUrl(STALE_COLOR)} alt="" className="h-4 w-auto" />
               Location older than {data?.freshMinutes ?? 10} min
             </span>
           </div>
@@ -383,7 +423,7 @@ export default function LiveDrivers() {
               <thead className="bg-neutral-50 text-left text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
                 <tr>
                   <th className="px-4 py-2.5">Driver</th>
-                  <th className="px-4 py-2.5">Service</th>
+                  <th className="px-4 py-2.5">Online switch</th>
                   <th className="px-4 py-2.5">Vehicle</th>
                   <th className="px-4 py-2.5">Status</th>
                   <th className="px-4 py-2.5">Location</th>
@@ -418,19 +458,33 @@ export default function LiveDrivers() {
                         className={`${hasPoint ? "cursor-pointer hover:bg-neutral-50" : ""}`}
                       >
                         <td className="px-4 py-2.5">
-                          <div className="font-medium text-neutral-900">{r.name}</div>
-                          {r.phone && (
-                            <a
-                              href={`tel:${r.phone}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-800"
-                            >
-                              <Phone className="h-3 w-3" />
-                              {r.phone}
-                            </a>
+                          <div className="flex items-center gap-2.5">
+                            <RiderAvatar color={r.live ? s.color || STALE_COLOR : STALE_COLOR} />
+                            <div>
+                              <div className="font-medium text-neutral-900">{r.name}</div>
+                              {r.phone && (
+                                <a
+                                  href={`tel:${r.phone}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-800"
+                                >
+                                  <Phone className="h-3 w-3" />
+                                  {r.phone}
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          {r.toggles ? (
+                            <div className="flex flex-col gap-1">
+                              <Toggle label="Taxi" on={r.toggles.taxi} />
+                              <Toggle label="Delivery" on={r.toggles.delivery} />
+                            </div>
+                          ) : (
+                            <span className="text-neutral-700">{serviceLabel(r.services)}</span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5 text-neutral-700">{serviceLabel(r.services)}</td>
                         <td className="px-4 py-2.5 text-neutral-700">{r.vehicle || "—"}</td>
                         <td className="px-4 py-2.5">
                           <span className={`inline-flex whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium ${s.pill}`}>{s.label}</span>

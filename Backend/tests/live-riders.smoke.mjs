@@ -30,6 +30,9 @@ await raw(FoodDeliveryPartner, { name: 'jk', phone: '9000006961', status: 'appro
 await raw(Driver, { name: 'Anil kumar', phone: '9000007210', isOnline: true, isOnRide: false, activeAssignment: null, location: { type: 'Point', coordinates: [76.536, 32.11] }, updatedAt: new Date(now - 17 * 3600_000) });
 // Ravi: food only, free, fresh, no linked driver.
 await raw(FoodDeliveryPartner, { name: 'Ravi', phone: '9000001111', status: 'approved', availabilityStatus: 'online', lastLat: 32.1, lastLng: 76.5, lastLocationAt: new Date(now - 120_000) });
+// Mohan: online for taxi, delivery toggle off (a partner record, offline).
+const mohan = (await raw(Driver, { name: 'Mohan', phone: '9000002222', isOnline: true, isOnRide: false, location: { type: 'Point', coordinates: [75, 31] }, updatedAt: new Date(now - 60_000) })).insertedId;
+await raw(FoodDeliveryPartner, { name: 'Mohan', phone: '9000002222', status: 'approved', availabilityStatus: 'offline', driverId: mohan });
 // Not shown: offline driver, suspended driver, pending partner.
 await raw(Driver, { name: 'Off', phone: '9000000001', isOnline: false, location: { type: 'Point', coordinates: [76, 32] } });
 await raw(Driver, { name: 'Suspended', phone: '9000000002', isOnline: true, approve: false, location: { type: 'Point', coordinates: [76, 32] } });
@@ -46,7 +49,7 @@ const result = await listLiveRiders({ now });
 const byName = Object.fromEntries(result.riders.map((r) => [r.name, r]));
 
 await check('only online, approved people are listed, once each', async () => {
-  assert.deepEqual(result.riders.map((r) => r.name).sort(), ['Anil kumar', 'Ravi', 'jk']);
+  assert.deepEqual(result.riders.map((r) => r.name).sort(), ['Anil kumar', 'Mohan', 'Ravi', 'jk']);
 });
 await check('someone online on taxi and food is one row, on both services', async () => {
   assert.deepEqual(byName.jk.services, ['taxi', 'delivery']);
@@ -68,11 +71,17 @@ await check('a food-only rider is listed with their own position', async () => {
 await check('the counts add up, live ones listed first', async () => {
   assert.deepEqual(
     [result.stats.online, result.stats.free, result.stats.onRide, result.stats.onDelivery, result.stats.live, result.stats.stale],
-    [3, 2, 1, 0, 2, 1],
+    [4, 3, 1, 0, 3, 1],
   );
   assert.equal(result.riders[result.riders.length - 1].name, 'Anil kumar');
 });
 
+await check('each online toggle is reported, null where not registered', async () => {
+  assert.deepEqual(byName.jk.toggles, { taxi: true, delivery: true });
+  assert.deepEqual(byName.Mohan.toggles, { taxi: true, delivery: false });
+  assert.deepEqual(byName['Anil kumar'].toggles, { taxi: true, delivery: null });
+  assert.deepEqual(byName.Ravi.toggles, { taxi: null, delivery: true });
+});
 await check('each rider is tagged with the zones their position is inside', async () => {
   assert.deepEqual(byName.jk.zones, [`taxi:${palampur}`]);
   assert.deepEqual(byName['Anil kumar'].zones, [`taxi:${palampur}`]);
