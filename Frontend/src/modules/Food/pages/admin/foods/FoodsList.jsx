@@ -954,13 +954,13 @@ export default function FoodsList() {
                   Image
                 </th>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                  Title
+                  Category
                 </th>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                   Restaurant
                 </th>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                  Category
+                  Title
                 </th>
                 <th className="px-6 py-4 text-left text-[10px] font-bold text-slate-700 uppercase tracking-wider" title="The restaurant's own price; what the customer pays is shown under it when different">
                   Base Price
@@ -1024,7 +1024,7 @@ export default function FoodsList() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex flex-col">
-                        <span className="text-sm font-medium text-slate-900">{food.name}</span>
+                        <span className="text-sm font-medium text-slate-800">{food.categoryName || "-"}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -1034,7 +1034,7 @@ export default function FoodsList() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex flex-col">
-                        <span className="text-sm font-medium text-slate-800">{food.categoryName || "-"}</span>
+                        <span className="text-sm font-medium text-slate-900">{food.name}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
