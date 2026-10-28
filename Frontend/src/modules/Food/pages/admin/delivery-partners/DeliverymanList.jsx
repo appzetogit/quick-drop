@@ -359,7 +359,7 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
     }
   }
 
-  const handleDelete = async (deliveryman) => {
+  const handleDelete = async (deliveryman, { confirmed = false } = {}) => {
     const deliverymanId = String(deliveryman?._id || "")
     if (!deliverymanId) {
       toast.error("Delivery partner not found")
@@ -367,13 +367,18 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
     }
 
     const name = deliveryman?.name || "this delivery partner"
-    const confirmed = window.confirm(
-      `Permanently delete ${name}?\n\nTheir account, wallet and documents are removed and they are signed out. If they sign up again it is a brand-new account. Past orders stay in your reports. This cannot be undone.`,
-    )
-
+    // Asked on the page, not with window.confirm: Chrome lets a user block a
+    // site's dialogs, after which confirm() returns false at once without
+    // showing anything, and the button could never delete.
     if (!confirmed) {
-      // Also what a blocked dialog returns, instantly and without showing.
-      toast.info(`${name} not deleted: cancelled. If no confirm box appeared, Chrome is blocking this site's pop-ups; reload the page.`)
+      toast.warning(`Permanently delete ${name}?`, {
+        id: `delete-rider-${deliverymanId}`,
+        description:
+          "Their account, wallet and documents are removed and they are signed out. Past orders stay in your reports. This cannot be undone.",
+        duration: 15000,
+        action: { label: "Delete", onClick: () => handleDelete(deliveryman, { confirmed: true }) },
+        cancel: { label: "Keep", onClick: () => {} },
+      })
       return
     }
 
