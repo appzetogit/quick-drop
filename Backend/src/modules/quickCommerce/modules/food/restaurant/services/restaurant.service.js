@@ -2239,6 +2239,13 @@ export const listApprovedRestaurants = async (query = {}) => {
 
     const lat = toFiniteNumber(query.lat);
     const lng = toFiniteNumber(query.lng);
+    // Master > Delivery Radius: leave out stores whose zone radius does not
+    // reach the customer, so the list matches what checkout will accept.
+    if (lat !== null && lng !== null) {
+        const { storesOutOfReach, excludeIds } = await import('../../../../../../core/serviceRadius/zoneRadius.js');
+        const vertical = filter.storeType === 'pharmacy' ? 'medical' : 'quick';
+        excludeIds(filter, await storesOutOfReach(vertical, { lat, lng }).catch(() => []));
+    }
     // Accept both radiusKm (preferred) and maxDistance (legacy frontend param).
     const radiusKm = toFiniteNumber(query.radiusKm) ?? toFiniteNumber(query.maxDistance);
     const sortBy = parseSortBy(query.sortBy);

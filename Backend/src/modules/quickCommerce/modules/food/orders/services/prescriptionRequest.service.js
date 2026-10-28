@@ -67,7 +67,7 @@ export async function loadMedicalSettings() {
 }
 
 /** Candidate pharmacies with their timings attached, so opening hours can be read. */
-const loadPharmaciesWithTimings = async (zoneId) => {
+const loadPharmaciesWithTimings = async (zoneId, point = null) => {
     const { notExpiredLicenceClause } = await import('../../shared/partnerOnboarding.js');
     const sellers = await FoodRestaurant.find({
         storeType: MEDICAL_STORE_TYPE,
@@ -83,10 +83,14 @@ const loadPharmaciesWithTimings = async (zoneId) => {
      * no zone of its own is left in, because that is how single-zone platforms
      * are set up and excluding them would empty the list.
      */
-    const inZone = sellers.filter((seller) => {
+    const sameZone = sellers.filter((seller) => {
         const sellerZone = seller?.zoneId ? String(seller.zoneId) : '';
         return !sellerZone || !zoneId || sellerZone === String(zoneId);
     });
+    // Master > Delivery Radius: and within its zone's radius of the customer,
+    // as the order itself will be checked.
+    const { filterStoresByZoneRadius } = await import('../../../../../../core/serviceRadius/zoneRadius.js');
+    const inZone = await filterStoresByZoneRadius('medical', sameZone, point).catch(() => sameZone);
 
     return attachOutletTimingsToRestaurants(inZone, { useDefaults: false });
 };
@@ -144,7 +148,7 @@ export async function listNearbyPharmacies(userId, { lat, lng } = {}) {
 
     const settings = await loadMedicalSettings();
     const zone = await findZoneForPoint(point.lat, point.lng, ZONE_VERTICALS.MEDICAL);
-    const sellers = await loadPharmaciesWithTimings(zone?._id);
+    const sellers = await loadPharmaciesWithTimings(zone?._id, point);
     const now = new Date();
     const openAt = isOpenNow(now);
 
@@ -302,7 +306,7 @@ export async function createPrescriptionRequest(userId, dto = {}) {
     if (!zone) throw new ValidationError("We don't deliver to this address yet");
 
     const now = new Date();
-    const sellers = await loadPharmaciesWithTimings(zone._id);
+    const sellers = await loadPharmaciesWithTimings(zone._id, point);
     const invited = pharmaciesInRange(sellers, point, settings.requestRadiusKm, {
         isOpen: isOpenNow(now),
     });

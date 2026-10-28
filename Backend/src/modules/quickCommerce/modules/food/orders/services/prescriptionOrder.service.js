@@ -46,6 +46,20 @@ import { tryAutoAssign } from './order-dispatch.service.js';
 import { alertAdmins, alertOrderEvent, ALERT_KINDS, line } from '../../../../../../core/notifications/adminAlerts.js';
 
 /**
+ * Master > Delivery Radius: a store reaches only as far as its zone's radius.
+ * Straight-line km; no radius set for the zone means no limit.
+ */
+async function assertWithinZoneRadius(vertical, store, point) {
+    const { assertStoreReachesPoint, ZoneRadiusError } = await import('../../../../../../core/serviceRadius/zoneRadius.js');
+    try {
+        await assertStoreReachesPoint(vertical, store, point);
+    } catch (err) {
+        if (err instanceof ZoneRadiusError) throw new ValidationError(err.message);
+        throw err;
+    }
+}
+
+/**
  * Prescription-only orders: placed from a photograph, priced by the pharmacist.
  *
  * Kept out of order.service.js deliberately. That file builds an order from
@@ -143,6 +157,7 @@ export async function createPrescriptionOrder(userId, dto = {}) {
     if (sellerZoneId && sellerZoneId !== String(zone._id)) {
         throw new ValidationError('This store does not deliver to the selected address');
     }
+    await assertWithinZoneRadius(ZONE_VERTICALS.MEDICAL, restaurant, point);
 
     // buildOrderPrescription is the same rule the catalogue path uses, so a
     // medical order can never exist without a prescription no matter which way in

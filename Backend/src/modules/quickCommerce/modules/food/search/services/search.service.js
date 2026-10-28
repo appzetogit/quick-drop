@@ -98,6 +98,11 @@ export const searchUnified = async (query = {}, options = {}) => {
     if (zoneId && mongoose.Types.ObjectId.isValid(zoneId)) {
         restaurantFilter.zoneId = new mongoose.Types.ObjectId(zoneId);
     }
+    // Master > Delivery Radius: stores whose zone radius does not reach here.
+    if (hasGeoSorting) {
+        const { storesOutOfReach, excludeIds } = await import('../../../../../../core/serviceRadius/zoneRadius.js');
+        excludeIds(restaurantFilter, await storesOutOfReach('quick', { lat: userLat, lng: userLng }).catch(() => []));
+    }
 
     if (isVeg === 'true') {
         restaurantFilter.pureVegRestaurant = true;
@@ -299,6 +304,15 @@ export const searchProducts = async (query = {}) => {
     const sellerFilter = { status: 'approved', ...QUICK_SHOP_SELLER_FILTER };
     if (zoneId && mongoose.Types.ObjectId.isValid(zoneId)) {
         sellerFilter.zoneId = new mongoose.Types.ObjectId(zoneId);
+    }
+    // Master > Delivery Radius: sellers whose zone radius does not reach here.
+    {
+        const lat = toFiniteNumber(query.lat);
+        const lng = toFiniteNumber(query.lng);
+        if (lat !== null && lng !== null) {
+            const { storesOutOfReach, excludeIds } = await import('../../../../../../core/serviceRadius/zoneRadius.js');
+            excludeIds(sellerFilter, await storesOutOfReach('quick', { lat, lng }).catch(() => []));
+        }
     }
 
     const sellers = await FoodRestaurant.find(sellerFilter)

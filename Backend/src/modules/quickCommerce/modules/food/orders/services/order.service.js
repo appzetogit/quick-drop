@@ -292,6 +292,20 @@ let lastExpiredCleanupAt = 0;
 const EXPIRE_CLEANUP_INTERVAL_MS = 60_000;
 
 /**
+ * Master > Delivery Radius: a store reaches only as far as its zone's radius.
+ * Straight-line km; no radius set for the zone means no limit.
+ */
+async function assertWithinZoneRadius(vertical, store, point) {
+  const { assertStoreReachesPoint, ZoneRadiusError } = await import('../../../../../../core/serviceRadius/zoneRadius.js');
+  try {
+    await assertStoreReachesPoint(vertical, store, point);
+  } catch (err) {
+    if (err instanceof ZoneRadiusError) throw new ValidationError(err.message);
+    throw err;
+  }
+}
+
+/**
  * Confirms the address being delivered to is somewhere the seller serves.
  *
  * Nothing checked this before: the client detected a zone once, at whatever
@@ -329,6 +343,7 @@ async function resolveServiceableZone(restaurant, deliveryAddress) {
   if (sellerZoneId && sellerZoneId !== String(zone._id)) {
     throw new ValidationError('This seller does not deliver to the selected address');
   }
+  await assertWithinZoneRadius(vertical, restaurant, point);
 
   return zone;
 }

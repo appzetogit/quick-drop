@@ -228,6 +228,9 @@ export async function serviceRadiusListingClause(lat, lng) {
     };
 }
 
+/** For Master's zone radius, which writes many restaurants at once. */
+export const clearServiceRadiusCaches = () => clearRestaurantCaches();
+
 async function clearRestaurantCaches() {
     try {
         const { invalidateCache, invalidatePriceCaches } = await import('../../../../middleware/cache.js');

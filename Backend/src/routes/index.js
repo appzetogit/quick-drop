@@ -51,6 +51,7 @@ import platformPnlRoutes from '../core/finance/platformPnl.routes.js';
 import homeContentRoutes from '../core/cms/homeContent.routes.js';
 import commissionOverviewRoutes from '../core/finance/commissionOverview.routes.js';
 import liveRidersRoutes from '../core/delivery/liveRiders.routes.js';
+import zoneRadiusRoutes from '../core/serviceRadius/zoneRadius.routes.js';
 import myOrdersRoutes from '../core/orders/myOrders.routes.js';
 import { getPublicAppLegal } from '../core/settings/appLegal.js';
 import { adminZoneScope } from '../core/admin/adminZoneScope.js';
@@ -137,6 +138,7 @@ router.use('/v1/platform/home-content', homeContentRoutes);
 router.use('/v1/platform/commission', commissionOverviewRoutes);
 // Master > Delivery Management > Live Drivers.
 router.use('/v1/platform/live-riders', liveRidersRoutes);
+router.use('/v1/platform/delivery-radius/zones', zoneRadiusRoutes);
 // The customer's orders from every service, in one list (the app's My Orders).
 router.use('/v1/platform/me', authMiddleware, requireRoles('USER'), myOrdersRoutes);
 // Terms and privacy for one app, public (shown before sign-in).

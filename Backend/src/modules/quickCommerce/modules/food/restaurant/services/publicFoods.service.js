@@ -30,6 +30,14 @@ export async function listPublicFoods(query = {}) {
     if (zoneIdRaw && mongoose.Types.ObjectId.isValid(zoneIdRaw)) {
         restaurantFilter.zoneId = new mongoose.Types.ObjectId(zoneIdRaw);
     }
+    // Master > Delivery Radius: when the app says where it delivers to, leave
+    // out stores whose zone radius does not reach there.
+    const lat = Number(query.lat);
+    const lng = Number(query.lng);
+    if (String(query.lat ?? '').trim() !== '' && String(query.lng ?? '').trim() !== '' && Number.isFinite(lat) && Number.isFinite(lng)) {
+        const { storesOutOfReach, excludeIds } = await import('../../../../../../core/serviceRadius/zoneRadius.js');
+        excludeIds(restaurantFilter, await storesOutOfReach('quick', { lat, lng }).catch(() => []));
+    }
 
     const restaurants = await FoodRestaurant.find(restaurantFilter)
         .select('_id restaurantName slug zoneId profileImage rating totalRatings ratingCount estimatedDeliveryTime estimatedDeliveryTimeMinutes location coverImages menuImages isActive isAcceptingOrders outletTimings openDays deliveryTimings openingTime closingTime')

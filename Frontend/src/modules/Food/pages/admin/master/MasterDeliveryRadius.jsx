@@ -26,6 +26,178 @@ const whenLabel = (iso) => {
 
 const apiError = (err, fallback) => err?.response?.data?.message || fallback
 
+const SERVICES = [
+  { key: "food", label: "Food" },
+  { key: "quick", label: "Quick" },
+  { key: "medical", label: "Medical" },
+]
+
+/*
+ * One radius per zone per service: how far a store in that zone delivers.
+ * Quick and Medical stores take their zone's radius (blank = no limit). For
+ * Food, saving a zone writes the radius to every restaurant in it, which can
+ * then be adjusted per restaurant in the table below.
+ */
+function ZoneRadiusSection({ onFoodChanged }) {
+  const [service, setService] = useState("food")
+  const [zones, setZones] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [drafts, setDrafts] = useState({})
+  const [savingId, setSavingId] = useState("")
+
+  const load = useCallback(async (key) => {
+    setLoading(true)
+    try {
+      const res = await apiClient.get("/platform/delivery-radius/zones", { params: { vertical: key }, contextModule: "admin" })
+      setZones(res?.data?.data?.zones || [])
+      setDrafts({})
+    } catch (err) {
+      toast.error(apiError(err, "Could not load zones"))
+      setZones([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load(service)
+  }, [service, load])
+
+  const draftOf = (z) => (z.zoneId in drafts ? drafts[z.zoneId] : kmText(z.radiusKm))
+  const isDirty = (z) => draftOf(z).trim() !== kmText(z.radiusKm)
+
+  const save = async (z, { confirmed = false } = {}) => {
+    const text = draftOf(z).trim()
+    // Asked on the page rather than with window.confirm, which Chrome can block.
+    if (service === "food" && z.stores > 0 && !confirmed) {
+      const what = text === "" ? "the maximum" : `${text} km`
+      toast.warning(`Set all ${z.stores} restaurants in ${z.name} to ${what}?`, {
+        id: `zone-radius-${z.zoneId}`,
+        description: "Any radius set for one of them is replaced.",
+        duration: 15000,
+        action: { label: "Set all", onClick: () => save(z, { confirmed: true }) },
+        cancel: { label: "Cancel", onClick: () => {} },
+      })
+      return
+    }
+    setSavingId(z.zoneId)
+    try {
+      const res = await apiClient.put(
+        `/platform/delivery-radius/zones/${service}/${z.zoneId}`,
+        { radiusKm: text === "" ? null : Number(text) },
+        { contextModule: "admin" },
+      )
+      const saved = res?.data?.data || {}
+      setZones((list) => list.map((x) => (x.zoneId === z.zoneId ? { ...x, radiusKm: saved.radiusKm ?? null } : x)))
+      setDrafts(({ [z.zoneId]: _drop, ...rest }) => rest)
+      const label = SERVICES.find((x) => x.key === service)?.label
+      toast.success(
+        saved.radiusKm == null
+          ? `${z.name} (${label}): no zone radius`
+          : `${z.name} (${label}): stores deliver within ${saved.radiusKm} km` +
+              (service === "food" ? ` (${saved.restaurantsUpdated || 0} restaurants updated)` : ""),
+      )
+      if (service === "food") onFoodChanged?.()
+    } catch (err) {
+      toast.error(apiError(err, "Could not save the radius"))
+    } finally {
+      setSavingId("")
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white">
+      <div className="flex flex-wrap items-center gap-3 border-b border-neutral-100 p-3">
+        <h2 className="text-sm font-semibold text-neutral-900">By zone</h2>
+        <div className="flex gap-1.5" role="tablist">
+          {SERVICES.map((x) => (
+            <button
+              key={x.key}
+              type="button"
+              role="tab"
+              aria-selected={service === x.key}
+              onClick={() => setService(x.key)}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                service === x.key ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+              }`}
+            >
+              {x.label}
+            </button>
+          ))}
+        </div>
+        <p className="basis-full text-xs text-neutral-500">
+          {service === "food"
+            ? "Saving a zone sets every restaurant in it to that radius. Blank puts them back on the maximum."
+            : "Every store in the zone delivers within this distance of itself. Blank means no distance limit, only the zone."}
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-neutral-50 text-left text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+            <tr>
+              <th className="px-4 py-2.5">Zone</th>
+              <th className="px-4 py-2.5">{service === "food" ? "Restaurants" : "Stores"}</th>
+              <th className="px-4 py-2.5">Radius (km)</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-100">
+            {loading ? (
+              <tr>
+                <td colSpan={3} className="px-4 py-8 text-center text-neutral-500">
+                  <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                </td>
+              </tr>
+            ) : zones.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="px-4 py-8 text-center text-neutral-500">
+                  No zones drawn for this service yet.
+                </td>
+              </tr>
+            ) : (
+              zones.map((z) => (
+                <tr key={z.zoneId}>
+                  <td className="px-4 py-2.5">
+                    <span className="font-medium text-neutral-900">{z.name}</span>
+                    {!z.active && <span className="ml-2 text-xs text-neutral-400">inactive</span>}
+                  </td>
+                  <td className="px-4 py-2.5 tabular-nums text-neutral-700">{z.stores}</td>
+                  <td className="px-4 py-2.5">
+                    <form
+                      className="flex items-center gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        save(z)
+                      }}
+                    >
+                      <input
+                        type="number"
+                        min="0.5"
+                        max="100"
+                        step="0.5"
+                        value={draftOf(z)}
+                        placeholder={service === "food" ? "max" : "no limit"}
+                        onChange={(e) => setDrafts((d) => ({ ...d, [z.zoneId]: e.target.value }))}
+                        className="w-24 rounded-lg border border-neutral-300 px-2.5 py-1.5 tabular-nums"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!isDirty(z) || savingId === z.zoneId}
+                        className="rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-100 disabled:opacity-40"
+                      >
+                        {savingId === z.zoneId ? "Saving…" : "Save"}
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function MasterDeliveryRadius() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -118,10 +290,14 @@ export default function MasterDeliveryRadius() {
         <div>
           <h1 className="text-xl font-semibold text-neutral-900">Delivery Radius</h1>
           <p className="max-w-2xl text-sm text-neutral-500">
-            How far each restaurant delivers from its kitchen. A customer must be inside the restaurant&apos;s zone and
-            within this distance. Leave a radius blank to use the maximum.
+            How far each store delivers from itself. A customer must be inside the store&apos;s zone and within this
+            distance. Set it for a whole zone below, or restaurant by restaurant further down.
           </p>
         </div>
+
+        <ZoneRadiusSection onFoodChanged={load} />
+
+        <h2 className="pt-2 text-sm font-semibold text-neutral-900">Restaurants</h2>
 
         <div className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4">
           <label className="flex flex-col gap-1 text-sm">
