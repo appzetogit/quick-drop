@@ -267,6 +267,18 @@ export default function OrdersTable({
                             </span>
                             <span className="text-slate-800 font-medium flex-1">
                               {item.name || item.itemName || item.title || 'Unknown Item'}
+                              {/* The size or option the customer picked (Full / Half) and any
+                                  add-ons, saved on the order item; the kitchen needs them. */}
+                              {(item.variantName || item.variant?.name) && (
+                                <span className="block text-xs font-normal text-slate-500">
+                                  {item.variantName || item.variant?.name}
+                                </span>
+                              )}
+                              {Array.isArray(item.addons) && item.addons.length > 0 && (
+                                <span className="block text-xs font-normal text-slate-500">
+                                  + {item.addons.map((a) => a?.name || a?.title).filter(Boolean).join(', ')}
+                                </span>
+                              )}
                             </span>
                             {item.price && (
                               <span className="text-xs text-slate-500">

@@ -547,6 +547,10 @@ export default function OrdersPage({ statusKey = "all" }) {
             quantity: item.quantity || 1,
             name: item.name || item.foodName || item.title || "Item",
             price: item.price || 0,
+            // Kept so the list and the order view can show the size picked
+            // (Full / Half) and add-ons; dropping them here hid them everywhere.
+            variantName: item.variantName || item.variant?.name || "",
+            addons: Array.isArray(item.addons) ? item.addons : [],
           }))
         : []
 
