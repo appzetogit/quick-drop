@@ -276,14 +276,35 @@ export const updateDeliveryPartnerProfile = async (userId, payload, files) => {
 
     let updatedDocsRequiringReapproval = false;
 
+    // Document numbers (re-submitted from the Documents screen). panNumber and
+    // aadharNumber were destructured but never applied before, so the rider
+    // could not correct a mistyped number.
+    if (panNumber !== undefined) { partner.panNumber = panNumber; updatedDocsRequiringReapproval = true; }
+    if (aadharNumber !== undefined) { partner.aadharNumber = aadharNumber; updatedDocsRequiringReapproval = true; }
+    if (drivingLicenseNumber !== undefined) updatedDocsRequiringReapproval = true;
+
     if (files?.profilePhoto?.[0]) {
         partner.profilePhoto = await uploadImageBuffer(files.profilePhoto[0].buffer, 'food/delivery/profile');
+    }
+    // Document photo re-uploads. These were accepted by multer (uploadFields)
+    // but never saved, so "resubmit document" silently did nothing.
+    if (files?.aadharPhoto?.[0]) {
+        partner.aadharPhoto = await uploadImageBuffer(files.aadharPhoto[0].buffer, 'food/delivery/aadhar');
+        updatedDocsRequiringReapproval = true;
+    }
+    if (files?.panPhoto?.[0]) {
+        partner.panPhoto = await uploadImageBuffer(files.panPhoto[0].buffer, 'food/delivery/pan');
+        updatedDocsRequiringReapproval = true;
+    }
+    if (files?.drivingLicensePhoto?.[0]) {
+        partner.drivingLicensePhoto = await uploadImageBuffer(files.drivingLicensePhoto[0].buffer, 'food/delivery/license');
+        updatedDocsRequiringReapproval = true;
     }
 
     await partner.save();
     return {
         partner: partner.toObject(),
-        requiresReapproval: false
+        requiresReapproval: updatedDocsRequiringReapproval
     };
 };
 
@@ -1099,27 +1120,43 @@ export const getDeliveryPocketDetails = async (deliveryPartnerId, query = {}) =>
         description: o?.restaurantId?.restaurantName ? `Order earning - ${o.restaurantId.restaurantName}` : 'Order earning'
     }))];
 
-    const bonusTransactions = (bonusTxList || []).map((t) => ({
+    /*
+     * An admin correcting a rider's wallet (Admin > Delivery > wallet edit) is
+     * stored as a bonus row too, labelled "Admin wallet adjustment"
+     * (admin/services/deliveryWalletAdjust.service.js). It is money in the
+     * wallet, not something earned: counted as a bonus, a Rs 1500 top-up to
+     * cover a security deposit made the week read Rs 1613 when Rs 113 was
+     * earned. Adjustments are listed apart and left out of the week's total;
+     * the wallet balance still includes them.
+     */
+    const isAdminAdjustment = (t) => /^admin wallet adjustment/i.test(String(t?.reference || '').trim());
+    const toBonusDto = (t, type) => ({
         _id: t._id,
-        type: 'bonus',
+        type,
         amount: Number(t.amount) || 0,
         status: 'Completed',
         date: t.createdAt,
         createdAt: t.createdAt,
         metadata: { reference: t.reference || '' },
-        description: t.reference ? `Bonus - ${t.reference}` : 'Bonus'
-    }));
+        description: type === 'adjustment'
+            ? (t.reference || 'Admin wallet adjustment')
+            : (t.reference ? `Bonus - ${t.reference}` : 'Bonus'),
+    });
+    const bonusTransactions = (bonusTxList || []).filter((t) => !isAdminAdjustment(t)).map((t) => toBonusDto(t, 'bonus'));
+    const adjustmentTransactions = (bonusTxList || []).filter(isAdminAdjustment).map((t) => toBonusDto(t, 'adjustment'));
 
     const totalEarning = paymentTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
     const totalBonus = bonusTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    const adminAdjustments = adjustmentTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
     return {
         week: { start: start.toISOString(), end: end.toISOString() },
-        summary: { totalEarning, totalBonus, grandTotal: totalEarning + totalBonus },
+        summary: { totalEarning, totalBonus, grandTotal: totalEarning + totalBonus, adminAdjustments },
         trips,
         transactions: {
             payment: paymentTransactions,
-            bonus: bonusTransactions
+            bonus: bonusTransactions,
+            adjustment: adjustmentTransactions
         }
     };
 };
