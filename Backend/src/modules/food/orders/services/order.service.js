@@ -1835,26 +1835,45 @@ export async function deleteOrderAdmin(orderId, adminId) {
   if (!order) throw new NotFoundError("Order not found");
 
   /*
-   * An order that money has moved on cannot be deleted.
+   * What can be deleted.
    *
-   * Deleting removes the order AND its ledger row. On a delivered COD order
-   * that erased the rider's cash debt and earning and the restaurant's share,
-   * because every balance is summed from these documents. The same goes for
-   * one that was paid or refunded: the payment and the refund are real and have
-   * to stay traceable. Such an order is cancelled (and refunded) instead. Only
-   * orders nobody has paid for and that were never delivered can be removed.
+   * A delivered cash order can: everything it moved is summed from the order
+   * and its ledger row (FoodTransaction) -- the rider's earning and the cash he
+   * is holding, the restaurant's share, the commission -- so removing both
+   * takes all of it back out, and no other record points at it. Both are
+   * archived first (deleted_food_orders), so a delete can be undone.
+   *
+   * An order paid online cannot: that is the customer's money, already with
+   * the platform, and it has to be refunded (cancel the order), not erased.
    */
+  const paymentMethod = String(order.payment?.method || "").toLowerCase();
   const paymentStatus = String(order.payment?.status || "").toLowerCase();
   const refundStatus = String(order.payment?.refund?.status || "").toLowerCase();
-  if (
-    order.orderStatus === "delivered" ||
-    ["paid", "authorized", "refunded"].includes(paymentStatus) ||
-    ["pending", "processed"].includes(refundStatus)
-  ) {
+  const paidOnline =
+    !["cash", "cod"].includes(paymentMethod) && ["paid", "authorized"].includes(paymentStatus);
+  if (paidOnline || paymentStatus === "refunded" || ["pending", "processed"].includes(refundStatus)) {
     throw new ValidationError(
-      "This order has been delivered or paid, so it cannot be deleted: its payment and payouts must stay on record. Cancel it instead if it should not stand."
+      "This order was paid online, so it cannot be deleted: the customer's payment has to stay on record. Cancel it to refund the customer instead."
     );
   }
+
+  const transaction = await FoodTransaction.findOne({
+    $or: [{ orderId: order._id }, { orderReadableId: String(order._id.toString()) }],
+  }).lean();
+  await mongoose.connection.db.collection("deleted_food_orders").insertOne({
+    order,
+    transaction: transaction || null,
+    deletedAt: new Date(),
+    deletedByAdminId: adminId ? String(adminId) : null,
+    reversed: {
+      riderEarning: Number(transaction?.amounts?.riderShare ?? order.riderEarning ?? 0) || 0,
+      riderCashHeld: order.orderStatus === "delivered" && ["cash", "cod"].includes(paymentMethod)
+        ? Number(order.pricing?.total || 0)
+        : 0,
+      restaurantShare: Number(transaction?.amounts?.restaurantShare || 0),
+      commission: Number(transaction?.amounts?.restaurantCommission || 0),
+    },
+  });
 
   // Keep support tickets but detach deleted order reference.
   await Promise.all([
