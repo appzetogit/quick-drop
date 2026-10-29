@@ -74,6 +74,12 @@ await check('running again for the same cycle files nothing twice', async () => 
     assert.equal(again.created.length, 0);
     assert.equal(await FoodRestaurantWithdrawal.countDocuments({ restaurantId: withMoney }), 1);
 });
+await check('the night run only acts in the first two days of a cycle; "run now" any day', async () => {
+    const late = await cycle.runAutoWithdrawals({ now: ist(2026, 10, 29) });
+    assert.equal(late.notCycleStart, true);
+    const forced = await cycle.runAutoWithdrawals({ now: ist(2026, 10, 29), force: true });
+    assert.equal(forced.cycleLabel, '11-20 Oct 2026');
+});
 await check('switched off, the night run files nothing (admin "run now" still can)', async () => {
     await cycle.savePayoutCycleSettings({ autoWithdrawal: false });
     const off = await cycle.runAutoWithdrawals({ now: ist(2026, 10, 21) });

@@ -131,6 +131,15 @@ export async function runAutoWithdrawals({ now = new Date(), force = false } = {
         summary.disabled = true;
         return summary;
     }
+    // The night job closes a cycle in its first two days only (a missed night
+    // is caught up the next). Later, nothing: when this went live on 29 Oct,
+    // a run that night would otherwise have filed for 11-20 Oct, long closed.
+    // The admin's "Run for last cycle" (force) is not limited.
+    const current = cycleContaining(now, settings.cycleDays);
+    if (!force && now.getTime() - current.start.getTime() >= 2 * 24 * 60 * 60 * 1000) {
+        summary.notCycleStart = true;
+        return summary;
+    }
 
     const [{ FoodRestaurant }, { FoodRestaurantWithdrawal }, { getRestaurantFinance }, admin, lock] = await Promise.all([
         import('../models/restaurant.model.js'),
