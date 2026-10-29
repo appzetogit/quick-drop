@@ -253,37 +253,7 @@ const Trips = () => {
                                     </div>
                                   </div>
                                 </div>
-                                <div className="space-y-4">
-                                  <h3 className="text-[11px] font-black uppercase tracking-wider text-slate-400">Fare Breakdown</h3>
-                                  <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-2">
-                                    <div className="flex justify-between items-center text-[13px] text-slate-600">
-                                      <span>Base Fare</span>
-                                      <span className="font-bold">₹{(row.raw?.baseFare || 0).toFixed(2)}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-[13px] text-slate-600">
-                                      <span>Wait Time Charge</span>
-                                      <span className="font-bold text-amber-500">₹{(row.raw?.waitingChargeAmount || 0).toFixed(2)}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-[13px] text-slate-600">
-                                      <span>Time Charge</span>
-                                      <span className="font-bold">₹{(row.raw?.timeChargeAmount || 0).toFixed(2)}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-[13px] text-slate-600">
-                                      <span>Distance Charge</span>
-                                      <span className="font-bold">₹{(row.raw?.distanceChargeAmount || 0).toFixed(2)}</span>
-                                    </div>
-                                    {row.raw?.recovered_cancellation_due > 0 && (
-                                      <div className="flex justify-between items-center text-[13px] text-red-500">
-                                        <span>Previous Cancellation Due</span>
-                                        <span className="font-bold">₹{Number(row.raw.recovered_cancellation_due).toFixed(2)}</span>
-                                      </div>
-                                    )}
-                                    <div className="pt-2 mt-2 border-t border-slate-100 flex justify-between items-center text-[15px] font-black text-slate-900">
-                                      <span>Total Payable</span>
-                                      <span>₹{(Number(row.raw?.fare || 0) + Number(row.raw?.recovered_cancellation_due || 0)).toFixed(2)}</span>
-                                    </div>
-                                  </div>
-                                </div>
+                                <TripBill bill={row.raw?.bill} fallbackFare={row.raw?.fare} />
                                 {row.tripStatus === 'CANCELLED' && (
                                   <div className="space-y-4">
                                     <h3 className="text-[11px] font-black uppercase tracking-wider text-rose-500">Cancellation Details</h3>
@@ -360,5 +330,92 @@ const Trips = () => {
     </div>
   );
 };
+
+const rs = (n) => `\u20B9${Number(n || 0).toFixed(2)}`;
+
+function BillLine({ label, value, sign = '', tone = 'text-slate-600', strong = false, note = '' }) {
+  return (
+    <div className={`flex justify-between gap-3 text-[13px] ${tone}`}>
+      <span className="min-w-0">
+        {label}
+        {note && <span className="block text-[11px] text-slate-400">{note}</span>}
+      </span>
+      <span className={`shrink-0 tabular-nums ${strong ? 'font-black' : 'font-bold'}`}>
+        {sign}
+        {rs(value)}
+      </span>
+    </div>
+  );
+}
+
+/*
+ * The complete bill of a ride (backend admin/tripBill.js): what the customer
+ * paid line by line, then who gets what. The old box showed the whole fare as
+ * "Base Fare" and time/distance charges the ride never stores, so always 0.
+ */
+function TripBill({ bill, fallbackFare }) {
+  if (!bill) {
+    return (
+      <div className="space-y-4">
+        <h3 className="text-[11px] font-black uppercase tracking-wider text-slate-400">Billing</h3>
+        <div className="bg-white rounded-lg border border-slate-200 p-4">
+          <BillLine label="Customer pays" value={fallbackFare} strong tone="text-slate-900" />
+        </div>
+      </div>
+    );
+  }
+  const l = bill.lines || {};
+  const split = bill.split || {};
+  const show = (v) => v !== null && v !== undefined && Number(v) !== 0;
+  return (
+    <div className="space-y-4 lg:col-span-2">
+      <h3 className="text-[11px] font-black uppercase tracking-wider text-slate-400">Billing</h3>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-2">
+          <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">Customer bill</p>
+          {bill.chargesRecorded ? (
+            <>
+              <BillLine label="Trip fare" value={l.tripFare} note="Base + distance + time, as set in Set Price" />
+              {show(l.surge) && <BillLine label="Surge" value={l.surge} sign="+ " />}
+              {show(l.waiting) && <BillLine label="Waiting charge" value={l.waiting} sign="+ " />}
+              <BillLine label="Platform fee" value={l.platformFee} sign="+ " />
+              {show(l.platformFeeGst) && <BillLine label="GST on platform fee" value={l.platformFeeGst} sign="+ " />}
+              {show(l.serviceTax) && <BillLine label="Service tax" value={l.serviceTax} sign="+ " />}
+              {show(l.insurance) && <BillLine label="Ride insurance" value={l.insurance} sign="+ " />}
+              {show(l.previousCancellation) && <BillLine label="Previous cancellation fee" value={l.previousCancellation} sign="+ " tone="text-red-500" />}
+              {show(l.rounding) && <BillLine label="Rounding" value={l.rounding} sign={l.rounding > 0 ? '+ ' : ''} />}
+              {show(l.promo) && <BillLine label="Promo discount" value={l.promo} sign="- " tone="text-emerald-600" />}
+            </>
+          ) : (
+            <p className="text-[12px] text-amber-700">
+              Booked before 29 Oct: the split into trip fare, platform fee and tax was not recorded for this ride.
+            </p>
+          )}
+          <div className="pt-2 mt-2 border-t border-slate-100">
+            <BillLine label="Customer pays" value={bill.customerPays} strong tone="text-[15px] text-slate-900" note={bill.paymentMethod} />
+          </div>
+          {show(bill.tip) && <BillLine label="Tip (paid to the driver)" value={bill.tip} sign="+ " tone="text-emerald-600" />}
+        </div>
+
+        <div className="bg-white rounded-lg border border-slate-200 p-4 space-y-2">
+          <p className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+            Who gets what {split.settled ? '' : '(expected)'}
+          </p>
+          <BillLine label="Driver: trip" value={split.driverTripShare} />
+          {show(split.tip) && <BillLine label="Driver: tip" value={split.tip} sign="+ " />}
+          {show(split.incentive) && <BillLine label="Driver: incentive (paid by Quickdrops)" value={split.incentive} sign="+ " />}
+          <BillLine label="Driver total" value={split.driverTotal} strong tone="text-slate-900" />
+          {show(split.commission) && <BillLine label="Commission from driver" value={split.commission} tone="text-slate-500" />}
+          <div className="pt-2 mt-2 border-t border-slate-100 space-y-2">
+            <BillLine label="Quickdrops keeps" value={split.quickdropsKeeps} strong tone="text-slate-900" />
+            {show(split.taxesToGovernment) && (
+              <BillLine label="of which tax and GST owed to the government" value={split.taxesToGovernment} tone="text-slate-500" />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default Trips;

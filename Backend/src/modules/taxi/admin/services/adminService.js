@@ -81,6 +81,7 @@ import {
   normalizeAdminType,
 } from './adminAccessService.js';
 import { TAXI_SPECIFIC_FIRST } from '../../../../core/zones/zonePriority.js';
+import { buildTripBill, paymentLabel } from '../tripBill.js';
 
 const PUBLIC_VEHICLE_CATALOG_CACHE_TTL_MS = 5 * 60 * 1000;
 // Keyed by module id (or "all"), because the catalogue now differs per
@@ -5612,14 +5613,20 @@ const toAdminRideRow = (ride) => {
     tripStatus,
     rideStatus: ride.status,
     liveStatus: ride.liveStatus,
-    paymentOption: 'CASH',
+    // The ride's own payment method; it was 'CASH' for every ride.
+    paymentOption: paymentLabel(ride).toUpperCase(),
+    paymentMethod: ride.paymentMethod || 'cash',
+    // Complete bill and driver / Quickdrops split (admin/tripBill.js).
+    bill: buildTripBill(ride),
     fare: Number(ride.fare || 0),
     baseFare: Number(ride.baseFare || ride.fare || 0),
     waitingChargeAmount: Number(ride.waitingChargeAmount || 0),
     distanceChargeAmount: Number(ride.distanceChargeAmount || 0),
     timeChargeAmount: Number(ride.timeChargeAmount || 0),
-    pickupLabel: formatRidePointLabel(ride.pickupLocation, 'Pickup'),
-    dropLabel: formatRidePointLabel(ride.dropLocation, 'Drop'),
+    // The address the rider chose, as the other ride views already show;
+    // coordinates only when a ride has no address saved.
+    pickupLabel: ride.pickupAddress || formatRidePointLabel(ride.pickupLocation, 'Pickup'),
+    dropLabel: ride.dropAddress || formatRidePointLabel(ride.dropLocation, 'Drop'),
     pickupLocation: ride.pickupLocation,
     dropLocation: ride.dropLocation,
     lastDriverLocation: ride.lastDriverLocation || null,
@@ -6577,6 +6584,7 @@ export const createSetPrice = async (payload, currentAdmin = null) => {
 
     admin_commision_type: Number(payload.admin_commision_type ?? (payload.customer_commission_type === 'percentage' ? 1 : 0)),
     admin_commision: Number(payload.admin_commision ?? payload.customer_commission ?? 0),
+    platform_fee_gst: Number(payload.platform_fee_gst ?? 0),
     admin_commission_type_for_owner: Number(payload.admin_commission_type_for_owner ?? 1),
     admin_commission_for_owner: Number(payload.admin_commission_for_owner ?? 0),
     admin_commission_type_from_driver: Number(payload.admin_commission_type_from_driver ?? 1),
@@ -6648,6 +6656,7 @@ export const updateSetPrice = async (id, payload, currentAdmin = null) => {
     'zone_id', 'vehicle_type', 'service_location_id', 'transport_type',
     'pricing_scope', 'package_type_id', 'package_destination', 'package_availability',
     'payment_type', 'active', 'admin_commision_type', 'admin_commision',
+    'platform_fee_gst',
     'admin_commission_type_for_owner', 'admin_commission_for_owner',
     'admin_commission_type_from_driver', 'admin_commission_from_driver',
     'service_tax', 'airport_surge', 'support_airport_fee', 'support_outstation',
@@ -6699,7 +6708,7 @@ export const updateSetPrice = async (id, payload, currentAdmin = null) => {
         setPrice[field] = value ? toObjectId(value) : null;
       } else if (field === 'payment_type') {
         setPrice[field] = Array.isArray(value) ? value : (typeof value === 'string' ? value.split(',').map(s => s.trim()) : value);
-      } else if (typeof setPrice[field] === 'number' || ['admin_commision', 'service_tax', 'base_price', 'base_distance', 'price_per_distance', 'time_price', 'order_number'].includes(field)) {
+      } else if (typeof setPrice[field] === 'number' || ['admin_commision', 'platform_fee_gst', 'service_tax', 'base_price', 'base_distance', 'price_per_distance', 'time_price', 'order_number'].includes(field)) {
         setPrice[field] = Number(value);
       } else {
         setPrice[field] = value;

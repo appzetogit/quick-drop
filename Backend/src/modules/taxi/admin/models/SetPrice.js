@@ -295,6 +295,13 @@ const setPriceSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    // GST percentage charged on top of the platform fee (admin_commision).
+    // Shown to the rider as "Platform fee [₹10 + 18% GST] = ₹11.80" and added
+    // into the charged fare. 0 = no GST on the platform fee.
+    platform_fee_gst: {
+      type: Number,
+      default: 0,
+    },
     admin_commission_type_from_driver: {
       type: Number,
       default: 1,
