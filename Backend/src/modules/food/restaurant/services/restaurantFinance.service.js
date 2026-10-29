@@ -21,6 +21,9 @@ function restaurantSideOfOrder(tx, order) {
     const b = buildRestaurantPayoutBreakdown(order || {});
     return {
         foodValue: b.taxableFoodValue,
+        // The food as listed on the order (its items' total), what the order
+        // screen shows at its top.
+        listedFood: b.subTotal,
         gstOnFood: b.gstOnFood,
         pricesIncludeGst: b.pricesIncludeGst,
         packaging: b.packagingCharge,
@@ -210,10 +213,11 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
             items,
             foodNames,
             orderTotal: orderTotalExclTax,
-            // What the restaurant gets, under the key the restaurant app shows
-            // as the order's amount; the customer's bill (delivery, platform
-            // fee, all taxes) is not the restaurant's and was shown there.
-            totalAmount: tx.amounts?.restaurantShare || 0,
+            // The restaurant's own bill, under the key the restaurant app shows
+            // as the order's amount: the food total, the same figure the order
+            // screen shows at its top. The customer's whole bill (delivery,
+            // platform fee, all taxes) was shown here and matched nothing.
+            totalAmount: buildRestaurantPayoutBreakdown(order || {}).subTotal,
             customerPaid: tx.amounts?.totalCustomerPaid || 0,
             payout: tx.amounts?.restaurantShare || 0,
             commission: tx.amounts?.restaurantCommission || 0,
@@ -298,16 +302,16 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
     const invoiceSummary = {
         count: currentCycleOrders.length,
         /*
-         * The three boxes the restaurant app shows (Subtotal, Taxes, Gross
-         * amount) are the restaurant's money only: what it earned before GST,
-         * the GST paid to it (when the admin set it to pay its own GST), and
-         * the total it gets -- Subtotal + Taxes = Gross = payout. They held the
-         * customer's bill (delivery, platform fee, all taxes) before, which is
-         * not the restaurant's. The figures below give the full split.
+         * The three boxes the restaurant app shows are the restaurant's own
+         * bill: Subtotal is its food as listed, Taxes the GST on that food,
+         * Gross the two together (for a restaurant whose prices include GST
+         * the tax is already inside, so Gross = Subtotal). They held the
+         * customer's whole bill before (delivery, platform fee, every tax),
+         * which is not the restaurant's. What it is paid is `payout` below.
          */
-        subtotal: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.payout) || 0) - (Number(o.gstPaidToRestaurant) || 0), 0)),
-        taxes: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.gstPaidToRestaurant) || 0), 0)),
-        gross: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.payout) || 0), 0)),
+        subtotal: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.listedFood) || 0), 0)),
+        taxes: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.gstOnFood) || 0), 0)),
+        gross: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.listedFood) || 0) + (o.pricesIncludeGst ? 0 : (Number(o.gstOnFood) || 0)), 0)),
         // The restaurant's side in full: food sales net of GST, the GST on them, commission and
         // payout. foodSales + packaging - commission - restaurant coupons = payout.
         foodSales: round2(currentCycleOrders.reduce((sum, o) => sum + (Number(o.foodValue) || 0), 0)),
@@ -351,7 +355,7 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
                 items,
                 foodNames,
                 orderTotal: orderTotalExclTax,
-                totalAmount: tx.amounts?.restaurantShare || 0,
+                totalAmount: buildRestaurantPayoutBreakdown(order || {}).subTotal,
                 customerPaid: tx.amounts?.totalCustomerPaid || 0,
                 payout: tx.amounts?.restaurantShare || 0,
                 commission: tx.amounts?.restaurantCommission || 0,

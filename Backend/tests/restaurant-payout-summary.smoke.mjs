@@ -57,10 +57,13 @@ await check('the summary is the restaurant\'s side and adds up to the payout', a
     assert.deepEqual([s.foodSales, s.gstOnFood, s.commission, s.payout], [195.24, 9.76, 19.52, 175.72]);
     assert.equal(Math.round((s.foodSales + s.packaging - s.commission) * 100) / 100, s.payout);
 });
-await check('the boxes and rows the restaurant app shows are the restaurant money, not the customer bill', async () => {
-    // Subtotal + Taxes (GST paid to the restaurant, none here) = Gross = payout.
-    assert.deepEqual([s.subtotal, s.taxes, s.gross, s.count], [175.72, 0, 175.72, 2]);
-    assert.deepEqual([rows.INCL.totalAmount, rows.EXCL.totalAmount], [85.72, 90]);
+await check('the boxes and rows the restaurant app shows are the restaurant bill, not the customer bill', async () => {
+    // Subtotal = food as listed (100 + 100); Taxes = GST on it (4.76 inside
+    // the inclusive one, 5 on top of the other); Gross = food + GST added on
+    // top (the inclusive one already contains its GST).
+    assert.deepEqual([s.subtotal, s.taxes, s.gross, s.count], [200, 9.76, 205, 2]);
+    // Each row shows the order's food total, as the order screen does.
+    assert.deepEqual([rows.INCL.totalAmount, rows.EXCL.totalAmount], [100, 100]);
     assert.deepEqual([rows.INCL.customerPaid, rows.EXCL.customerPaid], [130, 135]);
 });
 
