@@ -163,7 +163,28 @@ export async function getRestaurantFinance(restaurantId, query = {}) {
             ? [restaurant.addressLine1, restaurant.addressLine2, restaurant.area].filter(Boolean).join(', ')
             : restaurant?.addressLine1 || '');
 
-    const nowWindow = getFixedCurrentCycleWindow(new Date());
+    /*
+     * "This cycle" is the payout cycle (services/payoutCycle.service.js: 1-10,
+     * 11-20, 21-end with 10 days), the same blocks the automatic withdrawal
+     * closes. It used to run from the 15th of each month, which matched
+     * nothing.
+     */
+    const nowWindow = await (async () => {
+        try {
+            const { loadPayoutCycleSettings, cycleContaining } = await import('./payoutCycle.service.js');
+            const { cycleDays } = await loadPayoutCycleSettings();
+            const c = cycleContaining(new Date(), cycleDays);
+            const yy = String(c.start.getUTCFullYear()).slice(-2);
+            return {
+                start: c.start,
+                end: c.end,
+                startMeta: { ...c.startLabel, year: yy },
+                endMeta: { ...c.endLabel, year: yy },
+            };
+        } catch {
+            return getFixedCurrentCycleWindow(new Date());
+        }
+    })();
 
     // Current cycle: sum ledger payouts in the fixed window.
     const currentTransactions = await FoodTransaction.find({

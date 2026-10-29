@@ -60,7 +60,20 @@ const startMaintenanceWorker = async () => {
         }
     );
 
-    // 4. Manual-assign expiry moved to the API process (server.js), which has the
+    // 4. Restaurant payout cycle: just after midnight India time (18:45 UTC)
+    //    close the cycle that ended and file its automatic withdrawals
+    //    (modules/food/restaurant/services/payoutCycle.service.js). Daily and
+    //    idempotent, so a missed run is caught up the next day.
+    await maintenanceQueue.add(
+        'RESTAURANT_PAYOUT_CYCLE',
+        { type: 'RESTAURANT_PAYOUT_CYCLE' },
+        {
+            repeat: { pattern: '45 18 * * *' },
+            jobId: 'restaurant_payout_cycle_job'
+        }
+    );
+
+    // 5. Manual-assign expiry moved to the API process (server.js), which has the
     //    socket server its hand-back needs. Drop the repeatable this worker used to
     //    register, so Redis stops scheduling it.
     await maintenanceQueue

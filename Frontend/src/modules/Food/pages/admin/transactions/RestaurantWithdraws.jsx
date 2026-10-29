@@ -4,12 +4,127 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
 import { exportTransactionsToExcel, exportTransactionsToPDF } from "@food/components/admin/transactions/transactionsExportUtils"
 import { adminAPI } from "@food/api"
+import apiClient from "@food/api/axios"
 import { toast } from "sonner"
 import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
 
+
+/*
+ * Payout cycle (backend modules/food/restaurant/services/payoutCycle.service.js):
+ * restaurants are paid in cycles of N days (1-10, 11-20, 21-end with 10). The
+ * day after a cycle ends, every restaurant with money to withdraw gets an
+ * automatic withdrawal request here, tagged "Auto"; the admin still pays and
+ * approves or rejects each one.
+ */
+function PayoutCycleBox({ onRan }) {
+  const [data, setData] = useState(null)
+  const [days, setDays] = useState("")
+  const [busy, setBusy] = useState("")
+
+  const load = async () => {
+    try {
+      const res = await apiClient.get("/food/admin/payout-cycle", { contextModule: "admin" })
+      const d = res?.data?.data || null
+      setData(d)
+      setDays(d ? String(d.cycleDays) : "")
+    } catch {
+      setData(null)
+    }
+  }
+  useEffect(() => {
+    load()
+  }, [])
+
+  const save = async (patch, message) => {
+    setBusy("save")
+    try {
+      const res = await apiClient.put("/food/admin/payout-cycle", patch, { contextModule: "admin" })
+      const d = res?.data?.data
+      setData(d)
+      setDays(String(d?.cycleDays ?? days))
+      toast.success(message)
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Could not save the payout cycle")
+    } finally {
+      setBusy("")
+    }
+  }
+
+  const runNow = async () => {
+    setBusy("run")
+    try {
+      const res = await apiClient.post("/food/admin/payout-cycle/run", {}, { contextModule: "admin" })
+      toast.success(res?.data?.message || "Done")
+      onRan?.()
+      load()
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Could not run the payout cycle")
+    } finally {
+      setBusy("")
+    }
+  }
+
+  if (!data) return null
+  const next = data.nextAutoWithdrawalOn
+    ? new Date(data.nextAutoWithdrawalOn).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+    : ""
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 shadow-sm">
+      <div className="min-w-[220px]">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-900">Payout cycle</p>
+        <div className="mt-1.5 flex items-center gap-2">
+          <input
+            type="number"
+            min="1"
+            max="31"
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+            className="h-9 w-16 rounded-lg border border-violet-200 bg-white px-2 text-sm text-slate-800"
+            aria-label="Payout cycle in days"
+          />
+          <span className="text-xs text-violet-900">days</span>
+          <button
+            type="button"
+            disabled={busy || String(data.cycleDays) === String(days)}
+            onClick={() => save({ cycleDays: Number(days) }, "Payout cycle saved")}
+            className="h-9 rounded-lg bg-violet-600 px-3 text-sm font-medium text-white disabled:opacity-40"
+          >
+            Save
+          </button>
+        </div>
+        <p className="mt-1 text-[11px] text-violet-900/80">
+          Now: {data.currentCycle?.label}.{" "}
+          {data.autoWithdrawal ? `Automatic withdrawals on ${next}.` : "Automatic withdrawals are off."}
+        </p>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="flex items-center gap-1.5 text-xs text-violet-900">
+          <input
+            type="checkbox"
+            checked={data.autoWithdrawal}
+            disabled={Boolean(busy)}
+            onChange={(e) =>
+              save({ autoWithdrawal: e.target.checked }, e.target.checked ? "Automatic withdrawals on" : "Automatic withdrawals off")
+            }
+          />
+          Automatic
+        </label>
+        <button
+          type="button"
+          disabled={Boolean(busy)}
+          onClick={runNow}
+          title="File the automatic withdrawals for the last cycle now (a restaurant already filed for it is not filed again)"
+          className="rounded-lg border border-violet-300 bg-white px-2 py-1 text-[11px] font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-40"
+        >
+          {busy === "run" ? "Running…" : "Run for last cycle"}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export default function RestaurantWithdraws() {
   const [activeTab, setActiveTab] = useState("All")
@@ -307,7 +422,8 @@ export default function RestaurantWithdraws() {
               <h1 className="text-2xl font-bold text-slate-900">Restaurant Withdraw Transaction</h1>
             </div>
 
-            <div className="flex items-center justify-start lg:justify-end">
+            <div className="flex flex-wrap items-stretch justify-start gap-3 lg:justify-end">
+              <PayoutCycleBox onRan={() => fetchWithdrawals()} />
               <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 shadow-sm">
                 <div className="rounded-lg bg-white p-2 shadow-sm">
                   <Wallet className="w-4 h-4 text-blue-600" />
@@ -459,6 +575,14 @@ export default function RestaurantWithdraws() {
                         </td>}
                         {visibleColumns.restaurant && <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm font-medium text-slate-700">{withdraw.restaurantName || 'N/A'}</span>
+                          {withdraw.autoCreated && (
+                            <span
+                              className="ml-2 inline-flex rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-700"
+                              title="Filed automatically at the end of the payout cycle"
+                            >
+                              Auto · {withdraw.autoCycleLabel || 'cycle'}
+                            </span>
+                          )}
                         </td>}
                         {visibleColumns.restaurantId && <td className="px-6 py-4 whitespace-nowrap">
                           <span className="text-sm font-medium text-slate-700">{withdraw.restaurantIdString || 'N/A'}</span>

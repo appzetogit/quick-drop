@@ -53,6 +53,7 @@ import commissionOverviewRoutes from '../core/finance/commissionOverview.routes.
 import liveRidersRoutes from '../core/delivery/liveRiders.routes.js';
 import zoneRadiusRoutes from '../core/serviceRadius/zoneRadius.routes.js';
 import gstPayoutRoutes from '../modules/food/restaurant/routes/gstPayout.routes.js';
+import payoutCycleRoutes from '../modules/food/restaurant/routes/payoutCycle.routes.js';
 import myOrdersRoutes from '../core/orders/myOrders.routes.js';
 import { getPublicAppLegal } from '../core/settings/appLegal.js';
 import { adminZoneScope } from '../core/admin/adminZoneScope.js';
@@ -141,6 +142,7 @@ router.use('/v1/platform/commission', commissionOverviewRoutes);
 router.use('/v1/platform/live-riders', liveRidersRoutes);
 router.use('/v1/platform/delivery-radius/zones', zoneRadiusRoutes);
 router.use('/v1/food/admin/gst-payout', gstPayoutRoutes);
+router.use('/v1/food/admin/payout-cycle', payoutCycleRoutes);
 // The customer's orders from every service, in one list (the app's My Orders).
 router.use('/v1/platform/me', authMiddleware, requireRoles('USER'), myOrdersRoutes);
 // Terms and privacy for one app, public (shown before sign-in).

@@ -31,6 +31,17 @@ export const processMaintenanceJob = async (job) => {
         }
     }
 
+    if (type === 'RESTAURANT_PAYOUT_CYCLE') {
+        try {
+            const { runAutoWithdrawals } = await import('../../modules/food/restaurant/services/payoutCycle.service.js');
+            const s = await runAutoWithdrawals();
+            logger.info(`[BullMQ:maintenance] RESTAURANT_PAYOUT_CYCLE ${s.cycleLabel}: ${s.created.length} filed, Rs ${s.total}`);
+        } catch (err) {
+            logger.error(`[BullMQ:maintenance] RESTAURANT_PAYOUT_CYCLE failed: ${err.message}`);
+            throw err;
+        }
+    }
+
     if (type === 'STALE_SWEEP') {
         // Unpaid quick-commerce orders give their stock back, and abandoned taxi
         // rides stop blocking their driver and customer. Each step on its own:
