@@ -35,6 +35,7 @@ import { measureTrip, measureTripRoad } from '../common/tripMeasure.js';
 import { taxiReferralFor } from '../../../core/referral/referralSettings.service.js';
 import { TAXI_SPECIFIC_FIRST } from '../../../core/zones/zonePriority.js';
 import { alertRideEvent } from '../../../core/notifications/adminAlerts.js';
+import { estimateDriverEarning } from '../common/driverEarning.js';
 const clearUserActiveRideIfPresent = async (user) => {
   if (!user?.currentRideId) {
     return;
@@ -1820,6 +1821,8 @@ export const serializeRideRealtime = (ride) => ({
   intercity: ride.intercity || null,
   commissionAmount: ride.commissionAmount,
   driverEarnings: ride.driverEarnings,
+  // Before settlement: what the driver keeps of `fare` (common/driverEarning.js).
+  driverEarning: estimateDriverEarning(ride),
   promo: ride.promo?.code ? ride.promo : null,
   pricingSnapshot: ride.pricingSnapshot
     ? {

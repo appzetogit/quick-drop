@@ -18,6 +18,7 @@ import { SOCKET_EVENTS } from '../socket/events.js';
 import { resolveTransportDispatchConfig, getTransportRideSettings } from './transportSettingsService.js';
 import { sendPushNotificationToEntities } from './pushNotificationService.js';
 import { alertRideEvent } from '../../../core/notifications/adminAlerts.js';
+import { estimateDriverEarning } from '../common/driverEarning.js';
 
 const activeDispatches = new Map();
 let ioInstance = null;
@@ -581,6 +582,8 @@ const emitRideRequestToDrivers = async ({
       vehicleIconUrl: ride.vehicleIconUrl || '',
       fare: ride.fare,
       baseFare: Number(ride.baseFare || ride.fare || 0),
+      // What the driver keeps of `fare` ("You earn"), see common/driverEarning.js.
+      driverEarning: estimateDriverEarning(ride),
       bookingMode: ride.bookingMode || 'normal',
       pricingNegotiationMode: ride.pricingNegotiationMode || 'none',
       biddingStatus: ride.biddingStatus || 'none',
@@ -642,7 +645,9 @@ const emitRideRequestToDrivers = async ({
       tripDistanceKm: ride.estimatedDistanceMeters
         ? String(Math.round((ride.estimatedDistanceMeters / 1000) * 10) / 10)
         : '',
-      earningAmount: String(ride.fare || 0),
+      // The driver's earning, not the customer's total: the card says "earn".
+      earningAmount: String(estimateDriverEarning(ride)),
+      customerFare: String(ride.fare || 0),
       // One explicit label the native card's heading switches on, instead of
       // guessing from a mix of `type`/`serviceType`/order-code-prefix the
       // way the Food/QC path still has to. Porter has no distinct backend
