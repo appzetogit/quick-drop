@@ -90,6 +90,48 @@ const shape = (qr = {}) => ({
     notes: qr.notes || {},
 });
 
+/*
+ * The upi://pay?... string inside the QR.
+ *
+ * Razorpay may send it as image_content; on this account it does not, only
+ * image_url (a hosted PNG card with the QR on it). Without the string the
+ * rider app drew a QR of that https link, which UPI apps do not take as a
+ * payment. So it is read off Razorpay's own image: fetched, decoded to pixels
+ * with sharp and the QR read with jsQR. Same QR, same payee and amount --
+ * nothing is invented here. Kept per QR id; '' if it cannot be read, in which
+ * case the caller falls back to the link as before.
+ */
+const upiStringCache = new Map();
+export async function readUpiStringFromImage(qrId, imageUrl) {
+    if (!imageUrl) return '';
+    if (qrId && upiStringCache.has(qrId)) return upiStringCache.get(qrId);
+    try {
+        const res = await fetch(imageUrl, { redirect: 'follow', signal: AbortSignal.timeout(8000) });
+        if (!res.ok) return '';
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const [{ default: sharp }, { default: jsQR }] = await Promise.all([import('sharp'), import('jsqr')]);
+        const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+        const found = jsQR(new Uint8ClampedArray(data.buffer, data.byteOffset, data.length), info.width, info.height);
+        const text = String(found?.data || '');
+        const upi = /^upi:\/\//i.test(text) ? text : '';
+        if (qrId && upi) {
+            if (upiStringCache.size > 500) upiStringCache.clear();
+            upiStringCache.set(qrId, upi);
+        }
+        return upi;
+    } catch {
+        return '';
+    }
+}
+
+const withUpiString = async (qr) => {
+    const shaped = shape(qr);
+    if (!shaped.upiString && shaped.imageUrl && shaped.status !== 'closed') {
+        shaped.upiString = await readUpiStringFromImage(shaped.id, shaped.imageUrl);
+    }
+    return shaped;
+};
+
 /**
  * Create a single-use QR for exactly `amountPaise`. `notes` must say what it
  * is for ({ kind, refId }) -- the webhook routes the payment by them.
@@ -105,11 +147,11 @@ export async function createUpiQr({ amountPaise, name, description, notes = {}, 
         close_by: Math.floor(Date.now() / 1000) + Math.max(150, lifetimeSeconds),
         notes: Object.fromEntries(Object.entries(notes).map(([k, v]) => [k, String(v ?? '')])),
     });
-    return shape(qr);
+    return withUpiString(qr);
 }
 
 export async function fetchUpiQr(qrId) {
-    return shape(await request('GET', `/payments/qr_codes/${encodeURIComponent(qrId)}`));
+    return withUpiString(await request('GET', `/payments/qr_codes/${encodeURIComponent(qrId)}`));
 }
 
 /** The captured payments made to a QR (normally one). */
