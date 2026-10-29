@@ -306,8 +306,19 @@ function IntegrationCard({ kind, title, description, initial, fields, inUse, tes
       setBusy("")
     }
   }
-  const save = async () => {
-    if (saveNote && !window.confirm(saveNote)) return
+  // Confirmed on the page, not with window.confirm: Chrome can be set to
+  // block this site's dialogs, and then confirm() returns false at once and
+  // the save silently never happened (a Razorpay webhook secret, 29 Oct).
+  const save = async ({ confirmed = false } = {}) => {
+    if (saveNote && !confirmed) {
+      toast.warning(saveNote, {
+        id: `save-${kind}`,
+        duration: 20000,
+        action: { label: "Save", onClick: () => save({ confirmed: true }) },
+        cancel: { label: "Cancel", onClick: () => {} },
+      })
+      return
+    }
     setBusy("save")
     try {
       await onSaved(await platformSettingsAPI.updateProfile({ integrations: { [kind]: values } }), `${title} saved. It is used from now on.`)
