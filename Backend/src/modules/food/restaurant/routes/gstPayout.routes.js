@@ -4,7 +4,7 @@ import { requireRoles } from '../../../../core/roles/role.middleware.js';
 import { requireSuperAdmin } from '../../../../core/admin/requireSuperAdmin.js';
 import { sendResponse, sendError } from '../../../../utils/response.js';
 import { loadAdminCached } from '../../admin/middlewares/foodAdmin.middleware.js';
-import { listRestaurantGst, setRestaurantGstPayout, gstTotals, GstPayoutError } from '../services/gstPayout.service.js';
+import { listRestaurantGst, setRestaurantGstPayout, setRestaurantGstin, gstTotals, GstPayoutError } from '../services/gstPayout.service.js';
 
 /**
  * Master > Restaurant GST: /v1/food/admin/gst-payout. Decides money, so super
@@ -37,6 +37,16 @@ router.put('/restaurants/:id', async (req, res) => {
         return sendResponse(res, 200, 'Saved', data);
     } catch (err) {
         return fail(res, err, 'Could not save. Please try again.');
+    }
+});
+
+router.put('/restaurants/:id/gstin', async (req, res) => {
+    try {
+        const admin = await loadAdminCached(req.user?.userId || req.user?.id).catch(() => null);
+        const actor = admin?.name || admin?.email || 'admin';
+        return sendResponse(res, 200, 'Saved', await setRestaurantGstin(req.params.id, req.body?.gstin, { actor }));
+    } catch (err) {
+        return fail(res, err, 'Could not save the GSTIN. Please try again.');
     }
 });
 

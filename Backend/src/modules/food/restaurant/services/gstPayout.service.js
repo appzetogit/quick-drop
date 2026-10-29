@@ -76,6 +76,34 @@ export async function setRestaurantGstPayout(restaurantId, value, { actor = 'adm
     return describe(updated);
 }
 
+/** 15 characters: state code, PAN, entity number, Z, check character. */
+export const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+/**
+ * Save a restaurant's GST number from Master > Restaurant GST, so "Restaurant
+ * pays" can be chosen for it. Also marks it GST registered. Blank removes it,
+ * and then the restaurant cannot stay on "Restaurant pays".
+ */
+export async function setRestaurantGstin(restaurantId, value, { actor = 'admin' } = {}) {
+    if (!mongoose.Types.ObjectId.isValid(String(restaurantId || ''))) throw new GstPayoutError('Invalid restaurant');
+    const gstin = String(value || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (gstin && !GSTIN_PATTERN.test(gstin)) {
+        throw new GstPayoutError('That is not a valid GSTIN. It has 15 characters, like 02ABCDE1234F1Z5.');
+    }
+    const restaurant = await FoodRestaurant.findById(restaurantId).select(SELECT).lean();
+    if (!restaurant) throw new GstPayoutError('Restaurant not found');
+    const set = gstin
+        ? { gstNumber: gstin, gstRegistered: true }
+        : { gstNumber: '', gstRegistered: false };
+    // No GSTIN, no filing: a restaurant set to pay its own GST goes back to
+    // Quickdrops paying it.
+    if (!gstin && restaurant.gstPayout === 'restaurant') {
+        Object.assign(set, { gstPayout: 'platform', gstPayoutUpdatedAt: new Date(), gstPayoutUpdatedBy: String(actor || 'admin').slice(0, 120) });
+    }
+    const updated = await FoodRestaurant.findByIdAndUpdate(restaurantId, { $set: set }, { new: true }).select(SELECT).lean();
+    return describe(updated);
+}
+
 /**
  * GST on food for delivered orders placed in [from, to]: total, owed by the
  * platform, and paid to restaurants -- overall and per restaurant.

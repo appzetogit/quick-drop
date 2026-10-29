@@ -70,6 +70,18 @@ await check('the admin cannot choose "restaurant pays" for a restaurant with no 
     assert.deepEqual([ok.gstPayout, ok.updatedBy], ['restaurant', 'Platform Admin']);
     await gst.setRestaurantGstPayout(String(unreg.restaurantId), 'platform');
 });
+await check('a GSTIN can be added from the page, which then allows "restaurant pays"', async () => {
+    const r = await restaurant(undefined, { gstNumber: '', gstRegistered: false });
+    await assert.rejects(gst.setRestaurantGstin(String(r), 'NOTAGSTIN'), /not a valid GSTIN/);
+    const saved = await gst.setRestaurantGstin(String(r), ' 03abcde1234f1z5 ');
+    assert.deepEqual([saved.gstNumber, saved.gstRegistered], ['03ABCDE1234F1Z5', true]);
+    assert.equal((await gst.setRestaurantGstPayout(String(r), 'restaurant')).gstPayout, 'restaurant');
+});
+await check('removing the GSTIN puts a "restaurant pays" restaurant back on Quickdrops pays', async () => {
+    const r = await restaurant('restaurant');
+    const cleared = await gst.setRestaurantGstin(String(r), '');
+    assert.deepEqual([cleared.gstNumber, cleared.gstPayout], ['', 'platform']);
+});
 await check('the filing totals split GST into owed by the platform and paid to restaurants', async () => {
     const { FoodOrder } = await import('../src/modules/food/orders/models/order.model.js');
     await FoodOrder.collection.insertMany([

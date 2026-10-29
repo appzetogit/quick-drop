@@ -45,7 +45,7 @@ function Choice({ value, decided, hasGstin, busy, onChoose }) {
             role="radio"
             aria-checked={on}
             disabled={blocked || busy}
-            title={blocked ? "No GSTIN saved for this restaurant" : undefined}
+            title={blocked ? "Add the restaurant's GSTIN first (GSTIN column)" : undefined}
             onClick={() => (!on || !decided) && onChoose(o.key)}
             className={`px-3 py-1.5 text-xs font-medium disabled:cursor-not-allowed ${
               on ? "bg-neutral-900 text-white" : "bg-white text-neutral-700 hover:bg-neutral-100"
@@ -56,6 +56,93 @@ function Choice({ value, decided, hasGstin, busy, onChoose }) {
         )
       })}
     </div>
+  )
+}
+
+/*
+ * The restaurant's GST number, editable here: "Restaurant pays" needs one,
+ * and most restaurants had none saved, so the choice could not be made on this
+ * page at all. Saving a GSTIN also marks the restaurant GST registered.
+ */
+const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/
+
+function GstinCell({ row, onSaved }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(row.gstNumber || "")
+  const [saving, setSaving] = useState(false)
+  const clean = value.trim().toUpperCase().replace(/\s+/g, "")
+  const valid = clean === "" || GSTIN_PATTERN.test(clean)
+
+  const save = async () => {
+    if (!valid) return
+    setSaving(true)
+    try {
+      const res = await apiClient.put(
+        `/food/admin/gst-payout/restaurants/${row.restaurantId}/gstin`,
+        { gstin: clean },
+        { contextModule: "admin" },
+      )
+      onSaved(res?.data?.data)
+      setEditing(false)
+      toast.success(clean ? `GSTIN saved for ${row.restaurantName}` : `GSTIN removed for ${row.restaurantName}`)
+    } catch (err) {
+      toast.error(apiError(err, "Could not save the GSTIN"))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-2">
+        {row.gstNumber ? (
+          <span className="font-mono text-xs text-neutral-700">{row.gstNumber}</span>
+        ) : (
+          <span className="text-xs text-neutral-400">none saved</span>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            setValue(row.gstNumber || "")
+            setEditing(true)
+          }}
+          className="rounded border border-neutral-300 px-2 py-0.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-100"
+        >
+          {row.gstNumber ? "Edit" : "Add GSTIN"}
+        </button>
+      </div>
+    )
+  }
+  return (
+    <form
+      className="flex flex-col gap-1"
+      onSubmit={(e) => {
+        e.preventDefault()
+        save()
+      }}
+    >
+      <div className="flex items-center gap-1.5">
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="02ABCDE1234F1Z5"
+          maxLength={20}
+          className={`w-40 rounded-lg border px-2 py-1 font-mono text-xs uppercase ${valid ? "border-neutral-300" : "border-red-400"}`}
+        />
+        <button
+          type="submit"
+          disabled={!valid || saving}
+          className="rounded-lg bg-neutral-900 px-2 py-1 text-[11px] font-medium text-white disabled:opacity-40"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button type="button" onClick={() => setEditing(false)} className="px-1 text-[11px] text-neutral-500">
+          Cancel
+        </button>
+      </div>
+      {!valid && <span className="text-[11px] text-red-600">15 characters, like 02ABCDE1234F1Z5</span>}
+    </form>
   )
 }
 
@@ -263,8 +350,13 @@ export default function MasterRestaurantGst() {
                         <div className="font-medium text-neutral-900">{r.restaurantName || "Unnamed"}</div>
                         {r.status && <div className="text-xs capitalize text-neutral-500">{r.status}</div>}
                       </td>
-                      <td className="px-4 py-2.5 font-mono text-xs text-neutral-700">
-                        {r.gstNumber || <span className="font-sans text-neutral-400">none saved</span>}
+                      <td className="px-4 py-2.5">
+                        <GstinCell
+                          row={r}
+                          onSaved={(saved) =>
+                            setRows((list) => list.map((x) => (x.restaurantId === r.restaurantId ? { ...x, ...saved } : x)))
+                          }
+                        />
                       </td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2">
