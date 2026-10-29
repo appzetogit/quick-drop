@@ -39,7 +39,18 @@ const computeCommissionAmount = ({ fare, type, value }) => {
   return Math.min(safeValue, safeFare);
 };
 
+/*
+ * Drivers pay no commission (business decision, 29 Oct 2026). The platform
+ * earns from the customer's platform fee, which is taken out of the fare
+ * before the driver's share (see platformCharges in settleCompletedRideWallet),
+ * so the driver is settled on the whole trip fare. The "Admin commission from
+ * driver" on a price row is ignored. Set DRIVER_COMMISSION_ENABLED=true to
+ * bring the per-row commission back.
+ */
+const NO_DRIVER_COMMISSION = { source: 'no_driver_commission', type: 1, value: 0 };
+
 const resolveCommissionConfigForRide = async (ride, session) => {
+  if (process.env.DRIVER_COMMISSION_ENABLED !== 'true') return NO_DRIVER_COMMISSION;
   if (ride?.pricingSnapshot?.admin_commission_from_driver !== undefined) {
     return {
       source: ride.pricingSnapshot?.setPriceId ? 'ride_snapshot' : 'ride_snapshot_fallback',
@@ -470,7 +481,19 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
       Math.max(0, fare - recoveredDue),
       Math.max(0, normalizeAmount(ride.insurance_fee || 0, 'insuranceFee')),
     );
-    const grossFare = Math.max(0, normalizeAmount(fare - recoveredDue - insuranceFee + promoDiscountAmount, 'grossFare'));
+    /*
+     * Tax, the customer platform fee and GST on it are in the fare the rider
+     * pays but are the platform's (the tax and GST owed on to the government).
+     * They used to stay in the driver's share: on a Palampur bike ride of 37,
+     * with 0% commission from the driver, the driver was credited all 37,
+     * platform fee and tax included, instead of the 30 trip fare. Fixed at
+     * booking; null on older rides, which keep the old settlement.
+     */
+    const platformCharges = Math.min(
+      Math.max(0, fare - recoveredDue - insuranceFee),
+      Math.max(0, normalizeAmount(ride?.pricingSnapshot?.platform_charges_amount || 0, 'platformCharges')),
+    );
+    const grossFare = Math.max(0, normalizeAmount(fare - recoveredDue - insuranceFee - platformCharges + promoDiscountAmount, 'grossFare'));
 
     const surgeAmount = Math.max(0, normalizeAmount(ride?.pricingSnapshot?.ride_surge_amount || 0, 'surgeAmount'));
     const commissionableFare = Math.max(0, normalizeAmount(grossFare - surgeAmount, 'commissionableFare'));
@@ -549,6 +572,8 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
     // Recorded so a payout can be explained: what the ride earned and what the
     // platform added on top of it.
     ride.driverIncentiveAmount = incentiveAmount;
+    // What the platform kept of the fare besides commission, for the payout explanation.
+    ride.platformChargesAmount = platformCharges;
     if (earningsSettledNow) {
       ride.driverEarningsCreditedAt = new Date();
     }

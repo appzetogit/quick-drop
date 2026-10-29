@@ -1413,9 +1413,21 @@ export const createRideRecord = async ({
   // to add straight away. fareIncreaseWaitMinutes still spaces out the
   // increases after the first one, which is what the admin set it for.
   const nextFareIncreaseAt = null;
+  /*
+   * Everything in the fare that is not the driver's trip fare: tax, platform
+   * fee, GST on the fee and the rounding (fareBeforeSurge less the subtotal).
+   * Only for a server-priced fare; a parcel priced by the app has no split.
+   */
+  const platformCharges = fareQuote
+    ? Math.max(0, Math.round((Number(fareQuote.fareBeforeSurge) - Number(fareQuote.subtotal)) * 100) / 100)
+    : null;
   const pricingSnapshot = {
     setPriceId: pricingRule?._id || null,
     starting_fare: effectiveStartingFare,
+    platform_charges_amount: platformCharges,
+    service_tax_amount: Number(fareQuote?.serviceTax || 0),
+    platform_fee_amount: Number(fareQuote?.platformFee || 0),
+    platform_fee_gst_amount: Number(fareQuote?.platformFeeGst || 0),
     admin_commission_type_from_driver: Number(pricingRule?.admin_commission_type_from_driver ?? 1),
     admin_commission_from_driver: Math.max(0, Number(pricingRule?.admin_commission_from_driver ?? 0)),
     waiting_charge: Math.max(0, Number(pricingRule?.waiting_charge ?? 0)),

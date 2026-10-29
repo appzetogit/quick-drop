@@ -560,6 +560,17 @@ const rideSchema = new mongoose.Schema(
         type: Number,
         default: 0,
       },
+      /*
+       * The part of the fare that is not the driver's, fixed when the ride is
+       * booked: service tax, the customer platform fee, GST on that fee, and
+       * the rounding to a whole rupee. Settlement takes it out of the fare
+       * before the driver's share (driver/services/walletService.js). Null on
+       * rides booked before it was recorded, which settle as they always did.
+       */
+      platform_charges_amount: { type: Number, default: null },
+      service_tax_amount: { type: Number, default: 0 },
+      platform_fee_amount: { type: Number, default: 0 },
+      platform_fee_gst_amount: { type: Number, default: 0 },
       waiting_charge: {
         type: Number,
         default: 0,
@@ -748,6 +759,11 @@ const rideSchema = new mongoose.Schema(
      * the model does not name is dropped on save, and the incentive would be
      * paid with no record of why the earnings were higher.
      */
+    // Tax, platform fee and GST on it that the platform kept of the fare.
+    platformChargesAmount: {
+      type: Number,
+      default: 0,
+    },
     driverIncentiveAmount: {
       type: Number,
       default: 0,

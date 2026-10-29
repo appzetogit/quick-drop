@@ -381,8 +381,11 @@ export const completePassengerRide = async (rideId) => {
     const baseFare = Number(ride.fare || 0);
     const settings = await getInstantPoolingSettings();
     
-    // Platform commission calculations
-    const commissionPercent = Number(settings.admin_commission_from_driver || 15);
+    // Drivers pay no commission (see walletService NO_DRIVER_COMMISSION); the
+    // pooling setting applies only if DRIVER_COMMISSION_ENABLED=true.
+    const commissionPercent = process.env.DRIVER_COMMISSION_ENABLED === 'true'
+      ? Number(settings.admin_commission_from_driver || 15)
+      : 0;
     const adminCommission = Math.round((baseFare * commissionPercent) / 100);
     const driverEarnings = Math.max(0, baseFare - adminCommission);
 

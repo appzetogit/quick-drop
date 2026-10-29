@@ -58,7 +58,11 @@ export function computeRideFare({
 
     const serviceTax = (subtotal * serviceTaxPercent) / 100;
     const platformFee = resolvePlatformFee(pricingRule, subtotal);
-    const fareBeforeSurge = Math.max(0, Math.round(subtotal + serviceTax + platformFee));
+    // GST charged on top of the platform fee (untaxed itself). The rider sees it
+    // folded into the platform-fee line as "Platform fee [₹10 + 18% GST]".
+    const platformFeeGstPercent = Math.max(0, Number(pricingRule.platform_fee_gst || 0));
+    const platformFeeGst = (platformFee * platformFeeGstPercent) / 100;
+    const fareBeforeSurge = Math.max(0, Math.round(subtotal + serviceTax + platformFee + platformFeeGst));
     const surge = Math.round(Math.max(0, Number(surgeAmount) || 0));
 
     const lines = {
@@ -68,6 +72,7 @@ export function computeRideFare({
         timeFare: money(timeFare),
         serviceTax: money(serviceTax),
         platformFee: money(platformFee),
+        platformFeeGst: money(platformFeeGst),
     };
     // Taken against the printed lines rather than the unrounded sum, so the
     // rows a rider sees add up to the total to the paisa.
@@ -77,6 +82,7 @@ export function computeRideFare({
         ...lines,
         subtotal: money(subtotal),
         serviceTaxPercent,
+        platformFeeGstPercent,
         roundOff: money(fareBeforeSurge - printed),
         fareBeforeSurge,
         surge,
