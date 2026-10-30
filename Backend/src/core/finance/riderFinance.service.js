@@ -146,12 +146,27 @@ const resolveHubIdentity = async (anyId) => {
         }
     }
 
+    if (startedFrom.foodPartnerId && driver._id && String(driver.legacyDeliveryPartnerId || '') !== String(startedFrom.foodPartnerId)) {
+        Driver.updateOne({ _id: driver._id }, { $set: { legacyDeliveryPartnerId: startedFrom.foodPartnerId } }).catch(() => {});
+    }
+    if (startedFrom.qcPartnerId && driver._id && String(driver.legacyQcPartnerId || '') !== String(startedFrom.qcPartnerId)) {
+        Driver.updateOne({ _id: driver._id }, { $set: { legacyQcPartnerId: startedFrom.qcPartnerId } }).catch(() => {});
+    }
+
+    const partnerIds = [
+        startedFrom.foodPartnerId,
+        driver.legacyDeliveryPartnerId,
+        startedFrom.qcPartnerId,
+        driver.legacyQcPartnerId,
+    ].filter(Boolean);
+
     return {
         driverId: driver._id,
         // The partner id the caller started from is theirs even when the hub does
         // not name it (a hub carrying only the other vertical's id).
-        foodPartnerId: driver.legacyDeliveryPartnerId || startedFrom.foodPartnerId || null,
-        qcPartnerId: driver.legacyQcPartnerId || startedFrom.qcPartnerId || null,
+        foodPartnerId: startedFrom.foodPartnerId || driver.legacyDeliveryPartnerId || null,
+        qcPartnerId: startedFrom.qcPartnerId || driver.legacyQcPartnerId || null,
+        partnerIds,
         linked: true,
     };
 };
@@ -494,7 +509,7 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
         resolveSharedCashLimit({
             partnerId: identity.driverId || identity.foodPartnerId || identity.qcPartnerId || undefined,
         }),
-        resolveDeliveryMoney([identity.foodPartnerId, identity.qcPartnerId]),
+        resolveDeliveryMoney([identity.foodPartnerId, identity.qcPartnerId, ...(identity.partnerIds || [])]),
     ]);
 
     const taxi = splitSignedTaxiBalance(wallet?.balance || 0);
