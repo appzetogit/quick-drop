@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { registerDeliveryPartner, updateDeliveryPartnerProfile, updateDeliveryPartnerBankDetails, listSupportTicketsByPartner, createSupportTicket, getSupportTicketByIdAndPartner, updateDeliveryPartnerDetails, updateDeliveryPartnerProfilePhotoBase64, updateDeliveryAvailability, getDeliveryPartnerWallet, getDeliveryPartnerEarnings, getDeliveryPartnerTripHistory, getDeliveryPocketDetails, getActiveEarningAddonsForPartner, deleteDeliveryPartnerAccount } from '../services/delivery.service.js';
 import { createDeliveryCashDepositOrder, getDeliveryPartnerWalletEnhanced, requestDeliveryWithdrawal, verifyDeliveryCashDepositPayment } from '../services/deliveryFinance.service.js';
+import { getRiderFinance } from '../../../../core/finance/riderFinance.service.js';
 import { getDeliveryCashLimitSettings, getDeliveryEmergencyHelp } from '../../admin/services/admin.service.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
 import { validateDeliveryRegisterDto, validateDeliveryProfileUpdateDto, validateDeliveryBankDetailsDto } from '../validators/delivery.validator.js';
@@ -313,7 +314,27 @@ export const getEmergencyHelpController = async (req, res, next) => {
 
 export const getCashLimitController = async (req, res, next) => {
     try {
-        const data = await getDeliveryCashLimitSettings();
+        const deliveryPartnerId = req.user?.userId;
+        const [settings, finance] = await Promise.all([
+            getDeliveryCashLimitSettings(),
+            deliveryPartnerId ? getRiderFinance(deliveryPartnerId).catch(() => null) : null
+        ]);
+
+        const totalCashLimit = Number(finance?.cashLimit ?? settings?.deliveryCashLimit) || 0;
+        const cashInHand = Number(finance?.cashInHand) || 0;
+        const availableCashLimit = finance?.availableCashLimit !== undefined
+            ? Number(finance.availableCashLimit)
+            : Math.max(0, totalCashLimit - cashInHand);
+
+        const data = {
+            ...settings,
+            totalCashLimit,
+            cashLimit: totalCashLimit,
+            cashInHand,
+            availableCashLimit,
+            remainingCashLimit: availableCashLimit,
+            remainingDeliveryCashLimit: availableCashLimit,
+        };
         return sendResponse(res, 200, 'Cash limit fetched successfully', data);
     } catch (error) {
         next(error);
