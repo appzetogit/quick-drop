@@ -212,6 +212,7 @@ export const PATH_RESOURCE_RULES = {
   '/admin/food/transaction-report': 'reports',
   '/admin/food/order-report/regular': 'reports',
   '/admin/food/tax-report': 'reports',
+  '/admin/food/food-sale-report': 'reports',
   '/admin/food/restaurant-report': 'reports',
   '/admin/food/customer-report/feedback-experience': 'reports',
   

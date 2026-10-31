@@ -75,6 +75,7 @@ router.get('/reports/restaurants', adminController.getRestaurantReport);
 router.get('/reports/transactions', adminController.getTransactionReport);
 router.get('/reports/tax', adminController.getTaxReport);
 router.get('/reports/tax/:id', adminController.getTaxReportDetail);
+router.get('/reports/food-sales', adminController.getFoodSaleReport);
 router.get('/restaurants/pending', adminController.getPendingRestaurants);
 router.get('/restaurants/reviews', adminController.getRestaurantReviews);
 // Before /restaurants/:id, which would otherwise take 'document-reviews' as an id.

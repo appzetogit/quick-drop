@@ -1124,6 +1124,170 @@ export async function getTaxReportDetail(restaurantId, query = {}) {
     };
 }
 
+/**
+ * Food Sale Report: delivered orders, one row per order, with month-wise and
+ * overall totals. Dates are read in IST so "1 October" means the Indian day.
+ *
+ * Filters (all optional): restaurantId, fromDate/toDate (YYYY-MM-DD),
+ * month (1-12) with year, or year alone. A month/year and a date range narrow
+ * each other. Each order is one FoodOrder document, so it is counted once.
+ */
+export async function getFoodSaleReport(query = {}) {
+    const IST = '+05:30';
+    const istDay = (ymd, endOfDay) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ''))) return null;
+        const d = new Date(`${ymd}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}${IST}`);
+        return Number.isNaN(d.getTime()) ? null : d;
+    };
+    const pad = (n) => String(n).padStart(2, '0');
+
+    let from = istDay(query.fromDate, false);
+    let to = istDay(query.toDate, true);
+
+    const year = parseInt(query.year, 10);
+    const month = parseInt(query.month, 10);
+    if (year >= 2000 && year <= 2100) {
+        const m = month >= 1 && month <= 12 ? month : null;
+        const lastDay = m ? new Date(Date.UTC(year, m, 0)).getUTCDate() : 31;
+        const periodFrom = istDay(`${year}-${pad(m || 1)}-01`, false);
+        const periodTo = istDay(`${year}-${pad(m || 12)}-${pad(lastDay)}`, true);
+        from = from && from > periodFrom ? from : periodFrom;
+        to = to && to < periodTo ? to : periodTo;
+    }
+    if (from && to && from > to) {
+        throw new ValidationError('From Date must be on or before To Date');
+    }
+
+    const match = { orderStatus: 'delivered' };
+    if (from || to) {
+        match.createdAt = {};
+        if (from) match.createdAt.$gte = from;
+        if (to) match.createdAt.$lte = to;
+    }
+    const restaurantId = String(query.restaurantId || '').trim();
+    if (restaurantId && restaurantId !== 'all') {
+        if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+            throw new ValidationError('Invalid restaurant ID');
+        }
+        match.restaurantId = new mongoose.Types.ObjectId(restaurantId);
+    }
+    const zoneMatch = zoneMatchFrom(query);
+    if (zoneMatch) match.zoneId = zoneMatch;
+
+    const num = (expr) => ({ $ifNull: [expr, 0] });
+    const MONEY_FIELDS = [
+        'totalBillAmount', 'itemTotal', 'itemGst', 'platformFee',
+        'platformFeeGst', 'deliveryCharges', 'discount', 'adminCommission'
+    ];
+
+    const orders = await FoodOrder.aggregate([
+        { $match: match },
+        { $sort: { createdAt: 1 } },
+        {
+            $lookup: {
+                from: 'food_transactions',
+                localField: '_id',
+                foreignField: 'orderId',
+                as: 'tx'
+            }
+        },
+        {
+            $project: {
+                _id: 1,
+                createdAt: 1,
+                restaurantId: 1,
+                orderId: { $ifNull: ['$order_id', '$orderId'] },
+                // The bill as charged; the food line is net of GST so item
+                // total + item GST + fees adds up without counting GST twice.
+                totalBillAmount: num('$pricing.total'),
+                itemTotal: { $ifNull: ['$pricing.netItemAmount', num('$pricing.subtotal')] },
+                itemGst: num('$pricing.tax'),
+                platformFee: num('$pricing.platformFee'),
+                platformFeeGst: num('$pricing.platformFeeGst'),
+                deliveryCharges: num('$pricing.deliveryFee'),
+                discount: num('$pricing.discount'),
+                adminCommission: {
+                    $ifNull: [
+                        { $arrayElemAt: ['$tx.amounts.restaurantCommission', 0] },
+                        num('$pricing.restaurantCommission')
+                    ]
+                },
+                istDate: { $dateToString: { format: '%d-%m-%Y', date: '$createdAt', timezone: IST } },
+                istMonth: { $month: { date: '$createdAt', timezone: IST } },
+                istYear: { $year: { date: '$createdAt', timezone: IST } }
+            }
+        }
+    ]);
+
+    const restaurantIds = [...new Set(orders.map((o) => String(o.restaurantId)))];
+    const restaurantDocs = restaurantIds.length
+        ? await FoodRestaurant.find({ _id: { $in: restaurantIds } }).select('restaurantName').lean()
+        : [];
+    const restaurantNames = new Map(restaurantDocs.map((r) => [String(r._id), r.restaurantName || 'N/A']));
+
+    const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+    const emptyTotals = () => Object.fromEntries(MONEY_FIELDS.map((f) => [f, 0]));
+    const addTo = (totals, row) => {
+        for (const f of MONEY_FIELDS) totals[f] += Number(row[f]) || 0;
+    };
+    const roundTotals = (totals) => {
+        for (const f of MONEY_FIELDS) totals[f] = round2(totals[f]);
+        return totals;
+    };
+
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+        'August', 'September', 'October', 'November', 'December'];
+    const summary = { totalOrders: 0, ...emptyTotals() };
+    const monthly = new Map();
+    const monthlyCombined = new Map();
+
+    const rows = orders.map((o, i) => {
+        const restaurantName = restaurantNames.get(String(o.restaurantId)) || 'N/A';
+        const row = {
+            sNo: i + 1,
+            id: String(o._id),
+            date: o.istDate,
+            orderId: o.orderId || String(o._id),
+            restaurantId: String(o.restaurantId),
+            restaurantName
+        };
+        for (const f of MONEY_FIELDS) row[f] = round2(o[f]);
+
+        summary.totalOrders += 1;
+        addTo(summary, row);
+
+        const periodKey = `${o.istYear}-${pad(o.istMonth)}`;
+        const base = { monthNumber: o.istMonth, month: MONTHS[o.istMonth - 1], year: o.istYear };
+        const key = `${periodKey}|${row.restaurantId}`;
+        if (!monthly.has(key)) {
+            monthly.set(key, { ...base, restaurantId: row.restaurantId, restaurantName, totalOrders: 0, ...emptyTotals() });
+        }
+        if (!monthlyCombined.has(periodKey)) {
+            monthlyCombined.set(periodKey, { ...base, restaurantName: 'All Restaurants', totalOrders: 0, ...emptyTotals() });
+        }
+        for (const bucket of [monthly.get(key), monthlyCombined.get(periodKey)]) {
+            bucket.totalOrders += 1;
+            addTo(bucket, row);
+        }
+        return row;
+    });
+
+    const byPeriod = (a, b) => (a.year - b.year) || (a.monthNumber - b.monthNumber)
+        || String(a.restaurantName).localeCompare(String(b.restaurantName));
+
+    return {
+        filters: {
+            restaurantId: match.restaurantId ? String(match.restaurantId) : 'all',
+            fromDate: from ? from.toISOString() : null,
+            toDate: to ? to.toISOString() : null
+        },
+        rows,
+        monthWise: [...monthly.values()].map(roundTotals).sort(byPeriod),
+        monthWiseCombined: [...monthlyCombined.values()].map(roundTotals).sort(byPeriod),
+        summary: roundTotals(summary)
+    };
+}
+
 // ----- Customers / Users (admin) -----
 export async function getCustomers(query = {}) {
     const limit = Math.min(Math.max(parseInt(query.limit, 10) || 50, 1), 1000);

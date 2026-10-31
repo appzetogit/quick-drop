@@ -209,6 +209,19 @@ export async function getTaxReport(req, res, next) {
     }
 }
 
+export async function getFoodSaleReport(req, res, next) {
+    try {
+        const data = await adminService.getFoodSaleReport(req.query || {});
+        res.status(200).json({
+            success: true,
+            message: 'Food sale report fetched successfully',
+            data
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export async function getTaxReportDetail(req, res, next) {
     try {
         const { id } = req.params;

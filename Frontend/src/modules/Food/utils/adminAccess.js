@@ -203,6 +203,7 @@ const PAGE_RULES = [
   ["/transaction-report", "reports"],
   ["/order-report", "reports"],
   ["/tax-report", "reports"],
+  ["/food-sale-report", "reports"],
   ["/restaurant-report", "reports"],
   ["/customer-report", "reports"],
   ["/hero-banner-management", "cms"],

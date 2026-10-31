@@ -95,6 +95,7 @@ export const masterSidebarMenu = [
           { label: "Food · Transactions", path: "/admin/food/transaction-report" },
           { label: "Food · Orders", path: "/admin/food/order-report/regular" },
           { label: "Food · Tax", path: "/admin/food/tax-report" },
+          { label: "Food · Sale Report", path: "/admin/food/food-sale-report" },
           { label: "Quick · Transactions", path: "/admin/quick-commerce/transaction-report" },
           { label: "Quick · Orders", path: "/admin/quick-commerce/order-report/regular" },
           { label: "Quick · Tax", path: "/admin/quick-commerce/tax-report" },

@@ -1033,6 +1033,11 @@ export const adminAPI = {
       params: { page: 1, limit: 1000, ...params },
       contextModule: "admin",
     }),
+  getFoodSaleReport: (params = {}) =>
+    apiClient.get("/food/admin/reports/food-sales", {
+      params,
+      contextModule: "admin",
+    }),
   getTaxReportDetail: (id, params = {}) =>
     apiClient.get(`/food/admin/reports/tax/${id}`, {
       params,
