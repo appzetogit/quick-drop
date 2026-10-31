@@ -24,6 +24,21 @@ import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
 import { clearModuleAuth, clearAuthData } from "@food/utils/auth"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { handlePhoneInput, formatDisplayPhone, extractRawPhone } from "../../../../utils/phone.util"
+import L from "leaflet"
+
+const createOnboardingPinIcon = () =>
+  L.divIcon({
+    className: "custom-leaflet-pin",
+    html: `<div style="display:flex;align-items:center;justify-content:center;width:32px;height:42px;transform:translate(-16px,-42px);cursor:pointer;filter:drop-shadow(0 2px 5px rgba(0,0,0,0.4));">
+      <svg width="32" height="42" viewBox="0 0 24 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 20 12 20s12-11 12-20c0-6.63-5.37-12-12-12z" fill="#EF4444"/>
+        <circle cx="12" cy="11" r="4.5" fill="#FFFFFF"/>
+      </svg>
+    </div>`,
+    iconSize: [32, 42],
+    iconAnchor: [16, 42],
+  })
+
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -684,6 +699,9 @@ export default function RestaurantOnboarding() {
   const mapContainerRef = useRef(null)
   const mapInstanceRef = useRef(null)
   const mapMarkerRef = useRef(null)
+  const leafletMapRef = useRef(null)
+  const leafletMarkerRef = useRef(null)
+  const mapEngineRef = useRef("none")
   const geocoderRef = useRef(null)
   const [isMapReady, setIsMapReady] = useState(false)
   const [isResolvingPin, setIsResolvingPin] = useState(false)
@@ -2005,22 +2023,43 @@ export default function RestaurantOnboarding() {
     setIsResolvingPin(true)
 
     try {
+      let parsed = null
       if (!geocoderRef.current && window.google?.maps?.Geocoder) {
         geocoderRef.current = new window.google.maps.Geocoder()
       }
-      if (!geocoderRef.current) return
-
-      const { results } = await geocoderRef.current.geocode({ location: { lat: latitude, lng: longitude } })
-      const best = Array.isArray(results) ? results[0] : null
-      if (!best) {
-        setMapError("Could not find an address for that point. The coordinates are saved -- please fill the address fields below.")
-        return
+      if (geocoderRef.current) {
+        try {
+          const { results } = await geocoderRef.current.geocode({ location: { lat: latitude, lng: longitude } })
+          const best = Array.isArray(results) ? results[0] : null
+          if (best) parsed = parseGooglePlace(best)
+        } catch (_) {}
       }
 
-      const parsed = parseGooglePlace(best)
-      // The pin is the authority on where this is, so its own coordinates win
-      // over the ones the geocoder snapped to the nearest known address.
-      applyResolvedLocation({ ...parsed, latitude, longitude })
+      // OpenStreetMap Nominatim reverse geocode fallback
+      if (!parsed) {
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`, {
+            headers: { Accept: "application/json" }
+          })
+          const r = await res.json()
+          if (r?.address) {
+            const addr = r.address || {}
+            parsed = {
+              formattedAddress: r.display_name || "",
+              area: addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || addr.locality || "",
+              city: addr.city || addr.town || addr.village || "",
+              state: addr.state || "",
+              pincode: addr.postcode || "",
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (parsed) {
+        applyResolvedLocation({ ...parsed, latitude, longitude })
+      } else {
+        setMapError("Could not find an address for that point. The coordinates are saved -- please fill the address fields below.")
+      }
     } catch {
       setMapError("Address lookup failed, but your pin is saved. Please check the address fields below.")
     } finally {
@@ -2033,19 +2072,71 @@ export default function RestaurantOnboarding() {
    *
    * Kept separate from the autocomplete effect so a failure in one does not take
    * the other down -- a restaurant that cannot load the map can still type an
-   * address, and vice versa. Both share the single loadGoogleMaps call.
+   * address, and vice versa.
+   * If Google Maps fails (billing, API quota, auth), it falls back to Leaflet + OSM.
    */
   useEffect(() => {
     if (step !== 1) return
     let cancelled = false
 
-    const init = async () => {
-      const ok = await loadGoogleMaps()
-      if (!ok || cancelled) {
-        if (!cancelled) setMapError("The map could not be loaded. You can still search for your address above.")
-        return
+    const initLeafletMap = (container, center, hasStored) => {
+      if (leafletMapRef.current) {
+        try { leafletMapRef.current.remove() } catch {}
+        leafletMapRef.current = null
+      }
+      container.innerHTML = ""
+
+      const map = L.map(container, {
+        center: [center.lat, center.lng],
+        zoom: hasStored ? MAP_PINNED_ZOOM : MAP_FALLBACK_ZOOM,
+        zoomControl: true,
+      })
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap contributors",
+      }).addTo(map)
+
+      let marker = null
+      if (hasStored) {
+        marker = L.marker([center.lat, center.lng], {
+          draggable: true,
+          icon: createOnboardingPinIcon(),
+        }).addTo(map)
+        marker.on("dragend", () => {
+          const pos = marker.getLatLng()
+          resolvePinnedPosition(pos.lat, pos.lng)
+        })
       }
 
+      map.on("click", (e) => {
+        const { lat, lng } = e.latlng
+        if (!marker) {
+          marker = L.marker([lat, lng], {
+            draggable: true,
+            icon: createOnboardingPinIcon(),
+          }).addTo(map)
+          marker.on("dragend", () => {
+            const pos = marker.getLatLng()
+            resolvePinnedPosition(pos.lat, pos.lng)
+          })
+        } else {
+          marker.setLatLng([lat, lng])
+        }
+        leafletMarkerRef.current = marker
+        resolvePinnedPosition(lat, lng)
+      })
+
+      leafletMapRef.current = map
+      leafletMarkerRef.current = marker
+      mapEngineRef.current = "leaflet"
+      setIsMapReady(true)
+      setTimeout(() => {
+        try { map.invalidateSize() } catch {}
+      }, 200)
+    }
+
+    const init = async () => {
       // The container mounts with the step, which may render after this runs.
       let container = null
       for (let i = 0; i < 50; i++) {
@@ -2061,45 +2152,71 @@ export default function RestaurantOnboarding() {
         && !(storedLat === 0 && storedLng === 0)
       const center = hasStored ? { lat: storedLat, lng: storedLng } : MAP_FALLBACK_CENTER
 
-      const map = new window.google.maps.Map(container, {
-        center,
-        zoom: hasStored ? MAP_PINNED_ZOOM : MAP_FALLBACK_ZOOM,
-        mapTypeControl: false,
-        streetViewControl: false,
-        // Full screen lets an owner place the pin precisely on a small phone.
-        fullscreenControl: true,
-        clickableIcons: false,
-      })
-
-      const marker = new window.google.maps.Marker({
-        map,
-        position: center,
-        draggable: true,
-        // Hidden until there is something to point at, so an unset location does
-        // not look like a pin someone deliberately placed in central India.
-        visible: hasStored,
-      })
-
-      mapInstanceRef.current = map
-      mapMarkerRef.current = marker
-
-      const place = (latLng) => {
-        marker.setPosition(latLng)
-        marker.setVisible(true)
-        resolvePinnedPosition(latLng.lat(), latLng.lng())
+      window.gm_authFailure = () => {
+        if (!cancelled && container && mapEngineRef.current !== "leaflet") {
+          console.warn("[Onboarding] Google Maps auth failure, switching to Leaflet fallback")
+          initLeafletMap(container, center, hasStored)
+        }
       }
 
-      map.addListener("click", (e) => { if (e?.latLng) place(e.latLng) })
-      marker.addListener("dragend", () => {
-        const pos = marker.getPosition()
-        if (pos) resolvePinnedPosition(pos.lat(), pos.lng())
-      })
+      const ok = await loadGoogleMaps()
+      if (!ok || cancelled) {
+        if (!cancelled && container) {
+          initLeafletMap(container, center, hasStored)
+        }
+        return
+      }
 
-      if (!cancelled) setIsMapReady(true)
+      try {
+        const map = new window.google.maps.Map(container, {
+          center,
+          zoom: hasStored ? MAP_PINNED_ZOOM : MAP_FALLBACK_ZOOM,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: true,
+          clickableIcons: false,
+        })
+
+        const marker = new window.google.maps.Marker({
+          map,
+          position: center,
+          draggable: true,
+          visible: hasStored,
+        })
+
+        mapInstanceRef.current = map
+        mapMarkerRef.current = marker
+        mapEngineRef.current = "google"
+
+        const place = (latLng) => {
+          marker.setPosition(latLng)
+          marker.setVisible(true)
+          resolvePinnedPosition(latLng.lat(), latLng.lng())
+        }
+
+        map.addListener("click", (e) => { if (e?.latLng) place(e.latLng) })
+        marker.addListener("dragend", () => {
+          const pos = marker.getPosition()
+          if (pos) resolvePinnedPosition(pos.lat(), pos.lng())
+        })
+
+        if (!cancelled) setIsMapReady(true)
+      } catch (err) {
+        console.warn("[Onboarding] Google Map init error, using Leaflet fallback:", err)
+        if (!cancelled && container) {
+          initLeafletMap(container, center, hasStored)
+        }
+      }
     }
 
     init().catch(() => {
-      if (!cancelled) setMapError("The map could not be loaded. You can still search for your address above.")
+      if (!cancelled && mapContainerRef.current) {
+        const storedLat = Number(step1.location?.latitude)
+        const storedLng = Number(step1.location?.longitude)
+        const hasStored = Number.isFinite(storedLat) && Number.isFinite(storedLng) && !(storedLat === 0 && storedLng === 0)
+        const center = hasStored ? { lat: storedLat, lng: storedLng } : MAP_FALLBACK_CENTER
+        initLeafletMap(mapContainerRef.current, center, hasStored)
+      }
     })
 
     return () => {
@@ -2113,11 +2230,12 @@ export default function RestaurantOnboarding() {
         try { window.google?.maps?.event?.clearInstanceListeners(mapInstanceRef.current) } catch {}
         mapInstanceRef.current = null
       }
+      if (leafletMapRef.current) {
+        try { leafletMapRef.current.remove() } catch {}
+        leafletMapRef.current = null
+      }
       setIsMapReady(false)
     }
-    // step only: re-running on every coordinate change would rebuild the map
-    // underneath the pin the restaurant just dropped.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, loadGoogleMaps, resolvePinnedPosition])
 
   /*
@@ -2125,14 +2243,33 @@ export default function RestaurantOnboarding() {
    * never disagree about where the restaurant is.
    */
   useEffect(() => {
-    if (!isMapReady || !mapInstanceRef.current || !mapMarkerRef.current) return
+    if (!isMapReady) return
     const lat = Number(step1.location?.latitude)
     const lng = Number(step1.location?.longitude)
     if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return
 
     const position = { lat, lng }
+
+    if (mapEngineRef.current === "leaflet" && leafletMapRef.current) {
+      leafletMapRef.current.panTo([lat, lng])
+      if (leafletMarkerRef.current) {
+        leafletMarkerRef.current.setLatLng([lat, lng])
+      } else {
+        const marker = L.marker([lat, lng], {
+          draggable: true,
+          icon: createOnboardingPinIcon(),
+        }).addTo(leafletMapRef.current)
+        marker.on("dragend", () => {
+          const pos = marker.getLatLng()
+          resolvePinnedPosition(pos.lat, pos.lng)
+        })
+        leafletMarkerRef.current = marker
+      }
+      return
+    }
+
+    if (!mapInstanceRef.current || !mapMarkerRef.current) return
     const current = mapMarkerRef.current.getPosition?.()
-    // Skip when the marker is already there, or dragging it would fight this.
     if (current && Math.abs(current.lat() - lat) < 1e-7 && Math.abs(current.lng() - lng) < 1e-7) return
 
     mapMarkerRef.current.setPosition(position)

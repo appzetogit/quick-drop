@@ -428,14 +428,19 @@ export default function PartnerApply() {
                 }
                 zone={zones.find((z) => String(z._id) === String(form.zoneId)) || null}
               />
+              {pinZone?.status === "IN_SERVICE" && (
+                <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800 font-medium">
+                  ✓ This pin is inside {pinZone.name || "the service zone"}.
+                </p>
+              )}
               {pinZone?.status === "OUT_OF_SERVICE" && (
                 <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  This pin is outside our service areas. Move it to your store inside the selected zone.
+                  This pin is outside mapped service boundaries. You can still continue, and our operations team will verify coverage.
                 </p>
               )}
               {pinZone?.zoneId && form.zoneId && pinZone.zoneId !== String(form.zoneId) && (
                 <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  This pin is inside {pinZone.name || "another zone"}, not the zone you selected. Check the zone above, or move the pin.
+                  This pin is inside {pinZone.name || "another zone"}, not the zone selected above.
                 </p>
               )}
             </div>
