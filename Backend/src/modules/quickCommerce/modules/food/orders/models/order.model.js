@@ -365,6 +365,11 @@ const orderSchema = new mongoose.Schema(
         },
         customerName: { type: String, default: '', trim: true },
         customerPhone: { type: String, default: '', trim: true },
+        isForSomeoneElse: { type: Boolean, default: false },
+        recipientDetails: {
+            name: { type: String, default: '', trim: true },
+            phone: { type: String, default: '', trim: true }
+        },
         pricing: {
             type: pricingSchema,
             required: false

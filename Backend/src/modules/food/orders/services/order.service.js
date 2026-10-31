@@ -409,6 +409,19 @@ export async function createOrder(userId, dto) {
 
     const initialStatus = (paymentMethod === "razorpay" || paymentMethod === "card") ? "pending_payment" : "created";
 
+    const isForSomeoneElse = Boolean(dto.isForSomeoneElse);
+    const recipientDetails = {
+      name: String(dto.recipientDetails?.name || dto.recipientName || "").trim(),
+      phone: String(dto.recipientDetails?.phone || dto.recipientPhone || "").trim(),
+    };
+
+    const finalCustomerName = isForSomeoneElse && recipientDetails.name
+      ? recipientDetails.name
+      : String(dto.customerName || deliveryAddress.fullName || "");
+    const finalCustomerPhone = isForSomeoneElse && recipientDetails.phone
+      ? recipientDetails.phone
+      : String(dto.customerPhone || deliveryAddress.phone || "");
+
     const order = new FoodOrder({
       userId: toObjectId(userId, 'User ID'),
       restaurantId: restaurantId,
@@ -418,8 +431,10 @@ export async function createOrder(userId, dto) {
         itemId: toObjectId(item.itemId, 'Item ID')
       })),
       deliveryAddress,
-      customerName: String(dto.customerName || deliveryAddress.fullName || ""),
-      customerPhone: String(dto.customerPhone || deliveryAddress.phone || ""),
+      customerName: finalCustomerName,
+      customerPhone: finalCustomerPhone,
+      isForSomeoneElse,
+      recipientDetails,
       pricing: normalizedPricing,
       payment,
       orderStatus: initialStatus,

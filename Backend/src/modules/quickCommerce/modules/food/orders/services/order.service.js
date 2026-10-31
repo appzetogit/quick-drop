@@ -860,8 +860,17 @@ export async function createOrder(userId, dto) {
         itemId: toObjectId(item.itemId, 'Item ID')
       })),
       deliveryAddress,
-      customerName: String(dto.customerName || deliveryAddress.fullName || ""),
-      customerPhone: String(dto.customerPhone || deliveryAddress.phone || ""),
+      customerName: Boolean(dto.isForSomeoneElse) && (dto.recipientDetails?.name || dto.recipientName)
+        ? String(dto.recipientDetails?.name || dto.recipientName).trim()
+        : String(dto.customerName || deliveryAddress.fullName || ""),
+      customerPhone: Boolean(dto.isForSomeoneElse) && (dto.recipientDetails?.phone || dto.recipientPhone)
+        ? String(dto.recipientDetails?.phone || dto.recipientPhone).trim()
+        : String(dto.customerPhone || deliveryAddress.phone || ""),
+      isForSomeoneElse: Boolean(dto.isForSomeoneElse),
+      recipientDetails: {
+        name: String(dto.recipientDetails?.name || dto.recipientName || "").trim(),
+        phone: String(dto.recipientDetails?.phone || dto.recipientPhone || "").trim(),
+      },
       pricing: normalizedPricing,
       payment,
       orderStatus: initialStatus,
