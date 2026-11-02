@@ -1051,10 +1051,13 @@ export const quoteRideFares = async ({
   const pickupPoint = normalizePoint(pickupCoords, 'pickupCoords');
   const dropPoint = normalizePoint(dropCoords, 'dropCoords');
   // Refused at the quote, so the app says so as soon as the drop is chosen
-  // rather than at "Book". Intercity quotes leave the zone by design.
+  // rather than at "Book". Intercity quotes leave the zone by design, but not India.
   if (transportType !== 'intercity') {
     const { assertTripInsidePickupZone } = await import('./matchingService.js');
     await assertTripInsidePickupZone({ pickupCoords: pickupPoint, dropCoords: dropPoint, stops });
+  } else {
+    const { assertTripInsideIndia } = await import('./matchingService.js');
+    await assertTripInsideIndia({ dropCoords: dropPoint, stops });
   }
   const surgeZone = await findSurgeZoneForPickup({ pickupPoint, serviceLocationId, transportType });
   const pricingZone = await findPricingZoneForPickup({ pickupPoint, serviceLocationId });
@@ -1219,7 +1222,7 @@ export const createRideRecord = async ({
       || normalizeRideTransportType(transport_type) === 'intercity'
       || Boolean(parcel?.isOutstation)
       || String(parcel?.deliveryScope || '').trim().toLowerCase() === 'outstation';
-    const { assertTripInsidePickupZone, findZoneByPickup } = await import('./matchingService.js');
+    const { assertTripInsidePickupZone, assertTripInsideIndia, findZoneByPickup } = await import('./matchingService.js');
     if (!leavesZoneByDesign) {
       await assertTripInsidePickupZone({ pickupCoords, dropCoords, stops });
     } else {
@@ -1227,6 +1230,8 @@ export const createRideRecord = async ({
       if ((await Zone.estimatedDocumentCount()) > 0 && !(await findZoneByPickup(pickupCoords))) {
         throw new ApiError(400, 'Rides are not available at this pickup location yet. Please choose a pickup inside our service area.');
       }
+      // Out of the zone, but never out of the country.
+      await assertTripInsideIndia({ dropCoords, stops });
     }
   }
 

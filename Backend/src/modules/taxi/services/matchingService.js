@@ -205,6 +205,67 @@ export const assertTripInsidePickupZone = async ({ pickupCoords, dropCoords, sto
   return zone;
 };
 
+/*
+ * Intercity trips and outstation parcels leave the pickup's zone by design, so
+ * nothing bounded their drop: a trip from a zone in India to a point in China
+ * was priced, booked and sent to drivers. They must still end in India.
+ *
+ * A box around India rejects the far-away cases without a request. Inside it
+ * (which also takes in parts of neighbouring countries) Google's reverse
+ * geocoding names the country. If that lookup cannot be made the box's answer
+ * stands, so a Maps outage never blocks a booking inside India.
+ */
+const INDIA_BOX = { minLat: 6.4, maxLat: 37.2, minLng: 68.0, maxLng: 97.5 };
+const OUTSIDE_INDIA = 'Outstation trips are available within India only. Please choose a drop location in India.';
+const countryCache = new Map();
+
+const countryCodeAt = async ([lng, lat]) => {
+  const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  if (countryCache.has(key)) return countryCache.get(key);
+  const { getGoogleMapsApiKey } = await import('../../../core/settings/mapSettings.service.js');
+  const apiKey = await getGoogleMapsApiKey();
+  if (!apiKey) return null;
+  try {
+    // region=in: answered as India's maps draw the border. Without it Google
+    // names no country at all for Ladakh, Kashmir or Arunachal Pradesh.
+    const params = new URLSearchParams({ latlng: `${lat},${lng}`, result_type: 'country', region: 'in', key: apiKey });
+    const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?${params}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    const data = await res.json();
+    let code = null;
+    if (data.status === 'OK') {
+      const country = (data.results?.[0]?.address_components || []).find((c) => c.types?.includes('country'));
+      code = country?.short_name || null;
+    } else if (data.status === 'ZERO_RESULTS') {
+      code = 'NONE'; // open sea: in no country
+    }
+    if (code) {
+      if (countryCache.size >= 5000) countryCache.delete(countryCache.keys().next().value);
+      countryCache.set(key, code);
+    }
+    return code;
+  } catch {
+    return null;
+  }
+};
+
+/** Throws unless the drop and every stop are in India. */
+export const assertTripInsideIndia = async ({ dropCoords, stops = [] }) => {
+  const points = [normalizePoint(dropCoords, 'dropCoords')];
+  for (const stop of Array.isArray(stops) ? stops : []) {
+    const point = stop?.coordinates || stop?.location?.coordinates || (stop && stop.lat != null && (stop.lng ?? stop.lon) != null ? [stop.lng ?? stop.lon, stop.lat] : stop);
+    try { points.push(normalizePoint(point, 'stop')); } catch { /* unreadable stop: measured elsewhere */ }
+  }
+  for (const [lng, lat] of points) {
+    if (lat < INDIA_BOX.minLat || lat > INDIA_BOX.maxLat || lng < INDIA_BOX.minLng || lng > INDIA_BOX.maxLng) {
+      throw new ApiError(400, OUTSIDE_INDIA);
+    }
+    const code = await countryCodeAt([lng, lat]);
+    if (code && code !== 'IN') throw new ApiError(400, OUTSIDE_INDIA);
+  }
+};
+
 const toLocalMeters = (origin, target) => {
   const [originLng, originLat] = origin;
   const [targetLng, targetLat] = target;

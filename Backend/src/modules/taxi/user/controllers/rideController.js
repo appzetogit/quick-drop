@@ -1458,8 +1458,12 @@ export const validateLocation = async (req, res, next) => {
 
     if (dropCoords) {
       const isOutstation = req.body.rideType === 'outstation' || req.body.transport_type === 'intercity';
-      
-      if (!isOutstation) {
+
+      if (isOutstation) {
+        // Out of the zone, but never out of the country.
+        const { assertTripInsideIndia } = await import('../../services/matchingService.js');
+        await assertTripInsideIndia({ dropCoords });
+      } else {
         const matchedDropZone = await Zone.findOne({
           active: { $ne: false },
           status: { $ne: 'inactive' },
