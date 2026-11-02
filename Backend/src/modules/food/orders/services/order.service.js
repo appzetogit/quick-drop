@@ -1684,13 +1684,16 @@ export async function listOrdersAdmin(query) {
   /*
    * Orders whose payment actually went through. Every tab is limited to them
    * except two: "all" (asked for explicitly) lists every order, as Master > All
-   * Orders does, and "payment-failed" exists to show the ones that did not --
-   * under this filter it could never list a failed online payment. A cash order
-   * the rider switched to a doorstep QR is still a cash order while the QR is
-   * pending, so it is counted too. No status (reports, other screens) keeps
-   * the limit.
+   * Orders does, apart from an online checkout the customer left before paying
+   * ('pending_payment' -- never a real order); and "payment-failed" exists to
+   * show the ones that did not go through -- under this filter it could never
+   * list a failed online payment. A cash order the rider switched to a doorstep
+   * QR is still a cash order while the QR is pending, so it is counted too. No
+   * status (reports, other screens) keeps the limit.
    */
-  const filter = ["all", "payment-failed"].includes(rawStatus)
+  const filter = rawStatus === "all"
+    ? { orderStatus: { $ne: "pending_payment" } }
+    : rawStatus === "payment-failed"
     ? {}
     : {
         $or: [

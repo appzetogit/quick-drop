@@ -48,10 +48,14 @@ const filtersFor = (tab, { status, search }) => {
     const idMatch = term
         ? { $or: [{ order_id: { $regex: escapeRegex(term), $options: 'i' } }, { orderId: { $regex: escapeRegex(term), $options: 'i' } }] }
         : {};
+    // No status asked: every order except an online checkout the customer left
+    // before paying ('pending_payment'), which was never a real order.
     const withStatus = (base) => ({
         ...base,
         ...idMatch,
-        ...(orderStatus ? { orderStatus: Array.isArray(orderStatus) ? { $in: orderStatus } : orderStatus } : {}),
+        orderStatus: orderStatus
+            ? (Array.isArray(orderStatus) ? { $in: orderStatus } : orderStatus)
+            : { $ne: 'pending_payment' },
     });
     const rideBase = (serviceType) => ({
         ...(serviceType === 'parcel' ? { serviceType: 'parcel' } : { serviceType: { $ne: 'parcel' } }),
