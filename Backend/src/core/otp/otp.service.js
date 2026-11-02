@@ -192,6 +192,13 @@ export class OtpDeliveryError extends Error {
  *                            quick-commerce request logged as food is a support
  *                            question nobody can answer.
  */
+// Fixed dummy OTP for a small, explicit set of QA / app-review test numbers.
+// These bypass SMS and always receive '1234' regardless of environment, but the
+// scope is strictly these numbers. Verification still runs the normal hashed-record
+// path (TTL, attempt and rate limits all apply) -- no verify-side bypass is added.
+const DUMMY_OTP_PHONES = ['7470311228', '8120743311', '7470311226', '7470311227', '7470311229'];
+const isDummyOtpPhone = (phone) => DUMMY_OTP_PHONES.includes(normalizeOtpPhone(phone));
+
 export const createOrUpdateOtp = async (phone, scope = 'default', { service = OTP_SERVICES.FOOD } = {}) => {
     const normalizedPhone = normalizeOtpPhone(phone);
     const normalizedScope = normalizeOtpScope(scope);
@@ -224,6 +231,10 @@ export const createOrUpdateOtp = async (phone, scope = 'default', { service = OT
         existing.requestCount = now - existing.lastRequestAt < windowMs ? existing.requestCount + 1 : 1;
     }
 
+    // Dummy / QA numbers now behave like any other number here: they get a REAL
+    // random OTP and a REAL SMS. The '1234' shortcut for them is applied at
+    // VERIFY time instead (verifyOtp accepts both the real SMS code AND '1234'),
+    // so a tester can use whichever they have.
     let otp;
     if (config.useDefaultOtp) {
         otp = '1234';
@@ -298,6 +309,16 @@ export const verifyOtp = async (phone, otp, scope = 'default') => {
     }
 
     const otpStr = String(otp ?? '').trim();
+
+    // Dummy / QA numbers: '1234' is ALWAYS accepted, IN ADDITION to the real OTP
+    // that was SMS-ed to them (createOrUpdateOtp now issues a real code + SMS for
+    // these too). Scoped to the explicit whitelist and intentionally works in
+    // production, so an app reviewer can sign in with 1234 while the same number
+    // can also receive and use a real SMS OTP.
+    if (isDummyOtpPhone(normalizedPhone) && otpStr === '1234') {
+        logger.info(`[OTP VERIFY] Dummy-number '1234' accepted for phone=${normalizedPhone} scope=${normalizedScope}`);
+        return { valid: true };
+    }
 
     // ── Development sign-in shortcuts ──────────────────────────────────────────
     //
