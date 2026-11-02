@@ -376,7 +376,8 @@ export function resolveUserDeliveryFee(feeSettings = {}, { subtotal = 0, distanc
     : [];
 
   if (ranges.length > 0 && Number.isFinite(distanceKm)) {
-    const matchedFee = matchFeeRange(ranges, distanceKm, (range) => Number(range.fee) + extraOf(range, distanceKm));
+    // Whole rupees, like the delivery formula (core/finance/deliveryFormula.js).
+    const matchedFee = matchFeeRange(ranges, distanceKm, (range) => Math.round(Number(range.fee) + extraOf(range, distanceKm)));
     if (Number.isFinite(matchedFee)) {
       return {
         deliveryFee: matchedFee,

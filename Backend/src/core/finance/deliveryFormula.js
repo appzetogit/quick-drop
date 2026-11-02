@@ -124,9 +124,11 @@ export function priceDelivery(formula, distanceKm) {
     }
     if (formula?.minFee != null) fee = Math.max(fee, Number(formula.minFee));
     if (formula?.maxFee != null) fee = Math.min(fee, Number(formula.maxFee));
-    fee = round2(fee);
-    pay = round2(pay);
-    return { customerFee: fee, riderPay: pay, platformKeeps: round2(fee - pay), distanceKm: km, band };
+    // Whole rupees: a per-km rate over part of a km gave fees like Rs 27.30,
+    // which nobody wants on a bill or in a rider's pocket.
+    fee = Math.round(fee);
+    pay = Math.round(pay);
+    return { customerFee: fee, riderPay: pay, platformKeeps: fee - pay, distanceKm: km, band };
 }
 
 /**

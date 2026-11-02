@@ -99,7 +99,8 @@ export function bandFee(band, distanceKm) {
     const extra = Math.round(extraRate * extraKm * 100) / 100;
 
     return {
-        fee: Math.round((base + extra) * 100) / 100,
+        // Whole rupees, like the delivery formula (deliveryFormula.js).
+        fee: Math.round(base + extra),
         base: Math.round(base * 100) / 100,
         extraKm: Math.round(extraKm * 100) / 100,
         extra,
