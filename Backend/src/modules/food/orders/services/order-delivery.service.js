@@ -335,20 +335,44 @@ async function partnerAcceptsDeliveries(deliveryPartnerId) {
 /**
  * Claim the cross-service busy-lock for a delivery so this person can't also be given a taxi
  * ride. Flag-gated: a no-op until UNIFIED_DISPATCH_ENABLED is on. Returns true when free to go.
+ *
+ * `allowStacking`: the order may join deliveries the rider already holds -- an
+ * admin assigned it to them by hand, or batching cleared it for their trip. The
+ * default one-job policy refused every such second order with "You are already
+ * on another job", so an admin's pick could never be accepted by a busy rider.
+ * Stacking is food/quick deliveries only; a taxi ride is still held alone.
  */
-async function acquireDeliveryLock(deliveryPartnerId, orderId) {
+async function acquireDeliveryLock(deliveryPartnerId, orderId, { allowStacking = false } = {}) {
   if (!config.unifiedDispatchEnabled) return true;
   const driverId = await resolveUnifiedDriverId(deliveryPartnerId);
   if (!driverId) return true; // not migrated yet — don't block the legacy flow
   const { acquireDriverAssignment } = await import(
     '../../../taxi/driver/services/driverAssignmentService.js'
   );
-  if (await acquireDriverAssignment(driverId, 'delivery', orderId)) return true;
+  const claim = async () => {
+    if (await acquireDriverAssignment(driverId, 'delivery', orderId)) return true;
+    if (!allowStacking) return false;
+    const { claimAssignment } = await import('../../../../core/assignment/assignment.service.js');
+    const { EXAMPLE_STACKING_POLICY } = await import('../../../../core/assignment/assignmentRules.js');
+    const { Driver } = await import('../../../taxi/driver/models/Driver.js');
+    const driver = await Driver.findById(driverId).select('activeAssignment activeAssignments').lean();
+    // A lock from before the activeAssignments array existed is invisible to a
+    // stacking claim, which would then overwrite it. Those keep one job.
+    const held = Array.isArray(driver?.activeAssignments) ? driver.activeAssignments : [];
+    if (driver?.activeAssignment && !held.length) return false;
+    const { claimed } = await claimAssignment(
+      driverId,
+      { vertical: 'food', jobId: orderId },
+      { policy: { ...EXAMPLE_STACKING_POLICY, maxConcurrentJobs: 5 } },
+    );
+    return claimed;
+  };
+  if (await claim()) return true;
   // Same as Quick: a hold on a job that already ended (deleted, or cancelled
   // without a release) is cleared and the claim tried once more. Live jobs stay.
   const { reconcileAssignments } = await import('../../../../core/assignment/assignment.service.js');
   if (!(await reconcileAssignments(driverId).catch(() => 0))) return false;
-  return acquireDriverAssignment(driverId, 'delivery', orderId);
+  return claim();
 }
 
 /** Release the busy-lock for a finished/cancelled delivery. Safe no-op when unmapped or flag off. */
@@ -425,7 +449,9 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
       : await canAddToTrip({ foodRiderId: partnerId, order: lockOrderId, vertical: 'food' });
     if (!verdict.ok) throw new ValidationError(refusalMessage(verdict.reason));
   }
-  if (lockOrderId && !(await acquireDeliveryLock(partnerId, lockOrderId._id))) {
+  // Past the check above, an order offered to this rider is cleared to sit
+  // beside the deliveries they already hold.
+  if (lockOrderId && !(await acquireDeliveryLock(partnerId, lockOrderId._id, { allowStacking: offeredToMe }))) {
     throw new ValidationError('You are already on another job');
   }
 
