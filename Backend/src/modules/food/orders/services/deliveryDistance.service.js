@@ -12,8 +12,11 @@ import { haversineKm } from './order.helpers.js';
  * charged from the 6-8 km slab instead of the 12-15 km slab, so the customer
  * underpaid and the rider was underpaid for the same trip.
  *
- * Road distance comes from Google's Distance Matrix. Two things make that safe
- * to put in the pricing path:
+ * Road distance comes from Google's Routes API, with the legacy Distance Matrix
+ * as a second try. Google no longer enables Distance Matrix on newer projects,
+ * and the platform's key is one of those: every lookup was refused and every
+ * order priced from the estimate below. Two things make this safe to put in
+ * the pricing path:
  *
  *  - It is cached. calculateOrderPricing runs on every cart view and every cart
  *    edit, not just at checkout, so an uncached lookup would bill Google many
@@ -27,6 +30,7 @@ import { haversineKm } from './order.helpers.js';
  * a fee is easier to defend when the order says how its distance was measured.
  */
 
+const ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const DISTANCE_MATRIX_URL = 'https://maps.googleapis.com/maps/api/distancematrix/json';
 
 /**
@@ -77,12 +81,50 @@ const round2 = (n) => Math.round(Number(n) * 100) / 100;
 
 const isPoint = (p) => p && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng));
 
+/** Road distance from the Routes API (the current one), or null. */
+const fetchRoutesApiKm = async (origin, destination, apiKey) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const point = (p) => ({ location: { latLng: { latitude: Number(p.lat), longitude: Number(p.lng) } } });
+
+    try {
+        const response = await fetch(ROUTES_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': apiKey,
+                // Only the distance: the field mask is also what Google bills on.
+                'X-Goog-FieldMask': 'routes.distanceMeters',
+            },
+            body: JSON.stringify({ origin: point(origin), destination: point(destination), travelMode: 'DRIVE' }),
+            signal: controller.signal,
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            logger.warn(`[delivery-distance] Routes API ${data?.error?.status || response.status}: ${data?.error?.message || ''}`);
+            return null;
+        }
+        const meters = Number(data?.routes?.[0]?.distanceMeters);
+        // No routes is normal for an address across water or off-network.
+        if (!Number.isFinite(meters)) return null;
+        return meters / 1000;
+    } catch (error) {
+        logger.warn(`[delivery-distance] Routes API lookup failed: ${error?.message || error}`);
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+};
+
 const fetchRoadDistanceKm = async (origin, destination) => {
     const apiKey = await getGoogleMapsApiKey();
     if (!apiKey) {
         logger.warn('[delivery-distance] no Google Maps key; using scaled straight-line distance');
         return null;
     }
+
+    const viaRoutes = await fetchRoutesApiKm(origin, destination, apiKey);
+    if (viaRoutes !== null) return viaRoutes;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -142,11 +184,14 @@ export const resolveDeliveryDistanceKm = async (origin, destination) => {
 
     const roadKm = await fetchRoadDistanceKm(origin, destination);
 
-    const result = roadKm !== null
-        ? { km: round2(roadKm), source: 'road' }
-        // Never fall back to bare haversine: that is the bug being fixed.
-        : { km: round2(straightKm * ROAD_FACTOR), source: 'straight_line_estimated' };
+    if (roadKm === null) {
+        // Never fall back to bare haversine: that is the bug being fixed. Not
+        // cached either: one failed lookup would otherwise price this address
+        // from the estimate for a whole day.
+        return { km: round2(straightKm * ROAD_FACTOR), source: 'straight_line_estimated' };
+    }
 
+    const result = { km: round2(roadKm), source: 'road' };
     writeCache(key, result);
     return result;
 };
