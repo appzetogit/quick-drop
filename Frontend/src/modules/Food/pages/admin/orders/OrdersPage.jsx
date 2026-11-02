@@ -386,10 +386,10 @@ export default function OrdersPage({ statusKey = "all" }) {
         page,
         limit,
         search: searchRef.current.trim() || undefined,
+        // "all" is sent, not omitted: it is what lists unpaid and failed
+        // online orders too, matching Master > All Orders.
         status:
-          statusKey === "all"
-            ? undefined
-            : statusKey === "restaurant-cancelled"
+          statusKey === "restaurant-cancelled"
               ? "cancelled"
               : statusKey,
         cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined,
@@ -530,6 +530,9 @@ export default function OrdersPage({ statusKey = "all" }) {
         displayStatus = "Cancelled by User"
       } else if (backendStatus === "cancelled_by_admin") {
         displayStatus = "Canceled"
+      } else if (backendStatus === "pending_payment") {
+        // Online checkout opened but not paid; listed only on the All tab.
+        displayStatus = "Awaiting Payment"
       }
 
       const dp = order.dispatch?.deliveryPartnerId

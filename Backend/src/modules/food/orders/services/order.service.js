@@ -1678,15 +1678,26 @@ export async function switchToCash(orderId, deliveryPartnerId) {
 // ----- Admin -----
 export async function listOrdersAdmin(query) {
   const { page, limit, skip } = buildPaginationOptions(query);
-  const filter = {
-    $or: [
-      { "payment.method": { $in: ["cash", "wallet"] } },
-      { "payment.status": { $in: ["paid", "authorized", "captured", "settled", "refunded"] } },
-    ],
-  };
-
   const rawStatus =
     typeof query.status === "string" ? query.status.trim().toLowerCase() : "";
+
+  /*
+   * Orders whose payment actually went through. Every tab is limited to them
+   * except two: "all" (asked for explicitly) lists every order, as Master > All
+   * Orders does, and "payment-failed" exists to show the ones that did not --
+   * under this filter it could never list a failed online payment. A cash order
+   * the rider switched to a doorstep QR is still a cash order while the QR is
+   * pending, so it is counted too. No status (reports, other screens) keeps
+   * the limit.
+   */
+  const filter = ["all", "payment-failed"].includes(rawStatus)
+    ? {}
+    : {
+        $or: [
+          { "payment.method": { $in: ["cash", "wallet", "razorpay_qr"] } },
+          { "payment.status": { $in: ["paid", "authorized", "captured", "settled", "refunded"] } },
+        ],
+      };
   const cancelledBy =
     typeof query.cancelledBy === "string"
       ? query.cancelledBy.trim().toLowerCase()
