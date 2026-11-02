@@ -187,6 +187,8 @@ const resolveHubIdentity = async (anyId) => {
 export const resolveSharedCashLimit = async ({ partnerId } = {}) => {
     let legacy = null;
     let withdrawalLimit = 100;
+    // 0 = security-deposit feature off (no gating, nothing locked).
+    let securityDepositRequired = 0;
     try {
         const { getDeliveryCashLimitSettings } = await import(
             '../../modules/food/admin/services/admin.service.js'
@@ -194,6 +196,7 @@ export const resolveSharedCashLimit = async ({ partnerId } = {}) => {
         const settings = await getDeliveryCashLimitSettings();
         legacy = Math.max(0, Number(settings?.deliveryCashLimit) || 0);
         withdrawalLimit = Math.max(0, Number(settings?.deliveryWithdrawalLimit) || 100);
+        securityDepositRequired = Math.max(0, Number(settings?.deliverySecurityDeposit) || 0);
     } catch (err) {
         logger.warn(`resolveSharedCashLimit: food setting unavailable: ${err.message}`);
     }
@@ -215,7 +218,35 @@ export const resolveSharedCashLimit = async ({ partnerId } = {}) => {
         enforceCashLimit: resolved.enforce,
         cashLimitSource: resolved.source,
         withdrawalLimit,
+        securityDepositRequired,
     };
+};
+
+/**
+ * The refundable security a rider has actually paid in, summed across every
+ * partner identity they hold (food + quick commerce). Completed deposits only.
+ *
+ * Stored in the food collection because the delivery app deposits as the food
+ * partner id; matched against both ids so a rider reached by their QC id still
+ * sees their deposit. 0 for everyone until they pay in, so this is inert while
+ * the admin-set requirement is 0.
+ */
+const resolveSecurityDeposited = async (partnerIds) => {
+    const ids = [...new Map(partnerIds.map(toObjectId).filter(Boolean).map((id) => [String(id), id])).values()];
+    if (!ids.length) return 0;
+    try {
+        const { FoodDeliverySecurityDeposit } = await import(
+            '../../modules/food/delivery/models/foodDeliverySecurityDeposit.model.js'
+        );
+        const agg = await FoodDeliverySecurityDeposit.aggregate([
+            { $match: { deliveryPartnerId: { $in: ids }, status: 'Completed' } },
+            { $group: { _id: null, total: { $sum: { $ifNull: ['$amount', 0] } } } },
+        ]);
+        return round2(agg?.[0]?.total);
+    } catch (err) {
+        logger.warn(`resolveSecurityDeposited unavailable: ${err.message}`);
+        return 0;
+    }
 };
 
 /** The taxi wallet rules, read straight from app settings to avoid a cycle. */
@@ -456,23 +487,40 @@ export const combineDeliveryMoney = (perVertical = []) => {
  *     rider over the limit from deliveries now stops being offered rides too,
  *     which is the whole point of a shared limit.
  */
-const resolveBlockState = ({ taxiSigned, cashInHand, cashLimit, rules, snapshotBlocked }) => {
+const resolveBlockState = ({ taxiSigned, cashInHand, cashLimit, rules, snapshotBlocked, walletBalance }) => {
     if (!rules.isWalletEnabled) {
         return { isBlocked: true, reason: 'wallet_disabled' };
     }
-    // "Minimum balance to get an order" is the least a driver must HAVE, so
-    // exactly the minimum passes. With <= a minimum of 0 still blocked every
-    // driver at Rs 0 -- i.e. every new driver -- which no setting could undo.
-    if (taxiSigned < rules.minimumBalanceForOrders) {
+    // A POSITIVE minimum is a "keep at least this much in the wallet" rule, so
+    // it is judged on the combined wallet (taxi + delivery + admin credits), not
+    // the taxi stream alone: money an admin adds, or the rider pays in, clears
+    // it. A zero/negative minimum is the taxi debt ceiling and stays on the
+    // signed taxi balance, exactly as before.
+    const belowMinimum =
+        rules.minimumBalanceForOrders > 0 && Number.isFinite(walletBalance)
+            ? walletBalance < rules.minimumBalanceForOrders
+            : taxiSigned < rules.minimumBalanceForOrders;
+    if (belowMinimum) {
         return { isBlocked: true, reason: 'below_minimum_balance' };
     }
     if (cashLimit > 0 && cashInHand >= cashLimit) {
         return { isBlocked: true, reason: 'cash_limit_reached' };
     }
-    // An admin hold on the taxi record still blocks; nothing above overrides it.
-    if (snapshotBlocked) {
-        return { isBlocked: true, reason: 'blocked_by_admin' };
-    }
+    // The taxi `wallet.isBlocked` flag is deliberately NOT consulted here.
+    //
+    // It is not a real admin hold: walletService recomputes it on every wallet
+    // write as `balance <= taxi minimum balance` (default 500), so it is just a
+    // cached low-TAXI-balance signal. A food- or quick-commerce-only rider has a
+    // 0 taxi balance and therefore reads as `wallet.isBlocked = true` -- which
+    // was surfacing in the rider app as "Your wallet is blocked by admin" and
+    // zeroing their availability, for work that has nothing to do with taxi.
+    //
+    // The authoritative balance gate is the combined-wallet minimum check above,
+    // which already blocks a genuinely-broke rider on their TOTAL balance. Taxi
+    // ride matching still enforces the taxi flag directly on its own query
+    // (`wallet.isBlocked: { $ne: true }`), so taxi behaviour is unchanged; this
+    // only stops the taxi cache from falsely blocking the unified/delivery view.
+    void snapshotBlocked;
     return { isBlocked: false, reason: null };
 };
 
@@ -502,7 +550,7 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
         wallet = driver?.wallet || null;
     }
 
-    const [rules, limits, delivery] = await Promise.all([
+    const [rules, limits, delivery, securityDeposited] = await Promise.all([
         resolveTaxiWalletRules(),
         // Partner overrides are keyed on the rider's hub identity: the taxi driver id
         // for a linked rider, else their own partner id.
@@ -510,17 +558,37 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
             partnerId: identity.driverId || identity.foodPartnerId || identity.qcPartnerId || undefined,
         }),
         resolveDeliveryMoney([identity.foodPartnerId, identity.qcPartnerId, ...(identity.partnerIds || [])]),
+        resolveSecurityDeposited([identity.foodPartnerId, identity.qcPartnerId, ...(identity.partnerIds || [])]),
     ]);
 
     const taxi = splitSignedTaxiBalance(wallet?.balance || 0);
 
-    // One balance: what the platform owes this person, whichever stream earned it.
-    // Built from the UNCLAMPED delivery figure, then clamped once -- see the note
-    // on pocketBalanceRaw for the double-withdrawal this prevents.
-    const walletBalance = Math.max(0, round2(taxi.walletPortion + delivery.pocketBalanceRaw));
+    // One balance: what the platform owes this person, whichever stream earned it,
+    // PLUS the security deposit they have paid in (their own money sitting in the
+    // wallet). Built from the UNCLAMPED delivery figure, then clamped once -- see
+    // the note on pocketBalanceRaw for the double-withdrawal this prevents.
+    const walletBalance = Math.max(0, round2(taxi.walletPortion + delivery.pocketBalanceRaw + securityDeposited));
     // One cash-in-hand: platform money in their pocket, whichever stream collected it.
     // Clamped once, after summing -- see the note on cashInHandRaw.
     const cashInHand = Math.max(0, round2(taxi.cashHeldPortion + delivery.cashInHandRaw));
+
+    /*
+     * Refundable security deposit (delivery / food+quick). Inert while the
+     * admin-set requirement is 0: nothing is locked and securityMet is true, so
+     * no rider is gated and the full balance stays withdrawable.
+     *
+     * lockedSecurity is capped at what the rider actually paid in, so a rider who
+     * has not fully funded the deposit never has more locked than they hold.
+     * withdrawableBalance is the balance minus that lock -- the only figure the
+     * withdrawal path may pay out from.
+     */
+    const requiredSecurityDeposit = Math.max(0, Number(limits.securityDepositRequired) || 0);
+    // Money the rider holds in the wallet counts toward the deposit whether they
+    // paid it in the app (a Completed deposit row) or an admin credited it.
+    const heldSecurity = Math.max(round2(securityDeposited), Math.min(requiredSecurityDeposit, walletBalance));
+    const lockedSecurity = Math.max(0, Math.min(heldSecurity, requiredSecurityDeposit));
+    const withdrawableBalance = Math.max(0, round2(walletBalance - lockedSecurity));
+    const securityMet = requiredSecurityDeposit <= 0 || heldSecurity >= requiredSecurityDeposit;
 
     const block = resolveBlockState({
         taxiSigned: taxi.signed,
@@ -528,6 +596,7 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
         cashLimit: limits.cashLimit,
         rules,
         snapshotBlocked: Boolean(wallet?.isBlocked),
+        walletBalance,
     });
 
     // How much more work they can take on: whichever of the two gates binds first.
@@ -549,6 +618,16 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
         availableForOrders: Number.isFinite(availableForOrders) ? availableForOrders : 0,
         isBlocked: block.isBlocked,
         blockReason: block.reason,
+
+        // Security deposit (delivery). securityMet drives the food/quick dispatch
+        // gate and the app's onboarding prompt; withdrawableBalance is what the
+        // withdrawal path may pay out (balance minus the locked deposit). All inert
+        // when requiredSecurityDeposit is 0.
+        securityDeposited: round2(securityDeposited),
+        requiredSecurityDeposit,
+        lockedSecurity,
+        withdrawableBalance,
+        securityMet,
 
         // Where each figure came from, so a disagreement is diagnosable rather
         // than a mystery in one of two codebases.

@@ -271,6 +271,46 @@ async function filterPartnersByCodCashLimit(partners = [], order = null) {
   return eligiblePartners;
 }
 
+/*
+ * Security-deposit gate. Applies to EVERY order (cash and online), unlike the
+ * COD cash filter above: a rider who has not paid the admin-set refundable
+ * security deposit is not offered work at all.
+ *
+ * Inert by default: when the admin-set requirement is 0 the setting read is the
+ * only cost and all partners pass. Fail-open on a settings error -- a transient
+ * read failure must not halt dispatch platform-wide.
+ */
+async function filterPartnersBySecurityDeposit(partners = [], order = null) {
+  if (!Array.isArray(partners) || partners.length === 0) return partners;
+
+  let required = 0;
+  try {
+    const { getDeliveryCashLimitSettings } = await import('../../admin/services/admin.service.js');
+    required = Math.max(0, Number((await getDeliveryCashLimitSettings())?.deliverySecurityDeposit) || 0);
+  } catch (err) {
+    logger.warn(`security-deposit setting unavailable, not gating: ${err?.message || err}`);
+    return partners;
+  }
+  if (required <= 0) return partners;
+
+  const { getRiderFinance } = await import('../../../../core/finance/riderFinance.service.js');
+  const verdicts = await Promise.all(partners.map(async (partner) => {
+    try {
+      const f = await getRiderFinance(partner?.partnerId);
+      return f?.securityMet === true;
+    } catch (err) {
+      logger.warn(`security-deposit check failed for partner ${partner?.partnerId}: ${err?.message || err}`);
+      return false;
+    }
+  }));
+  const eligible = partners.filter((_, i) => verdicts[i]);
+  const skipped = partners.length - eligible.length;
+  if (skipped > 0) {
+    logger.info(`security-deposit filter skipped ${skipped} delivery partner(s) for order ${order?._id || ''}.`);
+  }
+  return eligible;
+}
+
 export async function getDispatchSettings() {
   return { dispatchMode: "auto" };
 }
@@ -433,7 +473,8 @@ export async function tryAutoAssign(orderId, options = {}) {
       }
     }
 
-    const codEligiblePartners = await filterPartnersByCodCashLimit(partners, order);
+    const securedPartners = await filterPartnersBySecurityDeposit(partners, order);
+    const codEligiblePartners = await filterPartnersByCodCashLimit(securedPartners, order);
     const eligible = codEligiblePartners.filter(p => !offeredIds.includes(p.partnerId.toString()));
 
     if (eligible.length === 0) {

@@ -29,6 +29,16 @@ const freebieTierSchema = new mongoose.Schema(
          * this type the way it does for 'item'/'addon'.
          */
         rewardName: { type: String, trim: true, default: '' },
+        /**
+         * Optional price the customer pays for this reward, in rupees. 0 (the
+         * default) means fully free, which is what every tier was before this
+         * field existed. A positive value turns the reward into a discounted
+         * add-on: "spend ₹200, get this for ₹10" rather than for nothing. Set
+         * from either panel, for any reward type. The charge is added to the
+         * bill but — like a free reward — never counts toward the threshold that
+         * earned it, the commission, or coupon eligibility.
+         */
+        rewardPrice: { type: Number, default: 0, min: 0 },
     },
     { _id: true }
 );

@@ -1,5 +1,5 @@
 import { safeRiderZoneFilter } from '../../../../core/zones/riderZones.js';
-import mongoose from 'mongoose';
+import mongoose from 'mongoose';
 import { referralSettingsFor } from '../../../../core/referral/referralSettings.service.js';
 import { zoneMatchFrom } from '../../../../core/admin/adminZoneScope.js';
 import { shouldAutoMark99, crossedInto99Cap } from '../../shared/ninetyNineStore.js';
@@ -2354,7 +2354,9 @@ export async function getDeliveryCashLimitSettings() {
     
     return {
         deliveryCashLimit: deliveryCashLimit,
-        deliveryWithdrawalLimit: Number(doc?.deliveryWithdrawalLimit) || 100
+        deliveryWithdrawalLimit: Number(doc?.deliveryWithdrawalLimit) || 100,
+        // 0 = security-deposit feature off (no gating / no locking).
+        deliverySecurityDeposit: Math.max(0, Number(doc?.deliverySecurityDeposit) || 0)
     };
 }
 
@@ -2362,26 +2364,31 @@ export async function upsertDeliveryCashLimitSettings(body = {}) {
     const existing = await FoodDeliveryCashLimit.findOne({ isActive: true }).sort({ createdAt: -1 });
     const nextCashLimit = body.deliveryCashLimit;
     const nextWithdrawalLimit = body.deliveryWithdrawalLimit;
+    const nextSecurityDeposit = body.deliverySecurityDeposit;
 
     if (existing) {
         if (nextCashLimit !== undefined) existing.deliveryCashLimit = Math.max(0, Number(nextCashLimit) || 0);
         if (nextWithdrawalLimit !== undefined) existing.deliveryWithdrawalLimit = Math.max(0, Number(nextWithdrawalLimit) || 0);
+        if (nextSecurityDeposit !== undefined) existing.deliverySecurityDeposit = Math.max(0, Number(nextSecurityDeposit) || 0);
         await existing.save();
         return {
             deliveryCashLimit: existing.deliveryCashLimit,
-            deliveryWithdrawalLimit: existing.deliveryWithdrawalLimit
+            deliveryWithdrawalLimit: existing.deliveryWithdrawalLimit,
+            deliverySecurityDeposit: Math.max(0, Number(existing.deliverySecurityDeposit) || 0)
         };
     }
 
     const created = await FoodDeliveryCashLimit.create({
         deliveryCashLimit: nextCashLimit !== undefined ? Math.max(0, Number(nextCashLimit) || 0) : 0,
         deliveryWithdrawalLimit: nextWithdrawalLimit !== undefined ? Math.max(0, Number(nextWithdrawalLimit) || 0) : 100,
+        deliverySecurityDeposit: nextSecurityDeposit !== undefined ? Math.max(0, Number(nextSecurityDeposit) || 0) : 0,
         isActive: true
     });
 
     return {
         deliveryCashLimit: created.deliveryCashLimit,
-        deliveryWithdrawalLimit: created.deliveryWithdrawalLimit
+        deliveryWithdrawalLimit: created.deliveryWithdrawalLimit,
+        deliverySecurityDeposit: Math.max(0, Number(created.deliverySecurityDeposit) || 0)
     };
 }
 

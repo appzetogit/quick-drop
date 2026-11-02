@@ -469,6 +469,9 @@ const attachFreebieOffer = async (restaurants = []) => {
                 rewardType: tier.rewardType,
                 rewardName: rewardNameOf(tier),
                 rewardImage: rewardImageOf(tier),
+                // 0 = free; a positive value is what the customer pays for the
+                // reward, so the app can show "₹10" beside it instead of "Free".
+                rewardPrice: Math.max(0, Number(tier.rewardPrice) || 0),
             }))
             // A reward that no longer names anything (withdrawn item/add-on)
             // is not advertised -- same "quietly stop offering it" rule

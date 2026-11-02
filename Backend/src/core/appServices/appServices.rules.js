@@ -62,7 +62,10 @@ export function normalizeAppServicesState(raw = null) {
     const services = {};
     for (const key of APP_SERVICE_KEYS) {
         const entry = storedServices[key];
-        services[key] = { enabled: entry?.enabled !== false };
+        services[key] = {
+            enabled: entry?.enabled !== false,
+            reason: typeof entry?.reason === 'string' ? entry.reason : '',
+        };
     }
 
     // One rule per service and zone. A later row for the same pair replaces an
@@ -74,10 +77,19 @@ export function normalizeAppServicesState(raw = null) {
             service: rule.service,
             zoneId: idOf(rule.zoneId),
             enabled: rule.enabled !== false,
+            reason: typeof rule.reason === 'string' ? rule.reason : '',
         });
     }
 
     return { services, zoneRules: [...zoneRules.values()] };
+}
+
+/** The admin's off-reason for this service in this zone, or '' if none set. */
+export function zoneRuleReason(state, service, zoneId) {
+    if (!zoneId) return '';
+    const rule = normalizeAppServicesState(state).zoneRules
+        .find((r) => r.service === service && r.zoneId === idOf(zoneId));
+    return rule?.reason || '';
 }
 
 /** Is this service switched on for this zone, going by the zone rule alone? */
@@ -110,11 +122,23 @@ export function resolveAppServices(state, zonesByService = {}) {
         };
 
         if (!normalized.services[key].enabled) {
-            return { ...base, visible: false, reason: HIDDEN_REASONS.DISABLED };
+            return {
+                ...base,
+                visible: false,
+                reason: HIDDEN_REASONS.DISABLED,
+                // The admin's human message, shown when the customer taps the
+                // greyed-out module. Empty string when none was recorded.
+                disabledMessage: normalized.services[key].reason || '',
+            };
         }
         if (zone && !zoneRuleAllows(normalized, key, zone.id)) {
-            return { ...base, visible: false, reason: HIDDEN_REASONS.DISABLED_IN_ZONE };
+            return {
+                ...base,
+                visible: false,
+                reason: HIDDEN_REASONS.DISABLED_IN_ZONE,
+                disabledMessage: zoneRuleReason(normalized, key, zone.id),
+            };
         }
-        return { ...base, visible: true, reason: null };
+        return { ...base, visible: true, reason: null, disabledMessage: '' };
     });
 }

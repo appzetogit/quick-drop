@@ -93,6 +93,60 @@ export async function updatePetpoojaSettings(req, res, next) {
     }
 }
 
+/**
+ * Sets (or clears) the platform admin UPI QR shown to customers when a delivery
+ * partner has not uploaded their own QR. The image itself is uploaded via
+ * /uploads/image by the admin panel; this only stores the resulting URL, so
+ * there is no multipart body and none of the heavy business-form validation.
+ * Pass an empty url to clear it.
+ */
+export async function setAdminUpiQr(req, res, next) {
+    try {
+        const url = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+        if (url && !/^https?:\/\/.+/i.test(url)) {
+            return res.status(400).json({ success: false, message: 'url must be a valid http(s) link' });
+        }
+
+        let settings = await FoodBusinessSettings.findOne();
+        if (!settings) settings = new FoodBusinessSettings();
+
+        settings.adminUpiQr = { url, publicId: settings.adminUpiQr?.publicId || '' };
+        await settings.save();
+
+        return sendResponse(res, 200, url ? 'Admin QR saved' : 'Admin QR removed', {
+            adminUpiQr: settings.adminUpiQr,
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
+// The Google Maps API key the apps use for HTTP Maps services. Saved here and
+// read by every app via the public business-settings endpoint, so it can be
+// rotated without a rebuild.
+export async function setMapApiKey(req, res, next) {
+    try {
+        const key = typeof req.body?.mapApiKey === 'string' ? req.body.mapApiKey.trim() : '';
+        // A Google Maps key is "AIza" + 35 url-safe chars; validate loosely so a
+        // paste with surrounding spaces still works but obvious junk is refused.
+        if (key && !/^AIza[0-9A-Za-z_-]{20,}$/.test(key)) {
+            return res.status(400).json({ success: false, message: 'That does not look like a Google Maps API key.' });
+        }
+
+        let settings = await FoodBusinessSettings.findOne();
+        if (!settings) settings = new FoodBusinessSettings();
+
+        settings.mapApiKey = key;
+        await settings.save();
+
+        return sendResponse(res, 200, key ? 'Map key saved' : 'Map key cleared', {
+            mapApiKey: settings.mapApiKey,
+        });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export async function getBusinessSettings(req, res, next) {
     try {
         let settings = await FoodBusinessSettings.findOne().lean();

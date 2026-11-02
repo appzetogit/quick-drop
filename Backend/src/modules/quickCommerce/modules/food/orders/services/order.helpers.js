@@ -639,6 +639,13 @@ export async function notifyRestaurantNewOrder(orderDoc, { released = false } = 
           total: str(total),
           paymentMethod: str(orderDoc.payment?.method),
           acceptanceDeadlineAt: str(orderDoc.acceptanceDeadlineAt?.toISOString?.() || ""),
+          // Lets the native incoming-order card label the vertical and, for a
+          // medical prescription order, show "Prescription" in place of the
+          // (empty) item list.
+          vertical: str(vertical),
+          isPrescription: String(
+            orderDoc.prescriptionOnly === true || orderDoc.prescription?.required === true,
+          ),
         },
       },
     );

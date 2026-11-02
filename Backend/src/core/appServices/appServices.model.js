@@ -15,6 +15,10 @@ const appServicesSchema = new mongoose.Schema(
             of: new mongoose.Schema(
                 {
                     enabled: { type: Boolean, default: true },
+                    // Why the admin switched it off, shown to the customer when
+                    // they tap the greyed-out module. Empty while the service is
+                    // on; cleared again when it is switched back on.
+                    reason: { type: String, default: '' },
                     updatedBy: { type: String, default: '' },
                     updatedAt: { type: Date, default: null },
                 },
@@ -31,6 +35,8 @@ const appServicesSchema = new mongoose.Schema(
                     // on it.
                     zoneId: { type: String, required: true },
                     enabled: { type: Boolean, default: true },
+                    // Why this zone was switched off, shown to the customer there.
+                    reason: { type: String, default: '' },
                     updatedBy: { type: String, default: '' },
                     updatedAt: { type: Date, default: null },
                 },

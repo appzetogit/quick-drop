@@ -384,6 +384,18 @@ export async function calculateOrderPricing(userId, dto) {
     dto.items = items;
   }
 
+  // A reward can be given at a price (rewardPrice > 0) instead of free. That
+  // charge is added to the bill, but NOT to the `subtotal` above — the subtotal
+  // is what the threshold, the commission and coupon eligibility are all
+  // measured on, and none of those should move because of the reward's own
+  // price. So the charge rides into the bill as a separate amount, leaving every
+  // earlier calculation exactly as it was when the reward was free.
+  const freebieCharge = freebieLine
+    ? Math.round(((Number(freebieLine.price) || 0) * (Number(freebieLine.quantity) || 1)) * 100) / 100
+    : 0;
+  const freebieGstInclusive =
+    freebieCharge > 0 && lineIncludesGst(freebieLine) ? freebieCharge : 0;
+
   const feeDoc = await FoodFeeSettings.findOne({ isActive: true })
     .sort({ createdAt: -1 })
     .lean();
@@ -900,7 +912,11 @@ export async function calculateOrderPricing(userId, dto) {
    * which are the rider's money.
    */
   const bill = computeBill({
-    itemAmount: subtotal,
+    // subtotal plus any paid-reward charge: the reward line is a real charged
+    // line on the bill, so the item amount the customer pays for includes it,
+    // even though the threshold/commission/coupon maths above used the plain
+    // subtotal without it.
+    itemAmount: subtotal + freebieCharge,
     discountFundedByPlatform,
     packagingFee,
     deliveryFee,
@@ -926,7 +942,7 @@ export async function calculateOrderPricing(userId, dto) {
      * The per-dish answer. A cart can mix the two, so the bill is told how much
      * of the food already contained its tax rather than a single yes/no.
      */
-    gstInclusiveItemAmount,
+    gstInclusiveItemAmount: gstInclusiveItemAmount + freebieGstInclusive,
     packagingBelongsToRestaurant,
   });
 
@@ -1063,6 +1079,9 @@ export async function calculateOrderPricing(userId, dto) {
               minOrderValue: freebieTier.minOrderValue,
               rewardType: freebieTier.rewardType,
               name: freebieTier.rewardName || '',
+              // 0 = free; a positive value is what the customer pays for it, so
+              // the cart can show "₹10" in place of "Free".
+              rewardPrice: Math.max(0, Number(freebieTier.rewardPrice) || 0),
               // Whether this tap of calculate actually added the free line --
               // earning it only unlocks the Add button, see resolveFreebieForOrder.
               claimed: Boolean(freebieLine),
@@ -1074,6 +1093,7 @@ export async function calculateOrderPricing(userId, dto) {
               amountAway: freebieNextTier.amountAway,
               rewardType: freebieNextTier.rewardType,
               name: freebieNextTier.rewardName || '',
+              rewardPrice: Math.max(0, Number(freebieNextTier.rewardPrice) || 0),
             }
           : null,
       },

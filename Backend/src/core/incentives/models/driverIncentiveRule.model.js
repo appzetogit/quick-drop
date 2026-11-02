@@ -65,6 +65,8 @@ const driverIncentiveRuleSchema = new mongoose.Schema(
         vehicleTypeName: { type: String, trim: true, default: '' },
         /** Admin-authored headline shown as-is on the rider's card. */
         title: { type: String, trim: true, default: '' },
+        /** Optional line shown under the progress text on the rider's card. */
+        subtitle: { type: String, trim: true, default: '' },
         /** Ascending by toOrders — validated on write, see incentiveRule.validator.js. */
         tiers: {
             type: [incentiveTierSchema],

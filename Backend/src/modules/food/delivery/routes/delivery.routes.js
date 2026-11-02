@@ -11,7 +11,7 @@ import {
 import { getCurrentIncentiveController } from '../../../../core/incentives/controllers/incentiveController.js';
 import { onboardingOptionsController,
     onboardingRequirementsController,
-    registerDeliveryPartnerController, updateDeliveryPartnerProfileController, updateDeliveryPartnerBankDetailsController, listSupportTicketsController, createSupportTicketController, getSupportTicketByIdController, updateDeliveryPartnerDetailsController, updateDeliveryPartnerProfilePhotoBase64Controller, updateAvailabilityController, getWalletController, createWithdrawalRequestController, createCashDepositOrderController, verifyCashDepositPaymentController, getEarningsController, getTripHistoryController, getPocketDetailsController, getEmergencyHelpController, getCashLimitController, getDeliveryReferralStatsController, getActiveEarningAddonsController, deleteDeliveryPartnerAccountController } from '../controllers/delivery.controller.js';
+    registerDeliveryPartnerController, updateDeliveryPartnerProfileController, updateDeliveryPartnerBankDetailsController, listSupportTicketsController, createSupportTicketController, getSupportTicketByIdController, updateDeliveryPartnerDetailsController, updateDeliveryPartnerProfilePhotoBase64Controller, updateAvailabilityController, getWalletController, createWithdrawalRequestController, createCashDepositOrderController, verifyCashDepositPaymentController, createSecurityDepositOrderController, verifySecurityDepositPaymentController, getEarningsController, getTripHistoryController, getPocketDetailsController, getEmergencyHelpController, getCashLimitController, getDeliveryReferralStatsController, getActiveEarningAddonsController, deleteDeliveryPartnerAccountController } from '../controllers/delivery.controller.js';
 
 const router = express.Router();
 
@@ -134,6 +134,9 @@ router.get('/wallet', authMiddleware, requireFoodDeliveryPartner, getWalletContr
 router.post('/wallet/withdraw', authMiddleware, requireFoodDeliveryPartner, createWithdrawalRequestController);
 router.post('/wallet/deposit/order', authMiddleware, requireFoodDeliveryPartner, createCashDepositOrderController);
 router.post('/wallet/deposit/verify', authMiddleware, requireFoodDeliveryPartner, verifyCashDepositPaymentController);
+// Refundable security deposit (rider's own money) — gates being offered orders.
+router.post('/wallet/security-deposit/order', authMiddleware, requireFoodDeliveryPartner, createSecurityDepositOrderController);
+router.post('/wallet/security-deposit/verify', authMiddleware, requireFoodDeliveryPartner, verifySecurityDepositPaymentController);
 router.get('/earnings', authMiddleware, requireFoodDeliveryPartner, getEarningsController);
 router.get('/trip-history', authMiddleware, requireFoodDeliveryPartner, getTripHistoryController);
 router.get('/pocket-details', authMiddleware, requireFoodDeliveryPartner, getPocketDetailsController);

@@ -52,6 +52,28 @@ const capabilitiesRequestedBy = (intents) => {
   return out
 }
 
+// The admin grants capabilities in two boxes, not one per capability: the
+// whole delivery side (food, quick commerce, medical and bike parcel) is one
+// decision, and bike taxi (passengers) is the other. Each box toggles its full
+// capability set on the flat serviceCapabilities list the backend expects, so
+// ticking both leaves a driver with every capability (work mode "all" -> both
+// toggles in the rider app).
+const CAPABILITY_GROUPS = [
+  {
+    key: 'delivery_group',
+    label: 'Food + Quick Commerce + Medical + Bike Porter',
+    caps: ['delivery', 'quickCommerce', 'parcel'],
+  },
+  {
+    key: 'taxi_group',
+    label: 'Taxi (Bike Taxi)',
+    caps: ['taxi'],
+  },
+]
+// On if any of the box's capabilities are present, so a legacy partial grant
+// still reads as ticked; toggling writes/clears the whole set.
+const groupIsOn = (group, caps) => group.caps.some((c) => (caps || []).includes(c))
+
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -184,11 +206,6 @@ export default function JoinRequest() {
     )
     setIsApproveOpen(true)
   }
-
-  const toggleApproveCapability = (key) =>
-    setApproveCapabilities((prev) =>
-      prev.includes(key) ? prev.filter((c) => c !== key) : [...prev, key],
-    )
 
   const confirmApprove = async () => {
     if (!selectedRequest) return
@@ -595,26 +612,27 @@ export default function JoinRequest() {
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Which orders will they take?</p>
               <div className="space-y-2">
-                {[
-                  ["delivery", "Food delivery"],
-                  ["quickCommerce", "Quick Commerce"],
-                  ["taxi", "Taxi rides"],
-                  // Parcel and porter jobs. Separate from taxi because they
-                  // are dispatched to the same drivers by the same service:
-                  // without its own box there is no way to approve someone
-                  // for boxes but not for passengers.
-                  ["parcel", "Parcel & Porter"],
-                ].map(([key, label]) => (
-                  <label key={key} className="flex items-center gap-2 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={approveCapabilities.includes(key)}
-                      onChange={() => toggleApproveCapability(key)}
-                      className="h-4 w-4 accent-slate-900"
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
+                {CAPABILITY_GROUPS.map((group) => {
+                  const on = groupIsOn(group, approveCapabilities)
+                  return (
+                    <label key={group.key} className="flex items-start gap-2 px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() =>
+                          setApproveCapabilities((prev) => {
+                            const set = new Set(prev)
+                            if (on) group.caps.forEach((c) => set.delete(c))
+                            else group.caps.forEach((c) => set.add(c))
+                            return [...set]
+                          })
+                        }
+                        className="h-4 w-4 accent-slate-900 mt-0.5"
+                      />
+                      <span>{group.label}</span>
+                    </label>
+                  )
+                })}
               </div>
               {approveCapabilities.length === 0 && (
                 <p className="mt-2 text-xs text-red-600">Pick at least one.</p>

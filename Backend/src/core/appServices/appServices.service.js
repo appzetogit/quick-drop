@@ -246,6 +246,7 @@ export async function getAdminView() {
                     name: zoneName(z),
                     zoneActive: source.active(z),
                     enabled: rule ? rule.enabled : true,
+                    reason: storedRule?.reason || '',
                     updatedBy: storedRule?.updatedBy || null,
                     updatedAt: storedRule?.updatedAt || null,
                 };
@@ -258,6 +259,7 @@ export async function getAdminView() {
             key,
             label,
             enabled: state.services[key].enabled,
+            reason: storedServices[key]?.reason || '',
             updatedBy: storedServices[key]?.updatedBy || null,
             updatedAt: storedServices[key]?.updatedAt || null,
             zones,
@@ -276,7 +278,7 @@ const assertBoolean = (enabled) => {
     if (typeof enabled !== 'boolean') throw httpError(400, '`enabled` must be true or false');
 };
 
-export async function setServiceEnabled(service, enabled, { actorId = '' } = {}) {
+export async function setServiceEnabled(service, enabled, { actorId = '', reason = '' } = {}) {
     assertService(service);
     assertBoolean(enabled);
 
@@ -286,6 +288,9 @@ export async function setServiceEnabled(service, enabled, { actorId = '' } = {})
             $set: {
                 [`services.${service}`]: {
                     enabled,
+                    // A reason only makes sense while it is OFF; switching it
+                    // back on clears whatever was there.
+                    reason: enabled ? '' : String(reason || '').trim().slice(0, 200),
                     updatedBy: String(actorId || ''),
                     updatedAt: new Date(),
                 },
@@ -298,7 +303,7 @@ export async function setServiceEnabled(service, enabled, { actorId = '' } = {})
     return getAdminView();
 }
 
-export async function setZoneEnabled(service, zoneId, enabled, { actorId = '' } = {}) {
+export async function setZoneEnabled(service, zoneId, enabled, { actorId = '', reason = '' } = {}) {
     assertService(service);
     assertBoolean(enabled);
 
@@ -307,7 +312,14 @@ export async function setZoneEnabled(service, zoneId, enabled, { actorId = '' } 
     const exists = (await source.list()).some((z) => String(z._id) === id);
     if (!exists) throw httpError(404, 'That zone does not exist for this service.');
 
-    const rule = { service, zoneId: id, enabled, updatedBy: String(actorId || ''), updatedAt: new Date() };
+    const rule = {
+        service,
+        zoneId: id,
+        enabled,
+        reason: enabled ? '' : String(reason || '').trim().slice(0, 200),
+        updatedBy: String(actorId || ''),
+        updatedAt: new Date(),
+    };
 
     // Replace any rule for this pair, then add the new one -- two steps on one
     // document, so a zone never ends up with two rules that disagree.

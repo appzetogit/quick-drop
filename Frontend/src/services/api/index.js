@@ -265,16 +265,16 @@ export const platformSettingsAPI = {
 export const appServicesAPI = {
   getAdminView: () =>
     apiClient.get("/platform/app-services/admin", { contextModule: "admin" }),
-  setService: (service, enabled) =>
+  setService: (service, enabled, reason = "") =>
     apiClient.put(
       `/platform/app-services/admin/${encodeURIComponent(service)}`,
-      { enabled: Boolean(enabled) },
+      { enabled: Boolean(enabled), reason: enabled ? "" : reason },
       { contextModule: "admin" },
     ),
-  setZone: (service, zoneId, enabled) =>
+  setZone: (service, zoneId, enabled, reason = "") =>
     apiClient.put(
       `/platform/app-services/admin/${encodeURIComponent(service)}/zones/${encodeURIComponent(zoneId)}`,
-      { enabled: Boolean(enabled) },
+      { enabled: Boolean(enabled), reason: enabled ? "" : reason },
       { contextModule: "admin" },
     ),
 };
@@ -314,10 +314,10 @@ export const incentiveRulesAPI = {
   list: () => apiClient.get("/platform/settings/incentive-rules", { contextModule: "admin" }),
   /** tiers: [{ fromOrders, toOrders, rewardAmount }, ...], e.g. 1-5 → ₹100, 5-10 → ₹150. */
   /** zoneId empty = the default ladder; set = that zone's own ladder. */
-  upsert: ({ segment, title, tiers, zoneId = null, zoneName = "" }) =>
+  upsert: ({ segment, title, subtitle = "", tiers, zoneId = null, zoneName = "", startsAt = null, endsAt = null }) =>
     apiClient.put(
       "/platform/settings/incentive-rules",
-      { segment, title, tiers, zoneId, zoneName },
+      { segment, title, subtitle, tiers, zoneId, zoneName, startsAt, endsAt },
       { contextModule: "admin" },
     ),
   deactivate: (id) =>
@@ -1404,6 +1404,21 @@ export const adminAPI = {
       contextModule: "admin",
     });
   },
+  /** Admin UPI QR shown to customers when a delivery partner has no own QR.
+   *  The image is uploaded via /uploads/image first; this stores its URL.
+   *  Pass "" to clear it. */
+  setAdminQr: (url = "") =>
+    apiClient.patch("/food/admin/business-settings/admin-qr", { url }, {
+      contextModule: "admin",
+    }),
+  /** Google Maps API key used by all three apps (user, restaurant, delivery).
+   *  Stored in businessSettings and returned by the public settings endpoint;
+   *  the apps set it into their Dart AppConstants.mapKey at launch. Pass "" to
+   *  clear it (apps then fall back to their bundled key). */
+  setMapApiKey: (mapApiKey = "") =>
+    apiClient.patch("/food/admin/business-settings/map-key", { mapApiKey }, {
+      contextModule: "admin",
+    }),
   /** Order status (admin) — admins act across restaurants, so this uses the admin route.
    *  Kitchen statuses only; picked_up/delivered stay owned by the delivery + OTP flow. */
   updateOrderStatus: (orderId, body = {}) =>

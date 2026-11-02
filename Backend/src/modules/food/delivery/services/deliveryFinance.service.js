@@ -3,6 +3,7 @@ import { FoodOrder } from '../../orders/models/order.model.js';
 import { FoodTransaction } from '../../orders/models/foodTransaction.model.js';
 import { FoodDeliveryWithdrawal } from '../models/foodDeliveryWithdrawal.model.js';
 import { FoodDeliveryCashDeposit } from '../models/foodDeliveryCashDeposit.model.js';
+import { FoodDeliverySecurityDeposit } from '../models/foodDeliverySecurityDeposit.model.js';
 import { FoodDeliveryPartner } from '../models/deliveryPartner.model.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
 import { getDeliveryCashLimitSettings } from '../../admin/services/admin.service.js';
@@ -223,7 +224,10 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
     return {
         // Lifetime gross across both streams, which is what this key always meant.
         totalBalance: round2(totalEarned + totalBonus + finance.breakdown.taxi.walletPortion),
-        pocketBalance: finance.walletBalance, // ONE balance, available to withdraw
+        pocketBalance: finance.walletBalance, // ONE balance (earnings + paid-in security)
+        // What may actually be withdrawn: balance minus the locked security deposit.
+        // Equals pocketBalance when no security is required/locked.
+        withdrawableBalance: finance.withdrawableBalance,
         cashInHand: finance.cashInHand, // combined cash owed back to the platform
         totalWithdrawn, // Actually paid out
         pendingWithdrawals, // In process
@@ -232,6 +236,11 @@ export const getDeliveryPartnerWalletEnhanced = async (deliveryPartnerId) => {
         totalCashLimit: finance.cashLimit, // the shared ceiling
         availableCashLimit: finance.availableCashLimit,
         deliveryWithdrawalLimit: finance.rules.withdrawalLimit || deliveryWithdrawalLimit,
+        // Security deposit (delivery). 0 required => feature off.
+        securityDeposited: finance.securityDeposited,
+        requiredSecurityDeposit: finance.requiredSecurityDeposit,
+        lockedSecurity: finance.lockedSecurity,
+        securityMet: finance.securityMet,
         isBlocked: finance.isBlocked,
         blockReason: finance.blockReason,
         driverId: finance.driverId,
@@ -283,8 +292,19 @@ export const requestDeliveryWithdrawal = async (deliveryPartnerId, payload) => {
         if (amount < wallet.deliveryWithdrawalLimit) {
             throw new ValidationError(`Minimum withdrawal amount is ₹${wallet.deliveryWithdrawalLimit}`);
         }
-        if (amount > wallet.pocketBalance) {
-            throw new ValidationError('Insufficient balance for this withdrawal');
+        /*
+         * Pay out only from withdrawableBalance, never the raw pocketBalance: the
+         * locked security deposit (lockedSecurity) stays in the wallet and can
+         * never be withdrawn. withdrawableBalance == pocketBalance when no security
+         * is required, so this is a no-op until an admin turns the feature on.
+         */
+        if (amount > wallet.withdrawableBalance) {
+            const locked = Number(wallet.lockedSecurity) || 0;
+            throw new ValidationError(
+                locked > 0
+                    ? `You can withdraw up to ₹${wallet.withdrawableBalance}. ₹${locked} is held as a non-refundable security deposit.`
+                    : 'Insufficient balance for this withdrawal'
+            );
         }
 
         const partner = await FoodDeliveryPartner.findById(deliveryPartnerId).lean();
@@ -466,6 +486,139 @@ export const verifyDeliveryCashDepositPayment = async (deliveryPartnerId, payloa
         // Somebody else recorded this payment first. Hand back their row if it is
         // this rider's; a payment belonging to another rider is never theirs to settle.
         const winner = await FoodDeliveryCashDeposit.findOne({ razorpayPaymentId: paymentId }).lean();
+        if (!winner || winner.status !== 'Completed' || String(winner.deliveryPartnerId) !== String(deliveryPartnerId)) {
+            throw new ValidationError('This payment has already been used');
+        }
+        deposit = winner;
+    }
+
+    return {
+        deposit,
+        wallet: await getDeliveryPartnerWalletEnhanced(deliveryPartnerId)
+    };
+};
+
+/*
+ * Refundable SECURITY DEPOSIT top-up (the rider's own money, via Razorpay).
+ *
+ * Mirrors the cash-deposit flow above, minus the cash-in-hand cap: a security
+ * deposit is the rider adding money from their pocket to unlock being offered
+ * orders, not settling COD they already collected, so it is bounded only by a
+ * sane maximum. The settled amount is taken from the gateway, never the client
+ * (same safety reason as the cash flow), and one Razorpay payment is recorded
+ * once (unique index on razorpayPaymentId).
+ */
+export const createDeliverySecurityDepositOrder = async (deliveryPartnerId, amountInr) => {
+    const amount = Number(amountInr);
+    if (!Number.isFinite(amount) || amount < 1) {
+        throw new ValidationError('Amount must be at least ₹1');
+    }
+    if (amount > 500000) {
+        throw new ValidationError('Maximum deposit is ₹5,00,000');
+    }
+    if (!mongoose.Types.ObjectId.isValid(deliveryPartnerId)) {
+        throw new ValidationError('Invalid delivery partner ID');
+    }
+
+    const amountPaise = Math.round(amount * 100);
+    const receipt = `sec_deposit_${String(deliveryPartnerId).slice(-8)}_${Date.now()}`;
+
+    if (!isRazorpayConfigured()) {
+        throw new ValidationError('Razorpay payment gateway is not configured');
+    }
+
+    try {
+        const razorpay = await createRazorpayCheckoutOrder(amountPaise, 'INR', receipt);
+        return { razorpay };
+    } catch (error) {
+        throw new ValidationError(error?.message || 'Payment gateway error');
+    }
+};
+
+export const verifyDeliverySecurityDepositPayment = async (deliveryPartnerId, payload = {}) => {
+    const orderId = String(payload?.razorpayOrderId || '').trim();
+    const paymentId = String(payload?.razorpayPaymentId || '').trim();
+    const signature = String(payload?.razorpaySignature || '').trim();
+    const amount = Number(payload?.amount);
+
+    if (!orderId) throw new ValidationError('razorpayOrderId is required');
+    if (!paymentId) throw new ValidationError('razorpayPaymentId is required');
+    if (!signature) throw new ValidationError('razorpaySignature is required');
+    if (!Number.isFinite(amount) || amount < 1) throw new ValidationError('amount is required');
+
+    const existing = await FoodDeliverySecurityDeposit.findOne({
+        deliveryPartnerId,
+        $or: [
+            { razorpayPaymentId: paymentId },
+            { razorpayOrderId: orderId }
+        ]
+    }).lean();
+
+    if (existing?.status === 'Completed') {
+        return { deposit: existing, wallet: await getDeliveryPartnerWalletEnhanced(deliveryPartnerId) };
+    }
+
+    if (!isRazorpayConfigured()) {
+        throw new ValidationError('Razorpay payment gateway is not configured');
+    }
+
+    const isValid = verifyPaymentSignature(orderId, paymentId, signature);
+    if (!isValid) {
+        throw new ValidationError('Payment verification failed');
+    }
+
+    // Settle what the gateway captured, never the client's number.
+    let settledAmount = amount;
+    if (!paymentId.startsWith('mock_')) {
+        let rzpPayment;
+        try {
+            rzpPayment = await fetchRazorpayPayment(paymentId);
+        } catch {
+            throw new ValidationError('Unable to verify payment with gateway. Please try again.');
+        }
+        if (String(rzpPayment?.order_id || '') !== orderId) {
+            throw new ValidationError('Payment verification failed: order mismatch');
+        }
+        if (!['captured', 'authorized'].includes(String(rzpPayment?.status || ''))) {
+            throw new ValidationError('Payment verification failed: payment not captured');
+        }
+        const capturedPaise = Number(rzpPayment?.amount || 0);
+        if (!Number.isFinite(capturedPaise) || capturedPaise <= 0) {
+            throw new ValidationError('Payment verification failed: amount missing');
+        }
+        settledAmount = Math.round(capturedPaise) / 100;
+    }
+
+    const fields = {
+        amount: settledAmount,
+        paymentMethod: 'razorpay',
+        status: 'Completed',
+        razorpayOrderId: orderId,
+        razorpayPaymentId: paymentId
+    };
+
+    let deposit = null;
+    try {
+        if (existing) {
+            deposit = await FoodDeliverySecurityDeposit.findOneAndUpdate(
+                { _id: existing._id, status: { $ne: 'Completed' } },
+                { $set: fields },
+                { new: true }
+            );
+        } else {
+            const claim = await FoodDeliverySecurityDeposit.findOneAndUpdate(
+                { razorpayPaymentId: paymentId },
+                { $setOnInsert: { deliveryPartnerId, ...fields } },
+                { upsert: true, new: true, includeResultMetadata: true }
+            );
+            deposit = claim?.lastErrorObject?.upserted ? claim.value : null;
+        }
+    } catch (err) {
+        if (err?.code !== 11000) throw err;
+    }
+
+    if (!deposit) {
+        const winner = await FoodDeliverySecurityDeposit.findOne({ razorpayPaymentId: paymentId }).lean();
         if (!winner || winner.status !== 'Completed' || String(winner.deliveryPartnerId) !== String(deliveryPartnerId)) {
             throw new ValidationError('This payment has already been used');
         }

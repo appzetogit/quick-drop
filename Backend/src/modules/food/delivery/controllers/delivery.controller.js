@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { getOnboardingRequirements, listOnboardingOptions } from '../services/onboardingRequirements.service.js';
 import { registerDeliveryPartner, updateDeliveryPartnerProfile, updateDeliveryPartnerBankDetails, listSupportTicketsByPartner, createSupportTicket, getSupportTicketByIdAndPartner, updateDeliveryPartnerDetails, updateDeliveryPartnerProfilePhotoBase64, updateDeliveryAvailability, getDeliveryPartnerWallet, getDeliveryPartnerEarnings, getDeliveryPartnerTripHistory, getDeliveryPocketDetails, getActiveEarningAddonsForPartner, deleteDeliveryPartnerAccount } from '../services/delivery.service.js';
-import { createDeliveryCashDepositOrder, getDeliveryPartnerWalletEnhanced, requestDeliveryWithdrawal, verifyDeliveryCashDepositPayment } from '../services/deliveryFinance.service.js';
+import { createDeliveryCashDepositOrder, getDeliveryPartnerWalletEnhanced, requestDeliveryWithdrawal, verifyDeliveryCashDepositPayment, createDeliverySecurityDepositOrder, verifyDeliverySecurityDepositPayment } from '../services/deliveryFinance.service.js';
 import { getDeliveryCashLimitSettings, getDeliveryEmergencyHelp } from '../../admin/services/admin.service.js';
 import { getRiderFinance } from '../../../../core/finance/riderFinance.service.js';
 import { DeliveryBonusTransaction } from '../../admin/models/deliveryBonusTransaction.model.js';
@@ -256,6 +256,32 @@ export const verifyCashDepositPaymentController = async (req, res, next) => {
             amount: req.body?.amount
         });
         return sendResponse(res, 200, 'Cash deposit verified successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createSecurityDepositOrderController = async (req, res, next) => {
+    try {
+        const deliveryPartnerId = req.user?.userId;
+        const amount = req.body?.amount;
+        const data = await createDeliverySecurityDepositOrder(deliveryPartnerId, amount);
+        return sendResponse(res, 201, 'Security deposit order created successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const verifySecurityDepositPaymentController = async (req, res, next) => {
+    try {
+        const deliveryPartnerId = req.user?.userId;
+        const data = await verifyDeliverySecurityDepositPayment(deliveryPartnerId, {
+            razorpayOrderId: req.body?.razorpay_order_id,
+            razorpayPaymentId: req.body?.razorpay_payment_id,
+            razorpaySignature: req.body?.razorpay_signature,
+            amount: req.body?.amount
+        });
+        return sendResponse(res, 200, 'Security deposit verified successfully', data);
     } catch (error) {
         next(error);
     }

@@ -90,7 +90,7 @@ const tiersFromRule = (rule) =>
     ? rule.tiers.map((t) => ({ fromOrders: t.fromOrders, toOrders: t.toOrders, rewardAmount: t.rewardAmount }))
     : [emptyTier()]
 
-const emptyForm = () => ({ title: "", tiers: [emptyTier()] })
+const emptyForm = () => ({ title: "", subtitle: "", tiers: [emptyTier()] })
 
 /** Null when every tier is individually valid and the ladder is in order;
  *  otherwise the reason, so the save button can stay disabled with a hint
@@ -145,6 +145,7 @@ const runText = (r) => {
 }
 const seedForm = (rule) => ({
   title: rule?.title || "",
+  subtitle: rule?.subtitle || "",
   tiers: tiersFromRule(rule),
   startsAt: dayOf(rule?.startsAt),
   endsAt: dayOf(rule?.endsAt),
@@ -180,6 +181,7 @@ function SegmentCard({ segment, rules, saving, onSave, onTurnOff, busyId, limite
   const dirty =
     !active ||
     form.title !== (active.title || "") ||
+    form.subtitle !== (active.subtitle || "") ||
     form.startsAt !== dayOf(active.startsAt) ||
     form.endsAt !== dayOf(active.endsAt) ||
     JSON.stringify(form.tiers) !== JSON.stringify(tiersFromRule(active))
@@ -254,6 +256,21 @@ function SegmentCard({ segment, rules, saving, onSave, onTurnOff, busyId, limite
         />
         <span className="mt-1 block text-xs text-neutral-500">
           Shown to the rider as-is. Left blank, the app fills in the numbers below.
+        </span>
+      </label>
+
+      <label className="mb-4 block">
+        <span className="text-sm font-medium text-neutral-800">Subtitle (optional)</span>
+        <input
+          type="text"
+          maxLength={160}
+          placeholder="e.g. Only delivered orders count"
+          className={`${inputCls} mt-1.5`}
+          value={form.subtitle}
+          onChange={(e) => setForm({ ...form, subtitle: e.target.value })}
+        />
+        <span className="mt-1 block text-xs text-neutral-500">
+          Shown under the progress line (e.g. "0 / 5 orders") on the rider's incentive card. Left blank, nothing is shown.
         </span>
       </label>
 
@@ -362,6 +379,7 @@ export default function DeliveryIncentives() {
         zoneId: zone.id || null,
         zoneName: zone.name || "",
         title: form.title,
+        subtitle: form.subtitle,
         // Whole days in India time: from the start of the first to the end of the last.
         startsAt: form.startsAt ? `${form.startsAt}T00:00:00+05:30` : null,
         endsAt: form.endsAt ? `${form.endsAt}T23:59:59+05:30` : null,

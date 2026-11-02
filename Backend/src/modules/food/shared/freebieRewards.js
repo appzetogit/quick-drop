@@ -75,6 +75,13 @@ export function normalizeFreebieTiersInput(body = {}) {
         }
         seen.add(key);
 
+        // Optional price the reward is given at. Absent/blank/invalid -> 0, which
+        // is "fully free" and what every tier meant before this field existed. A
+        // negative figure is clamped away rather than rejected: the form should
+        // never submit one, and failing the whole save over it is worse than
+        // quietly treating it as free.
+        const rewardPrice = Math.max(0, round2(toFiniteNumber(entry?.rewardPrice) ?? 0));
+
         if (rewardType === 'manual') {
             // No FoodItem/FoodAddon backs this one -- it's whatever the admin
             // typed, for a reward that isn't (yet, or ever) a real menu row.
@@ -88,6 +95,7 @@ export function normalizeFreebieTiersInput(body = {}) {
                 rewardItemId: null,
                 rewardAddonId: null,
                 rewardName: rewardName.slice(0, 120),
+                rewardPrice,
             });
             continue;
         }
@@ -105,6 +113,7 @@ export function normalizeFreebieTiersInput(body = {}) {
             rewardItemId: rewardType === 'item' ? rewardId : null,
             rewardAddonId: rewardType === 'addon' ? rewardId : null,
             rewardName: '',
+            rewardPrice,
         });
     }
 
@@ -157,9 +166,10 @@ export function describeNextFreebieTier(tiers = [], subtotal = 0) {
 /**
  * Build the order line for an earned reward.
  *
- * Priced at 0 and flagged, rather than discounted: the kitchen has to see it,
- * the customer has to see why it costs nothing, and commission is taken on the
- * subtotal -- which this is deliberately not part of.
+ * Priced at the tier's `rewardPrice` (0 = free) and flagged, rather than
+ * discounted off a catalogue price: the kitchen has to see it, the customer has
+ * to see why it costs what it does, and commission is taken on the ordinary
+ * subtotal -- which this is deliberately not part of whatever its price.
  *
  * Returns null when the reward no longer resolves to something sellable. A
  * freebie is a bonus, so a withdrawn reward quietly stops being offered instead
@@ -171,10 +181,12 @@ export function buildFreebieLine(tier, reward) {
     const name = String(reward.name || '').trim();
     if (!name) return null;
 
+    const rewardPrice = Math.max(0, round2(toFiniteNumber(tier.rewardPrice) ?? 0));
+
     return {
         itemId: reward._id,
         name,
-        price: 0,
+        price: rewardPrice,
         quantity: 1,
         variantName: '',
         addons: [],
@@ -184,6 +196,7 @@ export function buildFreebieLine(tier, reward) {
         freebie: {
             minOrderValue: round2(tier.minOrderValue),
             rewardType: tier.rewardType,
+            rewardPrice,
         },
     };
 }

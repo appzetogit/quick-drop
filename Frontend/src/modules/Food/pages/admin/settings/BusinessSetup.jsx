@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import ManagedInMasterNotice from "../../../../../components/shared/ManagedInMasterNotice"
-import { Info, Phone, Upload, X, Loader2, Globe, Settings, Car, UtensilsCrossed, Truck, Save, Trash2, Check, Layers, Image as ImageIcon } from "lucide-react";
+import { Info, Phone, Upload, X, Loader2, Globe, Settings, Car, UtensilsCrossed, Truck, Save, Trash2, Check, Layers, Image as ImageIcon, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { adminAPI } from "@food/api";
 import { setCachedSettings, updateFavicon, updateTitle } from "@food/utils/businessSettings";
@@ -87,6 +87,17 @@ export default function BusinessSetup() {
     region: "",
   });
 
+  // Platform UPI QR shown to customers by a delivery partner with no own QR.
+  const [adminQrUrl, setAdminQrUrl] = useState("");
+  const [adminQrBusy, setAdminQrBusy] = useState(false);   // uploading an image
+  const [adminQrSaving, setAdminQrSaving] = useState(false); // persisting the URL
+
+  // Google Maps API key shared by all three apps. mapKeyInput is the editable
+  // draft; mapApiKey is what is currently persisted on the server.
+  const [mapApiKey, setMapApiKey] = useState("");
+  const [mapKeyInput, setMapKeyInput] = useState("");
+  const [mapKeySaving, setMapKeySaving] = useState(false);
+
   const [taxiLogos, setTaxiLogos] = useState({ logos: {}, favicons: {} });
   const [logoSettingsLoading, setLogoSettingsLoading] = useState(true);
   const [savingLogoSettings, setSavingLogoSettings] = useState(false);
@@ -118,6 +129,9 @@ export default function BusinessSetup() {
           pincode: settings.pincode || "",
           region: settings.region || "India",
         });
+        setAdminQrUrl(settings.adminUpiQr?.url || "");
+        setMapApiKey(settings.mapApiKey || "");
+        setMapKeyInput(settings.mapApiKey || "");
       }
     } catch (error) {
       debugError("Error fetching business settings:", error);
@@ -255,6 +269,68 @@ export default function BusinessSetup() {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
     return res?.data?.data?.url || res?.data?.url || res?.url || '';
+  };
+
+  // --- Admin payment QR -------------------------------------------------
+  // Uploads the image, then persists its URL immediately (a QR the admin sets
+  // should go live without a second Save elsewhere on the page).
+  const handleAdminQrUpload = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file || !validateImageFile(file)) return;
+    setAdminQrBusy(true);
+    try {
+      const url = await uploadImage(file);
+      if (!url) { toast.error('Upload failed. No URL returned.'); return; }
+      setAdminQrUrl(url);
+      setAdminQrSaving(true);
+      await adminAPI.setAdminQr(url);
+      toast.success('Admin QR saved. Delivery partners without their own QR will show this.');
+    } catch (err) {
+      debugError('Admin QR upload error:', err);
+      toast.error(err?.response?.data?.message || 'Failed to save admin QR');
+    } finally {
+      setAdminQrBusy(false);
+      setAdminQrSaving(false);
+    }
+  };
+
+  const handleRemoveAdminQr = async () => {
+    setAdminQrSaving(true);
+    try {
+      await adminAPI.setAdminQr('');
+      setAdminQrUrl('');
+      toast.success('Admin QR removed.');
+    } catch (err) {
+      debugError('Admin QR remove error:', err);
+      toast.error(err?.response?.data?.message || 'Failed to remove admin QR');
+    } finally {
+      setAdminQrSaving(false);
+    }
+  };
+
+  // --- Google Maps API key ---------------------------------------------
+  // Persisted to businessSettings; the apps read it from the public settings
+  // endpoint at launch. Loosely validate the "AIza..." shape before saving.
+  const handleSaveMapKey = async () => {
+    const key = (mapKeyInput || '').trim();
+    if (key && !/^AIza[0-9A-Za-z_-]{20,}$/.test(key)) {
+      toast.error('That does not look like a Google Maps API key (should start with "AIza").');
+      return;
+    }
+    setMapKeySaving(true);
+    try {
+      await adminAPI.setMapApiKey(key);
+      setMapApiKey(key);
+      toast.success(key
+        ? 'Maps API key saved. Apps pick it up on next launch.'
+        : 'Maps API key cleared. Apps fall back to their bundled key.');
+    } catch (err) {
+      debugError('Map key save error:', err);
+      toast.error(err?.response?.data?.message || 'Failed to save Maps API key');
+    } finally {
+      setMapKeySaving(false);
+    }
   };
 
   const handleTaxiFileUpload = async (e, key, type) => {
@@ -560,6 +636,108 @@ export default function BusinessSetup() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Admin Payment QR — shown to customers by a delivery partner who has
+            not uploaded their own UPI QR (read by the delivery app). */}
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 lg:p-6">
+          <div className="border-b border-slate-100 pb-4 mb-5 flex items-center gap-2">
+            <QrCode size={18} className="text-emerald-600" />
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Admin Payment QR</h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Shown to customers when a delivery partner hasn&apos;t set their own UPI QR. Applies instantly on upload.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="h-28 w-28 rounded-xl border border-slate-200 bg-slate-50 p-2 flex items-center justify-center overflow-hidden shrink-0">
+              {adminQrUrl ? (
+                <img src={adminQrUrl} alt="Admin UPI QR" className="max-h-full max-w-full object-contain" />
+              ) : (
+                <div className="text-center">
+                  <QrCode className="w-6 h-6 mx-auto text-slate-300" />
+                  <span className="text-[9px] text-slate-400 block mt-1">No QR set</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <label className={`inline-flex items-center gap-1.5 py-2 px-3 rounded-lg border border-emerald-600/20 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[11px] font-semibold cursor-pointer transition-all active:scale-95 ${
+                  (adminQrBusy || adminQrSaving) ? 'opacity-50 pointer-events-none' : ''
+                }`}>
+                  {(adminQrBusy || adminQrSaving) ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                  {adminQrUrl ? 'Replace QR' : 'Upload QR'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAdminQrUpload}
+                    className="hidden"
+                  />
+                </label>
+
+                {adminQrUrl && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveAdminQr}
+                    disabled={adminQrBusy || adminQrSaving}
+                    className="inline-flex items-center gap-1.5 py-2 px-3 rounded-lg border border-red-100 text-red-500 hover:bg-red-50 text-[11px] font-semibold transition-all disabled:opacity-50"
+                  >
+                    <Trash2 size={12} />
+                    Remove
+                  </button>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Use a clear UPI QR image (PNG/JPG, under 2&nbsp;MB). The customer scans it to pay the delivery partner.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Google Maps API key — shared by the user, restaurant and delivery
+            apps. They read it from the public settings endpoint at launch and
+            set it into AppConstants.mapKey; empty falls back to the bundled key. */}
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 lg:p-6 mt-6">
+          <div className="border-b border-slate-100 pb-4 mb-5 flex items-center gap-2">
+            <Globe size={18} className="text-indigo-600" />
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Google Maps API Key</h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Used by all three apps for maps &amp; geocoding. Apps apply it on next launch. Leave blank to use the key bundled in each app.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={mapKeyInput}
+                onChange={(e) => setMapKeyInput(e.target.value)}
+                placeholder="AIza..."
+                spellCheck={false}
+                autoComplete="off"
+                className="flex-1 py-2 px-3 rounded-lg border border-slate-200 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 outline-none text-xs font-mono text-slate-700"
+              />
+              <button
+                type="button"
+                onClick={handleSaveMapKey}
+                disabled={mapKeySaving || mapKeyInput.trim() === mapApiKey.trim()}
+                className="inline-flex items-center justify-center gap-1.5 py-2 px-4 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                {mapKeySaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                Save Key
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-400">
+              {mapApiKey
+                ? <>Current key in use: <span className="font-mono text-slate-500">{mapApiKey.slice(0, 10)}…{mapApiKey.slice(-4)}</span></>
+                : 'No custom key set — apps use their bundled key.'}
+            </p>
           </div>
         </div>
 

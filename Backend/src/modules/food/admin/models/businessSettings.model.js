@@ -27,7 +27,20 @@ const businessSettingsSchema = new mongoose.Schema(
         deliveryPartnerLogo: {
             url: { type: String, default: '' },
             publicId: { type: String, default: '' }
-        }
+        },
+        // Platform UPI QR shown to customers by a delivery partner who has not
+        // uploaded their own QR. Set by the admin; read by the delivery app via
+        // the public business-settings endpoint.
+        adminUpiQr: {
+            url: { type: String, default: '' },
+            publicId: { type: String, default: '' }
+        },
+        // Google Maps API key used by the apps for HTTP Maps services (geocoding
+        // etc.). Set by the admin here and read by every app via the public
+        // business-settings endpoint, so the key can be rotated without a
+        // rebuild. (The native map-display key stays in each app's manifest and
+        // is build-time only.)
+        mapApiKey: { type: String, default: '' }
     },
     { timestamps: true }
 );

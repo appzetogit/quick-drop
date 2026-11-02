@@ -23,6 +23,8 @@ const emptyTier = () => ({
   rewardType: "item",
   rewardId: "",
   rewardName: "",
+  // Optional price the reward is given at. Blank = fully free.
+  rewardPrice: "",
 })
 
 const toTierDraft = (tier = {}) => ({
@@ -31,6 +33,8 @@ const toTierDraft = (tier = {}) => ({
   rewardType: tier.rewardType === "addon" ? "addon" : tier.rewardType === "manual" ? "manual" : "item",
   rewardId: String(tier.rewardAddonId || tier.rewardItemId || ""),
   rewardName: tier.rewardName || "",
+  // A saved 0 means free, which the blank field also means, so it shows blank.
+  rewardPrice: tier.rewardPrice ? String(tier.rewardPrice) : "",
 })
 
 export default function RestaurantFreebieOffers() {
@@ -166,6 +170,8 @@ export default function RestaurantFreebieOffers() {
         tiers: cleaned.map((t) => ({
           minOrderValue: Number(t.minOrderValue),
           rewardType: t.rewardType,
+          // Blank or junk -> 0 (free). Sent for every reward type.
+          rewardPrice: Math.max(0, Number(t.rewardPrice) || 0),
           ...(t.rewardType === "manual"
             ? { rewardName: t.rewardName.trim() }
             : t.rewardType === "addon"
@@ -363,6 +369,30 @@ export default function RestaurantFreebieOffers() {
                           ))}
                         </select>
                       )}
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs text-slate-600">
+                        Reward price <span className="text-slate-400">(optional)</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative w-40">
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={tier.rewardPrice}
+                            onChange={(e) => updateTier(tier.localId, "rewardPrice", e.target.value)}
+                            placeholder="0"
+                            className="w-full rounded-lg border border-slate-300 py-2 pl-7 pr-3 text-sm"
+                          />
+                        </div>
+                        <span className="text-xs text-slate-500">
+                          Leave blank or 0 for fully free. Set an amount (e.g. 10) and the
+                          customer pays that for the reward instead.
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )

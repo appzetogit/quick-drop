@@ -11,8 +11,10 @@ export default function DeliveryCashLimit() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingWithdrawal, setSavingWithdrawal] = useState(false)
+  const [savingSecurity, setSavingSecurity] = useState(false)
   const [deliveryCashLimit, setDeliveryCashLimit] = useState("")
   const [deliveryWithdrawalLimit, setDeliveryWithdrawalLimit] = useState("")
+  const [deliverySecurityDeposit, setDeliverySecurityDeposit] = useState("")
   const isMountedRef = useRef(true)
 
   const fetchLimit = useCallback(async ({ silent = false } = {}) => {
@@ -24,9 +26,11 @@ export default function DeliveryCashLimit() {
       const data = response?.data?.data || response?.data || {}
       const limit = data.deliveryCashLimit
       const wl = data.deliveryWithdrawalLimit ?? 100
+      const sd = data.deliverySecurityDeposit ?? 0
       if (!isMountedRef.current) return
       setDeliveryCashLimit(limit !== undefined && limit !== null ? String(limit) : "")
       setDeliveryWithdrawalLimit(wl !== undefined && wl !== null ? String(wl) : "100")
+      setDeliverySecurityDeposit(sd !== undefined && sd !== null ? String(sd) : "0")
     } catch (error) {
       debugError("Error fetching delivery cash limit:", error)
       if (!isMountedRef.current) return
@@ -35,6 +39,7 @@ export default function DeliveryCashLimit() {
       }
       setDeliveryCashLimit("")
       setDeliveryWithdrawalLimit("100")
+      setDeliverySecurityDeposit("0")
     } finally {
       if (!silent && isMountedRef.current) {
         setLoading(false)
@@ -56,10 +61,11 @@ export default function DeliveryCashLimit() {
 
     try {
       setSaving(true)
-      // Send both fields to avoid unintentionally overwriting the other value
+      // Send all fields to avoid unintentionally overwriting the other values
       const response = await adminAPI.updateDeliveryCashLimit({
         deliveryCashLimit: value,
         deliveryWithdrawalLimit: withdrawalValue,
+        deliverySecurityDeposit: Math.max(0, Number(deliverySecurityDeposit) || 0),
       })
       const saved =
         response?.data?.data?.deliveryCashLimit ??
@@ -90,10 +96,11 @@ export default function DeliveryCashLimit() {
 
     try {
       setSavingWithdrawal(true)
-      // Send both fields to avoid unintentionally overwriting the other value
+      // Send all fields to avoid unintentionally overwriting the other values
       const response = await adminAPI.updateDeliveryCashLimit({
         deliveryCashLimit: cashValue,
         deliveryWithdrawalLimit: value,
+        deliverySecurityDeposit: Math.max(0, Number(deliverySecurityDeposit) || 0),
       })
       const saved =
         response?.data?.data?.deliveryWithdrawalLimit ??
@@ -107,6 +114,38 @@ export default function DeliveryCashLimit() {
       toast.error(error.response?.data?.message || "Failed to update withdrawal limit")
     } finally {
       setSavingWithdrawal(false)
+    }
+  }
+
+  const saveSecurityDeposit = async () => {
+    const value = Number(deliverySecurityDeposit)
+    if (!Number.isFinite(value) || value < 0) {
+      toast.error("Security deposit must be a number (>= 0)")
+      return
+    }
+    const cashValue = Number(deliveryCashLimit)
+    const withdrawalValue = Number(deliveryWithdrawalLimit)
+
+    try {
+      setSavingSecurity(true)
+      // Send all fields to avoid unintentionally overwriting the other values
+      const response = await adminAPI.updateDeliveryCashLimit({
+        deliveryCashLimit: Number.isFinite(cashValue) && cashValue >= 0 ? cashValue : 0,
+        deliveryWithdrawalLimit: Number.isFinite(withdrawalValue) && withdrawalValue >= 0 ? withdrawalValue : 100,
+        deliverySecurityDeposit: value,
+      })
+      const saved =
+        response?.data?.data?.deliverySecurityDeposit ??
+        response?.data?.deliverySecurityDeposit ??
+        value
+      setDeliverySecurityDeposit(String(saved))
+      toast.success("Security deposit updated successfully")
+      await fetchLimit({ silent: true })
+    } catch (error) {
+      debugError("Error saving security deposit:", error)
+      toast.error(error.response?.data?.message || "Failed to update security deposit")
+    } finally {
+      setSavingSecurity(false)
     }
   }
 
@@ -214,6 +253,52 @@ export default function DeliveryCashLimit() {
                     className="px-4 py-2.5 text-sm font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {savingWithdrawal && <Loader2 className="w-4 h-4 animate-spin" />}
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg mt-6">
+            <div className="flex items-start gap-3">
+              <Wallet className="w-5 h-5 text-indigo-700 mt-0.5" />
+              <div className="flex-1">
+                <div className="font-semibold text-indigo-900 mb-1">
+                  Security Deposit (Global)
+                </div>
+                <div className="text-sm text-indigo-800/80 mb-3">
+                  Refundable amount each delivery partner must pay into their wallet before they can go online and
+                  receive orders (food, quick commerce &amp; daily needs). This amount stays <strong>locked</strong> and
+                  can never be withdrawn — only earnings above it are withdrawable. Set <strong>0</strong> to turn the
+                  requirement off.
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                  <div className="flex-1">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={deliverySecurityDeposit}
+                      onChange={(e) => setDeliverySecurityDeposit(e.target.value)}
+                      className="w-full px-4 py-2.5 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm border-indigo-200"
+                      placeholder={loading ? "Loading..." : "e.g., 1000 (0 = off)"}
+                      disabled={loading || savingSecurity}
+                    />
+                    {loading && (
+                      <p className="text-xs text-indigo-700/80 mt-1 flex items-center gap-2">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Loading…
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={saveSecurityDeposit}
+                    disabled={loading || savingSecurity}
+                    className="px-4 py-2.5 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {savingSecurity && <Loader2 className="w-4 h-4 animate-spin" />}
                     Save
                   </button>
                 </div>

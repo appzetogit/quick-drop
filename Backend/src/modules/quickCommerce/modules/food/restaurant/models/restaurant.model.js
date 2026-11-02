@@ -1,4 +1,7 @@
 import mongoose from "mongoose";
+// Registered here so populating a pharmacy's zone never depends on whichever
+// service happened to import it first.
+import "../../admin/models/medicalZone.model.js";
 
 const normalizeRatingValue = (value) => {
   const numeric = Number(value);
@@ -353,7 +356,14 @@ const restaurantSchema = new mongoose.Schema(
     /** Optional service zone id (can be computed from location). */
     zoneId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "QCZone",
+      // A pharmacy's zone lives in the medical zone list, not the quick-commerce
+      // one. With a fixed ref, populating it looked in the wrong collection,
+      // found nothing, and the admin's Edit Location showed "Select a zone".
+      ref: function () {
+        return String(this?.storeType || "").trim().toLowerCase() === "pharmacy"
+          ? "MedicalZone"
+          : "QCZone";
+      },
       index: true,
     },
     businessModel: {

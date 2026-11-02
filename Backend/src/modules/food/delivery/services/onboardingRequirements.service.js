@@ -68,8 +68,9 @@ export const listOnboardingOptions = () => ({
         {
             key: DRIVER_CLASSES.TWO_WHEELER,
             label: 'I have a 2 Wheeler',
-            // Pick one option (radio) or several (tick-boxes).
-            singleChoice: true,
+            // A two-wheeler rider may tick BOTH options (the delivery group and
+            // Bike Taxi), so this is multi-select (tick-boxes), not radio.
+            singleChoice: false,
             intents: Object.entries(DRIVER_INTENTS)
                 .filter(([, v]) => v.driverClass === DRIVER_CLASSES.TWO_WHEELER)
                 .map(([key, v]) => ({ key, label: v.label })),

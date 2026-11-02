@@ -68,6 +68,20 @@ export const initializeFirebaseRealtime = () => {
         if (admin.apps.length > 0) {
             db = databaseURL ? admin.database() : null;
             messaging = admin.messaging();
+            // The default app was created at import time (service-provider module)
+            // from the env account. When the settings document names a different
+            // project, the apps registered their FCM tokens against THAT project, so
+            // sending from the default app fails every token with
+            // "mismatched-credential" -- taxi ride offers never reached a phone.
+            // Credentials can't be swapped on a live app, so send from a named one.
+            const defaultProject = admin.app().options?.credential?.projectId;
+            if (dbServiceAccount && dbServiceAccount.project_id !== defaultProject) {
+                const name = 'platform-settings';
+                const settingsApp = admin.apps.find((a) => a?.name === name)
+                    || admin.initializeApp({ credential: admin.credential.cert(dbServiceAccount) }, name);
+                messaging = settingsApp.messaging();
+                logger.info(`Firebase Messaging using settings project ${dbServiceAccount.project_id}`);
+            }
             return { db, messaging };
         }
 

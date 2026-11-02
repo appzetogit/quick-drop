@@ -25,6 +25,17 @@ const whenLabel = (iso) => {
     : d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })
 }
 
+/**
+ * The reasons an admin picks when switching a service off. Shown to the
+ * customer, verbatim, when they tap the greyed-out module in the app — so each
+ * reads as the full, polite message a customer should see. Deliberately only
+ * these two options (no free-text), per the business rule.
+ */
+const OFF_REASONS = [
+  "Sorry, we're not serving at the moment. Please try again in some time — due to weather conditions.",
+  "Sorry, we're not serving at the moment. Please try again in some time — due to non-availability of a delivery partner.",
+]
+
 function ServiceCard({ service, busyKey, onToggleService, onToggleZone }) {
   const [query, setQuery] = useState("")
   const zones = useMemo(() => {
@@ -49,6 +60,11 @@ function ServiceCard({ service, busyKey, onToggleService, onToggleZone }) {
                 : "Hidden from the app everywhere."}
               {service.updatedAt && ` Last changed ${whenLabel(service.updatedAt)}.`}
             </CardDescription>
+            {!service.enabled && service.reason && (
+              <p className="mt-1 text-xs font-medium text-amber-700">
+                Reason shown to customers: “{service.reason}”
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {serviceBusy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -109,6 +125,11 @@ function ServiceCard({ service, busyKey, onToggleService, onToggleZone }) {
                       {zone.enabled ? "Shown here" : "Hidden here"}
                       {zone.updatedAt && ` · changed ${whenLabel(zone.updatedAt)}`}
                     </div>
+                    {!zone.enabled && zone.reason && (
+                      <div className="truncate text-xs font-medium text-amber-700">
+                        Reason: “{zone.reason}”
+                      </div>
+                    )}
                   </div>
                   {busy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                   <Switch
@@ -134,6 +155,12 @@ export default function AppServices() {
   const [services, setServices] = useState([])
   const [loading, setLoading] = useState(true)
   const [busyKey, setBusyKey] = useState("")
+  // The off-switch the admin just flipped, held open until they pick a reason.
+  // { kind: 'service'|'zone', service, zone? }
+  const [offTarget, setOffTarget] = useState(null)
+  const [pickedReason, setPickedReason] = useState(OFF_REASONS[0])
+  const [customReason, setCustomReason] = useState("")
+  const [savingOff, setSavingOff] = useState(false)
 
   const apply = (res) => {
     const list = res?.data?.data?.services || res?.data?.services || []
@@ -155,10 +182,10 @@ export default function AppServices() {
     load()
   }, [load])
 
-  const toggleService = async (service, enabled) => {
+  const toggleService = async (service, enabled, reason = "") => {
     setBusyKey(service.key)
     try {
-      apply(await appServicesAPI.setService(service.key, enabled))
+      apply(await appServicesAPI.setService(service.key, enabled, reason))
       toast.success(`${service.label} is now ${enabled ? "shown" : "hidden"} in the app everywhere.`)
     } catch (error) {
       toast.error(error?.response?.data?.message || `Could not change ${service.label}.`)
@@ -167,15 +194,52 @@ export default function AppServices() {
     }
   }
 
-  const toggleZone = async (service, zone, enabled) => {
+  const toggleZone = async (service, zone, enabled, reason = "") => {
     setBusyKey(`${service.key}:${zone.id}`)
     try {
-      apply(await appServicesAPI.setZone(service.key, zone.id, enabled))
+      apply(await appServicesAPI.setZone(service.key, zone.id, enabled, reason))
       toast.success(`${service.label} is now ${enabled ? "shown" : "hidden"} in ${zone.name}.`)
     } catch (error) {
       toast.error(error?.response?.data?.message || `Could not change ${service.label} in ${zone.name}.`)
     } finally {
       setBusyKey("")
+    }
+  }
+
+  // Turning something ON needs no reason, so it goes straight through. Turning
+  // it OFF opens the reason picker first — the switch does not actually flip
+  // until a reason is chosen, which is what the customer will be shown.
+  const requestToggleService = (service, enabled) => {
+    if (enabled) return toggleService(service, true, "")
+    setPickedReason(OFF_REASONS[0])
+    setCustomReason("")
+    setOffTarget({ kind: "service", service })
+  }
+
+  const requestToggleZone = (service, zone, enabled) => {
+    if (enabled) return toggleZone(service, zone, true, "")
+    setPickedReason(OFF_REASONS[0])
+    setCustomReason("")
+    setOffTarget({ kind: "zone", service, zone })
+  }
+
+  const confirmOff = async () => {
+    if (!offTarget) return
+    const reason = (pickedReason === "Other" ? customReason : pickedReason).trim()
+    if (!reason) {
+      toast.error("Please choose or type a reason.")
+      return
+    }
+    setSavingOff(true)
+    try {
+      if (offTarget.kind === "service") {
+        await toggleService(offTarget.service, false, reason)
+      } else {
+        await toggleZone(offTarget.service, offTarget.zone, false, reason)
+      }
+      setOffTarget(null)
+    } finally {
+      setSavingOff(false)
     }
   }
 
@@ -202,10 +266,86 @@ export default function AppServices() {
               key={service.key}
               service={service}
               busyKey={busyKey}
-              onToggleService={toggleService}
-              onToggleZone={toggleZone}
+              onToggleService={requestToggleService}
+              onToggleZone={requestToggleZone}
             />
           ))}
+        </div>
+      )}
+
+      {offTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => (savingOff ? null : setOffTarget(null))}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold text-slate-900">
+              Why are you turning this off?
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              {offTarget.kind === "service"
+                ? `${offTarget.service.label} will be switched off everywhere.`
+                : `${offTarget.service.label} will be switched off in ${offTarget.zone.name}.`}{" "}
+              The customer sees this reason when they tap the greyed-out module.
+            </p>
+
+            <div className="mt-4 space-y-2">
+              {OFF_REASONS.map((r) => (
+                <label
+                  key={r}
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm ${
+                    pickedReason === r
+                      ? "border-orange-500 bg-orange-50 text-slate-900"
+                      : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="off-reason"
+                    className="accent-orange-500"
+                    checked={pickedReason === r}
+                    onChange={() => setPickedReason(r)}
+                  />
+                  {r}
+                </label>
+              ))}
+            </div>
+
+            {pickedReason === "Other" && (
+              <input
+                type="text"
+                value={customReason}
+                onChange={(e) => setCustomReason(e.target.value)}
+                placeholder="Type the reason the customer should see…"
+                maxLength={200}
+                autoFocus
+                className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={savingOff}
+                onClick={() => setOffTarget(null)}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={savingOff}
+                onClick={confirmOff}
+                className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
+              >
+                {savingOff && <Loader2 className="h-4 w-4 animate-spin" />}
+                Turn off
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

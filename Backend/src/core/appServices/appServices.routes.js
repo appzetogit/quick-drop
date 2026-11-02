@@ -58,7 +58,10 @@ admin.get('/', async (_req, res) => {
 // Writes are a platform setting: the same permission, and the same audit row.
 admin.put('/:service', requireFinancePermission('PLATFORM_SETTING_SET'), async (req, res) => {
     try {
-        const data = await setServiceEnabled(req.params.service, req.body?.enabled, { actorId: actorOf(req) });
+        const data = await setServiceEnabled(req.params.service, req.body?.enabled, {
+            actorId: actorOf(req),
+            reason: req.body?.reason,
+        });
         return sendResponse(res, 200, 'Saved', data);
     } catch (err) {
         return fail(res, err, 'Could not save');
@@ -69,6 +72,7 @@ admin.put('/:service/zones/:zoneId', requireFinancePermission('PLATFORM_SETTING_
     try {
         const data = await setZoneEnabled(req.params.service, req.params.zoneId, req.body?.enabled, {
             actorId: actorOf(req),
+            reason: req.body?.reason,
         });
         return sendResponse(res, 200, 'Saved', data);
     } catch (err) {

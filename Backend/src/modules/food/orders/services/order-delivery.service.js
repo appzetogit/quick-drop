@@ -59,7 +59,7 @@ function emitOrderUpdate(order, deliveryPartnerId) {
 
     // Only send push notifications for key delivery milestones
     const status = order.orderStatus;
-    if (!['picked_up', 'reached_drop', 'delivered'].includes(status)) return;
+    if (!['reached_pickup', 'picked_up', 'reached_drop', 'delivered'].includes(status)) return;
 
     let userTitle = '';
     let userBody = '';
@@ -68,7 +68,12 @@ function emitOrderUpdate(order, deliveryPartnerId) {
 
     const orderId = order._id.toString();
 
-    if (status === 'picked_up') {
+    if (status === 'reached_pickup') {
+      // Rider-only milestone: the customer doesn't need "rider reached the
+      // restaurant", so no userTitle here.
+      riderTitle = 'Reached the restaurant';
+      riderBody = `You have reached the pickup point for order #${orderId}. Collect the order.`;
+    } else if (status === 'picked_up') {
       userTitle = 'Order on the way!';
       userBody = `Partner has picked up your order #${orderId} and is heading your way.`;
       riderTitle = 'Order picked up!';
@@ -112,15 +117,26 @@ function emitOrderUpdate(order, deliveryPartnerId) {
     }
 
     if (riderTitle) {
+      // A VISIBLE notification (not dataOnly): the rider should get a proper
+      // "Order picked up" / "Reached the restaurant" / "Delivery successful"
+      // alert for each milestone. dataOnly stripped the title/body, so these
+      // arrived as blank notifications. Title/body are mirrored into `data`
+      // too, so the app can render them in the foreground / on tap.
       void notifyOwnerSafely(
         { ownerType: 'DELIVERY_PARTNER', ownerId: deliveryPartnerId },
         {
           title: riderTitle,
           body: riderBody,
-          dataOnly: true,
+          // The channel the delivery app actually creates for order
+          // notifications (fcm_service.dart _channel = 'orders_channel'); an
+          // unknown id would be demoted to low importance by Android.
+          androidChannelId: 'orders_channel',
           data: {
             type: status === 'delivered' ? 'order_completed' : 'order_status_update',
+            title: riderTitle,
+            body: riderBody,
             orderId,
+            orderStatus: status,
             orderMongoId: order._id?.toString?.() || '',
             paymentMethod: order.payment?.method || order.paymentMethod,
             amountCollected: String(order.pricing?.total || order.amounts?.totalCustomerPaid || 0),

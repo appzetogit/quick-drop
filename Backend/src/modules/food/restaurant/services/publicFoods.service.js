@@ -40,19 +40,9 @@ const buildCategoryKeywords = (categorySlug) => {
  */
 const UNDER_250_MAX_PRICE = 250;
 
-/*
- * On the shelf unless an admin took it off. The admin's dish form shows every
- * dish at or under the cap as ticked ("added automatically") unless it was
- * removed by hand, but this used to require the stored flag -- which only a
- * save, an approval or a cap rise ever set. Dishes older than the shelf, or
- * whose price came down through the restaurant panel, looked ticked to the
- * admin and never reached the app. The exclusion flag is the admin's decision;
- * the cap is applied here, so the shelf follows price changes by itself.
- */
-const qualifiesFor99Store = (food, price, cap, excluded) =>
-    (food?.showIn99Store === true || !excluded)
+const qualifiesFor99Store = (food, price, cap) =>
+    food?.showIn99Store === true
     && Number.isFinite(Number(price))
-    && Number(price) > 0
     && Number(price) <= cap;
 
 export async function listPublicFoods(query = {}) {
@@ -130,24 +120,29 @@ export async function listPublicFoods(query = {}) {
         isActive: { $ne: false }
     };
 
-    const keywords = buildCategoryKeywords(categorySlug);
-    if (keywords.length > 0) {
-        foodFilter.$or = keywords.flatMap((keyword) => {
-            const rx = escapeRegex(keyword);
-            return [
-                { name: { $regex: rx, $options: 'i' } },
-                { categoryName: { $regex: rx, $options: 'i' } }
-            ];
-        });
+    // Prefer the dish's categoryId — the authoritative link to the category a
+    // chip represents. A dish's denormalized categoryName can drift from the
+    // category's real name (e.g. a "Roti" chip whose dishes carry categoryName
+    // "Roti & Naan"), so name matching missed them; the id never drifts. Falls
+    // back to an EXACT categoryName match when no id is supplied.
+    //
+    // The old code broke the category into words and substring-matched them
+    // against the dish NAME or categoryName — so "Non veg Snacks" matched every
+    // dish containing "veg" and leaked dishes across every category.
+    const categoryId = String(query.categoryId || '').trim();
+    if (categoryId && mongoose.Types.ObjectId.isValid(categoryId)) {
+        foodFilter.categoryId = new mongoose.Types.ObjectId(categoryId);
+    } else if (categorySlug && categorySlug !== 'all') {
+        foodFilter.categoryName = {
+            $regex: `^\\s*${escapeRegex(categorySlug)}\\s*$`,
+            $options: 'i',
+        };
     }
 
     const list = await FoodItem.find(foodFilter)
         .sort({ createdAt: -1 })
         .limit(isPromoList ? Math.max(limit, 2000) : limit)
         .lean();
-    const excludedFrom99 = new Set(
-        list.filter((food) => food.ninetyNineStoreExcluded === true).map((food) => String(food._id))
-    );
 
     // Which dishes are on a buy-one-get-one right now. One query for the whole
     // page rather than one per kitchen on it, and read at render time so a run
@@ -269,6 +264,9 @@ export async function listPublicFoods(query = {}) {
             // Carried through so the shelf filter below can read it, and so the
             // app can badge a dish as part of the Rs 99 store.
             showIn99Store: food.showIn99Store === true,
+            // The restaurant's own "recommended" toggle — drives the home
+            // "Trending Now" rail (the app reads it as isPopular).
+            isRecommended: food.isRecommended === true,
             // A combo is an ordinary dish to order, but the app has to be able to
             // say what is inside one. Without these two the customer sees a
             // cheaper dish and no reason why.
@@ -299,9 +297,7 @@ export async function listPublicFoods(query = {}) {
             // Deliberately NOT dropping out-of-stock dishes here -- the app
             // shows them greyed out. Removing this line was the other half of
             // the query change above; leaving it would have undone it.
-            if (is99StorePromo) {
-                return qualifiesFor99Store(food, food.price, ninetyNineCap, excludedFrom99.has(String(food._id)));
-            }
+            if (is99StorePromo) return qualifiesFor99Store(food, food.price, ninetyNineCap);
             if (isUnder250Promo) {
                 const value = Number(food.price);
                 return Number.isFinite(value) && value <= UNDER_250_MAX_PRICE;

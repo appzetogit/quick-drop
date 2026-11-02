@@ -92,6 +92,7 @@ export function validateIncentiveRuleUpsertDto(body = {}) {
         startsAt,
         endsAt,
         title: String(body.title || '').trim(),
+        subtitle: String(body.subtitle || '').trim().slice(0, 160),
         zoneId: rawZone ? new mongoose.Types.ObjectId(rawZone) : null,
         zoneName: rawZone ? String(body.zoneName || '').trim().slice(0, 120) : '',
         vehicleTypeId: rawVehicleType ? new mongoose.Types.ObjectId(rawVehicleType) : null,

@@ -19,6 +19,8 @@ const emptyTier = () => ({
   rewardType: "item",
   rewardId: "",
   rewardName: "",
+  // Optional price the reward is given at. Blank = fully free.
+  rewardPrice: "",
 })
 
 const toTierDraft = (tier = {}) => ({
@@ -27,6 +29,7 @@ const toTierDraft = (tier = {}) => ({
   rewardType: tier.rewardType === "addon" ? "addon" : tier.rewardType === "manual" ? "manual" : "item",
   rewardId: String(tier.rewardAddonId || tier.rewardItemId || ""),
   rewardName: tier.rewardName || "",
+  rewardPrice: tier.rewardPrice ? String(tier.rewardPrice) : "",
 })
 
 export default function FreebieOffersPage() {
@@ -162,6 +165,8 @@ export default function FreebieOffersPage() {
         tiers: cleaned.map((t) => ({
           minOrderValue: Number(t.minOrderValue),
           rewardType: t.rewardType,
+          // Blank or junk -> 0 (free). Sent for every reward type.
+          rewardPrice: Math.max(0, Number(t.rewardPrice) || 0),
           ...(t.rewardType === "manual"
             ? { rewardName: t.rewardName.trim() }
             : t.rewardType === "addon"
@@ -326,6 +331,28 @@ export default function FreebieOffersPage() {
                         ))}
                       </select>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-gray-600">
+                      Reward price <span className="text-gray-400">(optional)</span>
+                    </label>
+                    <div className="relative w-40">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={tier.rewardPrice}
+                        onChange={(e) => updateTier(tier.localId, "rewardPrice", e.target.value)}
+                        placeholder="0"
+                        className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-7 pr-3 text-sm text-gray-900 focus:ring-2 focus:ring-gray-900 focus:outline-none"
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Leave blank or 0 to give it fully free. Set an amount (e.g. ₹10) and the
+                      customer pays that for the reward instead.
+                    </p>
                   </div>
                 </div>
               </div>

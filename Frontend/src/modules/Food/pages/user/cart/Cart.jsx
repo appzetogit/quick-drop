@@ -2647,19 +2647,29 @@ export default function Cart() {
                   {freebieEarned ? (
                     <p className="text-sm font-semibold text-[#EB590E]">
                       {freebieEarned.name
-                        ? `${freebieEarned.name} is free on this order`
-                        : "You have earned a free item on this order"}
+                        ? (Number(freebieEarned.rewardPrice) > 0
+                            ? `${freebieEarned.name} is only ${RUPEE_SYMBOL}${Number(freebieEarned.rewardPrice).toFixed(0)} on this order`
+                            : `${freebieEarned.name} is free on this order`)
+                        : "You have earned a reward on this order"}
                     </p>
                   ) : (
                     <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
                       Add {RUPEE_SYMBOL}{Number(freebieNext.amountAway || 0).toFixed(2)} more
-                      {freebieNext.name ? ` to get ${freebieNext.name} free` : " to earn a free item"}
+                      {freebieNext.name
+                        ? (Number(freebieNext.rewardPrice) > 0
+                            ? ` to get ${freebieNext.name} for ${RUPEE_SYMBOL}${Number(freebieNext.rewardPrice).toFixed(0)}`
+                            : ` to get ${freebieNext.name} free`)
+                        : " to earn a reward"}
                     </p>
                   )}
                   {freebieEarned && freebieNext && (
                     <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
                       Add {RUPEE_SYMBOL}{Number(freebieNext.amountAway || 0).toFixed(2)} more
-                      {freebieNext.name ? ` for ${freebieNext.name} instead` : " for a better reward"}
+                      {freebieNext.name
+                        ? (Number(freebieNext.rewardPrice) > 0
+                            ? ` for ${freebieNext.name} at ${RUPEE_SYMBOL}${Number(freebieNext.rewardPrice).toFixed(0)} instead`
+                            : ` for ${freebieNext.name} instead`)
+                        : " for a better reward"}
                     </p>
                   )}
                 </div>
@@ -2713,9 +2723,9 @@ export default function Cart() {
                     {freebieEarned && (
                       <div className="flex justify-between text-sm">
                         <span className="text-[#EB590E] font-medium">
-                          Free: {freebieEarned.name || "Reward"}
+                          {Number(freebieEarned.rewardPrice) > 0 ? "Reward" : "Free"}: {freebieEarned.name || "Reward"}
                         </span>
-                        <span className="text-[#EB590E] font-medium">{RUPEE_SYMBOL}0.00</span>
+                        <span className="text-[#EB590E] font-medium">{RUPEE_SYMBOL}{Number(freebieEarned.rewardPrice || 0).toFixed(2)}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm">

@@ -234,6 +234,11 @@ router.patch('/business-settings', upload.fields([
     { name: 'restaurantLogo', maxCount: 1 },
     { name: 'deliveryPartnerLogo', maxCount: 1 }
 ]), businessSettingsController.updateBusinessSettings);
+// Admin UPI QR (JSON { url }) — image already hosted via /uploads/image.
+router.patch('/business-settings/admin-qr', businessSettingsController.setAdminUpiQr);
+// Google Maps API key (JSON { mapApiKey }) — read by the apps via the public
+// business-settings endpoint, so it can be rotated without an app rebuild.
+router.patch('/business-settings/map-key', businessSettingsController.setMapApiKey);
 
 // ----- Delivery Cash Limit -----
 router.get('/delivery-cash-limit', adminController.getDeliveryCashLimit);

@@ -101,6 +101,7 @@ const initialFormState = {
    payment_type: ['cash'],
    admin_commision_type: '1',
    admin_commision: '',
+   platform_fee_gst: '',
    admin_commission_type_from_driver: '1',
    admin_commission_from_driver: '',
    admin_commission_type_for_owner: '1',
@@ -215,6 +216,7 @@ const SetPrices = ({ mode }) => {
                vehicle_type: pData.vehicle_type?._id || pData.vehicle_type || '',
                admin_commision: pData.admin_commision ?? pData.customer_commission ?? '',
                admin_commision_type: String(pData.admin_commision_type ?? 1),
+               platform_fee_gst: pData.platform_fee_gst ?? '',
                admin_commission_from_driver: pData.admin_commission_from_driver ?? pData.driver_commission ?? '',
                admin_commission_type_from_driver: String(pData.admin_commission_type_from_driver ?? 1),
                admin_commission_for_owner: pData.admin_commission_for_owner ?? 0,
@@ -607,6 +609,12 @@ const SetPrices = ({ mode }) => {
                            <div>
                               <label className={labelClass}>Platform Fee <span className="text-rose-500">*</span></label>
                               <input type="number" min="0" required className={inputClass} placeholder="Enter Platform Fee" value={formData.admin_commision} onChange={e => setFormData(p => ({ ...p, admin_commision: e.target.value }))} />
+                           </div>
+                           <div>
+                              <label className={labelClass}>Platform Fee GST (%)</label>
+                              {/* GST charged on top of the platform fee. The rider sees it as
+                                  "Platform fee [₹10 + 18% GST] = ₹11.80". Leave blank / 0 for none. */}
+                              <input type="number" min="0" className={inputClass} placeholder="e.g. 18" value={formData.platform_fee_gst} onChange={e => setFormData(p => ({ ...p, platform_fee_gst: e.target.value }))} />
                            </div>
                            <div>
                               <label className={labelClass}>Admin Commission Type From Driver <span className="text-rose-500">*</span></label>

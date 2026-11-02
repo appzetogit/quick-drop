@@ -787,6 +787,7 @@ async function buildCurrentIncentive(ctx, { forceSegment } = {}) {
         // Which ladder this is, so the app can word the card (orders / rides / jobs).
         segment,
         title: rule.title || `Complete ${finalTier.toOrders} orders, get ₹${totalRewardAmount}`,
+        subtitle: rule.subtitle || '',
         tiers: tiers.map((t) => ({
             id: String(t._id),
             fromOrders: t.fromOrders,
