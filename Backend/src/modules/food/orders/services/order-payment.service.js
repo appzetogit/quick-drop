@@ -158,8 +158,17 @@ export async function createCollectQr(
   }
   const tx = await FoodTransaction.findOne({ orderId: order._id }).lean();
   const payment = tx?.payment || order.payment || {};
-  if (payment.method !== 'cash' && payment.status === 'paid') {
-    throw new ValidationError('Order already paid');
+  /*
+   * Paid already: nothing to collect. Both records are asked, because an online
+   * payment marks only the order paid; its transaction stays at 'created'. Reading
+   * the transaction alone let the rider open a QR on a paid order, which turned it
+   * into a cash order on the rider's cash limit (FOD-1089101, FOD-4154163).
+   * Answered rather than refused: the rider's app takes 'paid' as "go on and
+   * complete the delivery", where an error would leave them stuck at the door.
+   */
+  const alreadyPaid = [payment, order.payment].some((p) => p?.method !== 'cash' && p?.status === 'paid');
+  if (alreadyPaid) {
+    return { ...collectQrResponse({ kind: 'already_paid', shortUrl: 'already-paid', imageUrl: '' }, 0), status: 'paid' };
   }
 
   const amountDue = payment.amountDue ?? tx?.pricing?.total ?? order.pricing?.total ?? 0;
