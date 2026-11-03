@@ -78,6 +78,18 @@ await check('a ride booked before the split was recorded settles as it always di
     const { after } = await settle({ snapshotCharges: null });
     assert.equal(after.driverEarnings, 37);
 });
+await check('part of a km leaves no paise in the driver\'s share', async () => {
+    // 2.88 km on the same row: trip 38.80, fare 48. Charges are whole, so 39 / 9.
+    const part = computeRideFare({ pricingRule: row, distanceMeters: 2880, durationMinutes: 6 });
+    assert.deepEqual([part.subtotal, part.fareBeforeSurge], [38.8, 48]);
+    const whole = Math.round(part.fareBeforeSurge - part.subtotal);
+    assert.equal(whole, 9);
+    assert.equal(part.fareBeforeSurge - whole, 39);
+});
+await check('a ride booked with paise in its charges still settles in whole rupees', async () => {
+    const { after } = await settle({ snapshotCharges: 6.81 });
+    assert.equal(after.driverEarnings, 30);
+});
 
 await mongoose.disconnect();
 await replSet.stop();

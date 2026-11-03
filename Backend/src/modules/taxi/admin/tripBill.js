@@ -56,7 +56,7 @@ export function buildTripBill(ride) {
     // it will settle at.
     const driverEarnings = settled && ride?.driverEarnings !== undefined
         ? money(ride.driverEarnings)
-        : money(fare - (chargesRecorded ? Number(charges) : 0) - insurance - previousCancellation + promo);
+        : Math.round(fare - (chargesRecorded ? Number(charges) : 0) - insurance - previousCancellation + promo);
     const incentive = money(ride?.driverIncentiveAmount);
     // What the driver gets for the trip itself: earnings less the tip (paid by
     // the customer on top) and any platform incentive.

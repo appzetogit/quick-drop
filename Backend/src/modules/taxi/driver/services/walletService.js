@@ -532,7 +532,7 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
         const rule = await resolveIncentive({ vertical: 'taxi', zoneId: await taxiZoneIdOfRide(ride), legacy: null });
         if (rule.isEnabled && rule.incentivePercent > 0 && grossFare >= rule.minOrderAmount) {
             incentiveAmount = normalizeAmount(
-                Math.round(grossFare * (rule.incentivePercent / 100) * 100) / 100,
+                Math.round(grossFare * (rule.incentivePercent / 100)),
                 'incentiveAmount',
             );
         }
@@ -543,8 +543,10 @@ export const settleCompletedRideWallet = async ({ rideId }) => {
         console.warn(`[taxi wallet] incentive unavailable, settling without it: ${err.message}`);
     }
 
+    // Whole rupees, like the fare, so waiting time, a promo or a ride booked
+    // before the charges were whole cannot put paise in a driver's earnings.
     const driverEarnings = Math.max(
-        normalizeAmount(grossFare - commissionAmount + incentiveAmount, 'driverEarnings'),
+        Math.round(normalizeAmount(grossFare - commissionAmount + incentiveAmount, 'driverEarnings')),
         0,
     );
 

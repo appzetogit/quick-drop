@@ -13,5 +13,6 @@
 export function estimateDriverEarning(ride) {
     const fare = Math.max(0, Number(ride?.fare) || 0);
     const charges = Math.max(0, Number(ride?.pricingSnapshot?.platform_charges_amount) || 0);
-    return Math.round(Math.max(0, fare - Math.min(charges, fare)) * 100) / 100;
+    // Whole rupees, as the settlement pays it.
+    return Math.round(Math.max(0, fare - Math.min(charges, fare)));
 }

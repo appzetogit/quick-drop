@@ -1435,9 +1435,11 @@ export const createRideRecord = async ({
    * Everything in the fare that is not the driver's trip fare: tax, platform
    * fee, GST on the fee and the rounding (fareBeforeSurge less the subtotal).
    * Only for a server-priced fare; a parcel priced by the app has no split.
+   * Whole rupees, as the fare is, so the driver's share is whole too: part of a
+   * km gave a trip fare like 48.80 and a driver's share to match.
    */
   const platformCharges = fareQuote
-    ? Math.max(0, Math.round((Number(fareQuote.fareBeforeSurge) - Number(fareQuote.subtotal)) * 100) / 100)
+    ? Math.max(0, Math.round(Number(fareQuote.fareBeforeSurge) - Number(fareQuote.subtotal)))
     : null;
   const pricingSnapshot = {
     setPriceId: pricingRule?._id || null,
