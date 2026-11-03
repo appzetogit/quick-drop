@@ -201,7 +201,9 @@ export async function listPublicCategories(query = {}) {
         FoodCategory.countDocuments(filter)
     ]);
 
-    await backfillLegacyCategoryWorkflow(list);
+    // No backfill here: this list loads only what it shows, and the backfill read
+    // the missing approvalStatus as never set, so every load re-saved the category
+    // as approved and moved its approvedAt and updatedAt.
     const categories = list.map((category) => serializeCategoryForResponse(category));
 
     return { categories, total, page, limit };
