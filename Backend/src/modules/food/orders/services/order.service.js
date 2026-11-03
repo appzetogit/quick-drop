@@ -110,6 +110,19 @@ export async function createOrder(userId, dto) {
     if (restaurant.isAcceptingOrders === false)
       throw new ValidationError("Restaurant not accepting orders");
 
+    // Master > App Services: switched off for this zone means no new orders,
+    // not only a hidden tile (core/appServices/appServices.service.js).
+    {
+      const { appServiceClosedReason, pointOfAddress } = await import(
+        "../../../../core/appServices/appServices.service.js"
+      );
+      const closed = await appServiceClosedReason("food", {
+        zoneId: restaurant.zoneId,
+        ...(pointOfAddress(dto.address || dto.deliveryAddress) || {}),
+      });
+      if (closed) throw new ValidationError(closed);
+    }
+
     /*
      * Trading hours, enforced here and not only shown.
      *

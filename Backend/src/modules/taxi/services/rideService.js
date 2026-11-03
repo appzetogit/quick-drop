@@ -1263,6 +1263,13 @@ export const createRideRecord = async ({
       ? new mongoose.Types.ObjectId(service_location_id)
       : null;
   const pickupPoint = normalizePoint(pickupCoords, 'pickupCoords');
+  // Master > App Services: switched off means no new rides, not only a hidden
+  // tile. Parcels are booked from their own screen and not governed by it.
+  if (normalizedTransportType !== 'delivery') {
+    const { appServiceClosedReason } = await import('../../../core/appServices/appServices.service.js');
+    const closed = await appServiceClosedReason('taxi', { lat: pickupPoint[1], lng: pickupPoint[0] });
+    if (closed) throw new ApiError(400, closed);
+  }
   const surgeZone = await findSurgeZoneForPickup({
     pickupPoint,
     serviceLocationId: resolvedServiceLocationId,

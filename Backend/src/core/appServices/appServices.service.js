@@ -11,6 +11,8 @@ import {
     isAppService,
     normalizeAppServicesState,
     resolveAppServices,
+    zoneRuleAllows,
+    zoneRuleReason,
 } from './appServices.rules.js';
 import { mostSpecificFirst, TAXI_SPECIFIC_FIRST } from '../zones/zonePriority.js';
 
@@ -187,6 +189,49 @@ export async function resolveAppServicesAt({ lat, lng } = {}) {
         located: latitude !== null && longitude !== null,
         services,
     };
+}
+
+// ---------------------------------------------- placing an order ----
+
+/** The customer's point from any address shape the apps send. */
+export function pointOfAddress(address) {
+    const coords = address?.location?.coordinates;
+    const lat = toCoordinate(Array.isArray(coords) ? coords[1] : (address?.location?.latitude ?? address?.latitude ?? address?.lat), 90);
+    const lng = toCoordinate(Array.isArray(coords) ? coords[0] : (address?.location?.longitude ?? address?.longitude ?? address?.lng), 180);
+    return lat !== null && lng !== null ? { lat, lng } : null;
+}
+
+/**
+ * Why this service cannot take a new order here, or '' if it can.
+ *
+ * Master > App Services used to only hide a service from the app's home
+ * screen: nothing checked it when an order was placed, so a customer already
+ * in a menu or cart could still order. On 2 Nov a Food zone was switched off
+ * at 8:22 pm and took an order at 9:21 pm. Checked against the store's zone
+ * and the customer's, either being off refuses. Orders already placed are not
+ * touched. Fails open, like the rest of this file: a lookup error must not
+ * stop all ordering.
+ */
+export async function appServiceClosedReason(service, { zoneId = null, lat = null, lng = null } = {}) {
+    try {
+        const state = normalizeAppServicesState(await readState());
+        const entry = state.services?.[service];
+        if (!entry) return '';
+        const label = APP_SERVICES.find((s) => s.key === service)?.label || 'This service';
+        const closed = (reason) => reason || `${label} is not available in your area right now. Please try again later.`;
+        if (entry.enabled === false) return closed(entry.reason);
+        if (zoneId && !zoneRuleAllows(state, service, zoneId)) return closed(zoneRuleReason(state, service, zoneId));
+        const latitude = toCoordinate(lat, 90);
+        const longitude = toCoordinate(lng, 180);
+        if (latitude !== null && longitude !== null) {
+            const zone = await zoneAt(service, latitude, longitude);
+            if (zone && !zoneRuleAllows(state, service, zone.id)) return closed(zoneRuleReason(state, service, zone.id));
+        }
+        return '';
+    } catch (err) {
+        logger.warn(`[app-services] order check failed for ${service}, allowing: ${err.message}`);
+        return '';
+    }
 }
 
 // ------------------------------------------------- riders in a zone ----

@@ -158,6 +158,12 @@ export async function createPrescriptionOrder(userId, dto = {}) {
         throw new ValidationError('This store does not deliver to the selected address');
     }
     await assertWithinZoneRadius(ZONE_VERTICALS.MEDICAL, restaurant, point);
+    {
+        // Master > App Services: switched off means no new orders here either.
+        const { appServiceClosedReason } = await import('../../../../../../core/appServices/appServices.service.js');
+        const closed = await appServiceClosedReason('medical', { zoneId: zone._id, lat: point.lat, lng: point.lng });
+        if (closed) throw new ValidationError(closed);
+    }
 
     // buildOrderPrescription is the same rule the catalogue path uses, so a
     // medical order can never exist without a prescription no matter which way in

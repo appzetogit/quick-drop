@@ -61,6 +61,10 @@ export async function calculateOrderController(req, res, next) {
     try {
         const userId = req.user?.userId;
         const dto = validateCalculateOrderDto(req.body);
+        // Say so at the cart, not only when Place Order is tapped.
+        const { appServiceClosedReason, pointOfAddress } = await import('../../../../core/appServices/appServices.service.js');
+        const closed = await appServiceClosedReason('food', pointOfAddress(dto.deliveryAddress || dto.address) || {});
+        if (closed) return res.status(400).json({ success: false, message: closed });
         const result = await orderService.calculateOrder(userId, dto);
         return sendResponse(res, 200, 'Pricing calculated', result);
     } catch (err) {

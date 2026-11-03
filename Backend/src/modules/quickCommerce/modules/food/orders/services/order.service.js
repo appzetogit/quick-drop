@@ -319,6 +319,17 @@ async function assertWithinZoneRadius(vertical, store, point) {
  * than what the client claimed.
  */
 async function resolveServiceableZone(restaurant, deliveryAddress) {
+  // Master > App Services: switched off means no new orders, not only a hidden
+  // tile. Checked first: an address with no coordinates still has a seller zone.
+  {
+    const { appServiceClosedReason, pointOfAddress } = await import('../../../../../../core/appServices/appServices.service.js');
+    const closed = await appServiceClosedReason(isMedicalStore(restaurant?.storeType) ? 'medical' : 'quick', {
+      zoneId: restaurant?.zoneId,
+      ...(pointOfAddress(deliveryAddress) || {}),
+    });
+    if (closed) throw new ValidationError(closed);
+  }
+
   const point = readAddressPoint(deliveryAddress);
   // Addresses saved before coordinates were captured cannot be tested. Refusing
   // them would block real customers over missing data they never entered.
