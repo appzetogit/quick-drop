@@ -1029,6 +1029,13 @@ export const resolveRideSurge = ({ surgeZone, pricingRule, slots = [], vehicleTy
  * this trip. Same zone, same price lookup (borrowing included) and the same
  * calculation as createRideRecord, so the two cannot disagree.
  */
+/** Refuses a ride or parcel when Taxi is switched off here (Master > App Services). */
+const assertTaxiServiceOpen = async (pickupPoint) => {
+  const { appServiceClosedReason } = await import('../../../core/appServices/appServices.service.js');
+  const closed = await appServiceClosedReason('taxi', { lat: pickupPoint[1], lng: pickupPoint[0] });
+  if (closed) throw new ApiError(400, closed);
+};
+
 export const quoteRideFares = async ({
   pickupCoords,
   dropCoords,
@@ -1050,6 +1057,8 @@ export const quoteRideFares = async ({
       : null;
   const pickupPoint = normalizePoint(pickupCoords, 'pickupCoords');
   const dropPoint = normalizePoint(dropCoords, 'dropCoords');
+  // Said at the quote too, so the booking screen shows it before Book.
+  await assertTaxiServiceOpen(pickupPoint);
   // Refused at the quote, so the app says so as soon as the drop is chosen
   // rather than at "Book". Intercity quotes leave the zone by design, but not India.
   if (transportType !== 'intercity') {
@@ -1263,13 +1272,9 @@ export const createRideRecord = async ({
       ? new mongoose.Types.ObjectId(service_location_id)
       : null;
   const pickupPoint = normalizePoint(pickupCoords, 'pickupCoords');
-  // Master > App Services: switched off means no new rides, not only a hidden
-  // tile. Parcels are booked from their own screen and not governed by it.
-  if (normalizedTransportType !== 'delivery') {
-    const { appServiceClosedReason } = await import('../../../core/appServices/appServices.service.js');
-    const closed = await appServiceClosedReason('taxi', { lat: pickupPoint[1], lng: pickupPoint[0] });
-    if (closed) throw new ApiError(400, closed);
-  }
+  // Master > App Services: Taxi switched off means no new rides or parcels, not
+  // only a hidden tile.
+  await assertTaxiServiceOpen(pickupPoint);
   const surgeZone = await findSurgeZoneForPickup({
     pickupPoint,
     serviceLocationId: resolvedServiceLocationId,
