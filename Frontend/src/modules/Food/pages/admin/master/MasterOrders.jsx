@@ -292,7 +292,7 @@ export default function MasterOrders() {
           <div className="border-b border-neutral-100">
             <Pager page={page} pages={pages} total={total} onChange={setPage} />
           </div>
-          <div ref={tableRef} className="overflow-x-auto">
+          <div ref={tableRef} className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <table className="w-full min-w-[1040px] text-sm">
               <thead className="bg-neutral-50 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
                 <tr>
