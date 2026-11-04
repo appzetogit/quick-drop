@@ -117,6 +117,45 @@ function useFloatingScrollbar() {
   return { tableRef, barRef, overflowing: width.inner > width.outer + 1, innerWidth: width.inner }
 }
 
+/** The page numbers to show: first, last and either side of the current, gaps as null. */
+const pageNumbers = (page, pages) => {
+  const wanted = [...new Set([1, page - 1, page, page + 1, pages])]
+    .filter((n) => n >= 1 && n <= pages)
+    .sort((a, b) => a - b)
+  return wanted.flatMap((n, i) => (i > 0 && n - wanted[i - 1] > 1 ? [null, n] : [n]))
+}
+
+function Pager({ page, pages, total, onChange }) {
+  const from = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const to = Math.min(page * PAGE_SIZE, total)
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm text-neutral-600">
+      <span className="tabular-nums">Showing {from}-{to} of {total} orders</span>
+      <nav className="flex flex-wrap items-center gap-1" aria-label="Pages">
+        <button type="button" disabled={page <= 1} onClick={() => onChange(page - 1)} className="rounded-lg border border-neutral-300 p-1.5 hover:bg-neutral-50 disabled:opacity-40" aria-label="Previous page">
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        {pageNumbers(page, pages).map((n, i) => (n === null ? (
+          <span key={`gap-${i}`} className="px-1 text-neutral-400">...</span>
+        ) : (
+          <button
+            key={n}
+            type="button"
+            onClick={() => onChange(n)}
+            aria-current={n === page ? "page" : undefined}
+            className={`min-w-[32px] rounded-lg border px-2 py-1 tabular-nums ${n === page ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-300 hover:bg-neutral-50"}`}
+          >
+            {n}
+          </button>
+        )))}
+        <button type="button" disabled={page >= pages} onClick={() => onChange(page + 1)} className="rounded-lg border border-neutral-300 p-1.5 hover:bg-neutral-50 disabled:opacity-40" aria-label="Next page">
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </nav>
+    </div>
+  )
+}
+
 export default function MasterOrders() {
   const navigate = useNavigate()
   const { tab: tabParam } = useParams()
@@ -136,6 +175,7 @@ export default function MasterOrders() {
   const [loading, setLoading] = useState(true)
   const [deletingKey, setDeletingKey] = useState("")
   const inFlight = useRef(0)
+  const listTopRef = useRef(null)
   const { tableRef, barRef, overflowing, innerWidth } = useFloatingScrollbar()
 
   const load = useCallback(async ({ quiet = false } = {}) => {
@@ -248,7 +288,10 @@ export default function MasterOrders() {
           </select>
         </div>
 
-        <div className="overflow-clip rounded-xl border border-neutral-200 bg-white">
+        <div ref={listTopRef} className="scroll-mt-4 overflow-clip rounded-xl border border-neutral-200 bg-white">
+          <div className="border-b border-neutral-100">
+            <Pager page={page} pages={pages} total={total} onChange={setPage} />
+          </div>
           <div ref={tableRef} className="overflow-x-auto">
             <table className="w-full min-w-[1040px] text-sm">
               <thead className="bg-neutral-50 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">
@@ -347,17 +390,17 @@ export default function MasterOrders() {
               <div style={{ width: innerWidth, height: 1 }} />
             </div>
           )}
-          <div className="flex items-center justify-between border-t border-neutral-100 px-4 py-3 text-sm text-neutral-600">
-            <span className="tabular-nums">{total} orders</span>
-            <div className="flex items-center gap-2">
-              <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded-lg border border-neutral-300 p-1.5 disabled:opacity-40" aria-label="Previous page">
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="tabular-nums">Page {page} of {pages}</span>
-              <button type="button" disabled={page >= pages} onClick={() => setPage((p) => p + 1)} className="rounded-lg border border-neutral-300 p-1.5 disabled:opacity-40" aria-label="Next page">
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
+          <div className="border-t border-neutral-100">
+            <Pager
+              page={page}
+              pages={pages}
+              total={total}
+              onChange={(n) => {
+                setPage(n)
+                // From the bottom, the next page should start from its first order.
+                listTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }}
+            />
           </div>
         </div>
       </div>
