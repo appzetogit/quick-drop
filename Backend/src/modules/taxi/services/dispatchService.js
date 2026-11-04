@@ -704,8 +704,31 @@ export const markDriverRejectedFromDispatch = (rideId, driverId) => {
 
   const state = getDispatchState(rideId);
   const rejectedDriverIds = [...new Set([...state.rejectedDriverIds, String(driverId)])];
+  // Off the round at once: the socket and the native card can both report one
+  // decline, and the second must not pass the ride on again.
+  const heldTheOffer = state.driverIds.map(String).includes(String(driverId));
+  const driverIds = state.driverIds.filter((id) => String(id) !== String(driverId));
 
-  saveDispatchState(rideId, { rejectedDriverIds });
+  saveDispatchState(rideId, { rejectedDriverIds, driverIds });
+
+  if (heldTheOffer && !driverIds.length) {
+    passOnDeclinedRide(rideId, state.radiusIndex, state.timer).catch((error) => {
+      console.error('Failed to pass on a declined ride', error);
+    });
+  }
+};
+
+/**
+ * One by one: the only driver holding the offer said no, so the next one gets it
+ * now, rather than the customer waiting out the rest of this driver's window.
+ */
+const passOnDeclinedRide = async (rideId, attemptIndex, timerAtDecline) => {
+  const dispatchConfig = await resolveTransportDispatchConfig();
+  if (dispatchConfig.dispatchType === 'broadcast') return;
+  // The round moved on by itself while the setting was being read.
+  if (!activeDispatches.has(String(rideId)) || getDispatchState(rideId).timer !== timerAtDecline) return;
+  clearDispatchTimer(rideId);
+  await dispatchAttempt(rideId, attemptIndex + 1);
 };
 
 const closeRideAsUnmatched = async (rideId) => {
@@ -1343,16 +1366,32 @@ const dispatchAttempt = async (rideId, attemptIndex = 0) => {
     let availableDrivers = pickFresh();
     let baseNotifiedDriverIds = dispatchState.notifiedDriverIds;
 
-    // Everyone nearby has already been offered this ride (and declined,
-    // cancelled or let the timer run out) and nobody has accepted. Start
-    // another cycle instead of going silent: the same drivers get it again
-    // after the usual retry delay, until the search window closes the ride.
+    // Everyone nearby has already been offered this ride and nobody has accepted.
+    // Start another cycle instead of going silent: a driver who let the timer run
+    // out gets it again. One who declined or cancelled does not: they answered,
+    // and ringing them again for the next five minutes is not an answer to that.
     if (!availableDrivers.length && drivers.length) {
-      rejectedDriverIds.clear();
       notifiedDriverIds.clear();
       baseNotifiedDriverIds = [];
       availableDrivers = pickFresh();
-      saveDispatchState(rideId, { rejectedDriverIds: [], notifiedDriverIds: [] });
+      saveDispatchState(rideId, { notifiedDriverIds: [] });
+
+      // All of them declined. Look further out straight away; when even the widest
+      // search has nobody left, tell the customer now rather than at five minutes.
+      if (!availableDrivers.length) {
+        const widest = getAttemptRadiusMeters(
+          dispatchConfig.baseDistanceMeters || dispatchConfig.maxDistanceMeters,
+          attemptIndex + 1,
+        ) === radius;
+        if (widest) {
+          await closeRideAsUnmatched(rideId);
+          stopDispatchFlow(rideId);
+          return;
+        }
+        saveDispatchState(rideId, { radiusIndex: attemptIndex });
+        await dispatchAttempt(rideId, attemptIndex + 1);
+        return;
+      }
     }
 
     const targetDrivers = dispatchConfig.dispatchType === 'broadcast'

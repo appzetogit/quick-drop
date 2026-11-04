@@ -104,6 +104,50 @@ await check('the push is the one the driver app dismisses a card on, for the los
     assert.equal(dispatch.rideOfferWithdrawalPush(open._id, []), null);
 });
 
+const waitFor = async (test, ms = 8000) => {
+    const until = Date.now() + ms;
+    while (Date.now() < until) {
+        if (await test()) return true;
+        await new Promise((r) => setTimeout(r, 50));
+    }
+    return false;
+};
+
+// A declined ride moves on at once: the window here is 60 s, so waiting it out
+// would fail these.
+sent.length = 0;
+await setType('1');
+const declined = await makeRide();
+await dispatch.startDispatchFlow(declined);
+dispatch.markDriverRejectedFromDispatch(declined._id, near);
+await check('a decline passes the ride to the next driver straight away', async () => {
+    assert.ok(await waitFor(() => eventsTo(far, 'rideRequest').length === 1), 'the next driver was not offered it');
+});
+await check('the second report of one decline does not pass it on twice', async () => {
+    dispatch.markDriverRejectedFromDispatch(declined._id, near);
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(eventsTo(far, 'rideRequest').length, 1);
+});
+dispatch.markDriverRejectedFromDispatch(declined._id, far);
+await check('everyone declined: the ride closes now, not at five minutes', async () => {
+    assert.ok(await waitFor(async () => (await Ride.findById(declined._id).lean())?.status !== 'searching'), 'still searching');
+});
+await check('and a driver who declined is never offered it again', async () => {
+    assert.equal(eventsTo(near, 'rideRequest').length, 1);
+    assert.equal(eventsTo(far, 'rideRequest').length, 1);
+});
+
+// A driver who simply did not answer does get another turn. A 1 s window here.
+sent.length = 0;
+await AdminBusinessSetting.collection.updateOne({ scope: 'default' }, { $set: { 'transport_ride.trip_accept_reject_duration_for_driver': '1' } });
+const unanswered = await makeRide();
+await dispatch.startDispatchFlow(unanswered);
+await check('a driver who let the timer run out is offered it again', async () => {
+    assert.ok(await waitFor(() => eventsTo(near, 'rideRequest').length >= 2), 'not offered again');
+});
+dispatch.stopDispatchFlow(unanswered._id);
+
+await new Promise((r) => setTimeout(r, 300));
 await mongoose.disconnect();
 await replSet.stop();
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
