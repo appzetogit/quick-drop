@@ -152,6 +152,9 @@ function BrandTab({ profile, onSaved }) {
           <Field label="WhatsApp number">
             <input className={inputCls} inputMode="numeric" value={contact.whatsapp} placeholder="9876543210" onChange={setC("whatsapp")} />
           </Field>
+          <Field label="Call to Order number" hint="The customer app's floating Call to Order button dials this">
+            <input className={inputCls} inputMode="tel" value={contact.callToOrder || ""} placeholder="9876543210" onChange={setC("callToOrder")} />
+          </Field>
           <Field label="City">
             <input className={inputCls} value={contact.city} onChange={setC("city")} />
           </Field>

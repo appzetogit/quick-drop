@@ -27,6 +27,7 @@ const schema = new mongoose.Schema(
       phoneCountryCode: { type: String, default: '', trim: true },
       phone: { type: String, default: '', trim: true },
       whatsapp: { type: String, default: '', trim: true },
+      callToOrder: { type: String, default: '', trim: true },
       address: { type: String, default: '', trim: true },
       city: { type: String, default: '', trim: true },
       state: { type: String, default: '', trim: true },

@@ -33,11 +33,8 @@ const deliveryRegisterSchema = z.object({
     vehicleType: z.string().optional(),
     vehicleName: z.string().optional(),
     vehicleNumber: z.string().optional(),
-    drivingLicenseNumber: z
-        .string()
-        .regex(drivingLicenseRegex, 'Invalid driving license format')
-        .optional()
-        .or(z.literal('')),
+    // No format check: real licence numbers vary too much by state and era.
+    drivingLicenseNumber: z.string().trim().max(64).optional().or(z.literal('')),
     ref: z.string().trim().max(64).optional().or(z.literal('')),
     panNumber: z
         .string()
@@ -87,11 +84,8 @@ const deliveryProfileUpdateSchema = z.object({
     vehicleType: z.string().optional(),
     vehicleName: z.string().optional(),
     vehicleNumber: z.string().optional(),
-    drivingLicenseNumber: z
-        .string()
-        .regex(drivingLicenseRegex, 'Invalid driving license format')
-        .optional()
-        .or(z.literal('')),
+    // No format check: real licence numbers vary too much by state and era.
+    drivingLicenseNumber: z.string().trim().max(64).optional().or(z.literal('')),
     fcmToken: z.string().optional().nullable(),
     platform: z.enum(['web', 'mobile']).optional().default('web')
 });

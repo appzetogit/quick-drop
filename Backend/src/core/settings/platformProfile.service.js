@@ -194,7 +194,7 @@ export const managedBrand = async () => {
   put('name', p.brand?.name);
   put('logoUrl', p.brand?.logoUrl);
   put('faviconUrl', p.brand?.faviconUrl);
-  for (const k of ['email', 'phoneCountryCode', 'phone', 'whatsapp', 'address', 'city', 'state', 'pincode']) put(k, p.contact?.[k]);
+  for (const k of ['email', 'phoneCountryCode', 'phone', 'whatsapp', 'callToOrder', 'address', 'city', 'state', 'pincode']) put(k, p.contact?.[k]);
   for (const k of ['legalName', 'gstin', 'pan', 'currencyCode', 'currencySymbol']) put(k, p.business?.[k]);
   return out;
 };
@@ -220,6 +220,8 @@ export const overlayBusinessSettings = async (settings) => {
   if (b.email) out.email = b.email;
   if (b.phone) out.phone = { ...(settings.phone || {}), number: b.phone, ...(b.phoneCountryCode ? { countryCode: b.phoneCountryCode } : {}) };
   if (b.address) out.address = b.address;
+  // The number the customer app's floating "Call to Order" button dials.
+  if (b.callToOrder) out.callToOrderNumber = b.callToOrder;
   if (b.state) out.state = b.state;
   if (b.pincode) out.pincode = b.pincode;
   if (b.logoUrl) out.logo = { ...(settings.logo || {}), url: b.logoUrl };
@@ -246,7 +248,7 @@ export const getPlatformProfileForAdmin = async () => {
   const mail = emailCredentials();
   return {
     brand: { name: '', logoUrl: '', faviconUrl: '', ...(p.brand || {}) },
-    contact: { email: '', phoneCountryCode: '', phone: '', whatsapp: '', address: '', city: '', state: '', pincode: '', ...(p.contact || {}) },
+    contact: { email: '', phoneCountryCode: '', phone: '', whatsapp: '', callToOrder: '', address: '', city: '', state: '', pincode: '', ...(p.contact || {}) },
     business: { legalName: '', gstin: '', pan: '', currencyCode: '', currencySymbol: '', ...(p.business || {}) },
     legal: Object.fromEntries(LEGAL_KEYS.map((k) => [k, p.legal?.[k] || ''])),
     integrations: {
@@ -284,7 +286,7 @@ export const getPlatformProfileForAdmin = async () => {
 
 const ALLOWED = {
   brand: ['name', 'logoUrl', 'faviconUrl'],
-  contact: ['email', 'phoneCountryCode', 'phone', 'whatsapp', 'address', 'city', 'state', 'pincode'],
+  contact: ['email', 'phoneCountryCode', 'phone', 'whatsapp', 'callToOrder', 'address', 'city', 'state', 'pincode'],
   business: ['legalName', 'gstin', 'pan', 'currencyCode', 'currencySymbol'],
   legal: LEGAL_KEYS,
   'integrations.razorpay': ['keyId', 'keySecret', 'webhookSecret'],
@@ -298,6 +300,7 @@ const validate = (section, field, value) => {
   if (value === '' || value === null) return value;
   if (field === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) bad('Enter a valid email address');
   if ((field === 'phone' || field === 'whatsapp') && !/^\d{7,15}$/.test(value)) bad('Phone numbers must be 7 to 15 digits');
+  if (field === 'callToOrder' && !/^\+?\d{7,15}$/.test(value)) bad('Call to Order number must be 7 to 15 digits, optionally starting with +');
   if (field === 'pincode' && !/^\d{4,10}$/.test(value)) bad('Pincode must be 4 to 10 digits');
   if (field === 'name' && (value.length < 2 || value.length > 60)) bad('App name must be 2 to 60 characters');
   if (field === 'keyId' && !/^rzp_(live|test)_\w+$/.test(value)) bad('Razorpay key id starts with rzp_live_ or rzp_test_');
