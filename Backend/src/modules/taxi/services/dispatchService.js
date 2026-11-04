@@ -541,6 +541,42 @@ const closeDriverRequestWindow = (rideId, driverIds = []) => {
   }
 };
 
+/**
+ * The push that takes a ride offer off a phone, or null with nobody to tell.
+ *
+ * 'rideRequestClosed' only reaches an app with a live socket. A phone in a pocket
+ * shows the full-screen card from a push and has no socket, so the card stayed up
+ * ringing a ride another driver had already taken. 'order_taken' is the push the
+ * driver app already dismisses an offer on (core/delivery/manualAssign.js).
+ *
+ * Only for a ride gone for good: the app writes the ride off on this, so a round
+ * that merely lapsed, and may be offered again, must not send it.
+ */
+export const rideOfferWithdrawalPush = (rideId, driverIds = []) => {
+  const ids = [...new Set((Array.isArray(driverIds) ? driverIds : []).map((id) => String(id || '')).filter(Boolean))];
+  if (!ids.length) return null;
+  return {
+    driverIds: ids,
+    dataOnly: true,
+    title: 'Ride no longer available',
+    body: 'This ride is no longer available.',
+    data: {
+      type: 'order_taken',
+      orderId: String(rideId),
+      orderMongoId: String(rideId),
+      rideId: String(rideId),
+    },
+  };
+};
+
+const withdrawRideOffer = (rideId, driverIds) => {
+  const push = rideOfferWithdrawalPush(rideId, driverIds);
+  if (!push) return;
+  sendPushNotificationToEntities(push).catch((error) => {
+    console.error('Failed to send ride offer withdrawal push', error);
+  });
+};
+
 const emitRideRequestToDrivers = async ({
   ride,
   targetDrivers = [],
@@ -723,6 +759,7 @@ const closeRideAsUnmatched = async (rideId) => {
       reason: 'unmatched',
     });
   }
+  withdrawRideOffer(ride._id, dispatchState.notifiedDriverIds);
 
   emitToRoom(getRideRoom(ride._id), SOCKET_EVENTS.RIDE_STATUS_UPDATED, {
     rideId: String(ride._id),
@@ -993,6 +1030,7 @@ export const cancelRideByUser = async ({ rideId, userId, reason = '' }) => {
         message: 'User cancelled the ride.',
       });
     }
+    withdrawRideOffer(ride._id, dispatchState.notifiedDriverIds);
   }
 
   return { ride, cancellationSettlement };
@@ -1455,6 +1493,11 @@ export const notifyLateAvailableDriver = async (driverId) => {
     }
 
     const dispatchConfig = await resolveTransportDispatchConfig();
+    // One by one: another driver holds this round's offer. Offering it here as
+    // well would ring two phones at once; the next round reaches this driver.
+    if (dispatchConfig.dispatchType !== 'broadcast' && dispatchState.driverIds.length) {
+      continue;
+    }
     const attemptIndex = Number.isInteger(dispatchState.radiusIndex) ? dispatchState.radiusIndex : 0;
     const radius = getAttemptRadiusMeters(
       dispatchConfig.baseDistanceMeters || dispatchConfig.maxDistanceMeters,
@@ -1612,6 +1655,10 @@ export const notifyRideAccepted = async (ride) => {
       reason: 'accepted-by-another-driver',
     });
   }
+  withdrawRideOffer(
+    populatedRide._id,
+    state.notifiedDriverIds.filter((id) => String(id) !== String(populatedRide.driverId._id)),
+  );
 
   sendPushNotificationToEntities({
     userIds: [String(populatedRide.userId)],
