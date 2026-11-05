@@ -1,9 +1,12 @@
+import newOrderSound from "@food/assets/audio/new_order.mp3"
+
 /**
- * Ring tones for the admin alert centre, synthesised with Web Audio.
+ * Ring tones for the admin alert centre.
  *
- * Generated rather than loaded: nothing to download before the first ring, and
- * each kind of event gets a tone an operator learns to tell apart without
- * looking (an order chimes, a ride beeps, an SOS wails).
+ * A new order plays the recording in new_order.mp3. Everything else is synthesised
+ * with Web Audio: nothing to download before the first ring, and each kind of event
+ * gets a tone an operator learns to tell apart without looking (a ride beeps, an
+ * SOS wails). The order chime in PATTERNS is what plays if the recording cannot.
  *
  * Chrome keeps an AudioContext suspended until the page has had a click or a
  * key press. `unlock()` is called from the first one; until then `isUnlocked()`
@@ -23,7 +26,7 @@ const PATTERNS = {
 }
 
 /** Seconds between repeats of a ringing alert. */
-export const REPEAT_SECONDS = { sos: 1.1, default: 1.6 }
+export const REPEAT_SECONDS = { sos: 1.1, order: 11, default: 1.6 }
 
 let ctx = null
 const getContext = () => {
@@ -50,13 +53,56 @@ export async function unlock() {
   return c.state === "running"
 }
 
+/*
+ * One player for the whole admin panel. The alert centre and the Orders page both
+ * announce a new order, and two copies of a song a moment apart is an echo, so a
+ * second call while it is already playing does nothing.
+ */
+let orderAudio = null
+
+/** Resolves true once the new-order recording is playing. Volume 0..1. */
+export async function playOrderSound(volume = 0.8) {
+  if (typeof Audio === "undefined") return false
+  if (!orderAudio) {
+    orderAudio = new Audio(newOrderSound)
+    orderAudio.preload = "auto"
+  }
+  orderAudio.volume = Math.max(0, Math.min(1, Number(volume) || 0))
+  if (!orderAudio.paused && !orderAudio.ended) return true
+  try {
+    orderAudio.currentTime = 0
+    await orderAudio.play()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Cuts the recording off, for when the order has been acknowledged. */
+export function stopOrderSound() {
+  if (!orderAudio) return
+  orderAudio.pause()
+  orderAudio.currentTime = 0
+}
+
 /** Play one pass of a kind's tone. Volume 0..1. Silently does nothing while locked. */
 export function playTone(kind = "order", volume = 0.8) {
   const c = getContext()
   if (!c || c.state !== "running") return false
-  const pattern = PATTERNS[kind] || PATTERNS.order
   const peak = Math.max(0, Math.min(1, Number(volume) || 0)) * 0.6
   if (peak <= 0) return false
+  if (kind === "order") {
+    playOrderSound(volume).then((played) => {
+      if (!played) playPattern(c, kind, peak)
+    })
+    return true
+  }
+  playPattern(c, kind, peak)
+  return true
+}
+
+function playPattern(c, kind, peak) {
+  const pattern = PATTERNS[kind] || PATTERNS.order
   const now = c.currentTime + 0.02
   for (const [freq, start, dur] of pattern) {
     const osc = c.createOscillator()
@@ -70,7 +116,6 @@ export function playTone(kind = "order", volume = 0.8) {
     osc.start(now + start)
     osc.stop(now + start + dur + 0.05)
   }
-  return true
 }
 
 /** Which ringing alert wins when several are active: the most urgent. */

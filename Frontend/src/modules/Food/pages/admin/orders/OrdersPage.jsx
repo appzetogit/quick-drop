@@ -26,6 +26,7 @@ import { OrdersDashboardSkeleton } from "@food/components/ui/loading-skeletons"
 import { useDelayedLoading } from "@food/hooks/useDelayedLoading"
 import alertSound from "@food/assets/audio/alert.mp3"
 import originalSound from "@food/assets/audio/original.mp3"
+import { playOrderSound } from "@/shared/adminAlerts/alertSound"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -94,6 +95,9 @@ export default function OrdersPage({ statusKey = "all" }) {
   }, [])
 
   const playDeliveryStyleBuzz = useCallback(async () => {
+    // The admin panel's new-order sound, on the alert centre's one player.
+    if (await playOrderSound(1)) return true
+
     const selectedSound = localStorage.getItem("delivery_alert_sound") || "zomato_tone"
     const soundFile = selectedSound === "original"
       ? resolveAudioSource(originalSound, "admin-original")

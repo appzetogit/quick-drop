@@ -6,7 +6,7 @@ import {
 } from "lucide-react"
 import { API_BASE_URL } from "@food/api/config"
 import { getUnifiedAdminToken } from "../../modules/Taxi/modules/admin/services/adminSession"
-import { KIND_PRIORITY, REPEAT_SECONDS, isSupported, isUnlocked, playTone, unlock } from "./alertSound"
+import { KIND_PRIORITY, REPEAT_SECONDS, isSupported, isUnlocked, playTone, stopOrderSound, unlock } from "./alertSound"
 
 /**
  * Admin alert centre: rings, shows a card and (in a background tab) raises a
@@ -245,17 +245,22 @@ export default function AdminAlertCenter() {
   // The ring loop: the most urgent ringing alert plays, on repeat, until it
   // times out or is acknowledged.
   useEffect(() => {
+    let orderWasRinging = false
     const timer = setInterval(() => {
       const t = Date.now()
       const ringing = ringingRef.current
       for (const [id, r] of ringing) {
         if (r.until && t >= r.until) ringing.delete(id)
       }
-      if (!ringing.size || settingsRef.current.muted) return
-      const entries = [...ringing.values()]
+      const entries = settingsRef.current.muted ? [] : [...ringing.values()]
       entries.sort((a, b) => KIND_PRIORITY.indexOf(a.kind) - KIND_PRIORITY.indexOf(b.kind))
       const top = entries[0]
-      if (t < top.nextAt) return
+      // The recording runs for seconds, unlike a tone: acknowledging the order, or
+      // an SOS taking over, has to cut it off rather than let it play out.
+      const orderRinging = top?.kind === "order"
+      if (orderWasRinging && !orderRinging) stopOrderSound()
+      orderWasRinging = orderRinging
+      if (!top || t < top.nextAt) return
       playTone(top.kind, settingsRef.current.volume)
       const gap = (REPEAT_SECONDS[top.kind] || REPEAT_SECONDS.default) * 1000
       for (const r of entries) r.nextAt = t + gap
