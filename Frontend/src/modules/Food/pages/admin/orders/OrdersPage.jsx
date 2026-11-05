@@ -48,6 +48,145 @@ const statusConfig = {
   "offline-payments": { title: "Offline Payments", color: "slate", icon: Package },
 }
 
+/** One order from the API, as the list, the order view and the exports read it. */
+const normalizeOrder = (order) => {
+  const createdAtRaw = order.createdAt || order.created_at || order.orderDate || null
+  const createdAtCandidate = createdAtRaw ? new Date(createdAtRaw) : null
+  const createdAt =
+    createdAtCandidate && !Number.isNaN(createdAtCandidate.getTime())
+      ? createdAtCandidate
+      : null
+  const date = createdAt
+    ? createdAt.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }).toUpperCase()
+    : ""
+  const time = createdAt
+    ? createdAt.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }).toUpperCase()
+    : ""
+
+  const pricing = order.pricing || {}
+  const subtotal = Number(pricing.subtotal || 0)
+  const deliveryFee = Number(pricing.deliveryFee || 0)
+  const platformFee = Number(pricing.platformFee || 0)
+  const taxAmount = Number(pricing.tax || 0)
+  const discountAmount = Number(pricing.discount || 0)
+  const computedTotal = subtotal + deliveryFee + platformFee + taxAmount - discountAmount
+  const totalAmount = Number(
+    pricing.total != null ? pricing.total : computedTotal
+  )
+
+  const paymentMethod = order.payment?.method || order.paymentMethod || ""
+  let paymentType = order.paymentType
+  if (!paymentType) {
+    if (paymentMethod === "cash" || paymentMethod === "cod") paymentType = "Cash on Delivery"
+    else if (paymentMethod === "wallet") paymentType = "Wallet"
+    else if (paymentMethod) paymentType = "Online"
+    else paymentType = "N/A"
+  }
+
+  const paymentStatusRaw = order.payment?.status || ""
+  let paymentStatus = order.paymentStatus
+  if (!paymentStatus) {
+    const s = String(paymentStatusRaw || "").toLowerCase()
+    if (s === "refunded") paymentStatus = "Refunded"
+    else if (s === "paid" || s === "authorized" || s === "captured" || s === "settled") paymentStatus = "Paid"
+    else if (s === "failed") paymentStatus = "Failed"
+    else paymentStatus = "Pending"
+  }
+
+  const backendStatus = String(order.orderStatus || "").toLowerCase()
+  let displayStatus = order.orderStatus
+  if (!backendStatus || backendStatus === "created" || backendStatus === "confirmed") {
+    displayStatus = "Pending"
+  } else if (backendStatus === "preparing" || backendStatus === "ready_for_pickup") {
+    displayStatus = "Processing"
+  } else if (backendStatus === "picked_up") {
+    displayStatus = "Food On The Way"
+  } else if (backendStatus === "delivered") {
+    displayStatus = "Delivered"
+  } else if (backendStatus === "cancelled_by_restaurant") {
+    displayStatus = "Cancelled by Restaurant"
+  } else if (backendStatus === "cancelled_by_user") {
+    displayStatus = "Cancelled by User"
+  } else if (backendStatus === "cancelled_by_admin") {
+    displayStatus = "Canceled"
+  } else if (backendStatus === "pending_payment") {
+    // Online checkout opened but not paid; listed only on the All tab.
+    displayStatus = "Awaiting Payment"
+  }
+
+  const dp = order.dispatch?.deliveryPartnerId
+  const deliveryPartnerName =
+    order.deliveryPartnerName ||
+    dp?.name ||
+    ""
+  const deliveryPartnerPhone =
+    order.deliveryPartnerPhone ||
+    dp?.phone ||
+    ""
+
+  const items = Array.isArray(order.items)
+    ? order.items.map((item) => ({
+        quantity: item.quantity || 1,
+        name: item.name || item.foodName || item.title || "Item",
+        price: item.price || 0,
+        // Kept so the list and the order view can show the size picked
+        // (Full / Half) and add-ons; dropping them here hid them everywhere.
+        variantName: item.variantName || item.variant?.name || "",
+        addons: Array.isArray(item.addons) ? item.addons : [],
+      }))
+    : []
+
+  const customerName = order.customerName || order.userId?.name || "N/A"
+  const customerPhone = order.customerPhone || order.userId?.phone || "N/A"
+  const restaurant =
+    order.restaurant ||
+    order.restaurantName ||
+    order.restaurantId?.restaurantName ||
+    ""
+
+  return {
+    ...order,
+    id: order._id || order.id,
+    orderId: order.orderId || order.id,
+    date,
+    time,
+    customerName,
+    customerPhone,
+    restaurant,
+    items,
+    subtotal,
+    totalItemAmount: subtotal,
+    couponDiscount: discountAmount,
+    itemDiscount: 0,
+    deliveryCharge: deliveryFee,
+    vatTax: taxAmount,
+    platformFee,
+    totalAmount,
+    paymentType,
+    paymentStatus,
+    orderStatus: displayStatus,
+    // The wire value, kept because orderStatus above is now a display label.
+    rawOrderStatus: backendStatus,
+    deliveryPartnerName,
+    deliveryPartnerPhone,
+    deliveryType: order.deliveryType || "Home Delivery",
+    orderOtp: order.deliveryOtp,
+    address: order.address || order.customerAddress || order.deliveryAddress,
+    refundStatus: order.payment?.refund?.status || (order.payment?.status === 'refunded' ? 'processed' : null)
+  }
+}
+
+// The endpoint's own cap per request.
+const EXPORT_PAGE_SIZE = 100
+
 export default function OrdersPage({ statusKey = "all" }) {
   const config = statusConfig[statusKey] || statusConfig["all"]
   // Hoisted to the top of the component: the fetch below reads the page and
@@ -368,6 +507,17 @@ export default function OrdersPage({ statusKey = "all" }) {
     }, { replace: true })
   }, [setSearchParams])
 
+  const listParams = useCallback(() => ({
+    search: searchRef.current.trim() || undefined,
+    // "all" is sent, not omitted: it is what lists unpaid and failed
+    // online orders too, matching Master > All Orders.
+    status:
+      statusKey === "restaurant-cancelled"
+          ? "cancelled"
+          : statusKey,
+    cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined,
+  }), [statusKey])
+
   const fetchOrders = useCallback(async (options = {}) => {
     const { silent = false, withRingCheck = false } = options
 
@@ -386,20 +536,7 @@ export default function OrdersPage({ statusKey = "all" }) {
        * Page and size live in the URL, so a particular page can be linked,
        * reloaded, and opened in a second tab.
        */
-      const params = {
-        page,
-        limit,
-        search: searchRef.current.trim() || undefined,
-        // "all" is sent, not omitted: it is what lists unpaid and failed
-        // online orders too, matching Master > All Orders.
-        status:
-          statusKey === "restaurant-cancelled"
-              ? "cancelled"
-              : statusKey,
-        cancelledBy: statusKey === "restaurant-cancelled" ? "restaurant" : undefined,
-      }
-
-      const response = await adminAPI.getOrders(params)
+      const response = await adminAPI.getOrders({ page, limit, ...listParams() })
 
       const rawOrders =
         response?.data?.data?.orders ??
@@ -461,145 +598,12 @@ export default function OrdersPage({ statusKey = "all" }) {
     // page and limit included so changing either refetches. They are declared
     // above this callback; naming them in an earlier hook's dependency array
     // read them before initialization and crashed the whole screen.
-  }, [statusKey, page, limit, playDefaultRing, showBrowserNotification, startAlertLoop])
+  }, [listParams, page, limit, playDefaultRing, showBrowserNotification, startAlertLoop])
 
   const normalizedOrders = useMemo(() => {
     const safeOrders = Array.isArray(orders) ? orders : []
 
-    return safeOrders.filter(Boolean).map((order) => {
-      const createdAtRaw = order.createdAt || order.created_at || order.orderDate || null
-      const createdAtCandidate = createdAtRaw ? new Date(createdAtRaw) : null
-      const createdAt =
-        createdAtCandidate && !Number.isNaN(createdAtCandidate.getTime())
-          ? createdAtCandidate
-          : null
-      const date = createdAt
-        ? createdAt.toLocaleDateString("en-GB", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-          }).toUpperCase()
-        : ""
-      const time = createdAt
-        ? createdAt.toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true,
-          }).toUpperCase()
-        : ""
-
-      const pricing = order.pricing || {}
-      const subtotal = Number(pricing.subtotal || 0)
-      const deliveryFee = Number(pricing.deliveryFee || 0)
-      const platformFee = Number(pricing.platformFee || 0)
-      const taxAmount = Number(pricing.tax || 0)
-      const discountAmount = Number(pricing.discount || 0)
-      const computedTotal = subtotal + deliveryFee + platformFee + taxAmount - discountAmount
-      const totalAmount = Number(
-        pricing.total != null ? pricing.total : computedTotal
-      )
-
-      const paymentMethod = order.payment?.method || order.paymentMethod || ""
-      let paymentType = order.paymentType
-      if (!paymentType) {
-        if (paymentMethod === "cash" || paymentMethod === "cod") paymentType = "Cash on Delivery"
-        else if (paymentMethod === "wallet") paymentType = "Wallet"
-        else if (paymentMethod) paymentType = "Online"
-        else paymentType = "N/A"
-      }
-
-      const paymentStatusRaw = order.payment?.status || ""
-      let paymentStatus = order.paymentStatus
-      if (!paymentStatus) {
-        const s = String(paymentStatusRaw || "").toLowerCase()
-        if (s === "refunded") paymentStatus = "Refunded"
-        else if (s === "paid" || s === "authorized" || s === "captured" || s === "settled") paymentStatus = "Paid"
-        else if (s === "failed") paymentStatus = "Failed"
-        else paymentStatus = "Pending"
-      }
-
-      const backendStatus = String(order.orderStatus || "").toLowerCase()
-      let displayStatus = order.orderStatus
-      if (!backendStatus || backendStatus === "created" || backendStatus === "confirmed") {
-        displayStatus = "Pending"
-      } else if (backendStatus === "preparing" || backendStatus === "ready_for_pickup") {
-        displayStatus = "Processing"
-      } else if (backendStatus === "picked_up") {
-        displayStatus = "Food On The Way"
-      } else if (backendStatus === "delivered") {
-        displayStatus = "Delivered"
-      } else if (backendStatus === "cancelled_by_restaurant") {
-        displayStatus = "Cancelled by Restaurant"
-      } else if (backendStatus === "cancelled_by_user") {
-        displayStatus = "Cancelled by User"
-      } else if (backendStatus === "cancelled_by_admin") {
-        displayStatus = "Canceled"
-      } else if (backendStatus === "pending_payment") {
-        // Online checkout opened but not paid; listed only on the All tab.
-        displayStatus = "Awaiting Payment"
-      }
-
-      const dp = order.dispatch?.deliveryPartnerId
-      const deliveryPartnerName =
-        order.deliveryPartnerName ||
-        dp?.name ||
-        ""
-      const deliveryPartnerPhone =
-        order.deliveryPartnerPhone ||
-        dp?.phone ||
-        ""
-
-      const items = Array.isArray(order.items)
-        ? order.items.map((item) => ({
-            quantity: item.quantity || 1,
-            name: item.name || item.foodName || item.title || "Item",
-            price: item.price || 0,
-            // Kept so the list and the order view can show the size picked
-            // (Full / Half) and add-ons; dropping them here hid them everywhere.
-            variantName: item.variantName || item.variant?.name || "",
-            addons: Array.isArray(item.addons) ? item.addons : [],
-          }))
-        : []
-
-      const customerName = order.customerName || order.userId?.name || "N/A"
-      const customerPhone = order.customerPhone || order.userId?.phone || "N/A"
-      const restaurant =
-        order.restaurant ||
-        order.restaurantName ||
-        order.restaurantId?.restaurantName ||
-        ""
-
-      return {
-        ...order,
-        id: order._id || order.id,
-        orderId: order.orderId || order.id,
-        date,
-        time,
-        customerName,
-        customerPhone,
-        restaurant,
-        items,
-        subtotal,
-        totalItemAmount: subtotal,
-        couponDiscount: discountAmount,
-        itemDiscount: 0,
-        deliveryCharge: deliveryFee,
-        vatTax: taxAmount,
-        platformFee,
-        totalAmount,
-        paymentType,
-        paymentStatus,
-        orderStatus: displayStatus,
-        // The wire value, kept because orderStatus above is now a display label.
-        rawOrderStatus: backendStatus,
-        deliveryPartnerName,
-        deliveryPartnerPhone,
-        deliveryType: order.deliveryType || "Home Delivery",
-        orderOtp: order.deliveryOtp,
-        address: order.address || order.customerAddress || order.deliveryAddress,
-        refundStatus: order.payment?.refund?.status || (order.payment?.status === 'refunded' ? 'processed' : null)
-      }
-    })
+    return safeOrders.filter(Boolean).map(normalizeOrder)
   }, [orders])
 
   const {
@@ -627,6 +631,34 @@ export default function OrdersPage({ statusKey = "all" }) {
     toggleColumn,
     resetColumns,
   } = useOrdersManagement(normalizedOrders, statusKey, config.title)
+
+  /*
+   * Every order on this tab, not the page on screen: the table holds one page, so
+   * exporting what it held gave a report of 5 rows that looked complete. A page
+   * that fails stops the export, for the same reason.
+   */
+  const exportAllOrders = async (format) => {
+    const loading = toast.loading("Preparing your export...")
+    try {
+      const all = []
+      let next = 1
+      let lastPage = 1
+      do {
+        const response = await adminAPI.getOrders({ page: next, limit: EXPORT_PAGE_SIZE, ...listParams() })
+        const data = response?.data?.data
+        const rows = data?.orders ?? response?.data?.orders ?? data?.docs ?? data
+        if (!Array.isArray(rows)) throw new Error("Could not read the orders")
+        all.push(...rows)
+        lastPage = Number((data?.meta ?? response?.data?.meta)?.totalPages) || 1
+        next += 1
+      } while (next <= lastPage)
+      handleExport(format, all.filter(Boolean).map(normalizeOrder))
+      toast.dismiss(loading)
+    } catch (error) {
+      toast.dismiss(loading)
+      toast.error(error?.response?.data?.message || "Could not export the orders. Please try again.")
+    }
+  }
 
   useEffect(() => {
     isFirstLoadRef.current = true
@@ -1012,7 +1044,7 @@ export default function OrdersPage({ statusKey = "all" }) {
         setSearchQuery={setSearchQuery}
         onFilterClick={() => setIsFilterOpen(true)}
         activeFiltersCount={activeFiltersCount}
-        onExport={handleExport}
+        onExport={exportAllOrders}
         onSettingsClick={() => setIsSettingsOpen(true)}
       />
       <FilterPanel
