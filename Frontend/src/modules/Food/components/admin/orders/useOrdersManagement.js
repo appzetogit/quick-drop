@@ -88,6 +88,116 @@ const imageUrlToDataUrl = async (url) => {
   }
 }
 
+/** The search box and the Filters panel, applied to a list of orders. */
+export function applyOrderFilters(orders, searchQuery, filters) {
+  let result = [...orders]
+
+  // Apply search query
+  if (searchQuery.trim()) {
+    const query = searchQuery.toLowerCase().trim()
+    result = result.filter(order => {
+      const safeTotal =
+        order.totalAmount ??
+        order.total ??
+        order.pricing?.total ??
+        0
+      const totalStr = String(safeTotal)
+      return (
+        String(order.orderId || "")
+          .toLowerCase()
+          .includes(query) ||
+        String(order.customerName || "")
+          .toLowerCase()
+          .includes(query) ||
+        String(order.restaurant || "")
+          .toLowerCase()
+          .includes(query) ||
+        String(order.customerPhone || "").includes(query) ||
+        totalStr.includes(query)
+      )
+    })
+  }
+
+  // Apply filters
+  if (filters.paymentStatus) {
+    const wanted = filters.paymentStatus.toLowerCase()
+    result = result.filter((order) => {
+      const paymentStatus = String(order.paymentStatus || "").toLowerCase()
+      const collectionStatus = String(order.paymentCollectionStatus || "").toLowerCase()
+      return paymentStatus === wanted || collectionStatus === wanted
+    })
+  }
+
+  if (filters.deliveryType) {
+    result = result.filter(
+      (order) => String(order.deliveryType || "").toLowerCase() === filters.deliveryType.toLowerCase(),
+    )
+  }
+
+  if (filters.minAmount) {
+    const min = parseFloat(filters.minAmount)
+    result = result.filter(order => {
+      const amount =
+        order.totalAmount ??
+        order.total ??
+        order.pricing?.total ??
+        0
+      return Number(amount) >= min
+    })
+  }
+
+  if (filters.maxAmount) {
+    const max = parseFloat(filters.maxAmount)
+    result = result.filter(order => {
+      const amount =
+        order.totalAmount ??
+        order.total ??
+        order.pricing?.total ??
+        0
+      return Number(amount) <= max
+    })
+  }
+
+  if (filters.restaurant) {
+    result = result.filter(order => order.restaurant === filters.restaurant)
+  }
+
+  // Helper function to parse date format "16 JUL 2025"
+  const parseOrderDate = (dateStr) => {
+    const months = {
+      "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04", "MAY": "05", "JUN": "06",
+      "JUL": "07", "AUG": "08", "SEP": "09", "OCT": "10", "NOV": "11", "DEC": "12"
+    }
+    const parts = dateStr.split(" ")
+    if (parts.length === 3) {
+      const day = parts[0].padStart(2, "0")
+      const month = months[parts[1].toUpperCase()] || "01"
+      const year = parts[2]
+      return new Date(`${year}-${month}-${day}`)
+    }
+    return new Date(dateStr)
+  }
+
+  if (filters.fromDate) {
+    result = result.filter(order => {
+      const orderDate = parseOrderDate(order.date)
+      const fromDate = new Date(filters.fromDate)
+      return orderDate >= fromDate
+    })
+  }
+
+  if (filters.toDate) {
+    result = result.filter(order => {
+      const orderDate = parseOrderDate(order.date)
+      const toDate = new Date(filters.toDate)
+      toDate.setHours(23, 59, 59, 999) // Include entire day
+      return orderDate <= toDate
+    })
+  }
+
+  return result
+}
+
 export function useOrdersManagement(orders, statusKey, title) {
   const [searchQuery, setSearchQuery] = useState("")
   const [isFilterOpen, setIsFilterOpen] = useState(false)
@@ -124,114 +234,10 @@ export function useOrdersManagement(orders, statusKey, title) {
   }, [orders])
 
   // Apply search and filters
-  const filteredOrders = useMemo(() => {
-    let result = [...orders]
-
-    // Apply search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim()
-      result = result.filter(order => {
-        const safeTotal =
-          order.totalAmount ??
-          order.total ??
-          order.pricing?.total ??
-          0
-        const totalStr = String(safeTotal)
-        return (
-          String(order.orderId || "")
-            .toLowerCase()
-            .includes(query) ||
-          String(order.customerName || "")
-            .toLowerCase()
-            .includes(query) ||
-          String(order.restaurant || "")
-            .toLowerCase()
-            .includes(query) ||
-          String(order.customerPhone || "").includes(query) ||
-          totalStr.includes(query)
-        )
-      })
-    }
-
-    // Apply filters
-    if (filters.paymentStatus) {
-      const wanted = filters.paymentStatus.toLowerCase()
-      result = result.filter((order) => {
-        const paymentStatus = String(order.paymentStatus || "").toLowerCase()
-        const collectionStatus = String(order.paymentCollectionStatus || "").toLowerCase()
-        return paymentStatus === wanted || collectionStatus === wanted
-      })
-    }
-
-    if (filters.deliveryType) {
-      result = result.filter(
-        (order) => String(order.deliveryType || "").toLowerCase() === filters.deliveryType.toLowerCase(),
-      )
-    }
-
-    if (filters.minAmount) {
-      const min = parseFloat(filters.minAmount)
-      result = result.filter(order => {
-        const amount =
-          order.totalAmount ??
-          order.total ??
-          order.pricing?.total ??
-          0
-        return Number(amount) >= min
-      })
-    }
-
-    if (filters.maxAmount) {
-      const max = parseFloat(filters.maxAmount)
-      result = result.filter(order => {
-        const amount =
-          order.totalAmount ??
-          order.total ??
-          order.pricing?.total ??
-          0
-        return Number(amount) <= max
-      })
-    }
-
-    if (filters.restaurant) {
-      result = result.filter(order => order.restaurant === filters.restaurant)
-    }
-
-    // Helper function to parse date format "16 JUL 2025"
-    const parseOrderDate = (dateStr) => {
-      const months = {
-        "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04", "MAY": "05", "JUN": "06",
-        "JUL": "07", "AUG": "08", "SEP": "09", "OCT": "10", "NOV": "11", "DEC": "12"
-      }
-      const parts = dateStr.split(" ")
-      if (parts.length === 3) {
-        const day = parts[0].padStart(2, "0")
-        const month = months[parts[1].toUpperCase()] || "01"
-        const year = parts[2]
-        return new Date(`${year}-${month}-${day}`)
-      }
-      return new Date(dateStr)
-    }
-
-    if (filters.fromDate) {
-      result = result.filter(order => {
-        const orderDate = parseOrderDate(order.date)
-        const fromDate = new Date(filters.fromDate)
-        return orderDate >= fromDate
-      })
-    }
-
-    if (filters.toDate) {
-      result = result.filter(order => {
-        const orderDate = parseOrderDate(order.date)
-        const toDate = new Date(filters.toDate)
-        toDate.setHours(23, 59, 59, 999) // Include entire day
-        return orderDate <= toDate
-      })
-    }
-
-    return result
-  }, [orders, searchQuery, filters])
+  const filteredOrders = useMemo(
+    () => applyOrderFilters(orders, searchQuery, filters),
+    [orders, searchQuery, filters],
+  )
 
   const count = filteredOrders.length
 
@@ -256,20 +262,22 @@ export function useOrdersManagement(orders, statusKey, title) {
     })
   }
 
-  const handleExport = (format) => {
+  // A server-paged list holds one page, so its caller passes every order to export.
+  const handleExport = (format, allOrders = null) => {
+    const rows = allOrders ? applyOrderFilters(allOrders, searchQuery, filters) : filteredOrders
     const filename = title.toLowerCase().replace(/\s+/g, "_")
     switch (format) {
       case "csv":
-        exportToCSV(filteredOrders, filename)
+        exportToCSV(rows, filename)
         break
       case "excel":
-        exportToExcel(filteredOrders, filename)
+        exportToExcel(rows, filename)
         break
       case "pdf":
-        exportToPDF(filteredOrders, filename)
+        exportToPDF(rows, filename)
         break
       case "json":
-        exportToJSON(filteredOrders, filename)
+        exportToJSON(rows, filename)
         break
       default:
         break
