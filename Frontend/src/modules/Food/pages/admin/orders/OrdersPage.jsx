@@ -348,7 +348,7 @@ export default function OrdersPage({ statusKey = "all" }) {
    * confusion this whole change is about. The server's own cap is 100.
    */
   const page = Math.max(1, parseInt(searchParams.get("page"), 10) || 1)
-  const limit = Math.min(Math.max(parseInt(searchParams.get("limit"), 10) || 20, 1), 100)
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit"), 10) || 5, 1), 100)
 
   const setPage = useCallback((next) => {
     setSearchParams((prev) => {

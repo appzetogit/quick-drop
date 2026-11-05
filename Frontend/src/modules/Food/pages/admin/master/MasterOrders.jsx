@@ -61,7 +61,7 @@ const when = (d) => {
   return t.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })
 }
 
-const PAGE_SIZE = 25
+const PAGE_SIZE = 5
 
 /*
  * Which rows offer Delete. The server has the last word (it also refuses a
