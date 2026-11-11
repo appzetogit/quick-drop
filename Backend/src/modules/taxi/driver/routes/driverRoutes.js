@@ -181,6 +181,13 @@ driverRouter.post(
   authenticate(["driver"]),
   asyncHandler(cancelDriverActiveRide),
 );
+// The driver app sends PATCH. With only POST here every cancel from the app was a
+// 404 "route not found", and the ride could not be cancelled from the driver side.
+driverRouter.patch(
+  "/rides/:rideId/cancel",
+  authenticate(["driver"]),
+  asyncHandler(cancelDriverActiveRide),
+);
 driverRouter.post(
   "/rides/:rideId/decline",
   authenticate(["driver"]),

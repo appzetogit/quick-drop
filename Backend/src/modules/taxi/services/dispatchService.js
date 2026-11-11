@@ -1215,11 +1215,13 @@ export const cancelActiveRideByDriver = async ({ rideId, driverId, reason = '' }
       throw new ApiError(409, 'Pool rides cannot be cancelled from here.');
     }
 
-    // Block cancellation once the driver is en route or beyond — only a freshly ACCEPTED ride
-    // (driver hasn't started moving to pickup) can be cancelled by the driver.
+    // Until the driver reaches the pickup: accepted, or on the way (arriving). The
+    // driver app marks a ride arriving as soon as the driver sets off, so allowing
+    // only "accepted" left a driver with no way to cancel a ride they could not do.
+    // From arrival on it is the customer's trip, and only the customer or admin ends it.
     const liveStatus = String(ride.liveStatus || '').toLowerCase();
-    if (liveStatus !== RIDE_LIVE_STATUS.ACCEPTED) {
-      throw new ApiError(409, 'Ride can no longer be cancelled — the driver is already en route.');
+    if (![RIDE_LIVE_STATUS.ACCEPTED, RIDE_LIVE_STATUS.ARRIVING].includes(liveStatus)) {
+      throw new ApiError(409, 'Ride can no longer be cancelled: the driver has reached the pickup.');
     }
     if (ride.startedAt) {
       throw new ApiError(409, 'Ride cannot be cancelled after the trip has started.');
