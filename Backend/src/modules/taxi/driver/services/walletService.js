@@ -246,6 +246,27 @@ export const ensureDriverWalletCanAcceptRide = async (driverOrId, { session } = 
   return finance;
 };
 
+/**
+ * Re-derives wallet.isBlocked for every driver after the minimum changes.
+ *
+ * Ride offers filter on this flag and it is otherwise only written when that
+ * driver's own wallet moves, so a new minimum would leave everyone on the old
+ * answer: still skipped under a lower minimum, still offered under a higher one.
+ */
+export const refreshDriverWalletBlockFlags = async () => {
+  const { isWalletEnabled, minimumBalanceForOrders } = await resolveWalletRules();
+  const result = await Driver.updateMany({}, [
+    {
+      $set: {
+        'wallet.isBlocked': isWalletEnabled
+          ? { $lt: [{ $ifNull: ['$wallet.balance', 0] }, minimumBalanceForOrders] }
+          : true,
+      },
+    },
+  ]);
+  return result.modifiedCount;
+};
+
 export const applyDriverWalletAdjustment = async ({
   driverId,
   amount,

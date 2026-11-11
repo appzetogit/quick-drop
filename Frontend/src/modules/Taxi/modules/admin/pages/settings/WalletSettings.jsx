@@ -13,7 +13,7 @@ const AMOUNT_FIELDS = [
   {
     name: 'driver_wallet_minimum_amount_to_get_an_order',
     label: 'Driver minimum balance to get orders',
-    help: 'Driver app blocks new orders when wallet balance is below this amount. Use a negative value to allow cash debt.',
+    help: 'Taxi and parcel rides only. A driver stops getting rides when their taxi balance is below this amount; delivery earnings and the security deposit do not count. Use a negative value to allow cash debt, for example -500.',
     placeholder: '-500',
   },
   {

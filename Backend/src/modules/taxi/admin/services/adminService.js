@@ -10308,6 +10308,11 @@ export const buildDriverDutyReport = async (query = {}) => {
       appSettings[key] = { ...(appSettings[key] || {}), ...newValues };
       appSettings.markModified(key);
       await appSettings.save();
+      // The minimum decides who ride offers skip, through a flag on each driver.
+      if (key === 'wallet_setting') {
+        const { refreshDriverWalletBlockFlags } = await import('../../driver/services/walletService.js');
+        await refreshDriverWalletBlockFlags();
+      }
       return { settings: appSettings[key] };
     }
 

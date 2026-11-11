@@ -487,20 +487,17 @@ export const combineDeliveryMoney = (perVertical = []) => {
  *     rider over the limit from deliveries now stops being offered rides too,
  *     which is the whole point of a shared limit.
  */
-const resolveBlockState = ({ taxiSigned, cashInHand, cashLimit, rules, snapshotBlocked, walletBalance }) => {
+const resolveBlockState = ({ taxiSigned, cashInHand, cashLimit, rules, snapshotBlocked, takesRides = true }) => {
     if (!rules.isWalletEnabled) {
         return { isBlocked: true, reason: 'wallet_disabled' };
     }
-    // A POSITIVE minimum is a "keep at least this much in the wallet" rule, so
-    // it is judged on the combined wallet (taxi + delivery + admin credits), not
-    // the taxi stream alone: money an admin adds, or the rider pays in, clears
-    // it. A zero/negative minimum is the taxi debt ceiling and stays on the
-    // signed taxi balance, exactly as before.
-    const belowMinimum =
-        rules.minimumBalanceForOrders > 0 && Number.isFinite(walletBalance)
-            ? walletBalance < rules.minimumBalanceForOrders
-            : taxiSigned < rules.minimumBalanceForOrders;
-    if (belowMinimum) {
+    // The taxi minimum, on the taxi balance alone and only for a driver who takes
+    // rides. A positive minimum used to be judged on the combined wallet, which
+    // holds the security deposit, so with a Rs 1,500 deposit nobody ever fell below
+    // it. And it disagreed with wallet.isBlocked, which ride offers filter on and
+    // which uses this same taxi balance: a driver at Rs 64 against a Rs 100 minimum
+    // passed here and was silently offered nothing.
+    if (takesRides && taxiSigned < rules.minimumBalanceForOrders) {
         return { isBlocked: true, reason: 'below_minimum_balance' };
     }
     if (cashLimit > 0 && cashInHand >= cashLimit) {
@@ -533,6 +530,7 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
     const identity = await resolveRiderIdentity(anyId);
 
     let wallet = driverWallet;
+    let takesRides = false;
 
     /*
      * `driverWallet` exists for callers holding a driver document that is newer
@@ -544,10 +542,12 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
      * change during a wallet transaction, and a caller may well have passed a
      * document those fields were never selected onto.
      */
-    if (!wallet && identity.driverId) {
+    if (identity.driverId) {
         const { Driver } = await import('../../modules/taxi/driver/models/Driver.js');
-        const driver = await Driver.findById(identity.driverId).select('_id wallet').lean();
-        wallet = driver?.wallet || null;
+        const driver = await Driver.findById(identity.driverId).select('_id wallet workMode').lean();
+        if (!wallet) wallet = driver?.wallet || null;
+        // Food or grocery only: the taxi minimum is none of their business.
+        takesRides = ['all', 'taxi'].includes(driver?.workMode || 'all');
     }
 
     const [rules, limits, delivery, securityDeposited] = await Promise.all([
@@ -596,7 +596,7 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
         cashLimit: limits.cashLimit,
         rules,
         snapshotBlocked: Boolean(wallet?.isBlocked),
-        walletBalance,
+        takesRides,
     });
 
     // How much more work they can take on: whichever of the two gates binds first.

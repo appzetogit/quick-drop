@@ -78,6 +78,47 @@ const main = async () => {
         assert.equal((await getRiderFinance(await driver(-501))).blockReason, 'below_minimum_balance');
     });
 
+    const { __testables } = await import('../src/core/finance/riderFinance.service.js');
+    const { refreshDriverWalletBlockFlags } = await import('../src/modules/taxi/driver/services/walletService.js');
+
+    await check('the deposit and delivery earnings do not count: only the taxi balance does', async () => {
+        const state = __testables.resolveBlockState({
+            taxiSigned: 64, cashInHand: 0, cashLimit: 1500, walletBalance: 1816.9,
+            rules: { isWalletEnabled: true, minimumBalanceForOrders: 100 },
+        });
+        assert.equal(state.reason, 'below_minimum_balance');
+    });
+
+    await check('the check and the flag ride offers read agree, above and below the minimum', async () => {
+        await setMinimum(100);
+        const low = await driver(100);
+        await applyDriverWalletAdjustment({ driverId: low, amount: -36, type: 'adjustment', description: 'test' }).catch(() => {});
+        const flagged = await Driver.findById(low).select('wallet').lean();
+        assert.deepEqual([flagged.wallet.balance, flagged.wallet.isBlocked, (await getRiderFinance(low)).isBlocked], [64, true, true]);
+        const fine = await driver(200);
+        await applyDriverWalletAdjustment({ driverId: fine, amount: -36, type: 'adjustment', description: 'test' }).catch(() => {});
+        const clear = await Driver.findById(fine).select('wallet').lean();
+        assert.deepEqual([clear.wallet.balance, clear.wallet.isBlocked, (await getRiderFinance(fine)).isBlocked], [164, false, false]);
+    });
+
+    await check('only a driver who takes rides: a delivery-only rider under the minimum is not blocked', async () => {
+        const id = await driver(0);
+        for (const [mode, blocked] of [['delivery', false], ['quickCommerce', false], ['taxi', true], ['all', true]]) {
+            await Driver.collection.updateOne({ _id: id }, { $set: { workMode: mode } });
+            assert.equal((await getRiderFinance(id)).isBlocked, blocked, mode);
+        }
+    });
+
+    await check('a new minimum reaches drivers whose own wallet has not moved', async () => {
+        const low = await driver(64);
+        await setMinimum(100);
+        await refreshDriverWalletBlockFlags();
+        assert.equal((await Driver.findById(low).select('wallet').lean()).wallet.isBlocked, true);
+        await setMinimum(-500);
+        await refreshDriverWalletBlockFlags();
+        assert.equal((await Driver.findById(low).select('wallet').lean()).wallet.isBlocked, false);
+    });
+
     await mongoose.disconnect();
     await replSet.stop();
     console.log(failed ? `\n${failed} failed` : '\nall passed');
