@@ -406,6 +406,7 @@ const toRestaurantProfile = (doc) => {
             diningType: String(doc.diningSettings?.diningType || 'family-dining').trim() || 'family-dining'
         },
         isAcceptingOrders: doc.isAcceptingOrders !== false,
+        autoReopenAtOpening: Boolean(doc.autoReopenAtOpening),
         outsideHoursOverride: doc.outsideHoursOverride === true,
         subscriptionPlan: doc.subscriptionPlan || '',
         subscriptionAmount: Number.isFinite(Number(doc.subscriptionAmount)) ? Number(doc.subscriptionAmount) : 0,
@@ -1280,6 +1281,7 @@ export const getCurrentRestaurantProfile = async (restaurantId) => {
                 'estimatedDeliveryTimeMinutes',
                 'diningSettings',
                 'isAcceptingOrders',
+                'autoReopenAtOpening',
                 'outsideHoursOverride',
                 'subscriptionPlan',
                 'subscriptionAmount',
@@ -1322,18 +1324,21 @@ const enrichRestaurantProfileWithAvailability = async (profile, doc) => {
     };
 };
 
-export const updateRestaurantAcceptingOrders = async (restaurantId, isAcceptingOrders) => {
+export const updateRestaurantAcceptingOrders = async (restaurantId, isAcceptingOrders, options = {}) => {
     if (!restaurantId) {
         throw new ValidationError('Invalid restaurant id');
     }
     const value = Boolean(isAcceptingOrders);
     // Offline = manual force-offline. Online = clear override and follow outlet timings.
+    // Going offline also records whether to auto-reopen at opening time; coming
+    // online clears that opt-in (the shared sweep reopens on the same field).
     const doc = await FoodRestaurant.findByIdAndUpdate(
         restaurantId,
         {
             $set: {
                 isAcceptingOrders: value,
                 outsideHoursOverride: false,
+                autoReopenAtOpening: value ? false : Boolean(options.autoReopenAtOpening),
             },
         },
         {
@@ -1369,6 +1374,7 @@ export const updateRestaurantAcceptingOrders = async (restaurantId, isAcceptingO
                 'openDays',
                 'diningSettings',
                 'isAcceptingOrders',
+                'autoReopenAtOpening',
                 'outsideHoursOverride',
                 'status',
                 'createdAt',
@@ -1461,6 +1467,7 @@ export const updateCurrentRestaurantDiningSettings = async (restaurantId, body =
                 'estimatedDeliveryTimeMinutes',
                 'diningSettings',
                 'isAcceptingOrders',
+                'autoReopenAtOpening',
                 'outsideHoursOverride',
                 'status',
                 'createdAt',

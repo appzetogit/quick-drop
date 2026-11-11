@@ -223,6 +223,17 @@ const restaurantSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    /*
+     * Set when the seller is taken offline during opening hours and the owner
+     * chose to have it reopen on its own. The shared maintenance sweep
+     * (RESTAURANT_AUTO_REOPEN, food module — same food_restaurants collection)
+     * brings it back online once it is within opening hours again and clears
+     * this. Cleared too whenever the seller is brought online by any path.
+     */
+    autoReopenAtOpening: {
+      type: Boolean,
+      default: false,
+    },
     /**
      * Confirm this seller's orders the moment they are placed, and start
      * hunting a rider immediately, instead of waiting for someone to tap

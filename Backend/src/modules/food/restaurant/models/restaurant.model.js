@@ -142,6 +142,17 @@ const restaurantSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    /*
+     * Set when the outlet is taken offline during opening hours and the owner
+     * chose to have it reopen on its own. The maintenance sweep
+     * (RESTAURANT_AUTO_REOPEN) brings it back online once it is within opening
+     * hours again and clears this. Cleared too whenever the outlet is brought
+     * online by any path.
+     */
+    autoReopenAtOpening: {
+      type: Boolean,
+      default: false,
+    },
     panNumber: {
       type: String,
     },

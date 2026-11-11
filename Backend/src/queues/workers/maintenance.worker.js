@@ -73,7 +73,20 @@ const startMaintenanceWorker = async () => {
         }
     );
 
-    // 5. Manual-assign expiry moved to the API process (server.js), which has the
+    // 5. Restaurant auto-reopen (every 5 minutes): outlets the owner took
+    //    offline during opening hours with "reopen at opening time" are brought
+    //    back online once the clock re-enters their window. Idempotent — it only
+    //    ever flips an outlet that still carries the opt-in flag.
+    await maintenanceQueue.add(
+        'RESTAURANT_AUTO_REOPEN',
+        { type: 'RESTAURANT_AUTO_REOPEN' },
+        {
+            repeat: { pattern: '*/5 * * * *' },
+            jobId: 'restaurant_auto_reopen_job'
+        }
+    );
+
+    // 6. Manual-assign expiry moved to the API process (server.js), which has the
     //    socket server its hand-back needs. Drop the repeatable this worker used to
     //    register, so Redis stops scheduling it.
     await maintenanceQueue
