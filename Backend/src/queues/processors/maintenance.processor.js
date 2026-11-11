@@ -42,6 +42,19 @@ export const processMaintenanceJob = async (job) => {
         }
     }
 
+    if (type === 'RESTAURANT_AUTO_REOPEN') {
+        try {
+            const { reopenRestaurantsAtOpeningTime } = await import('../../modules/food/restaurant/services/restaurantAutoReopen.service.js');
+            const s = await reopenRestaurantsAtOpeningTime();
+            if (s.reopened > 0) {
+                logger.info(`[BullMQ:maintenance] RESTAURANT_AUTO_REOPEN brought ${s.reopened}/${s.checked} outlet(s) back online`);
+            }
+        } catch (err) {
+            logger.error(`[BullMQ:maintenance] RESTAURANT_AUTO_REOPEN failed: ${err.message}`);
+            throw err;
+        }
+    }
+
     if (type === 'STALE_SWEEP') {
         // Unpaid quick-commerce orders give their stock back, and abandoned taxi
         // rides stop blocking their driver and customer. Each step on its own:

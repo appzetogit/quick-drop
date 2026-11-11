@@ -190,6 +190,7 @@ const toRestaurantProfile = (doc) => {
             diningType: String(doc.diningSettings?.diningType || 'family-dining').trim() || 'family-dining'
         },
         isAcceptingOrders: doc.isAcceptingOrders !== false,
+        autoReopenAtOpening: Boolean(doc.autoReopenAtOpening),
         status: doc.status || null,
         petpoojaEnabled: Boolean(doc.petpoojaEnabled),
         petpoojaOutletId: doc.petpoojaOutletId || '',
@@ -941,6 +942,7 @@ export const getCurrentRestaurantProfile = async (restaurantId) => {
                 'estimatedDeliveryTimeMinutes',
                 'diningSettings',
                 'isAcceptingOrders',
+                'autoReopenAtOpening',
                 'status',
                 'createdAt',
                 'updatedAt'
@@ -950,14 +952,19 @@ export const getCurrentRestaurantProfile = async (restaurantId) => {
     return toRestaurantProfile(doc);
 };
 
-export const updateRestaurantAcceptingOrders = async (restaurantId, isAcceptingOrders) => {
+export const updateRestaurantAcceptingOrders = async (restaurantId, isAcceptingOrders, options = {}) => {
     if (!restaurantId) {
         throw new ValidationError('Invalid restaurant id');
     }
     const value = Boolean(isAcceptingOrders);
+    // Coming online clears any pending auto-reopen. Going offline records the
+    // owner's choice: reopen automatically at opening time, or stay off.
+    const set = value
+        ? { isAcceptingOrders: true, autoReopenAtOpening: false }
+        : { isAcceptingOrders: false, autoReopenAtOpening: Boolean(options.autoReopenAtOpening) };
     const doc = await FoodRestaurant.findByIdAndUpdate(
         restaurantId,
-        { $set: { isAcceptingOrders: value } },
+        { $set: set },
         {
             new: true,
             runValidators: true,
@@ -992,6 +999,7 @@ export const updateRestaurantAcceptingOrders = async (restaurantId, isAcceptingO
                 'openDays',
                 'diningSettings',
                 'isAcceptingOrders',
+                'autoReopenAtOpening',
                 'status',
                 'createdAt',
                 'updatedAt'
@@ -1083,6 +1091,7 @@ export const updateCurrentRestaurantDiningSettings = async (restaurantId, body =
                 'estimatedDeliveryTimeMinutes',
                 'diningSettings',
                 'isAcceptingOrders',
+                'autoReopenAtOpening',
                 'status',
                 'createdAt',
                 'updatedAt'
