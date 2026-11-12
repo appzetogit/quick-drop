@@ -321,6 +321,8 @@ export const inventoryAPI = {
   saveFreshSheet: (data) => apiClient.post(`${INV}/fresh-sheet`, data, invCtx),
   prices: (data) => apiClient.post(`${INV}/prices`, data, invCtx),
   duplicate: (itemId) => apiClient.post(`${INV}/products/${itemId}/duplicate`, {}, invCtx),
+  /** Excel import and Quick add. dryRun (default) only reports what would change. */
+  importProducts: (data) => apiClient.post(`${INV}/import`, data, invCtx),
 };
 
 /**

@@ -32,7 +32,10 @@ const purchaseLineSchema = new mongoose.Schema(
         /** In units of stock: packs for a sized product, kg for one kept by weight. */
         qty: { type: Number, required: true, min: 0 },
         /** Per unit, before GST. */
+        // Before GST. When the vendor's price had GST in it, `billedRate` is that price.
         rate: { type: Number, required: true, min: 0 },
+        billedRate: { type: Number, min: 0 },
+        rateIncludesGst: { type: Boolean, default: false },
         gstRate: { type: Number, default: 0, min: 0, max: 100 },
         taxable: { type: Number, default: 0 },
         gst: { type: Number, default: 0 },

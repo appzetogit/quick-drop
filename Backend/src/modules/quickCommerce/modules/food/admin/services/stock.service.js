@@ -48,6 +48,7 @@ function rowsOf(doc, storeNames) {
       sku: doc.sku || doc.skuCode || '',
       price: doc.price,
       purchasePrice: doc.purchasePrice ?? null,
+      purchaseGstRate: doc.purchaseGstRate ?? null,
       mrp: doc.mrp ?? null,
       gstRate: doc.gstRate ?? null,
       unit: doc.unit || '',
@@ -64,6 +65,7 @@ function rowsOf(doc, storeNames) {
     sku: v.sku || '',
     price: v.price,
     purchasePrice: v.purchasePrice ?? null,
+    purchaseGstRate: doc.purchaseGstRate ?? null,
     mrp: doc.mrp ?? null,
     gstRate: v.gstRate ?? doc.gstRate ?? null,
     unit: doc.unit || '',
@@ -102,7 +104,7 @@ export async function listStock(query = {}) {
   else if (query.section === 'grocery') filter.section = { $ne: 'fresh' };
 
   const docs = await FoodItem.find(filter)
-    .select('name restaurantId image images categoryName price sku skuCode stockQty lowStockThreshold variants isAvailable stockOffMode purchasePrice mrp gstRate unit section')
+    .select('name restaurantId image images categoryName price sku skuCode stockQty lowStockThreshold variants isAvailable stockOffMode purchasePrice purchaseGstRate mrp gstRate unit section')
     .sort({ name: 1 })
     .limit(3000)
     .lean();

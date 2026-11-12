@@ -178,21 +178,26 @@ export async function createPurchase(body = {}, actor = null) {
         if (variantId && !variant) throw new ValidationError(`${at}: that size of ${doc.name} no longer exists`);
         const qty = round3(raw?.qty);
         if (!(qty > 0)) throw new ValidationError(`${at}: enter the quantity received`);
-        const rate = round2(raw?.rate);
-        if (!(rate >= 0) || !Number.isFinite(rate)) throw new ValidationError(`${at}: enter the purchase rate`);
+        const billedRate = round2(raw?.rate);
+        if (!(billedRate >= 0) || !Number.isFinite(billedRate)) throw new ValidationError(`${at}: enter the purchase rate`);
         const gstRaw = raw?.gstRate ?? doc.purchaseGstRate ?? (variant?.gstRate ?? doc.gstRate) ?? 0;
         const gstRate = Number(gstRaw);
         if (!Number.isFinite(gstRate) || gstRate < 0 || gstRate > 100) throw new ValidationError(`${at}: GST must be 0 to 100`);
+        // Some vendors bill a price with GST already in it: the rate kept is before GST,
+        // and the line total stays exactly what the bill says.
+        const rateIncludesGst = raw?.rateIncludesGst === undefined ? body.ratesIncludeGst === true : raw.rateIncludesGst === true;
+        const rate = rateIncludesGst ? round2(billedRate / (1 + gstRate / 100)) : billedRate;
         // A size with no count of its own fills the product's (a 5 kg bag of a
         // product kept in kg adds 5). The rate stays per bag as billed.
         const ownCount = variant && tracked(variant.stockQty);
         const stockUnits = variant && !ownCount ? round3(qty * stockPerSale(doc, variantId)) : qty;
-        const taxable = round2(qty * rate);
-        const gst = round2((taxable * gstRate) / 100);
+        const billedTotal = rateIncludesGst ? round2(qty * billedRate) : null;
+        const taxable = rateIncludesGst ? round2(billedTotal / (1 + gstRate / 100)) : round2(qty * rate);
+        const gst = rateIncludesGst ? round2(billedTotal - taxable) : round2((taxable * gstRate) / 100);
         return {
             doc, variant, ownCount, stockUnits,
             itemId: doc._id, variantId, itemName: doc.name, variantName: variant?.name || '', section: sectionOf(doc.section),
-            qty, rate, gstRate, taxable, gst, total: round2(taxable + gst),
+            qty, rate, billedRate, rateIncludesGst, gstRate, taxable, gst, total: round2(taxable + gst),
         };
     });
 
@@ -205,8 +210,8 @@ export async function createPurchase(body = {}, actor = null) {
         billNo: String(body.billNo || '').trim(),
         billDate,
         paidVia,
-        lines: lines.map(({ itemId, variantId, itemName, variantName, section, qty, rate, gstRate, taxable, gst, total }) =>
-            ({ itemId, variantId, itemName, variantName, section, qty, rate, gstRate, taxable, gst, total })),
+        lines: lines.map(({ itemId, variantId, itemName, variantName, section, qty, rate, billedRate, rateIncludesGst, gstRate, taxable, gst, total }) =>
+            ({ itemId, variantId, itemName, variantName, section, qty, rate, billedRate, rateIncludesGst, gstRate, taxable, gst, total })),
         taxable: round2(totals.taxable),
         gst: round2(totals.gst),
         total: round2(totals.taxable + totals.gst),

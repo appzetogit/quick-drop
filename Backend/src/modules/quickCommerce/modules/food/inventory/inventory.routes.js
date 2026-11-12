@@ -1,6 +1,7 @@
 import express from 'express';
 import { sendResponse, sendError } from '../../../utils/response.js';
 import * as inventory from './inventory.service.js';
+import { importProducts } from './inventory.import.js';
 
 /**
  * Admin > Quick Commerce > Inventory, mounted at /v1/qc/admin/inventory behind the
@@ -14,6 +15,7 @@ import * as inventory from './inventory.service.js';
  *   GET  /fresh-sheet?restaurantId=               POST /fresh-sheet  { rows: [...] }
  *   POST /prices                                  { rows: [{itemId, variantId?}], field, mode, value }
  *   POST /products/:id/duplicate
+ *   POST /import                                  { restaurantId, rows, dryRun } (Excel import and Quick add)
  */
 export function inventoryRouter() {
   const router = express.Router();
@@ -50,6 +52,7 @@ export function inventoryRouter() {
 
   router.post('/prices', handle((req) => inventory.bulkUpdatePrices(req.body || {}), 'Prices updated'));
   router.post('/products/:id/duplicate', handle((req) => inventory.duplicateProduct(req.params.id), 'Product copied'));
+  router.post('/import', express.json({ limit: '5mb' }), handle((req) => importProducts(req.body || {}, actorOf(req)), 'Done'));
 
   return router;
 }

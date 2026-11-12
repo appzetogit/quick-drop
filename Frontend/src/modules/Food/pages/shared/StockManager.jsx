@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
-import { Search, Loader2, Download, Upload, History, X, Package, AlertTriangle, CircleSlash, Boxes } from "lucide-react"
-import { useLocation } from "react-router-dom"
+import { Search, Loader2, Download, Upload, History, X, Package, AlertTriangle, CircleSlash, Boxes, Plus } from "lucide-react"
+import { Link, useLocation } from "react-router-dom"
+import QuickAddProduct from "@food/pages/admin/inventory/QuickAddProduct"
 import { inventoryAPI, stockAPI } from "@food/api"
 
 /**
@@ -133,6 +134,7 @@ export default function StockManager({ scope = "admin" }) {
   const [priceMode, setPriceMode] = useState("pct_up")
   const [priceValue, setPriceValue] = useState("")
   const [wasteRow, setWasteRow] = useState(null)
+  const [quickAdd, setQuickAdd] = useState(false)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState("")
@@ -395,6 +397,16 @@ export default function StockManager({ scope = "admin" }) {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {inventoryTools && (
+              <>
+                <button type="button" onClick={() => setQuickAdd(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800">
+                  <Plus className="h-4 w-4" /> Quick add
+                </button>
+                <Link to="/admin/quick-commerce/inventory/import" className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50">
+                  Import products from Excel
+                </Link>
+              </>
+            )}
             <button type="button" onClick={downloadSheet} className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-800 hover:bg-neutral-50">
               <Download className="h-4 w-4" /> Download sheet
             </button>
@@ -508,7 +520,7 @@ export default function StockManager({ scope = "admin" }) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1040px] text-sm">
+              <table className="w-full min-w-[1140px] text-sm">
                 <thead>
                   <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wider text-neutral-500">
                     <th className="w-10 px-4 py-3">
@@ -524,6 +536,7 @@ export default function StockManager({ scope = "admin" }) {
                     <th className="px-4 py-3 font-medium">SKU</th>
                     {inventoryTools && <th className="px-4 py-3 text-right font-medium">Purchase</th>}
                     {inventoryTools && <th className="px-4 py-3 text-right font-medium">Selling</th>}
+                    {inventoryTools && <th className="px-4 py-3 text-right font-medium" title="Selling price minus purchase price with the GST paid on it">Margin</th>}
                     <th className="px-4 py-3 font-medium">In stock</th>
                     <th className="px-4 py-3 font-medium">Low at</th>
                     <th className="px-4 py-3 font-medium">Status</th>
@@ -575,6 +588,18 @@ export default function StockManager({ scope = "admin" }) {
                             {money(r.price)}
                           </td>
                         )}
+                        {inventoryTools && (() => {
+                          if (r.purchasePrice == null || r.price == null) return <td className="px-4 py-2.5 text-right text-neutral-400">—</td>
+                          const cost = Number(r.purchasePrice) * (1 + (Number(r.purchaseGstRate) || 0) / 100)
+                          const m = Number(r.price) - cost
+                          const pct = Number(r.price) > 0 ? Math.round((m / Number(r.price)) * 100) : 0
+                          return (
+                            <td className={`px-4 py-2.5 text-right tabular-nums ${m < 0 ? "text-red-700" : "text-emerald-800"}`} title={`Cost with GST ${money(Math.round(cost * 100) / 100)}`}>
+                              {m < 0 ? "−" : ""}{money(Math.round(Math.abs(m) * 100) / 100)}
+                              <span className="block text-xs text-neutral-500">{pct}%</span>
+                            </td>
+                          )
+                        })()}
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-1.5">
                             <input
@@ -694,6 +719,7 @@ export default function StockManager({ scope = "admin" }) {
       )}
 
       {historyRow && <HistoryPanel scope={scope} row={historyRow} onClose={() => setHistoryRow(null)} />}
+      {inventoryTools && <QuickAddProduct open={quickAdd} onClose={() => setQuickAdd(false)} storeId={store} section={section || "grocery"} onAdded={load} />}
       {wasteRow && (
         <div role="dialog" aria-modal="true" aria-label="Record wastage" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setWasteRow(null)}>
           <div className="w-full max-w-sm space-y-3 rounded-xl bg-white p-5" onClick={(e) => e.stopPropagation()}>

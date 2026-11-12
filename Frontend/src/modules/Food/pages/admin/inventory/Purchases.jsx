@@ -6,6 +6,14 @@ import { Card, InventoryHeader, errText, money, useInventoryParams, useStores } 
 
 const today = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10)
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
+/** A bill line split into goods and GST; when the rate has GST in it, the line total is the billed amount. */
+const lineAmounts = (l, ratesInclude) => {
+  const g = Number(l.gstRate) || 0
+  const billed = r2(Number(l.qty) * Number(l.rate))
+  if (!ratesInclude) return { taxable: billed, gst: r2((billed * g) / 100), total: r2(billed + r2((billed * g) / 100)) }
+  const taxable = r2(billed / (1 + g / 100))
+  return { taxable, gst: r2(billed - taxable), total: billed }
+}
 const field = "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm focus:border-neutral-900 focus:outline-none"
 
 /** Find a product or size of the chosen store to add to the bill. */
@@ -117,6 +125,8 @@ export default function Purchases() {
   const [billNo, setBillNo] = useState("")
   const [billDate, setBillDate] = useState(today())
   const [paidVia, setPaidVia] = useState("cash")
+  // Some vendors write prices with GST already in them.
+  const [ratesInclude, setRatesInclude] = useState(false)
   const [lines, setLines] = useState([])
   const [saving, setSaving] = useState(false)
   const [showSupplierForm, setShowSupplierForm] = useState(false)
@@ -159,12 +169,12 @@ export default function Purchases() {
     let taxable = 0
     let gst = 0
     for (const l of lines) {
-      const t = r2(Number(l.qty) * Number(l.rate))
-      taxable += t
-      gst += r2((t * (Number(l.gstRate) || 0)) / 100)
+      const a = lineAmounts(l, ratesInclude)
+      taxable += a.taxable
+      gst += a.gst
     }
     return { taxable: r2(taxable), gst: r2(gst), total: r2(taxable + gst) }
-  }, [lines])
+  }, [lines, ratesInclude])
 
   const save = async () => {
     if (!storeId) return toast.error("Pick the store the goods came into")
@@ -177,6 +187,7 @@ export default function Purchases() {
         billNo,
         billDate,
         paidVia,
+        ratesIncludeGst: ratesInclude,
         lines: lines.map((l) => ({ itemId: l.itemId, variantId: l.variantId || undefined, qty: Number(l.qty), rate: Number(l.rate), gstRate: Number(l.gstRate) || 0 })),
       })
       toast.success(`Purchase saved: ${money(res?.data?.data?.total)} added to stock`)
@@ -227,6 +238,28 @@ export default function Purchases() {
                 </label>
               </div>
 
+              <div className="flex flex-wrap items-center gap-3">
+                <div role="group" aria-label="How the bill writes prices" className="flex gap-1 rounded-lg bg-neutral-100 p-1 text-sm">
+                  {[
+                    [false, "Rates before GST"],
+                    [true, "Rates include GST"],
+                  ].map(([v, label]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      aria-pressed={ratesInclude === v}
+                      onClick={() => setRatesInclude(v)}
+                      className={`rounded-md px-3 py-1.5 font-medium ${ratesInclude === v ? "bg-neutral-900 text-white" : "text-neutral-700"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-neutral-500">
+                  {ratesInclude ? "₹105 at 5% is saved as ₹100 + ₹5 GST." : "₹100 at 5% becomes ₹105 with GST."}
+                </p>
+              </div>
+
               <ProductSearch storeId={storeId} onPick={addLine} />
 
               {lines.length > 0 && (
@@ -236,7 +269,7 @@ export default function Purchases() {
                       <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wider text-neutral-500">
                         <th className="px-2 py-2 font-medium">Product and size</th>
                         <th className="px-2 py-2 text-right font-medium">Quantity</th>
-                        <th className="px-2 py-2 text-right font-medium">Rate ₹ (before GST)</th>
+                        <th className="px-2 py-2 text-right font-medium">Rate ₹ ({ratesInclude ? "with GST" : "before GST"})</th>
                         <th className="px-2 py-2 text-right font-medium">GST %</th>
                         <th className="px-2 py-2 text-right font-medium">Amount ₹</th>
                         <th className="px-2 py-2" aria-label="Remove" />
@@ -244,7 +277,7 @@ export default function Purchases() {
                     </thead>
                     <tbody className="divide-y divide-neutral-100">
                       {lines.map((l) => {
-                        const t = r2(Number(l.qty) * Number(l.rate))
+                        const a = lineAmounts(l, ratesInclude)
                         return (
                           <tr key={l.key}>
                             <td className="px-2 py-2 font-medium text-neutral-900">{l.label}</td>
@@ -260,7 +293,10 @@ export default function Purchases() {
                                 {[0, 5, 12, 18, 28].map((g) => <option key={g} value={String(g)}>{g}%</option>)}
                               </select>
                             </td>
-                            <td className="px-2 py-2 text-right font-semibold tabular-nums">{money(r2(t + (t * (Number(l.gstRate) || 0)) / 100))}</td>
+                            <td className="px-2 py-2 text-right tabular-nums">
+                              <span className="font-semibold">{money(a.total)}</span>
+                              {ratesInclude && Number(l.gstRate) > 0 && <span className="block text-xs text-neutral-500">{money(a.taxable)} + {money(a.gst)} GST</span>}
+                            </td>
                             <td className="px-2 py-2 text-right">
                               <button type="button" aria-label={`Remove ${l.label}`} onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))} className="rounded-md p-1 text-red-700 hover:bg-red-50">
                                 <Trash2 className="h-4 w-4" />

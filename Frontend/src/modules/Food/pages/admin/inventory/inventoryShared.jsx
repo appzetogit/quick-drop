@@ -58,6 +58,7 @@ const TABS = [
   { label: "Products & stock", path: `${BASE}/stock` },
   { label: "Fruits & Veg daily sheet", path: `${BASE}/inventory/fresh` },
   { label: "Purchases & suppliers", path: `${BASE}/inventory/purchases` },
+  { label: "Import from Excel", path: `${BASE}/inventory/import` },
   { label: "Reports", path: `${BASE}/inventory/reports` },
 ]
 
