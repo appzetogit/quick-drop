@@ -156,10 +156,37 @@ await check('a picked-up order is refused', async () => {
   const id = await foodOrder({ orderStatus: 'picked_up' });
   await assert.rejects(() => manual.assignRider({ vertical: 'food', orderId: id, foodRiderId: String(A._id), admin, force: true }), /picked up/);
 });
-await check('an order a rider already accepted is refused', async () => {
-  const id = await foodOrder({ dispatch: { status: 'accepted', deliveryPartnerId: F._id, acceptedAt: new Date(), offeredTo: [] } });
-  await assert.rejects(() => manual.assignRider({ vertical: 'food', orderId: id, foodRiderId: String(A._id), admin, force: true }), /already accepted/);
+await check('an accepted order but picked up (by phase) is refused', async () => {
+  const id = await foodOrder({
+    deliveryState: { currentPhase: 'en_route_to_delivery' },
+    dispatch: { status: 'accepted', deliveryPartnerId: F._id, acceptedAt: new Date(), offeredTo: [] },
+  });
+  await assert.rejects(() => manual.assignRider({ vertical: 'food', orderId: id, foodRiderId: String(A._id), admin, force: true }), /picked up/);
 });
+await check('change of rider: an accepted order moves to the new rider, the old one is told and freed', async () => {
+  const id = await foodOrder({
+    deliveryState: { currentPhase: 'at_pickup' },
+    dispatch: { status: 'accepted', deliveryPartnerId: B._id, acceptedAt: new Date(), offeredTo: [{ partnerId: B._id, at: new Date(), action: 'offered' }] },
+  });
+  const { claimAssignment } = await import('../src/core/assignment/assignment.service.js');
+  assert.ok((await claimAssignment(dB._id, { vertical: 'food', jobId: id })).claimed, 'could not set up the lock of the old rider');
+  const r = await manual.assignRider({ vertical: 'food', orderId: id, foodRiderId: String(A._id), admin, force: true });
+  assert.ok(!r.needsConfirmation, JSON.stringify(r));
+  const row = await foodRow(id);
+  assert.equal(row.dispatch.status, 'assigned');
+  assert.equal(String(row.dispatch.deliveryPartnerId), String(A._id));
+  assert.equal(row.deliveryState.currentPhase, 'en_route_to_pickup');
+  assert.ok(row.statusHistory.some((h) => /taken off by Ops Priya to change the rider/.test(h.note || '')));
+  const old = await Driver.findById(dB._id).lean();
+  assert.ok(!(old.activeAssignments || []).some((a) => String(a.jobId) === id), 'old rider still holds the order');
+});
+await check('change of rider to the same rider is refused', async () => {
+  const id = await foodOrder({ dispatch: { status: 'accepted', deliveryPartnerId: A._id, acceptedAt: new Date(), offeredTo: [] } });
+  await assert.rejects(() => manual.assignRider({ vertical: 'food', orderId: id, foodRiderId: String(A._id), admin, force: true }), /already has/);
+});
+// The change-of-rider orders above would make Asha look busy to the checks below.
+await FoodOrder.collection.deleteMany({ statusHistory: { $elemMatch: { note: /to change the rider/ } } });
+await FoodOrder.collection.deleteMany({ 'dispatch.status': 'accepted', 'dispatch.deliveryPartnerId': A._id });
 await check('a Medical order whose bill the customer has not accepted is refused', async () => {
   const id = await qcOrder({
     order_id: 'MED-7700001', prescriptionOnly: true, payment: { method: 'cash', status: 'cod_pending' },

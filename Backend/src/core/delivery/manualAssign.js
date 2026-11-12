@@ -384,6 +384,91 @@ export async function listRiderCandidates({ vertical: name, orderId, q = '', lim
 /* Assign                                                                    */
 /* ------------------------------------------------------------------------ */
 
+/** Phases from which the rider is carrying the order. */
+const PHASES_WITH_THE_ORDER = ['en_route_to_delivery', 'at_drop', 'delivered', 'completed'];
+
+/**
+ * An accepted order can be given to another rider until it is picked up: the
+ * first rider may be stuck, or slow to reach the store. After pickup the order is
+ * in their hands and only completing it, or support, can move it.
+ */
+function assertRiderChangeable(order, newPartnerId) {
+  const status = String(order.orderStatus || '');
+  const phase = String(order.deliveryState?.currentPhase || '');
+  if (['picked_up', 'reached_drop', 'delivered'].includes(status) || PHASES_WITH_THE_ORDER.includes(phase)) {
+    throw new ValidationError('This order has already been picked up, so its rider cannot be changed here.');
+  }
+  if (status.startsWith('cancelled')) throw new ValidationError('This order has been cancelled.');
+  if (String(order.dispatch?.deliveryPartnerId || '') === String(newPartnerId)) {
+    throw new ValidationError('This rider already has this order.');
+  }
+}
+
+/**
+ * Take an accepted order back from its rider, so it can be given to another.
+ *
+ * Guarded on the exact rider and state read, so a pickup or a second admin acting
+ * at the same moment wins and this refuses. The rider's busy-lock is released and
+ * they are told, the same 'order_deassigned' + 'order_taken' an unassigned rider
+ * gets. The delivery starts over at "on the way to the store" for the next rider.
+ */
+async function takeBackAcceptedOrder(ctx, order, { adminId, adminName }) {
+  const partnerId = String(order.dispatch.deliveryPartnerId);
+  const riderName = await riderDisplayName(ctx.vertical, partnerId);
+  const update = {
+    $set: {
+      'dispatch.status': 'unassigned',
+      'dispatch.deliveryPartnerId': null,
+      'dispatch.assignMode': 'auto',
+      'deliveryState.currentPhase': 'en_route_to_pickup',
+    },
+    $unset: { 'dispatch.acceptedAt': '', 'dispatch.assignedAt': '', 'dispatch.manualDeadlineAt': '' },
+    $push: {
+      statusHistory: {
+        at: new Date(), byRole: 'ADMIN', byId: adminId || undefined, from: 'accepted', to: 'unassigned',
+        note: `Rider ${riderName || partnerId} taken off by ${adminName} to change the rider`,
+      },
+    },
+  };
+  const options = { new: true };
+  if (ctx.isQc) {
+    // Quick's accept refuses a rider marked deassigned, so the old rider cannot take it back.
+    update.$set['dispatch.offeredTo.$[mine].action'] = 'deassigned';
+    options.arrayFilters = [{ 'mine.partnerId': oid(partnerId) }];
+  }
+  const updated = await ctx.Order.findOneAndUpdate(
+    {
+      _id: order._id,
+      'dispatch.status': 'accepted',
+      'dispatch.deliveryPartnerId': oid(partnerId),
+      orderStatus: { $nin: ['picked_up', 'reached_drop', 'delivered'] },
+      'deliveryState.currentPhase': { $nin: PHASES_WITH_THE_ORDER },
+    },
+    update,
+    options,
+  );
+  if (!updated) {
+    throw new ValidationError('The rider picked up the order or it changed meanwhile. Refresh and try again.');
+  }
+
+  try {
+    const FoodRider = await foodRiderModel();
+    const foodRiderId = await appRiderId(ctx, partnerId);
+    const rider = await FoodRider.findById(foodRiderId).select('driverId').lean();
+    if (rider?.driverId) {
+      const { releaseDriverAssignment } = await import('../../modules/taxi/driver/services/driverAssignmentService.js');
+      await releaseDriverAssignment(rider.driverId, order._id);
+    }
+  } catch (err) {
+    logger.warn(`[manualAssign] could not free the previous rider of ${order._id}: ${err.message}`);
+  }
+  void tellRiderDeassigned(ctx, updated, partnerId, 'reassigned', 'This order has been given to another partner by our team.');
+  announce(ctx, updated, {
+    event: 'rider_unassigned', riderId: await appRiderId(ctx, partnerId), riderName, note: `Taken off by ${adminName}`,
+  });
+  return updated;
+}
+
 function assertOrderAssignable(order) {
   const status = String(order.orderStatus || '');
   if (['picked_up', 'reached_drop', 'delivered'].includes(status)) {
@@ -465,7 +550,9 @@ export async function assignRider({ vertical: name, orderId, foodRiderId, admin 
   if (!isObjectId(foodRiderId)) throw new ValidationError('A valid deliveryPartnerId is required');
 
   const order = await loadOrder(ctx, orderId, { populate: true });
-  assertOrderAssignable(order);
+  // A rider already accepted it: this is a change of rider (allowed until pickup).
+  const changing = order.dispatch?.status === 'accepted' && Boolean(order.dispatch?.deliveryPartnerId);
+  if (!changing) assertOrderAssignable(order);
   ctx.assertAssignable(order);
 
   const FoodRider = await foodRiderModel();
@@ -477,6 +564,7 @@ export async function assignRider({ vertical: name, orderId, foodRiderId, admin 
 
   const partnerId = ctx.isQc ? await qcRiderIdForFoodRider(foodRiderId) : String(foodRiderId);
   if (!partnerId) throw new ValidationError('This rider could not be linked for Quick & Medical deliveries.');
+  if (changing) assertRiderChangeable(order, partnerId);
 
   const store = await storePointForOrder(ctx, order);
   const warnings = await warningsFor({ order, foodRider, store });
@@ -496,6 +584,7 @@ export async function assignRider({ vertical: name, orderId, foodRiderId, admin 
   };
   const adminId = isObjectId(admin.id) ? oid(admin.id) : null;
   const adminName = String(admin.name || '').trim() || 'Admin';
+  if (changing) await takeBackAcceptedOrder(ctx, order, { adminId, adminName });
 
   /*
    * One conditional write: claims the order from auto-dispatch (dispatchingAt
@@ -539,6 +628,8 @@ export async function assignRider({ vertical: name, orderId, foodRiderId, admin 
   ).populate(['restaurantId', 'userId']);
 
   if (!updated) {
+    // Taken off the first rider but not given to the next: never leave it with nobody.
+    if (changing) restartDispatch(ctx, order._id);
     throw new ValidationError('This order was accepted by a rider or changed meanwhile. Refresh and try again.');
   }
 

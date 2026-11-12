@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Bike } from "lucide-react"
 import AssignRiderModal from "./AssignRiderModal"
-import { canAssignRider, isManualPending } from "./manualAssignUtils"
+import { canAssignRider, isManualPending, isRiderChangeable } from "./manualAssignUtils"
 
 /**
  * "Assign rider" (or "Reassign rider" while a manual hand-off is pending) plus
@@ -12,7 +12,9 @@ export default function AssignRiderButton({ order, vertical, onAssigned, size = 
   const [open, setOpen] = useState(false)
   if (!order || !canAssignRider(order)) return null
 
-  const label = isManualPending(order) ? "Reassign rider" : "Assign rider"
+  const label = isRiderChangeable(order)
+    ? "Change rider"
+    : isManualPending(order) ? "Reassign rider" : "Assign rider"
   const sizing = size === "xs" ? "px-2 py-1 text-[11px]" : "px-2.5 py-1.5 text-xs"
 
   return (

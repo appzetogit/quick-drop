@@ -124,6 +124,8 @@ const orderRow = (o, source, maps) => {
             deliveryPartnerId: riderId ? { _id: riderId, name: pickName(rider, 'name') } : null,
             assignedBy: o.dispatch.assignedBy || null,
         } : null,
+        // Where the delivery is: decides whether the rider can still be changed.
+        deliveryState: { currentPhase: o.deliveryState?.currentPhase || '' },
         statusHistory: Array.isArray(o.statusHistory) ? o.statusHistory.slice(-6) : [],
         createdAt: o.createdAt,
     };
@@ -203,6 +205,74 @@ export async function deleteMasterOrder({ source, id, adminId = '' } = {}) {
  * @param {{tab?, page?, limit?, status?, search?}} query
  * @returns {{ orders, total, page, limit, counts }}
  */
+/**
+ * One order in full, for the All orders details panel.
+ *
+ * Food, Quick and Medical: the order document with the customer, store and rider
+ * filled in, which is what the order view (ViewOrderDialog) reads. Taxi and
+ * parcel: the ride and its bill, as Trips shows it (taxi/admin/tripBill.js).
+ */
+export async function getMasterOrderDetail({ source, id } = {}) {
+    if (!mongoose.Types.ObjectId.isValid(String(id || ''))) throw new ValidationError('Invalid order id');
+    const _id = new mongoose.Types.ObjectId(String(id));
+    const db = mongoose.connection.db;
+    const one = (collection, docId, projection) => (docId && mongoose.Types.ObjectId.isValid(String(docId))
+        ? db.collection(collection).findOne({ _id: new mongoose.Types.ObjectId(String(docId)) }, { projection })
+        : null);
+
+    if (source === 'taxi' || source === 'parcel') {
+        const ride = await db.collection('taxirides').findOne({ _id });
+        if (!ride) return null;
+        const [{ buildTripBill }, user, driver] = await Promise.all([
+            import('../../modules/taxi/admin/tripBill.js'),
+            one('users', ride.userId, { name: 1, phone: 1 }),
+            one('taxidrivers', ride.driverId, { name: 1, phone: 1, vehicleNumber: 1 }),
+        ]);
+        return {
+            kind: 'ride',
+            ride: {
+                _id: String(ride._id),
+                status: ride.liveStatus || ride.status || '',
+                serviceType: ride.serviceType || 'ride',
+                pickupAddress: ride.pickupAddress || '',
+                dropAddress: ride.dropAddress || '',
+                distanceKm: Math.round((Number(ride.estimatedDistanceMeters) || 0) / 100) / 10,
+                paymentMethod: ride.paymentMethod || '',
+                fare: Number(ride.fare) || 0,
+                createdAt: ride.createdAt,
+                acceptedAt: ride.acceptedAt || null,
+                startedAt: ride.startedAt || null,
+                completedAt: ride.completedAt || null,
+                cancellationReason: ride.cancellation_reason || '',
+                customer: { name: user?.name || '', phone: user?.phone || '' },
+                driver: driver ? { name: driver.name || '', phone: driver.phone || '', vehicleNumber: driver.vehicleNumber || '' } : null,
+                parcel: ride.parcel || null,
+            },
+            bill: buildTripBill(ride),
+        };
+    }
+
+    const isQc = source === 'quick' || source === 'medical';
+    if (!isQc && source !== 'food') throw new ValidationError(`Unknown source: ${source}`);
+    const order = await db.collection(isQc ? 'qc_orders' : 'food_orders').findOne({ _id });
+    if (!order) return null;
+    const [user, store, rider] = await Promise.all([
+        one(isQc ? 'qc_users' : 'users', order.userId, { name: 1, phone: 1, email: 1 }),
+        one(isQc ? 'qc_restaurants' : 'food_restaurants', order.restaurantId, { restaurantName: 1, name: 1, phone: 1, ownerPhone: 1, location: 1 }),
+        one(isQc ? 'qc_delivery_partners' : 'food_delivery_partners', order.dispatch?.deliveryPartnerId, { name: 1, phone: 1 }),
+    ]);
+    return {
+        kind: 'order',
+        vertical: isQc ? 'quickCommerce' : 'food',
+        order: {
+            ...order,
+            userId: user || order.userId,
+            restaurantId: store || order.restaurantId,
+            dispatch: order.dispatch ? { ...order.dispatch, deliveryPartnerId: rider || order.dispatch.deliveryPartnerId } : order.dispatch,
+        },
+    };
+}
+
 export async function listMasterOrders(query = {}) {
     const tab = String(query.tab || 'all').toLowerCase();
     if (!MASTER_ORDER_TABS.includes(tab)) throw new ValidationError(`Unknown tab: ${tab}`);

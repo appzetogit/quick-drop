@@ -353,7 +353,7 @@ function BillLine({ label, value, sign = '', tone = 'text-slate-600', strong = f
  * paid line by line, then who gets what. The old box showed the whole fare as
  * "Base Fare" and time/distance charges the ride never stores, so always 0.
  */
-function TripBill({ bill, fallbackFare }) {
+export function TripBill({ bill, fallbackFare }) {
   if (!bill) {
     return (
       <div className="space-y-4">

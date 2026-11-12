@@ -637,7 +637,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
             <div className="space-y-2">
               {order.totalItemAmount !== undefined && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Subtotal</span>
+                  <span className="text-slate-600">Item Total</span>
                   <span className="font-medium text-slate-900">₹{order.totalItemAmount.toFixed(2)}</span>
                 </div>
               )}
@@ -655,8 +655,14 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
               )}
               {order.deliveryCharge !== undefined && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Delivery Charge</span>
+                  <span className="text-slate-600">Delivery Fee</span>
                   <span className="font-medium text-slate-900">
+                    {/* Waived: the fee it would have been, struck through, then Free. */}
+                    {!(order.deliveryCharge > 0) && Number(order.pricing?.deliveryFeeBreakdown?.waivedDeliveryFee) > 0 && (
+                      <span className="mr-1.5 text-slate-400 line-through">
+                        ₹{Number(order.pricing.deliveryFeeBreakdown.waivedDeliveryFee).toFixed(2)}
+                      </span>
+                    )}
                     {order.deliveryCharge > 0 ? `₹${order.deliveryCharge.toFixed(2)}` : <span className="text-emerald-600">Free delivery</span>}
                   </span>
                 </div>
@@ -675,6 +681,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
                */}
               {[
                 ["Packing Charges", order.pricing?.packagingFee],
+                ["GST on Delivery Fee", order.pricing?.deliveryFeeGst],
                 ["GST on Platform Fee", order.pricing?.platformFeeGst],
                 ["Tip", order.pricing?.tip],
               ].filter(([, v]) => Number(v) > 0).map(([label, v]) => (
@@ -685,7 +692,10 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
               ))}
               {order.vatTax !== undefined && order.vatTax > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Tax (GST)</span>
+                  <span className="text-slate-600">
+                    {order.pricing?.pricesIncludeGst ? "GST (included in price)" : "GST"}
+                    {Number(order.pricing?.gstRate) > 0 ? ` @ ${Number(order.pricing.gstRate)}%` : ""}
+                  </span>
                   <span className="font-medium text-slate-900">₹{order.vatTax.toFixed(2)}</span>
                 </div>
               )}
@@ -699,7 +709,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
               )}
               <div className="pt-2 border-t border-slate-200">
                 <div className="flex justify-between items-center">
-                  <span className="text-base font-semibold text-slate-700">Total Amount</span>
+                  <span className="text-base font-semibold text-slate-700">Grand Total</span>
                   <span className="text-xl font-bold text-emerald-600">
                     ₹{(order.totalAmount || order.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>

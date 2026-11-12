@@ -125,9 +125,19 @@ export const describeManualAssignment = (order) => {
   return { kind: "none" }
 }
 
-/** Should the "Assign rider" button show for this order? */
+/** Delivery phases from which the rider is carrying the order (mirrors the server). */
+const PHASES_WITH_THE_ORDER = ["en_route_to_delivery", "at_drop", "delivered", "completed"]
+
+/** A rider accepted it and has not picked it up yet: it can still go to another rider. */
+export const isRiderChangeable = (order) =>
+  order?.dispatch?.status === "accepted" &&
+  ASSIGNABLE_STATUSES.includes(rawOrderStatus(order)) &&
+  !PHASES_WITH_THE_ORDER.includes(order?.deliveryState?.currentPhase || "")
+
+/** Should the assign button show for this order? Until pickup, as "Change rider" once accepted. */
 export const canAssignRider = (order) =>
-  ASSIGNABLE_STATUSES.includes(rawOrderStatus(order)) && order?.dispatch?.status !== "accepted"
+  (ASSIGNABLE_STATUSES.includes(rawOrderStatus(order)) && order?.dispatch?.status !== "accepted") ||
+  isRiderChangeable(order)
 
 /** True while a manual assignment is waiting on the rider. */
 export const isManualPending = (order) =>

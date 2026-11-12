@@ -1,13 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 import {
-  Bike, ChevronLeft, ChevronRight, Layers, Loader2, Package, Pill, RefreshCw, Search, ShoppingBasket, Trash2, UtensilsCrossed,
+  Bike, ChevronLeft, ChevronRight, Eye, Layers, Loader2, Package, Pill, RefreshCw, Search, ShoppingBasket, Trash2, UtensilsCrossed,
 } from "lucide-react"
 import { platformSettingsAPI } from "@food/api"
 import AssignRiderButton from "@food/components/admin/orders/manual-assign/AssignRiderButton"
 import ManualAssignStatus from "@food/components/admin/orders/manual-assign/ManualAssignStatus"
 import { canAssignRider, isManualPending } from "@food/components/admin/orders/manual-assign/manualAssignUtils"
+import { normalizeOrder } from "@food/components/admin/orders/normalizeAdminOrder"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@food/components/ui/dialog"
+
+// The same order view the Food list opens, and the Trips page's ride bill: loaded on first use.
+const ViewOrderDialog = lazy(() => import("@food/components/admin/orders/ViewOrderDialog"))
+const TripBill = lazy(() =>
+  import("@/modules/Taxi/modules/admin/pages/operations/Trips").then((m) => ({ default: m.TripBill })),
+)
 
 /**
  * Master > Orders: every order on the platform in one list, a tab per service.
@@ -156,6 +164,44 @@ function Pager({ page, pages, total, onChange }) {
   )
 }
 
+/** A ride or parcel in full: where, who, when, and its bill. */
+function RideDetails({ data, onClose }) {
+  const r = data.ride
+  const line = (label, value) =>
+    value ? (
+      <div className="flex justify-between gap-3 text-sm">
+        <span className="text-neutral-500">{label}</span>
+        <span className="text-right text-neutral-900">{value}</span>
+      </div>
+    ) : null
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto bg-white">
+        <DialogHeader>
+          <DialogTitle>{r.serviceType === "parcel" ? "Parcel" : "Ride"} {String(r._id).slice(-8).toUpperCase()}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-2">
+          {line("Status", prettyStatus(r.status))}
+          {line("Customer", [r.customer?.name, r.customer?.phone].filter(Boolean).join(" · "))}
+          {line("Driver", r.driver ? [r.driver.name, r.driver.phone, r.driver.vehicleNumber].filter(Boolean).join(" · ") : "Not assigned")}
+          {line("Pickup", r.pickupAddress)}
+          {line("Drop", r.dropAddress)}
+          {line("Distance", r.distanceKm ? `${r.distanceKm} km` : "")}
+          {line("Payment", String(r.paymentMethod || "").toUpperCase())}
+          {line("Booked", when(r.createdAt))}
+          {line("Accepted", r.acceptedAt ? when(r.acceptedAt) : "")}
+          {line("Started", r.startedAt ? when(r.startedAt) : "")}
+          {line("Completed", r.completedAt ? when(r.completedAt) : "")}
+          {line("Cancel reason", r.cancellationReason)}
+        </div>
+        <Suspense fallback={<Loader2 className="mx-auto my-6 h-5 w-5 animate-spin" />}>
+          <TripBill bill={data.bill} fallbackFare={r.fare} />
+        </Suspense>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function MasterOrders() {
   const navigate = useNavigate()
   const { tab: tabParam } = useParams()
@@ -174,6 +220,21 @@ export default function MasterOrders() {
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [deletingKey, setDeletingKey] = useState("")
+  // The row whose details are open, and what the server returned for it.
+  const [detail, setDetail] = useState(null)
+  const openDetails = async (o) => {
+    setDetail({ key: `${o.source}-${o._id}`, data: null })
+    try {
+      const res = await platformSettingsAPI.getMasterOrderDetail(o.source, o._id)
+      const data = res?.data?.data
+      if (!data) throw new Error("Order not found")
+      setDetail((d) => (d?.key === `${o.source}-${o._id}` ? { ...d, data } : d))
+    } catch (err) {
+      setDetail(null)
+      toast.error(err?.response?.data?.message || "Could not load this order")
+    }
+  }
+  const closeDetails = () => setDetail(null)
   const inFlight = useRef(0)
   const listTopRef = useRef(null)
   const { tableRef, barRef, overflowing, innerWidth } = useFloatingScrollbar()
@@ -303,7 +364,7 @@ export default function MasterOrders() {
                   <th className="px-4 py-3 text-right">Amount</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Assign</th>
-                  <th className="px-4 py-3"><span className="sr-only">Delete</span></th>
+                  <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
@@ -361,6 +422,15 @@ export default function MasterOrders() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openDetails(o)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+                          title="View the full order"
+                        >
+                          <Eye className="h-3.5 w-3.5" /> View
+                        </button>
                         {canDelete(o) && (
                           <button
                             type="button"
@@ -373,6 +443,7 @@ export default function MasterOrders() {
                             Delete
                           </button>
                         )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -404,6 +475,26 @@ export default function MasterOrders() {
           </div>
         </div>
       </div>
+      {detail && !detail.data && (
+        <Dialog open onOpenChange={(open) => !open && closeDetails()}>
+          <DialogContent className="max-w-sm bg-white">
+            <DialogHeader><DialogTitle>Loading the order</DialogTitle></DialogHeader>
+            <Loader2 className="mx-auto my-4 h-5 w-5 animate-spin text-neutral-500" />
+          </DialogContent>
+        </Dialog>
+      )}
+      {detail?.data?.kind === "order" && (
+        <Suspense fallback={null}>
+          <ViewOrderDialog
+            isOpen
+            onOpenChange={(open) => !open && closeDetails()}
+            order={normalizeOrder(detail.data.order)}
+            vertical={detail.data.vertical}
+            onOrderChanged={() => load({ quiet: true })}
+          />
+        </Suspense>
+      )}
+      {detail?.data?.kind === "ride" && <RideDetails data={detail.data} onClose={closeDetails} />}
     </div>
   )
 }

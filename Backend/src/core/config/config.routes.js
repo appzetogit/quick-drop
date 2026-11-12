@@ -68,6 +68,17 @@ router.get('/orders', async (req, res, next) => {
         next(err);
     }
 });
+// One order in full, for the All orders details panel.
+router.get('/orders/:source/:id', async (req, res, next) => {
+    try {
+        const { getMasterOrderDetail } = await import('../orders/masterOrders.service.js');
+        const data = await getMasterOrderDetail({ source: req.params.source, id: req.params.id });
+        if (!data) return res.status(404).json({ success: false, message: 'Order not found' });
+        res.json({ success: true, data });
+    } catch (err) {
+        next(err);
+    }
+});
 router.get('/users/export', requireFinancePermission('PLATFORM_SETTING_SET'), exportGlobalUsersController);
 // Delete one order from All Orders (rules in masterOrders.service.js deleteMasterOrder). A write, so settings permission.
 router.delete('/orders/:source/:id', requireFinancePermission('PLATFORM_SETTING_SET'), async (req, res, next) => {
