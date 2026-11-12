@@ -4105,9 +4105,14 @@ function buildAdminCatalogFields(body = {}) {
         packSize: typeof body.packSize === 'string' ? body.packSize.trim() : undefined,
         mrp,
         gstRate: num(body.gstRate, { max: 100 }),
-        stockQty: num(body.stockQty),
+        stockQty: num(body.stockQty) === undefined ? undefined : Math.round(num(body.stockQty) * 1000) / 1000,
         lowStockThreshold: num(body.lowStockThreshold),
-        maxQtyPerOrder: num(body.maxQtyPerOrder, { min: 1 })
+        maxQtyPerOrder: num(body.maxQtyPerOrder, { min: 1 }),
+        section: ['grocery', 'fresh'].includes(body.section) ? body.section : undefined,
+        unit: typeof body.unit === 'string' ? body.unit.trim().slice(0, 20) : undefined,
+        purchasePrice: num(body.purchasePrice),
+        purchaseGstRate: num(body.purchaseGstRate, { max: 100 }),
+        seasonalUntil: body.seasonalUntil ? (Number.isNaN(new Date(body.seasonalUntil).getTime()) ? undefined : new Date(body.seasonalUntil)) : undefined,
     };
 }
 

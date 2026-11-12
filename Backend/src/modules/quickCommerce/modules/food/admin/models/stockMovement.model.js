@@ -17,10 +17,16 @@ const stockMovementSchema = new mongoose.Schema(
         after: { type: Number, default: null },
         reason: {
             type: String,
-            enum: ['sale', 'cancel', 'return', 'manual', 'bulk', 'import', 'tracking'],
+            enum: ['sale', 'cancel', 'return', 'manual', 'bulk', 'import', 'tracking', 'purchase', 'wastage'],
             required: true,
         },
         orderId: { type: mongoose.Schema.Types.ObjectId, default: null },
+        /** Per unit of stock at the time: cost (purchase price) and selling price. For the reports. */
+        unitCost: { type: Number, default: null },
+        unitPrice: { type: Number, default: null },
+        /** Wastage: spoiled, damaged, expired, other. */
+        wasteReason: { type: String, default: '' },
+        purchaseId: { type: mongoose.Schema.Types.ObjectId, default: null },
         note: { type: String, default: '' },
         actor: {
             role: { type: String, default: 'system' },

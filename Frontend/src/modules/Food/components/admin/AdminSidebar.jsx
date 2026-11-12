@@ -234,7 +234,13 @@ const VERTICAL_BRANDING = {
       {
         type: "section",
         label: "INVENTORY",
-        items: [{ type: "link", label: "Stock", path: "/admin/quick-commerce/stock", icon: "Package" }],
+        items: [
+          { type: "link", label: "Inventory dashboard", path: "/admin/quick-commerce/inventory", icon: "LayoutDashboard" },
+          { type: "link", label: "Products & stock", path: "/admin/quick-commerce/stock", icon: "Package" },
+          { type: "link", label: "Fruits & Veg daily sheet", path: "/admin/quick-commerce/inventory/fresh", icon: "Calendar" },
+          { type: "link", label: "Purchases & suppliers", path: "/admin/quick-commerce/inventory/purchases", icon: "Truck" },
+          { type: "link", label: "Inventory reports", path: "/admin/quick-commerce/inventory/reports", icon: "FileText" },
+        ],
       },
     ],
   },

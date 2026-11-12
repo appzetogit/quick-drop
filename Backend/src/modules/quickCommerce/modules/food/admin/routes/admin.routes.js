@@ -31,6 +31,7 @@ import prescriptionAdminRoutes from './prescriptionAdmin.routes.js';
 import drugLicenceAdminRoutes from './drugLicenceAdmin.routes.js';
 import medicalAdminRoutes from './medicalAdmin.routes.js';
 import { stockRouter } from './stock.routes.js';
+import { inventoryRouter } from '../../inventory/inventory.routes.js';
 import * as driverRegField from '../../delivery/controllers/driverRegistrationField.controller.js';
 import * as cashbackSettings from '../controllers/cashbackSettings.controller.js';
 import * as restaurantAppBanner from '../controllers/restaurantAppBanner.controller.js';
@@ -517,6 +518,8 @@ router.use('/drug-licences', drugLicenceAdminRoutes);
 router.use('/medical', medicalAdminRoutes);
 // Stock per product variant, per store (admin/services/stock.service.js).
 router.use('/stock', stockRouter({ scope: 'admin' }));
+// Suppliers, purchases, wastage, the fresh produce sheet and reports (inventory/inventory.routes.js).
+router.use('/inventory', inventoryRouter());
 
 // ----- Orders -----
 router.get(

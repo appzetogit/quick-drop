@@ -18,6 +18,8 @@ import { sellerIdsOfStoreType, applySellerScope } from '../../shared/storeScope.
 const isId = (v) => mongoose.Types.ObjectId.isValid(String(v || ''));
 const oid = (v) => new mongoose.Types.ObjectId(String(v));
 const tracked = (v) => v !== null && v !== undefined;
+// Stock may be weighed (1.5 kg), so counts keep three decimals: grams.
+const round3 = (n) => Math.round(Number(n) * 1000) / 1000;
 
 function statusOf(qty, low) {
   if (!tracked(qty)) return 'untracked';
@@ -45,6 +47,11 @@ function rowsOf(doc, storeNames) {
       variantName: '',
       sku: doc.sku || doc.skuCode || '',
       price: doc.price,
+      purchasePrice: doc.purchasePrice ?? null,
+      mrp: doc.mrp ?? null,
+      gstRate: doc.gstRate ?? null,
+      unit: doc.unit || '',
+      section: doc.section || 'grocery',
       stockQty: doc.stockQty ?? null,
       lowStockThreshold: doc.lowStockThreshold ?? null,
       status: statusOf(doc.stockQty, doc.lowStockThreshold),
@@ -56,6 +63,11 @@ function rowsOf(doc, storeNames) {
     variantName: v.name,
     sku: v.sku || '',
     price: v.price,
+    purchasePrice: v.purchasePrice ?? null,
+    mrp: doc.mrp ?? null,
+    gstRate: v.gstRate ?? doc.gstRate ?? null,
+    unit: doc.unit || '',
+    section: doc.section || 'grocery',
     stockQty: v.stockQty ?? null,
     lowStockThreshold: v.lowStockThreshold ?? doc.lowStockThreshold ?? null,
     status: statusOf(v.stockQty, v.lowStockThreshold ?? doc.lowStockThreshold),
@@ -84,9 +96,13 @@ export async function listStock(query = {}) {
     filter.$or = [{ name: rx }, { 'variants.name': rx }, { 'variants.sku': rx }, { categoryName: rx }];
   }
   if (query.categoryId && isId(query.categoryId)) filter.categoryId = oid(query.categoryId);
+  // Grocery and Fruits & Vegetables are kept apart. Products saved before the
+  // section existed have none, and are grocery.
+  if (query.section === 'fresh') filter.section = 'fresh';
+  else if (query.section === 'grocery') filter.section = { $ne: 'fresh' };
 
   const docs = await FoodItem.find(filter)
-    .select('name restaurantId image images categoryName price sku skuCode stockQty lowStockThreshold variants isAvailable stockOffMode')
+    .select('name restaurantId image images categoryName price sku skuCode stockQty lowStockThreshold variants isAvailable stockOffMode purchasePrice mrp gstRate unit section')
     .sort({ name: 1 })
     .limit(3000)
     .lean();
@@ -128,9 +144,12 @@ export async function listStock(query = {}) {
  * An `add` is one atomic $inc, so it cannot lose a sale that lands at the same
  * moment. A `set` is the seller's physical count and deliberately overwrites.
  */
-export async function adjustStock({ itemId, variantId = '', mode = 'set', value, lowStockThreshold, restaurantId = null, actor, reason = 'manual', note = '' }) {
+export async function adjustStock({
+  itemId, variantId = '', mode = 'set', value, lowStockThreshold, restaurantId = null, actor, reason = 'manual', note = '',
+  unitCost, wasteReason = '', purchaseId = null,
+}) {
   if (!isId(itemId)) throw new ValidationError('Unknown product');
-  const doc = await FoodItem.findById(itemId).select('name restaurantId stockQty lowStockThreshold variants isAvailable stockOffMode').lean();
+  const doc = await FoodItem.findById(itemId).select('name restaurantId stockQty lowStockThreshold variants isAvailable stockOffMode price purchasePrice unit section').lean();
   if (!doc) throw new ApiError(404, 'Product not found');
   if (restaurantId && String(doc.restaurantId) !== String(restaurantId)) throw new ApiError(403, 'This product belongs to another store');
 
@@ -153,7 +172,7 @@ export async function adjustStock({ itemId, variantId = '', mode = 'set', value,
   let update;
   let delta = 0;
   if (mode === 'add') {
-    const n = Math.trunc(Number(value));
+    const n = round3(Number(value));
     if (!Number.isFinite(n) || n === 0) throw new ValidationError('Enter how many to add or remove');
     if (!tracked(current)) {
       // Adding to an untracked product starts tracking it at that number.
@@ -168,10 +187,10 @@ export async function adjustStock({ itemId, variantId = '', mode = 'set', value,
     if (value === null || value === '') {
       $set[path] = null;
     } else {
-      const n = Math.floor(Number(value));
+      const n = round3(Number(value));
       if (!Number.isFinite(n) || n < 0) throw new ValidationError('Stock must be 0 or more');
       $set[path] = n;
-      delta = n - (Number(current) || 0);
+      delta = round3(n - (Number(current) || 0));
     }
   }
 
@@ -180,7 +199,7 @@ export async function adjustStock({ itemId, variantId = '', mode = 'set', value,
 
   const res = await FoodItem.findOneAndUpdate(match, update, {
     new: true,
-    projection: 'name restaurantId stockQty lowStockThreshold variants isAvailable stockOffMode',
+    projection: 'name restaurantId stockQty lowStockThreshold variants isAvailable stockOffMode price purchasePrice unit section',
   }).lean();
 
   const after = onVariant ? (res.variants || []).find((v) => String(v._id) === String(variantId))?.stockQty : res.stockQty;
@@ -192,6 +211,9 @@ export async function adjustStock({ itemId, variantId = '', mode = 'set', value,
       reason: tracked(after) ? reason : 'tracking',
       actor,
       note: tracked(after) ? note : 'Stopped tracking stock',
+      unitCost,
+      wasteReason,
+      purchaseId,
     });
   }
   await syncAvailability(res, { revive: true });

@@ -20,7 +20,15 @@ const foodVariantSchema = new mongoose.Schema(
          * applies; 0 = none for this size (shared/orderQuantityRules.js in Food).
          */
         minOrderQuantity: { type: Number, default: null, min: 0 },
-        maxOrderQuantity: { type: Number, default: null, min: 0 }
+        maxOrderQuantity: { type: Number, default: null, min: 0 },
+        /** What one of this size costs to buy in, before GST (latest purchase). */
+        purchasePrice: { type: Number, default: null, min: 0 },
+        /**
+         * For a size with no stock of its own: how much of the product's stock one
+         * sale uses, in the product's unit. A 500 g pack of tomatoes kept in kg is
+         * 0.5. null = read it from the size's name ("500 g"), else 1.
+         */
+        stockPerUnit: { type: Number, default: null, min: 0 }
     },
     { _id: true }
 );
@@ -173,6 +181,18 @@ const foodSchema = new mongoose.Schema(
         },
         isRecommended: { type: Boolean, default: false, index: true },
         preparationTime: { type: String, trim: true, default: '' },
+        /** Inventory section: groceries, or fruits and vegetables kept by weight. */
+        section: { type: String, enum: ['grocery', 'fresh'], default: 'grocery', index: true },
+        /** What stockQty counts: kg, g, L, ml, piece, packet, dozen, bunch. */
+        unit: { type: String, trim: true, default: '' },
+        /** Cost of one unit of stock, before GST, from the latest purchase. */
+        purchasePrice: { type: Number, default: null, min: 0 },
+        /** GST % charged by the supplier on that cost. */
+        purchaseGstRate: { type: Number, default: null, min: 0, max: 100 },
+        /** The selling price before the latest change, for the daily price sheet. */
+        previousPrice: { type: Number, default: null, min: 0 },
+        /** Seasonal produce: shown as seasonal until this date. */
+        seasonalUntil: { type: Date, default: null },
         approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved', index: true },
         rejectionReason: { type: String, trim: true, default: '' },
         requestedAt: { type: Date },

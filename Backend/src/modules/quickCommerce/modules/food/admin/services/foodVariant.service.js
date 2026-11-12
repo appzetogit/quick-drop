@@ -17,7 +17,8 @@ const toNonNegativeNumber = (value, fallback = 0) => {
 const stockInput = (value) => {
     if (value === undefined) return undefined;
     if (value === null || value === '') return null;
-    const n = Math.floor(Number(value));
+    // Decimals allowed (1.5 kg); kept to grams.
+    const n = Math.round(Number(value) * 1000) / 1000;
     if (!Number.isFinite(n) || n < 0) throw new ValidationError('Stock must be 0 or more');
     return n;
 };
@@ -41,7 +42,7 @@ const carryVariantStock = (variant, existing = []) => {
     if (!match) return variant;
     if (variant._id === undefined && match._id) variant._id = match._id;
     // Kept when a save does not send them (an older app), not wiped.
-    for (const key of ['stockQty', 'lowStockThreshold', 'gstRate', 'minOrderQuantity', 'maxOrderQuantity']) {
+    for (const key of ['stockQty', 'lowStockThreshold', 'gstRate', 'minOrderQuantity', 'maxOrderQuantity', 'purchasePrice', 'stockPerUnit']) {
         if (variant[key] === undefined && match[key] !== undefined) variant[key] = match[key];
     }
     if (variant.sku === undefined && match.sku) variant.sku = match.sku;
@@ -100,6 +101,14 @@ export const normalizeFoodVariantsInput = (value = [], options = {}) => {
             if (entry?.sku !== undefined) variant.sku = toTrimmedString(entry.sku);
             const gst = gstInput(entry?.gstRate);
             if (gst !== undefined) variant.gstRate = gst;
+            for (const key of ['purchasePrice', 'stockPerUnit']) {
+                if (entry?.[key] === undefined) continue;
+                const raw = entry[key];
+                if (raw === null || raw === '') { variant[key] = null; continue; }
+                const n = Number(raw);
+                if (!Number.isFinite(n) || n < 0) throw new ValidationError(`${key === 'purchasePrice' ? 'Purchase price' : 'Stock per sale'} must be 0 or more`);
+                variant[key] = Math.round(n * 1000) / 1000;
+            }
 
             // Optional per-size order limits, as in Food. Blank or null = not set
             // (the product's own limit applies); 0 = none for this size.

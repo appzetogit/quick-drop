@@ -47,6 +47,10 @@ const createFoodForm = () => ({
   stockQty: "",
   lowStockThreshold: "",
   gstRate: "",
+  section: "grocery",
+  unit: "",
+  purchasePrice: "",
+  purchaseGstRate: "",
   availabilitySchedule: buildScheduleState(null),
   suggestedItemIds: [],
 })
@@ -536,6 +540,10 @@ export default function FoodsList() {
       stockQty: food.stockQty != null ? String(food.stockQty) : "",
       lowStockThreshold: food.lowStockThreshold != null ? String(food.lowStockThreshold) : "",
       gstRate: food.gstRate != null ? String(food.gstRate) : "",
+      section: food.section === "fresh" ? "fresh" : "grocery",
+      unit: String(food.unit || ""),
+      purchasePrice: food.purchasePrice != null ? String(food.purchasePrice) : "",
+      purchaseGstRate: food.purchaseGstRate != null ? String(food.purchaseGstRate) : "",
       availabilitySchedule: buildScheduleState(food.availabilitySchedule),
       suggestedItemIds: food.suggestedItemIds ?? null,
     })
@@ -825,6 +833,15 @@ export default function FoodsList() {
         ...(isStockPanel && !foodForm.variantsEnabled ? productStockPayload() : {}),
         // Blank = the order-wide rate from fee settings.
         ...(isStockPanel ? { gstRate: foodForm.gstRate === "" ? null : Number(foodForm.gstRate) } : {}),
+        // Inventory: which sheet the product sits on, what it is counted in, and what it costs to buy.
+        ...(isStockPanel
+          ? {
+              section: foodForm.section === "fresh" ? "fresh" : "grocery",
+              unit: foodForm.unit,
+              ...(foodForm.purchasePrice !== "" ? { purchasePrice: Number(foodForm.purchasePrice) } : {}),
+              ...(foodForm.purchaseGstRate !== "" ? { purchaseGstRate: Number(foodForm.purchaseGstRate) } : {}),
+            }
+          : {}),
         description: foodForm.description.trim(),
         image: imageUrl,
         foodType: foodForm.foodType === "Veg" ? "Veg" : "Non-Veg",
@@ -1621,6 +1638,61 @@ export default function FoodsList() {
                 {isStockPanel && (
                   <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
                     <p className="text-sm font-medium text-slate-800">Stock</p>
+                    <div className="mt-2 grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Section</label>
+                        <select
+                          value={foodForm.section}
+                          onChange={(e) => setFoodForm((prev) => ({ ...prev, section: e.target.value, unit: e.target.value === "fresh" && !prev.unit ? "kg" : prev.unit }))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                        >
+                          <option value="grocery">Grocery</option>
+                          <option value="fresh">Fruits &amp; Vegetables</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Counted in</label>
+                        <select
+                          value={foodForm.unit}
+                          onChange={(e) => setFoodForm((prev) => ({ ...prev, unit: e.target.value }))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                        >
+                          <option value="">Pieces / packs</option>
+                          <option value="kg">kg</option>
+                          <option value="g">grams</option>
+                          <option value="L">litres</option>
+                          <option value="ml">ml</option>
+                          <option value="dozen">dozen</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Purchase price ₹ <span className="text-slate-400">(before GST)</span></label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          inputMode="decimal"
+                          value={foodForm.purchasePrice}
+                          onChange={(e) => setFoodForm((prev) => ({ ...prev, purchasePrice: e.target.value.replace(/[^0-9.]/g, "") }))}
+                          placeholder="Set by purchases"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">GST paid on purchase</label>
+                        <select
+                          value={foodForm.purchaseGstRate}
+                          onChange={(e) => setFoodForm((prev) => ({ ...prev, purchaseGstRate: e.target.value }))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
+                        >
+                          <option value="">Not set</option>
+                          {GST_SLABS.map((r) => <option key={r} value={String(r)}>{r}%</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    {foodForm.unit && !foodForm.variantsEnabled && (
+                      <p className="mt-2 text-xs text-slate-500">Stock is in {foodForm.unit}: 1.5 means one and a half {foodForm.unit}.</p>
+                    )}
                     {foodForm.variantsEnabled ? (
                       <p className="mt-1 text-xs text-slate-500">Sold by size: each size has its own count in the variants below, or on the Stock page.</p>
                     ) : (
@@ -1632,9 +1704,10 @@ export default function FoodsList() {
                             <input
                               type="number"
                               min="0"
-                              step="1"
+                              step="any"
+                              inputMode="decimal"
                               value={foodForm.stockQty}
-                              onChange={(e) => setFoodForm((prev) => ({ ...prev, stockQty: e.target.value.replace(/[^0-9]/g, "") }))}
+                              onChange={(e) => setFoodForm((prev) => ({ ...prev, stockQty: e.target.value.replace(/[^0-9.]/g, "") }))}
                               placeholder="No limit"
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                             />
@@ -1644,9 +1717,10 @@ export default function FoodsList() {
                             <input
                               type="number"
                               min="0"
-                              step="1"
+                              step="any"
+                              inputMode="decimal"
                               value={foodForm.lowStockThreshold}
-                              onChange={(e) => setFoodForm((prev) => ({ ...prev, lowStockThreshold: e.target.value.replace(/[^0-9]/g, "") }))}
+                              onChange={(e) => setFoodForm((prev) => ({ ...prev, lowStockThreshold: e.target.value.replace(/[^0-9.]/g, "") }))}
                               placeholder="No warning"
                               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white"
                             />

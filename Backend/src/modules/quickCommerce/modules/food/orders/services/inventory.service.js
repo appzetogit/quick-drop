@@ -19,7 +19,46 @@ import { logger } from '../../../../utils/logger.js';
  */
 
 const isId = (v) => mongoose.Types.ObjectId.isValid(String(v || ''));
-const STOCK_FIELDS = 'name restaurantId stockQty lowStockThreshold variants isAvailable stockOffMode';
+const STOCK_FIELDS = 'name restaurantId stockQty lowStockThreshold variants isAvailable stockOffMode price purchasePrice unit section';
+const round3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+
+/**
+ * How much of a weighed product's stock a size's name stands for, in the
+ * product's unit: "500 g" of a product kept in kg is 0.5, "250 ml" of one kept
+ * in litres 0.25. null when the name says nothing usable.
+ */
+export function parseUnitsInName(name, unit) {
+  const u = String(unit || '').trim().toLowerCase();
+  const text = String(name || '').toLowerCase();
+  const pick = (re) => {
+    const m = re.exec(text);
+    return m ? { n: Number(m[1]), small: !!m[2] } : null;
+  };
+  if (['kg', 'kgs', 'kilo', 'kilogram'].includes(u)) {
+    const m = pick(/(\d+(?:\.\d+)?)\s*(?:(g|gm|gms|gram|grams)|kg|kgs|kilo)\b/);
+    return m && m.n > 0 ? round3(m.small ? m.n / 1000 : m.n) : null;
+  }
+  if (['l', 'litre', 'liter', 'ltr'].includes(u)) {
+    const m = pick(/(\d+(?:\.\d+)?)\s*(?:(ml)|l|ltr|litre|liter)\b/);
+    return m && m.n > 0 ? round3(m.small ? m.n / 1000 : m.n) : null;
+  }
+  return null;
+}
+
+/**
+ * Stock one sale of this size uses from the PRODUCT's count. A size with a
+ * count of its own uses its own (1 each); otherwise its stockPerUnit, else the
+ * weight in its name, else 1.
+ */
+export function stockPerSale(doc, variantId) {
+  const variant = variantId
+    ? (doc?.variants || []).find((v) => String(v._id) === String(variantId))
+    : null;
+  if (!variant) return 1;
+  if (variant.stockQty !== null && variant.stockQty !== undefined) return 1;
+  if (Number(variant.stockPerUnit) > 0) return Number(variant.stockPerUnit);
+  return parseUnitsInName(variant.name, doc?.unit) || 1;
+}
 
 /** Same item can appear on several lines; the shelf sees the sum. Kept for callers. */
 export function totalQuantityByItem(items = []) {
@@ -157,7 +196,10 @@ export function invalidateStockCaches(restaurantId) {
 }
 
 /** One line in the stock record. Never throws. */
-export async function recordMovement(doc, { variantId = '', delta, after, reason, orderId = null, actor = null, note = '' }) {
+export async function recordMovement(doc, {
+  variantId = '', delta, after, reason, orderId = null, actor = null, note = '',
+  unitCost, unitPrice, wasteReason = '', purchaseId = null,
+}) {
   invalidateStockCaches(doc?.restaurantId);
   try {
     const variant = variantOf(doc, variantId);
@@ -173,6 +215,11 @@ export async function recordMovement(doc, { variantId = '', delta, after, reason
       orderId: orderId && isId(orderId) ? orderId : null,
       note,
       actor: actor || { role: 'system', id: '', name: '' },
+      // The money behind the move, per unit of stock, for the inventory reports.
+      unitCost: unitCost ?? (variant ? (variant.purchasePrice ?? null) : (doc?.purchasePrice ?? null)),
+      unitPrice: unitPrice ?? (variant ? (variant.price ?? null) : (doc?.price ?? null)),
+      wasteReason,
+      purchaseId: purchaseId && isId(purchaseId) ? purchaseId : null,
     });
   } catch (err) {
     logger.warn(`[stock] movement not recorded for ${doc?._id}: ${err?.message || err}`);
@@ -198,6 +245,8 @@ export async function reserveStockForItems(items = [], { orderId = null } = {}) 
 
   const taken = [];
   const itemLevel = new Map();
+  // Selling value of what each product-level line takes, for the movement's unit price.
+  const itemValue = new Map();
 
   const fail = async (message) => {
     await releaseReservations(taken, { orderId });
@@ -229,7 +278,11 @@ export async function reserveStockForItems(items = [], { orderId = null } = {}) 
       return fail(left > 0 ? `Only ${left} left of ${label}. Please reduce the quantity.` : `${label} just went out of stock`);
     }
 
-    itemLevel.set(line.itemId, (itemLevel.get(line.itemId) || 0) + line.qty);
+    // A size without its own count takes its weight from the product's (2 x 500 g = 1 kg).
+    const units = round3(line.qty * stockPerSale(doc, line.variantId));
+    itemLevel.set(line.itemId, round3((itemLevel.get(line.itemId) || 0) + units));
+    const salePrice = Number((variant || doc)?.price) || 0;
+    itemValue.set(line.itemId, (itemValue.get(line.itemId) || 0) + salePrice * line.qty);
   }
 
   for (const [itemId, qty] of itemLevel) {
@@ -245,7 +298,10 @@ export async function reserveStockForItems(items = [], { orderId = null } = {}) 
 
     if (res) {
       taken.push({ itemId, variantId: '', qty });
-      await recordMovement(res, { delta: -qty, after: res.stockQty, reason: 'sale', orderId });
+      await recordMovement(res, {
+        delta: -qty, after: res.stockQty, reason: 'sale', orderId,
+        unitPrice: qty > 0 ? Math.round(((itemValue.get(itemId) || 0) / qty) * 100) / 100 : undefined,
+      });
       await syncAvailability(res);
       void alertIfStockCrossed(res, { before: Number(res.stockQty) + qty, after: res.stockQty });
       continue;
@@ -281,7 +337,7 @@ export async function releaseReservations(taken = [], { orderId = null } = {}) {
  */
 export async function incrementStock(itemId, qty, variantId = '', meta = {}) {
   const id = new mongoose.Types.ObjectId(String(itemId));
-  const n = Math.max(0, Number(qty) || 0);
+  let n = Math.max(0, Number(qty) || 0);
   if (!n) return;
 
   let res = null;
@@ -298,6 +354,12 @@ export async function incrementStock(itemId, qty, variantId = '', meta = {}) {
     }
   }
 
+  // `qty` counts sales of that size: a size without a count of its own gives
+  // back its weight to the product's (one 500 g pack returned = 0.5 kg).
+  if (isId(variantId)) {
+    const doc = await FoodItem.findById(id).select('variants unit').lean();
+    n = round3(n * stockPerSale(doc, variantId));
+  }
   res = await FoodItem.findOneAndUpdate(
     { _id: id, stockQty: { $ne: null } },
     { $inc: { stockQty: n } },

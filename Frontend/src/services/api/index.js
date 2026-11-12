@@ -302,6 +302,28 @@ export const stockAPI = {
 };
 
 /**
+ * Quick Commerce > Inventory: suppliers, purchases, wastage, the fresh produce
+ * sheet, bulk prices and reports. Written with /food/ and rewritten to /qc/ by
+ * the axios layer on the quick-commerce panel, like stockAPI.
+ */
+const INV = "/food/admin/inventory"
+const invCtx = { contextModule: "admin" }
+export const inventoryAPI = {
+  summary: (params) => apiClient.get(`${INV}/summary`, { params, ...invCtx }),
+  report: (params) => apiClient.get(`${INV}/report`, { params, ...invCtx }),
+  suppliers: (params) => apiClient.get(`${INV}/suppliers`, { params, ...invCtx }),
+  addSupplier: (data) => apiClient.post(`${INV}/suppliers`, data, invCtx),
+  updateSupplier: (id, data) => apiClient.patch(`${INV}/suppliers/${id}`, data, invCtx),
+  purchases: (params) => apiClient.get(`${INV}/purchases`, { params, ...invCtx }),
+  addPurchase: (data) => apiClient.post(`${INV}/purchases`, data, invCtx),
+  wastage: (data) => apiClient.post(`${INV}/wastage`, data, invCtx),
+  freshSheet: (params) => apiClient.get(`${INV}/fresh-sheet`, { params, ...invCtx }),
+  saveFreshSheet: (data) => apiClient.post(`${INV}/fresh-sheet`, data, invCtx),
+  prices: (data) => apiClient.post(`${INV}/prices`, data, invCtx),
+  duplicate: (itemId) => apiClient.post(`${INV}/products/${itemId}/duplicate`, {}, invCtx),
+};
+
+/**
  * Master > Delivery Incentives: an order-count ladder per duty segment
  * (foodAndQuick / taxiAndPorter — the same split the rider app's
  * DutySegment uses) — e.g. 1-5 orders → ₹100, 5-10 → ₹150, 10-15 → ₹200,

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Search, Loader2, Download, Upload, History, X, Package, AlertTriangle, CircleSlash, Boxes } from "lucide-react"
-import { stockAPI } from "@food/api"
+import { useLocation } from "react-router-dom"
+import { inventoryAPI, stockAPI } from "@food/api"
 
 /**
  * Stock, per product variant, per store.
@@ -26,7 +27,10 @@ const REASON = {
   bulk: "Bulk edit",
   import: "Sheet upload",
   tracking: "Tracking changed",
+  purchase: "Purchase",
+  wastage: "Wastage",
 }
+const money = (n) => (n === null || n === undefined ? "—" : `₹${Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`)
 
 const keyOf = (r) => `${r.itemId}|${r.variantId}`
 const errText = (err, fallback) => err?.response?.data?.message || err?.message || fallback
@@ -121,6 +125,14 @@ function HistoryPanel({ scope, row, onClose }) {
 
 export default function StockManager({ scope = "admin" }) {
   const isAdmin = scope === "admin"
+  // Prices, sections, copying and wastage belong to the Quick Commerce inventory.
+  const location = useLocation()
+  const inventoryTools = isAdmin && location.pathname.startsWith("/admin/quick-commerce")
+  const [section, setSection] = useState(() => new URLSearchParams(location.search).get("section") || "")
+  const [priceField, setPriceField] = useState("price")
+  const [priceMode, setPriceMode] = useState("pct_up")
+  const [priceValue, setPriceValue] = useState("")
+  const [wasteRow, setWasteRow] = useState(null)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState("")
@@ -142,6 +154,7 @@ export default function StockManager({ scope = "admin" }) {
         q: q.trim() || undefined,
         status: status || undefined,
         restaurantId: isAdmin && store ? store : undefined,
+        section: inventoryTools && section ? section : undefined,
         page,
         limit: 100,
       })
@@ -151,7 +164,7 @@ export default function StockManager({ scope = "admin" }) {
     } finally {
       setLoading(false)
     }
-  }, [scope, q, status, store, page, isAdmin])
+  }, [scope, q, status, store, page, isAdmin, section, inventoryTools])
 
   useEffect(() => {
     const t = setTimeout(load, q ? 300 : 0)
@@ -161,7 +174,56 @@ export default function StockManager({ scope = "admin" }) {
   useEffect(() => {
     setPage(1)
     setSelected(new Set())
-  }, [q, status, store])
+  }, [q, status, store, section])
+
+  /* Change the selling or purchase price of every selected size at once. */
+  const [pricesBusy, setPricesBusy] = useState(false)
+  const runPrices = async () => {
+    if (priceValue === "" || !selected.size) return
+    setPricesBusy(true)
+    try {
+      const res = await inventoryAPI.prices({
+        field: priceField,
+        mode: priceMode,
+        value: Number(priceValue),
+        rows: [...selected].map((k) => {
+          const [itemId, variantId] = k.split("|")
+          return { itemId, variantId: variantId || undefined }
+        }),
+      })
+      const r = res?.data?.data
+      if (r?.failed) toast.error(`${r.updated} changed, ${r.failed} refused: ${r.results.find((x) => !x.ok)?.error || ""}`)
+      else toast.success(`${r?.updated || 0} price${r?.updated === 1 ? "" : "s"} changed`)
+      setPriceValue("")
+      load()
+    } catch (err) {
+      toast.error(errText(err, "Could not change the prices"))
+    } finally {
+      setPricesBusy(false)
+    }
+  }
+
+  const duplicate = async (row) => {
+    try {
+      const res = await inventoryAPI.duplicate(row.itemId)
+      toast.success(`Copied as "${res?.data?.data?.name}". It is off sale until you edit it.`)
+      load()
+    } catch (err) {
+      toast.error(errText(err, "Could not copy the product"))
+    }
+  }
+
+  const saveWaste = async () => {
+    if (!wasteRow || !(Number(wasteRow.qty) > 0)) return
+    try {
+      await inventoryAPI.wastage({ itemId: wasteRow.row.itemId, variantId: wasteRow.row.variantId || undefined, qty: Number(wasteRow.qty), reason: wasteRow.reason, note: wasteRow.note })
+      toast.success("Wastage recorded")
+      setWasteRow(null)
+      load()
+    } catch (err) {
+      toast.error(errText(err, "Could not record the wastage"))
+    }
+  }
 
   const rows = data?.rows || []
   const summary = data?.summary
@@ -379,6 +441,13 @@ export default function StockManager({ scope = "admin" }) {
               ))}
             </select>
           )}
+          {inventoryTools && (
+            <select value={section} onChange={(e) => setSection(e.target.value)} aria-label="Section" className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm">
+              <option value="">Grocery and Fruits &amp; Veg</option>
+              <option value="grocery">Grocery</option>
+              <option value="fresh">Fruits &amp; Vegetables</option>
+            </select>
+          )}
           <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status" className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm">
             <option value="">Every status</option>
             <option value="attention">Low or out</option>
@@ -406,6 +475,25 @@ export default function StockManager({ scope = "admin" }) {
             <button type="button" disabled={bulkBusy} onClick={runBulk} className="inline-flex items-center gap-1 rounded-md bg-white px-3 py-1 font-semibold text-neutral-900 disabled:opacity-60">
               {bulkBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Apply
             </button>
+            {inventoryTools && (
+              <span className="flex flex-wrap items-center gap-2 border-l border-white/20 pl-2">
+                <select value={priceField} onChange={(e) => setPriceField(e.target.value)} aria-label="Which price" className="rounded-md bg-white/10 px-2 py-1 text-sm">
+                  <option value="price" className="text-neutral-900">Selling price</option>
+                  <option value="purchasePrice" className="text-neutral-900">Purchase price</option>
+                </select>
+                <select value={priceMode} onChange={(e) => setPriceMode(e.target.value)} aria-label="How" className="rounded-md bg-white/10 px-2 py-1 text-sm">
+                  <option value="pct_up" className="text-neutral-900">Up by %</option>
+                  <option value="pct_down" className="text-neutral-900">Down by %</option>
+                  <option value="add" className="text-neutral-900">Up by ₹</option>
+                  <option value="sub" className="text-neutral-900">Down by ₹</option>
+                  <option value="set" className="text-neutral-900">Set to ₹</option>
+                </select>
+                <input type="number" min="0" step="any" value={priceValue} onChange={(e) => setPriceValue(e.target.value)} aria-label="Amount" className="w-20 rounded-md bg-white px-2 py-1 text-sm text-neutral-900 tabular-nums" />
+                <button type="button" disabled={pricesBusy || priceValue === ""} onClick={runPrices} className="inline-flex items-center gap-1 rounded-md bg-emerald-400 px-3 py-1 font-semibold text-emerald-950 disabled:opacity-50">
+                  {pricesBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Change prices
+                </button>
+              </span>
+            )}
             <button type="button" onClick={() => setSelected(new Set())} className="ml-auto text-white/70 hover:text-white">Clear</button>
           </div>
         )}
@@ -420,7 +508,7 @@ export default function StockManager({ scope = "admin" }) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] text-sm">
+              <table className="w-full min-w-[1040px] text-sm">
                 <thead>
                   <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wider text-neutral-500">
                     <th className="w-10 px-4 py-3">
@@ -434,6 +522,8 @@ export default function StockManager({ scope = "admin" }) {
                     <th className="px-2 py-3 font-medium">Product</th>
                     <th className="px-4 py-3 font-medium">Size</th>
                     <th className="px-4 py-3 font-medium">SKU</th>
+                    {inventoryTools && <th className="px-4 py-3 text-right font-medium">Purchase</th>}
+                    {inventoryTools && <th className="px-4 py-3 text-right font-medium">Selling</th>}
                     <th className="px-4 py-3 font-medium">In stock</th>
                     <th className="px-4 py-3 font-medium">Low at</th>
                     <th className="px-4 py-3 font-medium">Status</th>
@@ -478,12 +568,20 @@ export default function StockManager({ scope = "admin" }) {
                         </td>
                         <td className="px-4 py-2.5 text-neutral-700">{r.variantName || "—"}</td>
                         <td className="px-4 py-2.5 font-mono text-xs text-neutral-600">{r.sku || "—"}</td>
+                        {inventoryTools && <td className="px-4 py-2.5 text-right tabular-nums text-neutral-600">{money(r.purchasePrice)}</td>}
+                        {inventoryTools && (
+                          <td className="px-4 py-2.5 text-right tabular-nums">
+                            {r.mrp != null && Number(r.mrp) > Number(r.price) && <span className="mr-1 text-xs text-neutral-400 line-through">{money(r.mrp)}</span>}
+                            {money(r.price)}
+                          </td>
+                        )}
                         <td className="px-4 py-2.5">
                           <div className="flex items-center gap-1.5">
                             <input
                               type="number"
                               min="0"
-                              inputMode="numeric"
+                              step="any"
+                              inputMode="decimal"
                               value={draft.stock !== undefined ? draft.stock : r.stockQty ?? ""}
                               placeholder="No limit"
                               disabled={busy}
@@ -541,6 +639,16 @@ export default function StockManager({ scope = "admin" }) {
                               </button>
                             </>
                           )}
+                          {inventoryTools && (
+                            <>
+                              <button type="button" onClick={() => setWasteRow({ row: r, qty: "", reason: "damaged", note: "" })} className="rounded-md px-2 py-1 text-xs text-red-700 hover:bg-red-50">
+                                Wastage
+                              </button>
+                              <button type="button" onClick={() => duplicate(r)} className="rounded-md px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-100">
+                                Duplicate
+                              </button>
+                            </>
+                          )}
                           <button type="button" onClick={() => setHistoryRow(r)} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900">
                             <History className="h-3.5 w-3.5" /> History
                           </button>
@@ -586,6 +694,32 @@ export default function StockManager({ scope = "admin" }) {
       )}
 
       {historyRow && <HistoryPanel scope={scope} row={historyRow} onClose={() => setHistoryRow(null)} />}
+      {wasteRow && (
+        <div role="dialog" aria-modal="true" aria-label="Record wastage" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setWasteRow(null)}>
+          <div className="w-full max-w-sm space-y-3 rounded-xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-base font-semibold text-neutral-900">Record wastage</h2>
+            <p className="text-sm text-neutral-600">{[wasteRow.row.itemName, wasteRow.row.variantName].filter(Boolean).join(" · ")} · in stock {wasteRow.row.stockQty ?? "not tracked"}</p>
+            <label className="block text-xs font-medium text-neutral-600">How many
+              <input type="number" min="0" step="any" autoFocus value={wasteRow.qty} onChange={(e) => setWasteRow((w) => ({ ...w, qty: e.target.value }))} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="block text-xs font-medium text-neutral-600">Why
+              <select value={wasteRow.reason} onChange={(e) => setWasteRow((w) => ({ ...w, reason: e.target.value }))} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm">
+                <option value="damaged">Damaged</option>
+                <option value="expired">Expired</option>
+                <option value="spoiled">Spoiled</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label className="block text-xs font-medium text-neutral-600">Note
+              <input value={wasteRow.note} onChange={(e) => setWasteRow((w) => ({ ...w, note: e.target.value }))} placeholder="Optional" className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setWasteRow(null)} className="rounded-lg px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-100">Cancel</button>
+              <button type="button" disabled={!(Number(wasteRow.qty) > 0)} onClick={saveWaste} className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Take off stock</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
