@@ -248,6 +248,9 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
     total: order?.pricing?.total,
     payment: order?.payment,
     paymentMethod: order?.payment?.method,
+    // Flat, because the rider app's realtime parser reads only this key and
+    // otherwise treats a prepaid order as unpaid.
+    paymentStatus: order?.payment?.status,
     restaurantId:
       order?.restaurantId?._id?.toString?.() ||
       order?.restaurantId?.toString?.() ||

@@ -367,6 +367,10 @@ const offerPushData = (order, payload = {}) => {
     tripDurationMins: str(payload.tripDurationMins),
     earningAmount: str(payload.earningAmount ?? payload.riderEarning),
     total: str(payload.total),
+    // The rider app falls back to "cash" when these are missing, so a
+    // prepaid order offered by push read as cash on delivery.
+    paymentMethod: str(payload.paymentMethod || order?.payment?.method),
+    paymentStatus: str(payload.paymentStatus || order?.payment?.status),
   };
 };
 
