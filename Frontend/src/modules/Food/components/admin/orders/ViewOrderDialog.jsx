@@ -669,10 +669,32 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
                     : <span className="text-slate-400">₹0.00</span>}
                 </span>
               </div>
+              {/*
+               * Lines the bill charges that the list's summary fields leave out: without
+               * them the rows did not add up to the total (packing charges in particular).
+               */}
+              {[
+                ["Packing Charges", order.pricing?.packagingFee],
+                ["GST on Platform Fee", order.pricing?.platformFeeGst],
+                ["Tip", order.pricing?.tip],
+              ].filter(([, v]) => Number(v) > 0).map(([label, v]) => (
+                <div key={label} className="flex justify-between text-sm">
+                  <span className="text-slate-600">{label}</span>
+                  <span className="font-medium text-slate-900">₹{Number(v).toFixed(2)}</span>
+                </div>
+              ))}
               {order.vatTax !== undefined && order.vatTax > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Tax (GST)</span>
                   <span className="font-medium text-slate-900">₹{order.vatTax.toFixed(2)}</span>
+                </div>
+              )}
+              {Number(order.pricing?.roundOff) !== 0 && Number.isFinite(Number(order.pricing?.roundOff)) && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Rounding</span>
+                  <span className="font-medium text-slate-900">
+                    {Number(order.pricing.roundOff) > 0 ? "" : "-"}₹{Math.abs(Number(order.pricing.roundOff)).toFixed(2)}
+                  </span>
                 </div>
               )}
               <div className="pt-2 border-t border-slate-200">
