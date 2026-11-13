@@ -217,6 +217,7 @@ export const PATH_RESOURCE_RULES = {
   '/admin/food/customer-report/feedback-experience': 'reports',
   
   '/admin/food/restaurant-withdraws': 'wallet',
+  '/admin/food/restaurant-settlement': 'wallet',
   
   '/admin/food/hero-banner-management': 'cms',
   '/admin/food/promotional-banner': 'cms',

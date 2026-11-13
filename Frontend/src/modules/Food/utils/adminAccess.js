@@ -196,6 +196,7 @@ const PAGE_RULES = [
   ["/delivery-withdrawal", "wallet"],
   ["/delivery-boy-wallet", "wallet"],
   ["/restaurant-withdraws", "wallet"],
+  ["/restaurant-settlement", "wallet"],
   ["/delivery-cash-limit", "delivery"],
   ["/cash-limit-settlement", "delivery"],
   ["/delivery-emergency-help", "delivery"],

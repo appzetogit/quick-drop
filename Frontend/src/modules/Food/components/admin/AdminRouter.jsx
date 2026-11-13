@@ -133,6 +133,7 @@ const FoodSaleReport = lazy(() => import("@food/pages/admin/reports/FoodSaleRepo
 const RestaurantVATReport = lazy(() => import("@food/pages/admin/reports/RestaurantVATReport"));
 // Transaction Management
 const RestaurantWithdraws = lazy(() => import("@food/pages/admin/transactions/RestaurantWithdraws"));
+const RestaurantSettlement = lazy(() => import("@food/pages/admin/transactions/RestaurantSettlement"));
 const WithdrawMethod = lazy(() => import("@food/pages/admin/transactions/WithdrawMethod"));
 // Employee Management
 const EmployeeRole = lazy(() => import("@food/pages/admin/employees/EmployeeRole"));
@@ -347,6 +348,7 @@ const verticalAdminRoutes = (
             <Route path="restaurant-vat-report" element={<RestaurantVATReport />} />
             
             <Route path="restaurant-withdraws" element={<RestaurantWithdraws />} />
+            <Route path="restaurant-settlement" element={<RestaurantSettlement />} />
             <Route path="withdraw-method" element={<WithdrawMethod />} />
             
              <Route path="employee-role" element={<Navigate to="../management/admins" replace />} />

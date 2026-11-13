@@ -354,6 +354,19 @@ export const incentiveRulesAPI = {
     apiClient.delete(`/platform/settings/incentive-rules/${encodeURIComponent(id)}?permanent=1`, { contextModule: "admin" }),
 };
 
+// Admin > Food > Restaurant settlement: 10-day cycles (food/admin/settlements).
+const STL = "/food/admin/settlements"
+const stlCtx = { contextModule: "admin" }
+export const settlementAPI = {
+  restaurants: () => apiClient.get(`${STL}/restaurants`, stlCtx),
+  officers: () => apiClient.get(`${STL}/officers`, stlCtx),
+  overview: (params) => apiClient.get(`${STL}/overview`, { params, ...stlCtx }),
+  cycle: (params) => apiClient.get(`${STL}/cycle`, { params, ...stlCtx }),
+  history: (params) => apiClient.get(`${STL}/history`, { params, ...stlCtx }),
+  pay: (data) => apiClient.post(`${STL}/pay`, data, stlCtx),
+  hold: (data) => apiClient.post(`${STL}/hold`, data, stlCtx),
+};
+
 export const adminAccountsAPI = {
   me: () => apiClient.get("/platform/admins/me", { contextModule: "admin" }),
   meta: () => apiClient.get("/platform/admins/meta", { contextModule: "admin" }),

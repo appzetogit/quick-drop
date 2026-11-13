@@ -302,7 +302,7 @@ const STORE_ADMIN_RULES = [
 
   rule(/^\/(reports|feedback-experiences)(\/|$)/, 'reports'),
 
-  rule(/^\/(withdrawals|delivery\/withdrawals|delivery\/wallets|restaurant-withdrawal-setting)(\/|$)/, 'wallet'),
+  rule(/^\/(withdrawals|delivery\/withdrawals|delivery\/wallets|restaurant-withdrawal-setting|settlements)(\/|$)/, 'wallet'),
 
   rule(/^\/(restaurants|service-radius|restaurant-commissions|commission-schedules|monetization-mode|restaurant-settings|restaurant-subscription-settings|restaurant-subscriptions|drug-licences|medical)(\/|$)/, 'restaurants'),
   rule(/^\/prescriptions(\/|$)/, 'orders'),

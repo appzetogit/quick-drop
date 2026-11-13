@@ -23,6 +23,7 @@ import { getAdminPageController, upsertAdminPageController } from '../controller
 import * as incentiveController from '../../../../core/incentives/controllers/incentiveController.js';
 import { upload } from '../../../../middleware/upload.js';
 import { requireFinancePermission } from '../../../../core/admin/requireFinancePermission.middleware.js';
+import { settlementRouter } from '../settlements/settlement.routes.js';
 import { enforceAdminAccess } from '../../../../core/admin/enforceAdminAccess.middleware.js';
 import { resolveStoreAdminResource } from '../../../../core/admin/adminAccessPolicy.js';
 
@@ -267,6 +268,8 @@ router.patch('/withdrawals/:id', requireFinancePermission('WITHDRAWAL_DECIDE'), 
 router.get('/delivery/withdrawals', adminController.getDeliveryWithdrawals);
 router.patch('/delivery/withdrawals/:id', requireFinancePermission('WITHDRAWAL_DECIDE'), adminController.updateDeliveryWithdrawalStatus);
 router.get('/delivery/cash-limit-settlements', adminController.getCashLimitSettlements);
+// Restaurant settlement per 10-day cycle (admin/settlements).
+router.use('/settlements', settlementRouter());
 
 // ----- Delivery partners & general -----
 router.get('/delivery/join-requests', adminController.getDeliveryJoinRequests);
