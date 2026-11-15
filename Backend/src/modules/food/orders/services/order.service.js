@@ -1305,6 +1305,24 @@ export async function updateOrderInstructions(orderId, userId, instructions) {
 }
 
 // ----- Restaurant -----
+/*
+ * The restaurant panel polls this every 10 seconds from several components at
+ * once, for every open panel. Each poll used to pull 30 full orders plus their
+ * customer, rider and payout rows -- about 180 KB from the database -- even when
+ * nothing had changed since the last one. That traffic alone was enough to push
+ * the Atlas cluster over its transfer limit and throttle every screen.
+ *
+ * So a poll first asks whether anything changed: the newest updatedAt among
+ * this restaurant's visible orders and how many there are. Both are answered
+ * from the index in a few bytes. Only when either differs is the page fetched
+ * again. A new order, a status change and a release from the cancellation hold
+ * all move one of the two. The age cap bounds anything that changes without
+ * touching the order itself (a payout row, a customer's name).
+ */
+const RESTAURANT_ORDERS_CACHE_MAX_AGE_MS = 30 * 1000;
+const RESTAURANT_ORDERS_CACHE_MAX_ENTRIES = 1000;
+const restaurantOrdersCache = new Map();
+
 export async function listOrdersRestaurant(restaurantId, query) {
   const { page, limit, skip } = buildPaginationOptions(query);
   const filter = {
@@ -1316,18 +1334,38 @@ export async function listOrdersRestaurant(restaurantId, query) {
     // Not while the order is in its cancellation hold (core/orders/orderHold.js).
     $and: [RELEASED_TO_RESTAURANT],
   };
-  const [docs, total] = await Promise.all([
-    FoodOrder.find(filter)
-      .populate("userId", "name phone email profileImage")
-      .populate("dispatch.deliveryPartnerId", "name fullName phone phoneNumber")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
+
+  const [latest, total] = await Promise.all([
+    FoodOrder.findOne(filter).sort({ updatedAt: -1 }).select("updatedAt").lean(),
     FoodOrder.countDocuments(filter),
   ]);
+  const stamp = latest?.updatedAt ? new Date(latest.updatedAt).getTime() : 0;
+  const cacheKey = `${restaurantId}|${page}|${limit}`;
+  const cached = restaurantOrdersCache.get(cacheKey);
+  if (
+    cached
+    && cached.stamp === stamp
+    && cached.total === total
+    && Date.now() - cached.at < RESTAURANT_ORDERS_CACHE_MAX_AGE_MS
+  ) {
+    return cached.result;
+  }
+
+  const docs = await FoodOrder.find(filter)
+    .populate("userId", "name phone email profileImage")
+    .populate("dispatch.deliveryPartnerId", "name fullName phone phoneNumber")
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
   const orders = await attachRestaurantPayout(docs.map((d) => normalizeOrderForClient(d)));
-  return buildPaginatedResult({ docs: orders, total, page, limit });
+  const result = buildPaginatedResult({ docs: orders, total, page, limit });
+
+  if (restaurantOrdersCache.size >= RESTAURANT_ORDERS_CACHE_MAX_ENTRIES) {
+    restaurantOrdersCache.delete(restaurantOrdersCache.keys().next().value);
+  }
+  restaurantOrdersCache.set(cacheKey, { stamp, total, at: Date.now(), result });
+  return result;
 }
 
 export async function updateOrderStatusRestaurant(

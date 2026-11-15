@@ -139,6 +139,15 @@ export async function listPublicFoods(query = {}) {
         };
     }
 
+    /*
+     * The 99 shelf only ever shows dishes the admin has ticked for it (see
+     * qualifiesFor99Store), so ask the database for those alone. It used to
+     * fetch up to 2000 full dishes and discard nearly all of them here -- 2.6 MB
+     * per request, 28 seconds on a throttled cluster, for a shelf of a few
+     * dozen. The price cap is still applied below, on the display price.
+     */
+    if (is99StorePromo) foodFilter.showIn99Store = true;
+
     const list = await FoodItem.find(foodFilter)
         .sort({ createdAt: -1 })
         .limit(isPromoList ? Math.max(limit, 2000) : limit)
