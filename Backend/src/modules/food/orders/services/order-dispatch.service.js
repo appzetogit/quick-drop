@@ -390,6 +390,9 @@ const offerRestaurantDoc = async (order) => {
   }
 };
 
+/** How long one rider has to accept an auto-dispatched order before the next is offered it. */
+const SEQUENTIAL_OFFER_MS = Math.max(15, Math.min(120, Number(process.env.FOOD_OFFER_WINDOW_SECONDS) || 30)) * 1000;
+
 export async function tryAutoAssign(orderId, options = {}) {
   const attempt = options.attempt || 1;
   const lockTimeout = 55000; // 55 seconds lock interval
@@ -429,6 +432,28 @@ export async function tryAutoAssign(orderId, options = {}) {
   const DISPATCHABLE_STATUSES = ['confirmed', 'preparing', 'ready_for_pickup', 'ready', 'reached_pickup', 'picked_up', 'reached_drop'];
   if (!DISPATCHABLE_STATUSES.includes(order.orderStatus)) {
     logger.info(`tryAutoAssign: Skip for ${orderId} (status ${order.orderStatus} not dispatchable yet).`);
+    // Release the claim taken above; left set, it blocked dispatch for up to
+    // five minutes (until the stale-lock sweep) after the restaurant confirmed.
+    await FoodOrder.updateOne({ _id: order._id }, { $unset: { 'dispatch.dispatchingAt': '' } });
+    return order;
+  }
+
+  /*
+   * A rider is still inside their window on this order. Offers go one rider at
+   * a time, and a second dispatch chain (a resend, a sweep) must not offer it
+   * to someone else meanwhile -- that is how riders ended up getting the same
+   * order together. The timeout job that ends this window dispatches next.
+   */
+  const liveOffer = order.dispatch?.currentOffer;
+  if (
+    !options.force
+    && liveOffer?.partnerId
+    && liveOffer?.expiresAt
+    && new Date(liveOffer.expiresAt).getTime() > Date.now()
+    && order.dispatch?.status === 'unassigned'
+  ) {
+    logger.info(`tryAutoAssign: ${orderId} is with rider ${liveOffer.partnerId} until ${new Date(liveOffer.expiresAt).toISOString()} -- waiting.`);
+    await FoodOrder.updateOne({ _id: order._id }, { $unset: { 'dispatch.dispatchingAt': '' } });
     return order;
   }
 
@@ -455,10 +480,9 @@ export async function tryAutoAssign(orderId, options = {}) {
       partners = (partners || []).filter((p) => !blocked.has(String(p.partnerId)));
     }
     
-    // TIERED ALERT LOGIC
-    // Phase 2: Broadcast to all (Attempt 3+)
-    // Phase 3: Admin Alert (Attempt 5+ or roughly 5 mins)
-    const isPhase3 = attempt >= 6; // ~6 minutes (60s * 6)
+    // Admin alert: offers now go one rider at a time, one round per offer
+    // window, so every 10th round is roughly every five minutes unassigned.
+    const isPhase3 = attempt >= 10 && attempt % 10 === 0;
 
     if (isPhase3) {
       logger.error(`[CRITICAL] Order ${order._id} unassigned for ${attempt} mins. Triggering Admin Alert (Phase 3).`);
@@ -479,75 +503,74 @@ export async function tryAutoAssign(orderId, options = {}) {
 
     const securedPartners = await filterPartnersBySecurityDeposit(partners, order);
     const codEligiblePartners = await filterPartnersByCodCashLimit(securedPartners, order);
-    const eligible = codEligiblePartners.filter(p => !offeredIds.includes(p.partnerId.toString()));
+    /*
+     * ONE RIDER AT A TIME.
+     *
+     * This used to broadcast every round to up to 15 riders at once, and when it
+     * ran out of new ones it re-sent to all of them again -- so every nearby
+     * rider's phone rang for the same order together and they raced for it.
+     *
+     * Now each round offers the order to a single rider for SEQUENTIAL_OFFER_MS:
+     * whoever has been offered it the fewest times, best-placed first among
+     * equals (listNearbyOnlineDeliveryPartners already returns them nearest /
+     * best first). The rider whose window just ran out is skipped while anyone
+     * else is available, so once everyone has had a turn the order cycles round
+     * again instead of being blasted to all. Only the current rider can accept
+     * (order-delivery.service.js acceptOrderDelivery); the previous one's alert
+     * is dismissed.
+     */
+    const offerCounts = new Map();
+    for (const o of order.dispatch?.offeredTo || []) {
+      const key = String(o.partnerId);
+      offerCounts.set(key, (offerCounts.get(key) || 0) + 1);
+    }
+    const previousRider = order.dispatch?.currentOffer?.partnerId
+      ? String(order.dispatch.currentOffer.partnerId)
+      : null;
+    let pool = codEligiblePartners;
+    if (pool.length > 1 && previousRider) {
+      pool = pool.filter((p) => String(p.partnerId) !== previousRider);
+    }
+    // Array.prototype.sort is stable, so equal counts keep the nearest-first order.
+    const next = pool
+      .slice()
+      .sort((a, b) => (offerCounts.get(String(a.partnerId)) || 0) - (offerCounts.get(String(b.partnerId)) || 0))[0];
 
-    if (eligible.length === 0) {
-      logger.info(`tryAutoAssign: No NEW eligible partners in ${maxKm}km for order ${order._id}. Restarting hunt...`);
-      
-      // If we ran out of new eligible partners, we might want to re-offer to everyone (Phase 2 style)
-      const io = getIO();
-      if (io && codEligiblePartners.length > 0) {
-        const payload = buildDeliverySocketPayload(order, await offerRestaurantDoc(order));
-        for (const p of codEligiblePartners) {
-          const roomName = rooms.delivery(p.partnerId);
-          io.to(roomName).emit('new_order_available', { ...payload, pickupDistanceKm: p.distanceKm });
-        }
-      }
+    const io = getIO();
+    // The previous rider's window is over: take the alert off their screen.
+    if (io && previousRider && (!next || String(next.partnerId) !== previousRider)) {
+      io.to(rooms.delivery(previousRider)).emit('order_claimed', {
+        orderId: order._id.toString(),
+        orderMongoId: order._id.toString(),
+        claimedBy: '',
+        reason: 'offer_expired',
+      });
+    }
 
-      // Re-queue itself to keep trying
+    if (!next) {
+      logger.info(`tryAutoAssign: No eligible partners in ${maxKm}km for order ${order._id}. Retrying in 30s.`);
+      await FoodOrder.updateOne(
+        { _id: order._id, 'dispatch.status': 'unassigned' },
+        { $unset: { 'dispatch.currentOffer': '' } },
+      );
       await addOrderJob({
         action: 'DISPATCH_TIMEOUT_CHECK',
         orderMongoId: order._id.toString(),
         orderId: order._id.toString(),
         attempt: attempt + 1
-      }, { delay: 30000 }); // Retry faster (30s) if no one found
-
+      }, { delay: 30000 });
       return order;
     }
 
-    const io = getIO();
-    const payload = buildDeliverySocketPayload(order, await offerRestaurantDoc(order));
-
-    // BROADCAST: Notify all eligible riders
-    logger.info(`Broadcasting order ${order._id} to ${eligible.length} riders.`);
-    for (const p of eligible) {
-      const roomName = rooms.delivery(p.partnerId);
-      if (io) io.to(roomName).emit('new_order', { ...payload, pickupDistanceKm: p.distanceKm });
-    }
-
-    // Batch Push Notifications
-    const pushTargets = eligible.map(p => ({
-      ownerType: 'DELIVERY_PARTNER',
-      ownerId: p.partnerId
-    }));
-
-    if (pushTargets.length > 0) {
-      try {
-        await notifyOwnersSafely(
-          pushTargets,
-          {
-            title: 'New order available!',
-            body: `Order #${order.order_id || order._id} is available. You have 60 seconds to accept!`,
-            data: offerPushData(order, payload),
-          }
-        );
-      } catch (err) {
-        logger.warn(`Push notifications failed for broadcast on order ${order._id}: ${err.message}`);
-      }
-    }
-
-    const offeredToEntries = eligible.map(p => ({
-      partnerId: p.partnerId,
-      at: new Date(),
-      action: 'offered'
-    }));
+    const offeredAt = new Date();
+    const expiresAt = new Date(offeredAt.getTime() + SEQUENTIAL_OFFER_MS);
+    const windowSeconds = Math.round(SEQUENTIAL_OFFER_MS / 1000);
 
     /*
-     * Conditional update, not order.save() -- the same fix quick commerce made.
-     * This document was loaded before the rider lookup and the push fan-out, and
-     * in that time a rider may have accepted or an admin may have assigned a
-     * rider by hand (core/delivery/manualAssign.js). A blind save wrote
-     * 'unassigned' over either.
+     * Record the offer before sending it, so the rider can accept the moment
+     * the alert lands. Conditional update, not order.save() -- this document was
+     * loaded before the rider lookup, and in that time a rider may have accepted
+     * or an admin may have assigned one by hand (core/delivery/manualAssign.js).
      */
     const reoffer = await FoodOrder.updateOne(
       {
@@ -561,23 +584,53 @@ export async function tryAutoAssign(orderId, options = {}) {
         }],
       },
       {
-        $set: { 'dispatch.status': 'unassigned', 'dispatch.deliveryPartnerId': null, 'dispatch.assignMode': 'auto' },
+        $set: {
+          'dispatch.status': 'unassigned',
+          'dispatch.deliveryPartnerId': null,
+          'dispatch.assignMode': 'auto',
+          'dispatch.currentOffer': { partnerId: next.partnerId, at: offeredAt, expiresAt },
+        },
         $unset: { 'dispatch.manualDeadlineAt': '' },
-        $push: { 'dispatch.offeredTo': { $each: offeredToEntries } },
+        $push: { 'dispatch.offeredTo': { partnerId: next.partnerId, at: offeredAt, action: 'offered' } },
       },
     );
     if (reoffer.modifiedCount === 0) {
-      logger.info(`tryAutoAssign: order ${order._id} was accepted or assigned during broadcast -- leaving it.`);
+      logger.info(`tryAutoAssign: order ${order._id} was accepted or assigned meanwhile -- leaving it.`);
       return order;
     }
 
-    // Re-check in 60s
+    const payload = {
+      ...buildDeliverySocketPayload(order, await offerRestaurantDoc(order)),
+      acceptanceDeadlineAt: expiresAt.toISOString(),
+      acceptTimeoutSeconds: windowSeconds,
+    };
+    logger.info(`Offering order ${order._id} to rider ${next.partnerId} for ${windowSeconds}s (round ${attempt}, ${codEligiblePartners.length} eligible).`);
+    if (io) io.to(rooms.delivery(next.partnerId)).emit('new_order', { ...payload, pickupDistanceKm: next.distanceKm });
+
+    try {
+      await notifyOwnersSafely(
+        [{ ownerType: 'DELIVERY_PARTNER', ownerId: next.partnerId }],
+        {
+          title: 'New order available!',
+          body: `Order #${order.order_id || order._id} is available. You have ${windowSeconds} seconds to accept!`,
+          data: {
+            ...offerPushData(order, payload),
+            acceptanceDeadlineAt: expiresAt.toISOString(),
+            acceptTimeoutSeconds: String(windowSeconds),
+          },
+        }
+      );
+    } catch (err) {
+      logger.warn(`Push notification failed for offer on order ${order._id}: ${err.message}`);
+    }
+
+    // When this rider's window ends, offer the next one.
     await addOrderJob({
       action: 'DISPATCH_TIMEOUT_CHECK',
       orderMongoId: order._id.toString(),
       orderId: order._id.toString(),
       attempt: attempt + 1
-    }, { delay: 60000 });
+    }, { delay: SEQUENTIAL_OFFER_MS + 1000 });
 
     return order;
   } finally {
@@ -643,11 +696,13 @@ export async function resendDeliveryNotificationRestaurant(orderId, restaurantId
   order.dispatch.status = 'unassigned';
   order.dispatch.deliveryPartnerId = null;
   order.dispatch.offeredTo = [];
+  order.dispatch.currentOffer = undefined;
   order.dispatch.assignMode = 'auto';
   order.dispatch.manualDeadlineAt = undefined;
   await order.save();
 
-  await tryAutoAssign(order._id);
+  // A fresh round starts with the nearest rider; force past the live-offer wait.
+  await tryAutoAssign(order._id, { force: true });
   return { success: true };
 }
 

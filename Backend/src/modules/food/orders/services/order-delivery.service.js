@@ -240,6 +240,11 @@ export async function listOrdersAvailableDelivery(deliveryPartnerId, query) {
     'dispatch.status': 'unassigned',
     orderStatus: { $in: ['confirmed', 'preparing', 'ready_for_pickup'] },
     'dispatch.offeredTo.partnerId': new mongoose.Types.ObjectId(deliveryPartnerId),
+    // Only while it is this rider's turn (one rider at a time).
+    $or: [
+      { 'dispatch.currentOffer.partnerId': new mongoose.Types.ObjectId(deliveryPartnerId) },
+      { 'dispatch.currentOffer.partnerId': null },
+    ],
   };
   const ownOrders = {
     'dispatch.deliveryPartnerId': new mongoose.Types.ObjectId(deliveryPartnerId),
@@ -479,8 +484,14 @@ export async function acceptOrderDelivery(orderId, deliveryPartnerId) {
         // Offered to this rider by dispatch.
         {
           'dispatch.status': 'unassigned',
-          // (dispatch re-broadcasts to earlier recipients, so any past offer counts)
           'dispatch.offeredTo.partnerId': partnerId,
+          // Offers go one rider at a time (order-dispatch.service.js): only the
+          // rider it is offered to now can take it, not one whose turn passed.
+          // No current offer = an order dispatched before this existed.
+          $or: [
+            { 'dispatch.currentOffer.partnerId': partnerId },
+            { 'dispatch.currentOffer.partnerId': null },
+          ],
         },
         {
           'dispatch.status': 'assigned',
@@ -680,6 +691,37 @@ export async function rejectOrderDelivery(orderId, deliveryPartnerId, { reason }
   const order = await FoodOrder.findOne(identity).select('+deliveryOtp');
   if (!order) throw new NotFoundError('Order not found');
   await releaseDeliveryLock(deliveryPartnerId, order._id);
+
+  /*
+   * Declining an OFFER (the order is on this rider's turn, not yet theirs).
+   * Offers go one rider at a time, so passing on it hands it straight to the
+   * next rider instead of everyone waiting out this rider's window.
+   */
+  if (
+    order.dispatch?.status === 'unassigned'
+    && String(order.dispatch?.currentOffer?.partnerId || '') === String(deliveryPartnerId)
+  ) {
+    const passed = await FoodOrder.updateOne(
+      {
+        _id: order._id,
+        'dispatch.status': 'unassigned',
+        'dispatch.currentOffer.partnerId': order.dispatch.currentOffer.partnerId,
+      },
+      { $set: { 'dispatch.currentOffer.expiresAt': new Date() } },
+    );
+    if (passed.modifiedCount > 0) {
+      await FoodOrder.updateOne(
+        { _id: order._id },
+        { $set: { 'dispatch.offeredTo.$[o].action': 'rejected' } },
+        { arrayFilters: [{ 'o.partnerId': order.dispatch.currentOffer.partnerId, 'o.action': 'offered' }] },
+      );
+      void dispatchService
+        .tryAutoAssign(order._id)
+        .catch((error) => logger.error(`SmartDispatch: next offer after decline failed: ${error.message}`));
+    }
+    return sanitizeOrderForExternal(order);
+  }
+
   if (order.dispatch.deliveryPartnerId?.toString() !== deliveryPartnerId.toString()) {
     throw new ForbiddenError('Not your order');
   }
