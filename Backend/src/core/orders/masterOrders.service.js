@@ -159,6 +159,23 @@ const rideRow = (r, maps) => {
     };
 };
 
+/** What the list reads from an order (orderRow); statusHistory trimmed to its last 6 in the database. */
+const ORDER_LIST_PROJECTION = {
+    order_id: 1, orderId: 1, orderStatus: 1, userId: 1, restaurantId: 1, createdAt: 1,
+    'dispatch.status': 1, 'dispatch.assignMode': 1, 'dispatch.manualDeadlineAt': 1,
+    'dispatch.deliveryPartnerId': 1, 'dispatch.assignedBy': 1,
+    'deliveryAddress.fullName': 1, 'deliveryAddress.name': 1, 'deliveryAddress.phone': 1,
+    'deliveryAddress.street': 1, 'deliveryAddress.city': 1,
+    'pricing.total': 1, 'payment.method': 1, 'payment.status': 1, paymentMethod: 1,
+    'deliveryState.currentPhase': 1,
+    statusHistory: { $slice: -6 },
+};
+/** What the list reads from a ride (rideRow). */
+const RIDE_LIST_PROJECTION = {
+    userId: 1, driverId: 1, serviceType: 1, liveStatus: 1, status: 1, fare: 1,
+    paymentMethod: 1, paymentStatus: 1, pickupAddress: 1, dropAddress: 1, createdAt: 1,
+};
+
 /** An order still being worked on: deleting it would strand its rider, store and customer. */
 const ORDER_IN_PROGRESS = ['created', 'confirmed', 'preparing', 'ready_for_pickup', 'ready', 'reached_pickup', 'picked_up', 'reached_drop'];
 const RIDE_IN_PROGRESS = ['searching', 'accepted', 'ongoing', 'arriving', 'started', 'arrived'];
@@ -293,14 +310,30 @@ export async function listMasterOrders(query = {}) {
 
     // Newest page*limit of each source is enough to know the merged page.
     const need = page * limit;
+    /*
+     * Only the fields orderRow / rideRow read. Five collections are read side by
+     * side and the page waits for the slowest; fetching whole documents (a ride
+     * carries its route and location trail, an order its full bill and items)
+     * made the All tab sit on a spinner while megabytes crossed the database
+     * link for a table of a few columns.
+     *
+     * One source failing no longer blanks the list: it is logged and counted as
+     * empty, so the other services' orders still show.
+     */
     const results = await Promise.all(Object.entries(filters).map(async ([key, filter]) => {
         if (!filter) return [key, { rows: [], total: 0 }];
         const coll = sources[key].model.collection;
-        const [rows, total] = await Promise.all([
-            coll.find(filter).sort({ createdAt: -1 }).limit(need).toArray(),
-            coll.countDocuments(filter),
-        ]);
-        return [key, { rows, total }];
+        const projection = key === 'taxi' || key === 'parcel' ? RIDE_LIST_PROJECTION : ORDER_LIST_PROJECTION;
+        try {
+            const [rows, total] = await Promise.all([
+                coll.find(filter, { projection }).sort({ createdAt: -1 }).limit(need).toArray(),
+                coll.countDocuments(filter),
+            ]);
+            return [key, { rows, total }];
+        } catch (err) {
+            console.error(`Master orders: ${key} could not be read:`, err?.message || err);
+            return [key, { rows: [], total: 0 }];
+        }
     }));
     const bySource = Object.fromEntries(results);
 

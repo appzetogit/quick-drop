@@ -337,6 +337,17 @@ const dispatchSchema = new mongoose.Schema(
         }],
         dispatchingAt: { type: Date },
         /*
+         * The one rider an auto-dispatched order is offered to right now
+         * (order-dispatch.service.js tryAutoAssign). Offers go to one rider at a
+         * time; only this rider can accept until expiresAt, after which the next
+         * one is offered. Absent on orders dispatched before this existed.
+         */
+        currentOffer: {
+            partnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'FoodDeliveryPartner', default: undefined },
+            at: { type: Date },
+            expiresAt: { type: Date },
+        },
+        /*
          * Manual assignment (core/delivery/manualAssign.js). 'manual' while an
          * admin's pick is waiting on that rider: auto-dispatch leaves the order
          * alone until manualDeadlineAt, after which the expiry sweep hands it
