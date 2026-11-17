@@ -35,7 +35,18 @@ const normalizeFoodType = (v) => {
     return 'Non-Veg';
 };
 
-const getCreateFoodPricing = (body = {}) => {
+/**
+ * The seller's item form (ItemDetailsPage, shared with food) sends the price as
+ * `basePrice`, which food reads and this fork did not: every new store item
+ * failed "Price is invalid" and an edit's new price was silently dropped. Read
+ * `basePrice` as the price when `price` itself is not sent.
+ */
+const withPrice = (body = {}) => (body.price === undefined && body.basePrice !== undefined && body.basePrice !== null
+    ? { ...body, price: body.basePrice }
+    : body);
+
+const getCreateFoodPricing = (input = {}) => {
+    const body = withPrice(input);
     const variants = normalizeFoodVariantsInput(extractRawFoodVariants(body));
     if (variants.length > 0) {
         return {
@@ -55,7 +66,8 @@ const getCreateFoodPricing = (body = {}) => {
     };
 };
 
-const getUpdatedFoodPricing = (existing = {}, body = {}) => {
+const getUpdatedFoodPricing = (existing = {}, input = {}) => {
+    const body = withPrice(input);
     const variantsTouched = body.variants !== undefined || body.variations !== undefined;
     const existingHasVariants = hasFoodVariants(existing);
     const update = {};

@@ -88,6 +88,15 @@ await check('editing the sizes keeps the stock of a size that kept its id', asyn
   assert.deepEqual(after.variants.map((v) => v.name).sort(), ['1 kg', '10 kg']);
 });
 
+await check('the item form sends the price as basePrice: it is saved, and an edit changes it', async () => {
+  // ItemDetailsPage sends basePrice, not price; this used to fail "Price is invalid".
+  const food = await svc.createRestaurantFood(storeId, { name: 'Potato', basePrice: 100, foodType: 'Veg' });
+  assert.equal(food.price, 100);
+  const id = String(food._id || food.id);
+  await svc.updateRestaurantFood(storeId, id, { name: 'Potato', basePrice: 90 });
+  assert.equal((await FoodItem.findById(id).lean()).price, 90);
+});
+
 await mongoose.disconnect();
 await server.stop();
 console.log(failed ? `\n${failed} FAILED` : '\nall checks passed');
