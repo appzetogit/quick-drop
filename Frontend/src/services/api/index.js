@@ -255,7 +255,7 @@ export const platformSettingsAPI = {
   getProfile: () => apiClient.get("/platform/settings/profile", { contextModule: "admin" }),
   /** Partial save. A masked or empty secret is left unchanged; `null` clears a field. */
   updateProfile: (payload) => apiClient.patch("/platform/settings/profile", payload, { contextModule: "admin" }),
-  /** Connection checks; nothing is saved. `kind` is razorpay | email | sms. */
+  /** Connection checks; nothing is saved. `kind` is razorpay | email | sms | whatsapp. */
   testIntegration: (kind, payload) =>
     apiClient.post(`/platform/settings/profile/test/${kind}`, payload, { contextModule: "admin" }),
 };
@@ -407,6 +407,16 @@ export const couponListAPI = {
   list: (params) => apiClient.get("/platform/coupons", { params, contextModule: "admin" }),
   setLive: (source, id, live) =>
     apiClient.patch(`/platform/coupons/${encodeURIComponent(source)}/${encodeURIComponent(id)}/live`, { live }, { contextModule: "admin" }),
+};
+
+// Master > WhatsApp: customers' WhatsApp messages and receipts for ours (core/whatsapp).
+export const whatsappInboxAPI = {
+  status: () => apiClient.get("/platform/whatsapp/status", { contextModule: "admin" }),
+  conversations: (params) => apiClient.get("/platform/whatsapp/conversations", { params, contextModule: "admin" }),
+  conversation: (phone) =>
+    apiClient.get(`/platform/whatsapp/conversations/${encodeURIComponent(phone)}`, { contextModule: "admin" }),
+  reply: (phone, text) =>
+    apiClient.post(`/platform/whatsapp/conversations/${encodeURIComponent(phone)}/reply`, { text }, { contextModule: "admin" }),
 };
 
 // Master > Help & Support: every service's tickets in one inbox (core/support).

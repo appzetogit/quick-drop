@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { platformSettingsAPI, uploadAPI } from "@food/api"
+import { API_BASE_URL } from "@/services/api/config"
 import { toast } from "sonner"
 import { Loader2, Building2, FileText, ScrollText, PlugZap, Wallet, CheckCircle2, ExternalLink, ImagePlus } from "lucide-react"
 import { legalHtmlToPlainText, plainTextToLegalHtml } from "@food/utils/legalContentFormat"
@@ -383,8 +384,50 @@ function IntegrationCard({ kind, title, description, initial, fields, inUse, tes
   )
 }
 
+/** The webhook address and verify token to paste into Meta, with copy buttons. */
+function WhatsAppWebhookInfo({ inUse }) {
+  // The API's public address (VITE_API_BASE_URL, e.g. https://quickdropsindia.com/api/v1);
+  // a relative or missing base means the API is on this site.
+  const apiOrigin = /^https?:\/\//.test(API_BASE_URL) ? new URL(API_BASE_URL).origin : window.location.origin
+  const callbackUrl = `${apiOrigin}${inUse.callbackPath}`
+  const copy = async (text, what) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success(`${what} copied`)
+    } catch {
+      toast.error("Copy failed: select the text and copy it")
+    }
+  }
+  const Row = ({ label, value, what }) => (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="w-28 shrink-0 text-xs font-medium text-neutral-600">{label}</span>
+      <code className="min-w-0 flex-1 break-all rounded bg-white px-2 py-1 text-xs text-neutral-900 ring-1 ring-neutral-200">{value || "—"}</code>
+      {value && (
+        <button type="button" className={`${ghostCls} px-2 py-1 text-xs`} onClick={() => copy(value, what)}>
+          Copy
+        </button>
+      )}
+    </div>
+  )
+  return (
+    <div className="mb-4 space-y-2 rounded-lg bg-neutral-50 px-3 py-3">
+      <p className="text-xs text-neutral-600">
+        In Meta for Developers, open your app &gt; WhatsApp &gt; Configuration &gt; Webhook, paste these two values, press
+        Verify and save, then subscribe to the <b>messages</b> field.
+      </p>
+      <Row label="Callback URL" value={callbackUrl} what="Callback URL" />
+      <Row label="Verify token" value={inUse.verifyToken} what="Verify token" />
+      <p className={`text-xs ${inUse.appSecretSet ? "text-emerald-700" : "font-semibold text-amber-700"}`}>
+        {inUse.appSecretSet
+          ? "App secret saved: every message from Meta is checked against it."
+          : "App secret not saved yet: Meta can verify the webhook, but its messages are refused until you save the app secret below."}
+      </p>
+    </div>
+  )
+}
+
 function IntegrationsTab({ profile, onSaved }) {
-  const { razorpay, sms, email } = profile.integrations
+  const { razorpay, sms, email, whatsapp } = profile.integrations
   return (
     <div className="space-y-5">
       <IntegrationCard
@@ -454,6 +497,37 @@ function IntegrationsTab({ profile, onSaved }) {
         testExtra={{ key: "sendTo", placeholder: "Email to send a test (optional)" }}
         onSaved={onSaved}
       />
+      {whatsapp && (
+        <IntegrationCard
+          kind="whatsapp"
+          title="WhatsApp (Meta Cloud API)"
+          description="Business number for invoices and customer messages. Incoming messages show in Master > WhatsApp Inbox."
+          initial={{
+            accessToken: whatsapp.accessToken,
+            phoneNumberId: whatsapp.phoneNumberId,
+            businessAccountId: whatsapp.businessAccountId,
+            appSecret: whatsapp.appSecret,
+            verifyToken: whatsapp.verifyToken,
+          }}
+          inUse={
+            <>
+              <InUse source={whatsapp.inUse.source}>
+                {whatsapp.inUse.sending ? <>Sending from phone number id <b>{whatsapp.inUse.phoneNumberId}</b></> : <b>No WhatsApp number is set up for sending.</b>}
+              </InUse>
+              <WhatsAppWebhookInfo inUse={whatsapp.inUse} />
+            </>
+          }
+          fields={[
+            { key: "accessToken", label: "Access token", secret: true, wide: true, hint: "A permanent System User token from Meta Business Settings", placeholder: "Leave as is to keep the saved one" },
+            { key: "phoneNumberId", label: "Phone number id", hint: "WhatsApp > API Setup", placeholder: "1234567890…" },
+            { key: "businessAccountId", label: "WhatsApp business account id", hint: "WhatsApp > API Setup", placeholder: "1029384756…" },
+            { key: "appSecret", label: "App secret", secret: true, hint: "App settings > Basic > App secret", placeholder: "Leave as is to keep the saved one" },
+            { key: "verifyToken", label: "Verify token", hint: "Made for you; change it only if you also change it in Meta", placeholder: "qd_…" },
+          ]}
+          saveNote="Invoices and replies will be sent from this WhatsApp number from now on. Press Test first. Continue?"
+          onSaved={onSaved}
+        />
+      )}
     </div>
   )
 }

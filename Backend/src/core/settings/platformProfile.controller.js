@@ -8,6 +8,7 @@ import {
   razorpayCredentials,
   checkRazorpayPair,
   smsCredentials,
+  whatsappCredentials,
 } from './platformProfile.service.js';
 
 const actorOf = (req) => String(req.financeActor?.adminId || req.user?.userId || '');
@@ -104,5 +105,45 @@ export const testSmsController = async (req, res) => {
     return sendResponse(res, 200, `Test SMS sent to ${phone} (code 123456)`, { ok: true, provider: text });
   } catch (err) {
     return sendError(res, 400, `Could not reach the SMS provider: ${err.message}`);
+  }
+};
+
+/**
+ * WhatsApp: asks Meta for the business number behind the phone number id with
+ * the access token (nothing is sent to anyone). With a WhatsApp business
+ * account id it also subscribes this app to that account, which is what makes
+ * Meta deliver the account's messages and receipts to our webhook; repeating
+ * it is harmless.
+ */
+export const testWhatsAppController = async (req, res) => {
+  try {
+    const profile = await getPlatformProfile();
+    const w = profile.integrations?.whatsapp || {};
+    const current = whatsappCredentials();
+    const b = req.body || {};
+    const accessToken = pick(b.accessToken, w.accessToken || current.accessToken);
+    const phoneNumberId = pick(b.phoneNumberId, w.phoneNumberId || current.phoneNumberId);
+    const businessAccountId = pick(b.businessAccountId, w.businessAccountId || current.businessAccountId);
+    if (!accessToken || !phoneNumberId) return sendError(res, 400, 'Enter the access token and phone number id first');
+    const graph = `https://graph.facebook.com/${current.version}`;
+    const auth = { Authorization: `Bearer ${accessToken}` };
+    const metaError = async (r) => (await r.json().catch(() => ({})))?.error?.message || `Meta answered ${r.status}`;
+
+    const phoneRes = await fetch(`${graph}/${encodeURIComponent(phoneNumberId)}?fields=display_phone_number,verified_name,quality_rating`, { headers: auth, signal: AbortSignal.timeout(15000) });
+    if (!phoneRes.ok) return sendError(res, 400, `Meta rejected the token or phone number id: ${await metaError(phoneRes)}`);
+    const phone = await phoneRes.json();
+    let message = `Works: ${phone.verified_name || 'business'} (${phone.display_phone_number || phoneNumberId})`;
+
+    if (businessAccountId) {
+      const subRes = await fetch(`${graph}/${encodeURIComponent(businessAccountId)}/subscribed_apps`, { method: 'POST', headers: auth, signal: AbortSignal.timeout(15000) });
+      message += subRes.ok
+        ? '. This app is subscribed to the account, so messages and receipts will reach the webhook.'
+        : `. Could not subscribe the app to the business account: ${await metaError(subRes)}`;
+    } else {
+      message += '. Add the WhatsApp business account id to subscribe the webhook too.';
+    }
+    return sendResponse(res, 200, message, { ok: true, phone });
+  } catch (err) {
+    return sendError(res, 400, `Could not reach Meta: ${err.message}`);
   }
 };

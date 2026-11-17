@@ -2,6 +2,8 @@ import axios from 'axios';
 import mongoose from 'mongoose';
 import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
+import { whatsappCredentials } from '../core/settings/platformProfile.service.js';
+import { recordOutgoingWhatsApp } from '../core/whatsapp/whatsappInbox.service.js';
 
 /**
  * Normalizes any phone number format (local, international, leading plus or zeros)
@@ -53,9 +55,17 @@ async function resolveUserWhatsAppDetails(user, fallbackPhone = '') {
 
 /**
  * Sends a generic message payload to WhatsApp Cloud Meta API.
+ *
+ * Credentials come from Master settings, else .env (whatsappCredentials). The
+ * sent message is recorded in the WhatsApp inbox, where Meta's sent /
+ * delivered / read receipts then land on it. Returns the Meta message id
+ * (truthy) on success, false when WhatsApp is not set up; throws on a Meta error.
  */
-export async function sendWhatsAppMessage(to, payload) {
-  const { whatsappAccessToken, whatsappPhoneNumberId, whatsappVersion } = config;
+export async function sendWhatsAppMessage(to, payload, { sentBy = '' } = {}) {
+  const creds = whatsappCredentials();
+  const whatsappAccessToken = creds.accessToken;
+  const whatsappPhoneNumberId = creds.phoneNumberId;
+  const whatsappVersion = creds.version;
 
   if (!whatsappAccessToken || !whatsappPhoneNumberId) {
     logger.warn('[WhatsApp] API not configured: WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID are required.');
@@ -86,8 +96,13 @@ export async function sendWhatsAppMessage(to, payload) {
       }
     );
 
-    logger.info(`[WhatsApp] Message successfully sent to ${cleanPhone}. ID: ${response.data?.messages?.[0]?.id}`);
-    return true;
+    const wamid = response.data?.messages?.[0]?.id;
+    logger.info(`[WhatsApp] Message successfully sent to ${cleanPhone}. ID: ${wamid}`);
+    if (wamid) {
+      await recordOutgoingWhatsApp({ wamid, phone: response.data?.contacts?.[0]?.wa_id || cleanPhone, payload, phoneNumberId: whatsappPhoneNumberId, sentBy })
+        .catch((err) => logger.warn(`[WhatsApp] sent ${wamid} but could not record it: ${err.message}`));
+    }
+    return wamid || true;
   } catch (error) {
     const errData = error.response?.data || error.message;
     logger.error(`[WhatsApp] Send error to ${cleanPhone}:`, JSON.stringify(errData));
@@ -155,7 +170,7 @@ export async function sendFoodInvoiceWhatsApp(order, user) {
         ]
       }
     };
-    return sendWhatsAppMessage(recipientPhone, templatePayload);
+    return sendWhatsAppMessage(recipientPhone, templatePayload, { sentBy: 'food-invoice' });
   } else {
     // Free-form Receipt Fallback Mode
     const itemsListText = items.map(i => `• _${i.name}_ x${i.quantity} - *₹${i.total.toFixed(2)}*`).join('\n');
@@ -183,7 +198,7 @@ If you have any questions, reach out to our customer support.`;
       type: 'text',
       text: { body: invoiceText }
     };
-    return sendWhatsAppMessage(recipientPhone, textPayload);
+    return sendWhatsAppMessage(recipientPhone, textPayload, { sentBy: 'food-invoice' });
   }
 }
 
@@ -250,7 +265,7 @@ export async function sendTaxiInvoiceWhatsApp(ride, user) {
         ]
       }
     };
-    return sendWhatsAppMessage(recipientPhone, templatePayload);
+    return sendWhatsAppMessage(recipientPhone, templatePayload, { sentBy: 'taxi-invoice' });
   } else {
     // Free-form Receipt Fallback Mode
     const invoiceText = `*K9 RIDES - TRIP INVOICE* 🚖
@@ -281,6 +296,6 @@ We hope you had a pleasant trip! Support: support@k9rides.com`;
       type: 'text',
       text: { body: invoiceText }
     };
-    return sendWhatsAppMessage(recipientPhone, textPayload);
+    return sendWhatsAppMessage(recipientPhone, textPayload, { sentBy: 'taxi-invoice' });
   }
 }

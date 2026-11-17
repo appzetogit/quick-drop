@@ -67,6 +67,16 @@ const schema = new mongoose.Schema(
         pass: secret,
         from: { type: String, default: '', trim: true },
       },
+      // Meta WhatsApp Cloud API (core/whatsapp). The verify token is ours: Meta
+      // echoes it when the webhook is registered, and the admin copies it from
+      // the settings screen, so it is shown whole there.
+      whatsapp: {
+        accessToken: secret,
+        phoneNumberId: { type: String, default: '', trim: true },
+        businessAccountId: { type: String, default: '', trim: true },
+        appSecret: secret,
+        verifyToken: { type: String, default: '', trim: true },
+      },
     },
     updatedBy: { type: String, default: '' },
   },

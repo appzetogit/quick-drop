@@ -14,6 +14,7 @@
  * loaded at boot, refreshed every 30s (so the workers process follows too),
  * and reloaded immediately in the process that saves.
  */
+import { randomBytes } from 'crypto';
 import { PlatformProfile } from './platformProfile.model.js';
 import { logger } from '../../utils/logger.js';
 
@@ -23,6 +24,8 @@ const SECRET_PATHS = [
   'integrations.razorpay.webhookSecret',
   'integrations.sms.apiKey',
   'integrations.email.pass',
+  'integrations.whatsapp.accessToken',
+  'integrations.whatsapp.appSecret',
 ];
 
 let cached = null;
@@ -176,6 +179,44 @@ export const emailCredentials = () => {
   };
 };
 
+/**
+ * Meta WhatsApp Cloud API. Each field falls back to .env on its own: the
+ * sender (token + phone number id) was configured in .env before this screen
+ * existed, and the webhook values (app secret, verify token) are new.
+ */
+export const whatsappCredentials = () => {
+  const w = snapshot().integrations?.whatsapp || {};
+  const master = Boolean(str(w.accessToken) && str(w.phoneNumberId));
+  return {
+    accessToken: master ? str(w.accessToken) : str(process.env.WHATSAPP_ACCESS_TOKEN),
+    phoneNumberId: master ? str(w.phoneNumberId) : str(process.env.WHATSAPP_PHONE_NUMBER_ID),
+    businessAccountId: str(w.businessAccountId) || str(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID),
+    appSecret: str(w.appSecret) || str(process.env.WHATSAPP_APP_SECRET),
+    verifyToken: str(w.verifyToken) || str(process.env.WHATSAPP_VERIFY_TOKEN),
+    version: str(process.env.WHATSAPP_VERSION) || 'v20.0',
+    source: master ? 'master' : 'env',
+  };
+};
+
+/**
+ * The webhook's verify token, made the first time an admin opens the screen
+ * when none is set anywhere: 40 random hex characters, saved, then shown on
+ * the screen to paste into Meta. An admin can replace it with their own.
+ */
+export const ensureWhatsAppVerifyToken = async () => {
+  await refreshPlatformProfile();
+  if (whatsappCredentials().verifyToken) return;
+  const token = `qd_${randomBytes(20).toString('hex')}`;
+  // Make sure the one document exists, then set the token only if still empty,
+  // so two admins opening the screen at once cannot leave Meta with a stale one.
+  await PlatformProfile.updateOne({ _id: 'platform' }, { $setOnInsert: { updatedBy: '' } }, { upsert: true });
+  await PlatformProfile.updateOne(
+    { _id: 'platform', 'integrations.whatsapp.verifyToken': { $in: [null, ''] } },
+    { $set: { 'integrations.whatsapp.verifyToken': token } },
+  );
+  await refreshPlatformProfile();
+};
+
 // For CommonJS code (service provider), which cannot import this module
 // synchronously: see platformCredentials.cjs.
 globalThis.__qdPlatformCredentials = { razorpayCredentials, smsCredentials, emailCredentials };
@@ -241,7 +282,9 @@ const mask = (v) => {
 
 /** For the admin screen: everything, secrets reduced to their last four characters. */
 export const getPlatformProfileForAdmin = async () => {
+  await ensureWhatsAppVerifyToken().catch((err) => logger.warn(`platformProfile: WhatsApp verify token not made: ${err.message}`));
   const p = await refreshPlatformProfile();
+  const wa = whatsappCredentials();
   const i = p.integrations || {};
   const rz = razorpayCredentials();
   const sms = smsCredentials();
@@ -279,6 +322,22 @@ export const getPlatformProfileForAdmin = async () => {
         from: str(i.email?.from),
         inUse: { source: mail.source, configured: Boolean(mail.host && mail.user && mail.pass), host: mail.host, from: mail.from },
       },
+      whatsapp: {
+        accessToken: mask(i.whatsapp?.accessToken),
+        phoneNumberId: str(i.whatsapp?.phoneNumberId),
+        businessAccountId: str(i.whatsapp?.businessAccountId),
+        appSecret: mask(i.whatsapp?.appSecret),
+        verifyToken: str(i.whatsapp?.verifyToken),
+        inUse: {
+          source: wa.source,
+          sending: Boolean(wa.accessToken && wa.phoneNumberId),
+          phoneNumberId: wa.phoneNumberId,
+          // Webhook values in use, wherever they came from.
+          appSecretSet: Boolean(wa.appSecret),
+          verifyToken: wa.verifyToken,
+          callbackPath: '/api/v1/whatsapp/webhook',
+        },
+      },
     },
     updatedAt: p.updatedAt || null,
   };
@@ -292,8 +351,9 @@ const ALLOWED = {
   'integrations.razorpay': ['keyId', 'keySecret', 'webhookSecret'],
   'integrations.sms': ['apiKey', 'senderId', 'templateId', 'templateText'],
   'integrations.email': ['host', 'port', 'secure', 'user', 'pass', 'from'],
+  'integrations.whatsapp': ['accessToken', 'phoneNumberId', 'businessAccountId', 'appSecret', 'verifyToken'],
 };
-const SECRET_FIELDS = new Set(['keySecret', 'webhookSecret', 'apiKey', 'pass']);
+const SECRET_FIELDS = new Set(['keySecret', 'webhookSecret', 'apiKey', 'pass', 'accessToken', 'appSecret']);
 
 const validate = (section, field, value) => {
   const bad = (m) => { const e = new Error(m); e.statusCode = 400; throw e; };
@@ -306,6 +366,9 @@ const validate = (section, field, value) => {
   if (field === 'keyId' && !/^rzp_(live|test)_\w+$/.test(value)) bad('Razorpay key id starts with rzp_live_ or rzp_test_');
   if (field === 'port' && !(Number(value) > 0 && Number(value) < 65536)) bad('Port must be a number like 587 or 465');
   if (field === 'templateText' && !String(value).includes('{{OTP}}')) bad('The SMS template must contain {{OTP}} where the code goes');
+  if ((field === 'phoneNumberId' || field === 'businessAccountId') && !/^\d{6,25}$/.test(value)) bad('Phone number id and business account id are the long numbers from Meta > WhatsApp > API Setup');
+  if (field === 'verifyToken' && !/^[\w.~-]{8,100}$/.test(value)) bad('Verify token: 8 to 100 letters, digits, _ . ~ or -');
+  if (field === 'appSecret' && !/^[a-f0-9]{32}$/i.test(value)) bad('App secret is the 32-character value from Meta > App settings > Basic');
   if ((field === 'logoUrl' || field === 'faviconUrl') && !/^https?:\/\//.test(value)) bad('Upload an image or paste an https:// link');
   return value;
 };

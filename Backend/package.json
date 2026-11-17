@@ -59,6 +59,7 @@
     "test:notifications": "node tests/notifications.unified.smoke.mjs",
     "test:payments": "node tests/payments.unified.smoke.mjs",
     "test:webhook": "node tests/webhook.razorpay.smoke.mjs",
+    "test:whatsapp": "node tests/whatsapp-webhook.smoke.mjs",
     "test:activity": "node tests/activity.smoke.mjs",
     "test:security": "node tests/security.bypass.smoke.mjs",
     "test:qc-returns": "node tests/qc.returns.smoke.mjs",

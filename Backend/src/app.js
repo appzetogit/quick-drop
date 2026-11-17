@@ -13,6 +13,7 @@ import { apiRateLimiter } from './middleware/rateLimit.js';
 import { responseTimeLogger } from './middleware/responseTimeLogger.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import { healthCheck } from './config/health.js';
+import whatsappWebhookRouter from './core/whatsapp/whatsappWebhook.routes.js';
 
 
 const app = express();
@@ -118,6 +119,9 @@ app.use(cors({
     credentials: true
 }));
 app.use(morgan('dev'));
+// Meta WhatsApp webhook: reads its own raw body to check Meta's signature, so it
+// sits ahead of the JSON parser, sanitizers and rate limiter (see the router).
+app.use('/api/v1/whatsapp/webhook', whatsappWebhookRouter());
 app.use(express.json({
     limit: config.requestJsonLimit,
     verify: (req, res, buf) => {

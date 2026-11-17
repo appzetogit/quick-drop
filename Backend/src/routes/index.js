@@ -46,6 +46,7 @@ import { zoneSettingsWriteGuard } from '../core/admin/zoneAdminSettings.js';
 import appServicesRoutes from '../core/appServices/appServices.routes.js';
 import platformAdminRoutes from '../core/admin/platformAdmins.routes.js';
 import supportInboxRoutes from '../core/support/supportInbox.routes.js';
+import whatsappInboxRoutes from '../core/whatsapp/whatsappInbox.routes.js';
 import couponListRoutes from '../core/promotions/couponList.routes.js';
 import platformPnlRoutes from '../core/finance/platformPnl.routes.js';
 import homeContentRoutes from '../core/cms/homeContent.routes.js';
@@ -130,6 +131,8 @@ router.use('/v1/platform/app-services', appServicesRoutes);
 router.use('/v1/platform/admins', platformAdminRoutes);
 // One support inbox over every service's tickets (Master > Help & Support).
 router.use('/v1/platform/support', supportInboxRoutes);
+// WhatsApp messages from customers and receipts for ours (Master > WhatsApp).
+router.use('/v1/platform/whatsapp', whatsappInboxRoutes);
 // Every service's coupons in one list (Master > Coupons).
 router.use('/v1/platform/coupons', couponListRoutes);
 // What the platform kept, across every service (Master > Platform Earnings).

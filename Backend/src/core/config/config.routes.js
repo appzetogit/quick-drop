@@ -13,6 +13,7 @@ import {
     testRazorpayController,
     testEmailController,
     testSmsController,
+    testWhatsAppController,
 } from '../settings/platformProfile.controller.js';
 import { listAppLegal, saveAppLegal } from '../settings/appLegal.js';
 import { getEarningsController } from '../finance/earnings.controller.js';
@@ -41,6 +42,7 @@ router.patch('/profile', requireFinancePermission('PLATFORM_SETTING_SET'), updat
 router.post('/profile/test/razorpay', requireFinancePermission('PLATFORM_SETTING_SET'), testRazorpayController);
 router.post('/profile/test/email', requireFinancePermission('PLATFORM_SETTING_SET'), testEmailController);
 router.post('/profile/test/sms', requireFinancePermission('PLATFORM_SETTING_SET'), testSmsController);
+router.post('/profile/test/whatsapp', requireFinancePermission('PLATFORM_SETTING_SET'), testWhatsAppController);
 
 // Terms and privacy per app (core/settings/appLegal.js).
 router.get('/app-legal', listAppLegal);
