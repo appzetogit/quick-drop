@@ -506,7 +506,10 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
   const straightLineKm = calculateDistanceKm(restaurant, deliveryAddress);
 
   const deliveryFeeResult = resolveUserDeliveryFee(feeSettings, { subtotal, distanceKm });
-  const deliveryFee = round2(deliveryFeeResult.deliveryFee);
+  let deliveryFee = round2(deliveryFeeResult.deliveryFee);
+  let waivedDeliveryFee = 0;
+  // Why an entered coupon was not applied, when there is something to say.
+  let couponRejectedReason = null;
   distanceKm = deliveryFeeResult.distanceKm ?? distanceKm;
 
   let discount = 0;
@@ -584,7 +587,24 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
         perUserOk &&
         firstOrderOk;
 
-      if (allowed) {
+      if (allowed && offer.discountType === "free-delivery") {
+        /*
+         * Waives the delivery fee instead of discounting the order (and with it
+         * the 18% GST on that fee). The platform absorbs it; the rider's pay is
+         * worked out from distance (calculateRiderEarning), not from this fee,
+         * so it is unchanged, and the store's payout is untouched. The "quick
+         * delivery" surcharge is not waived. With no fee to waive the coupon is
+         * declined rather than spent for nothing.
+         */
+        if (deliveryFee > 0) {
+          waivedDeliveryFee = deliveryFee;
+          deliveryFee = 0;
+          appliedCoupon = { code: codeRaw, discount: 0, type: "free-delivery", deliveryFeeWaived: waivedDeliveryFee };
+          discountFundedByPlatform = true;
+        } else {
+          couponRejectedReason = "Delivery is already free on this order, so this coupon was not used. Keep it for another order.";
+        }
+      } else if (allowed) {
         if (offer.discountType === "percentage") {
           const raw = subtotal * (Number(offer.discountValue) / 100);
           const capped = Number(offer.maxDiscount)
@@ -659,6 +679,8 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
     currency: "INR",
     couponCode: appliedCoupon?.code || codeRaw || null,
     appliedCoupon,
+    couponRejectedReason: appliedCoupon ? null : couponRejectedReason,
+    waivedDeliveryFee,
     distanceKm: Number.isFinite(distanceKm) ? Number(distanceKm.toFixed(2)) : null,
     roadDistanceKm: Number.isFinite(distanceKm) ? Number(distanceKm.toFixed(2)) : null,
     straightLineDistanceKm: Number.isFinite(straightLineKm)
@@ -719,6 +741,9 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
         source: deliveryFeeResult.source,
         distanceKm: Number.isFinite(distanceKm) ? Number(distanceKm.toFixed(2)) : null,
         deliveryFee,
+        ...(waivedDeliveryFee > 0
+          ? { freeDeliveryApplied: true, freeDeliveryReason: 'coupon', freeDeliveryCoupon: appliedCoupon?.code || null, waivedDeliveryFee }
+          : {}),
         message: Number.isFinite(distanceKm)
           ? `Distance: ${Number(distanceKm).toFixed(1)} km`
           : null,

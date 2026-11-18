@@ -117,6 +117,13 @@ const pricingSchema = new mongoose.Schema(
          *  were taxed pre-coupon whenever discountFundedByPlatform was true. */
         gstOnPreDiscountValue: { type: Boolean },
         couponCode: { type: String, default: null, trim: true, uppercase: true },
+        /**
+         * A free-delivery coupon applied: the delivery fee (waivedDeliveryFee)
+         * was waived instead of a discount, and the platform absorbs it. Counts
+         * the coupon as used even though `discount` is 0.
+         */
+        couponFreeDelivery: { type: Boolean, default: false },
+        waivedDeliveryFee: { type: Number, default: 0, min: 0 },
         total: { type: Number, required: true, min: 0 },
         currency: { type: String, default: 'INR' },
         /** Straight-line restaurant ↔ customer km (fee calculation) */

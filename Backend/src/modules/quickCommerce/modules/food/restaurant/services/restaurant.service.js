@@ -212,7 +212,9 @@ const formatRestaurantOfferSummary = (offer) => {
     const minOrderValue = Number(offer.minOrderValue) || 0;
 
     let summary = '';
-    if (discountType === 'flat-price') {
+    if (discountType === 'free-delivery') {
+        summary = 'Free delivery';
+    } else if (discountType === 'flat-price') {
         summary = `Flat ₹${discountValue} OFF`;
     } else {
         summary = `${discountValue}% OFF`;
@@ -2624,9 +2626,11 @@ export const listPublicOffers = async (query = {}) => {
                 : 'All Restaurants';
 
         const title =
-            o.discountType === 'percentage'
-                ? `${Number(o.discountValue) || 0}% OFF`
-                : `Flat ₹${Number(o.discountValue) || 0} OFF`;
+            o.discountType === 'free-delivery'
+                ? 'FREE DELIVERY'
+                : o.discountType === 'percentage'
+                    ? `${Number(o.discountValue) || 0}% OFF`
+                    : `Flat ₹${Number(o.discountValue) || 0} OFF`;
 
         return {
             id: String(o._id),

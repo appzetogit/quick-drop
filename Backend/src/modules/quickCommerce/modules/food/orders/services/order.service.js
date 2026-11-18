@@ -125,9 +125,13 @@ function isAwaitingOnlinePaymentMethod(paymentMethod) {
  * Online orders count on payment, so there the check is that no other unpaid
  * order of this customer holds the same coupon.
  */
+/** The order's coupon actually applied: a discount, or a free-delivery waiver. */
+const couponApplied = (order) =>
+  Number(order?.pricing?.discount) > 0 || order?.pricing?.couponFreeDelivery === true;
+
 async function claimCouponForCustomer(order, userId, awaitingOnline) {
   const couponCode = order?.pricing?.couponCode ? String(order.pricing.couponCode).trim().toUpperCase() : "";
-  if (!couponCode || !(Number(order?.pricing?.discount) > 0)) return false;
+  if (!couponCode || !couponApplied(order)) return false;
   const offer = await FoodOffer.findOne({ couponCode }).select("_id perUserLimit").lean();
   const perUser = Number(offer?.perUserLimit) || 0;
   if (!offer || perUser <= 0) return false;
@@ -168,9 +172,9 @@ async function incrementCouponUsageForOrder(order, userId) {
     ? String(order.pricing.couponCode).trim().toUpperCase()
     : "";
   if (!couponCode) return;
-  // A stored code with no applied discount means the coupon was rejected at
-  // pricing time — don't consume the user's/offer's usage allowance for it.
-  if (!(Number(order?.pricing?.discount) > 0)) return;
+  // A stored code with no applied discount (or free-delivery waiver) means the
+  // coupon was rejected at pricing time — don't consume the usage allowance.
+  if (!couponApplied(order)) return;
 
   try {
     const offer = await FoodOffer.findOne({ couponCode }).lean();
@@ -751,6 +755,8 @@ export async function createOrder(userId, dto) {
       couponCode: pricingResult.pricing?.couponCode
         ? String(pricingResult.pricing.couponCode).trim().toUpperCase()
         : null,
+      couponFreeDelivery: pricingResult.pricing?.appliedCoupon?.type === "free-delivery",
+      waivedDeliveryFee: Number(pricingResult.pricing?.waivedDeliveryFee) || 0,
       roundOff: Number(pricingResult.pricing?.roundOff) || 0,
       total: Number(pricingResult.pricing?.total) || 0,
       currency: String(pricingResult.pricing?.currency || "INR"),
