@@ -4,8 +4,8 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 
 const createOfferSchema = z.object({
     couponCode: z.string().min(1, 'Coupon code is required'),
-    discountType: z.enum(['percentage', 'flat-price']).default('percentage'),
-    discountValue: z.number().positive('Discount value must be greater than 0'),
+    discountType: z.enum(['percentage', 'flat-price', 'free-delivery']).default('percentage'),
+    discountValue: z.number().min(0),
     customerScope: z.enum(['all', 'first-time']).default('all'),
     restaurantScope: z.enum(['all', 'selected']).default('all'),
     restaurantId: z.string().optional(),
@@ -18,12 +18,17 @@ const createOfferSchema = z.object({
     isFirstOrderOnly: z.boolean().optional()
 });
 
-export const validateCreateOfferDto = (body) => {
+/**
+ * `allowFreeDelivery`: only the admin may create a free-delivery coupon, since
+ * the platform pays the waived fee; the restaurant form shares this validator.
+ */
+export const validateCreateOfferDto = (body, { allowFreeDelivery = false } = {}) => {
+    const freeDelivery = body?.discountType === 'free-delivery';
     const normalized = {
         ...body,
         couponCode: typeof body?.couponCode === 'string' ? body.couponCode.trim() : body?.couponCode,
         discountType: body?.discountType,
-        discountValue: Number(body?.discountValue),
+        discountValue: freeDelivery ? 0 : Number(body?.discountValue),
         customerScope: body?.customerScope,
         restaurantScope: body?.restaurantScope,
         restaurantId: body?.restaurantId ? String(body.restaurantId) : undefined,
@@ -39,6 +44,13 @@ export const validateCreateOfferDto = (body) => {
     const result = createOfferSchema.safeParse(normalized);
     if (!result.success) {
         throw new ValidationError(result.error.errors[0].message);
+    }
+
+    if (freeDelivery && !allowFreeDelivery) {
+        throw new ValidationError('Free delivery coupons can only be created by the admin');
+    }
+    if (!freeDelivery && !(result.data.discountValue > 0)) {
+        throw new ValidationError('Discount value must be greater than 0');
     }
 
     if (result.data.restaurantScope === 'selected') {

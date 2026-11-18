@@ -152,7 +152,7 @@ export default function CouponListPage() {
                               {active ? "ACTIVE" : "INACTIVE"}
                             </span>
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-gray-100 text-gray-700">
-                              {coupon.discountType === "percentage" ? "% DISCOUNT" : "FLAT OFF"}
+                              {coupon.discountType === "free-delivery" ? "FREE DELIVERY" : coupon.discountType === "percentage" ? "% DISCOUNT" : "FLAT OFF"}
                             </span>
                           </div>
                           <div className="relative" data-menu-id={coupon.id}>
@@ -201,6 +201,9 @@ export default function CouponListPage() {
                         </div>
 
                         {/* Discount value */}
+                        {coupon.discountType === "free-delivery" ? (
+                        <div className="mb-3 text-2xl font-black text-gray-900">Free delivery</div>
+                        ) : (
                         <div className="flex items-baseline gap-1.5 mb-3">
                           {coupon.discountType === "percentage"
                             ? <Percent className="w-5 h-5 text-gray-900 self-center" />
@@ -210,6 +213,7 @@ export default function CouponListPage() {
                             {coupon.discountType === "percentage" ? "% off order" : "flat discount"}
                           </span>
                         </div>
+                        )}
 
                         {/* Details */}
                         <div className="grid grid-cols-2 gap-3 pt-3 border-t border-dashed border-gray-200">

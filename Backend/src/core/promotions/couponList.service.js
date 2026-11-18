@@ -101,7 +101,9 @@ function storeRow(source, doc, names, ceiling, now) {
     source,
     sourceLabel: SOURCES[source].label,
     code: doc.couponCode,
-    discount: pct
+    discount: doc.discountType === 'free-delivery'
+      ? 'Free delivery'
+      : pct
       ? `${value}% off${Number(doc.maxDiscount) > 0 ? ` up to ${money(doc.maxDiscount)}` : ''}`
       : `${money(value)} off`,
     minOrder: Number(doc.minOrderValue) || 0,

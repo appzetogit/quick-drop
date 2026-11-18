@@ -95,7 +95,9 @@ export default function Coupons() {
     const pct = f.discountType === "percentage"
     const value = Number(f.discountValue)
     if (!String(f.couponCode || "").trim()) e.couponCode = "Coupon code is required"
-    if (!Number.isFinite(value) || value <= 0) e.discountValue = "Discount must be greater than 0"
+    // A free-delivery coupon waives the delivery fee; it has no amount.
+    const freeDelivery = f.discountType === "free-delivery"
+    if (!freeDelivery && (!Number.isFinite(value) || value <= 0)) e.discountValue = "Discount must be greater than 0"
     if (pct && (f.maxDiscount === "" || f.maxDiscount === null || f.maxDiscount === undefined)) {
       e.maxDiscount = "Max discount is required for percentage coupons"
     }
@@ -122,10 +124,11 @@ export default function Coupons() {
       value = String(value || "").toUpperCase()
     }
     if (field === "discountType") {
-      // When switching to flat-price, clear and disable maxDiscount
-      if (value === "flat-price") {
+      // When switching to flat-price or free delivery, clear and disable maxDiscount
+      // (and the amount, which free delivery does not have).
+      if (value === "flat-price" || value === "free-delivery") {
         setFormData((prev) => {
-          const next = { ...prev, discountType: value, maxDiscount: "" }
+          const next = { ...prev, discountType: value, maxDiscount: "", ...(value === "free-delivery" ? { discountValue: "" } : {}) }
           validateForm(next)
           return next
         })
@@ -194,8 +197,9 @@ export default function Coupons() {
       return
     }
 
-    const parsedDiscountValue = Number(formData.discountValue)
-    if (!Number.isFinite(parsedDiscountValue) || parsedDiscountValue <= 0) {
+    const isFreeDelivery = formData.discountType === "free-delivery"
+    const parsedDiscountValue = isFreeDelivery ? 0 : Number(formData.discountValue)
+    if (!isFreeDelivery && (!Number.isFinite(parsedDiscountValue) || parsedDiscountValue <= 0)) {
       setSubmitError("Discount value must be greater than 0")
       return
     }
@@ -333,9 +337,18 @@ export default function Coupons() {
                   >
                     <option value="percentage">Percentage</option>
                     <option value="flat-price">Flat Amount</option>
+                    <option value="free-delivery">Free Delivery</option>
                   </select>
                 </div>
 
+                {formData.discountType === "free-delivery" ? (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">Discount</label>
+                  <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                    The delivery fee is waived. The platform pays it; the rider and the restaurant get their usual amount. Pick "First-time Users" below for a first-order offer.
+                  </p>
+                </div>
+                ) : (
                 <div title={formData.discountType === "flat-price" ? "Max discount is not applicable for flat coupons" : ""}>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
                     {formData.discountType === "percentage" ? "Discount (%)" : "Discount Amount"}
@@ -351,6 +364,7 @@ export default function Coupons() {
                   />
                   {errors.discountValue && <p className="mt-1 text-xs text-red-600">{errors.discountValue}</p>}
                 </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">Customer Scope</label>
@@ -423,7 +437,7 @@ export default function Coupons() {
                     value={formData.maxDiscount}
                     onChange={(e) => handleFormChange("maxDiscount", e.target.value)}
                   placeholder="e.g. 100"
-                    disabled={formData.discountType === "flat-price"}
+                    disabled={formData.discountType !== "percentage"}
                     className={`w-full px-3 py-2.5 text-sm rounded-lg border ${errors.maxDiscount ? "border-red-500" : "border-slate-300"} bg-white disabled:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500`}
                 />
                   {formData.discountType === "percentage" && errors.maxDiscount && <p className="mt-1 text-xs text-red-600">{errors.maxDiscount}</p>}
@@ -598,7 +612,9 @@ export default function Coupons() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="text-sm text-slate-700 whitespace-nowrap">
-                          {offer.discountType === 'flat-price'
+                          {offer.discountType === 'free-delivery'
+                            ? 'Free delivery'
+                            : offer.discountType === 'flat-price'
                             ? `\u20B9${offer.originalPrice - offer.discountedPrice} OFF`
                             : `${offer.discountPercentage}% OFF${Number(offer.maxDiscount) ? ` (up to \u20B9${Number(offer.maxDiscount)})` : ""}`}
                         </span>

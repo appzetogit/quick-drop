@@ -812,11 +812,15 @@ export default function Cart() {
                   code: coupon.couponCode,
                   discount: coupon.originalPrice - coupon.discountedPrice,
                   discountPercentage: coupon.discountPercentage,
-                  discountDisplay: coupon.discountType === "percentage"
+                  discountDisplay: coupon.discountType === "free-delivery"
+                    ? "FREE DELIVERY"
+                    : coupon.discountType === "percentage"
                     ? `${coupon.discountPercentage}% OFF`
                     : `${RUPEE_SYMBOL}${Math.max(0, (coupon.originalPrice || 0) - (coupon.discountedPrice || 0))} OFF`,
                   minOrder: coupon.minOrderValue || 0,
-                  description: coupon.discountType === "percentage"
+                  description: coupon.discountType === "free-delivery"
+                    ? `Free delivery with '${coupon.couponCode}'`
+                    : coupon.discountType === "percentage"
                     ? `${coupon.discountPercentage}% OFF with '${coupon.couponCode}'`
                     : `Save ${RUPEE_SYMBOL}${Math.max(0, (coupon.originalPrice || 0) - (coupon.discountedPrice || 0))} with '${coupon.couponCode}'`,
                   originalPrice: coupon.originalPrice,

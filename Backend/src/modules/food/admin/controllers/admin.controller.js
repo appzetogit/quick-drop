@@ -873,7 +873,7 @@ export async function getAllOffers(req, res, next) {
 
 export async function createAdminOffer(req, res, next) {
     try {
-        const body = validateCreateOfferDto(req.body || {});
+        const body = validateCreateOfferDto(req.body || {}, { allowFreeDelivery: true });
         const created = await adminService.createAdminOffer(body);
         res.status(201).json({ success: true, message: 'Offer created successfully', data: { offer: created } });
     } catch (error) {

@@ -874,7 +874,37 @@ export async function calculateOrderPricing(userId, dto) {
         perUserOk &&
         firstOrderOk;
 
-      if (allowed) {
+      if (allowed && offer.discountType === "free-delivery") {
+        /*
+         * A free-delivery coupon waives the delivery fee instead of discounting
+         * the food. Same path as the free-delivery rules above: the platform
+         * absorbs the fee (recorded as waivedDeliveryFee), the rider's earning
+         * was settled from the fee before this point and does not change, and
+         * the restaurant's payout is untouched. Surge is not waived.
+         *
+         * When there is no fee to waive (delivery already free, or nothing
+         * charged) the coupon is declined rather than spent for nothing, so a
+         * first-order code is still there for an order that needs it.
+         */
+        if (deliveryFee > 0) {
+          const waivedAmount = deliveryFee;
+          deliveryFee = 0;
+          deliveryFeeBreakdown = {
+            ...(deliveryFeeBreakdown || {}),
+            freeDeliveryApplied: true,
+            freeDeliveryReason: 'coupon',
+            freeDeliverySource: 'coupon',
+            freeDeliveryCoupon: codeRaw,
+            waivedDeliveryFee: waivedAmount,
+            appliedDeliveryFee: 0,
+          };
+          appliedCoupon = { code: codeRaw, discount: 0, type: 'free-delivery', deliveryFeeWaived: waivedAmount };
+        } else {
+          couponRejectedReason = deliveryFeeBreakdown?.freeDeliveryApplied
+            ? 'Delivery is already free on this order, so this coupon was not used. Keep it for another order.'
+            : 'This order has no delivery fee, so this coupon was not used.';
+        }
+      } else if (allowed) {
         if (offer.discountType === "percentage") {
           const raw = subtotal * (Number(offer.discountValue) / 100);
           const capped = Number(offer.maxDiscount)

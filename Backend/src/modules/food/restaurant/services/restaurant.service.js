@@ -2087,10 +2087,13 @@ export const listPublicOffers = async () => {
                 ? (restaurant?.restaurantName || 'Selected Restaurant')
                 : 'All Restaurants';
 
+        // The app shows this title as it is, so a new coupon type needs no app update.
         const title =
-            o.discountType === 'percentage'
-                ? `${Number(o.discountValue) || 0}% OFF`
-                : `Flat ₹${Number(o.discountValue) || 0} OFF`;
+            o.discountType === 'free-delivery'
+                ? 'FREE DELIVERY'
+                : o.discountType === 'percentage'
+                    ? `${Number(o.discountValue) || 0}% OFF`
+                    : `Flat ₹${Number(o.discountValue) || 0} OFF`;
 
         return {
             id: String(o._id),
