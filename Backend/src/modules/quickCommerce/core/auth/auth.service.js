@@ -32,6 +32,7 @@ import { FoodReferralLog } from "../../modules/food/admin/models/referralLog.mod
 import { createOrUpdateOtp, verifyOtp } from "../../../../core/otp/otp.service.js";
 import { OTP_SERVICES } from "../../../../core/otp/otpRateLimit.service.js";
 import { signAccessToken, signRefreshToken } from "./token.util.js";
+import { renewRefreshTokenIfAging } from "../../../../core/auth/refreshRenewal.js";
 // Master's model bound to this vertical's own collection. Same schema, same
 // qc_refresh_tokens rows -- so no session is invalidated by this change.
 import { QCRefreshToken as FoodRefreshToken } from "../../../../core/refreshTokens/refreshToken.model.js";
@@ -135,6 +136,11 @@ const bumpTokenVersion = async (model, id) => {
     .select('tokenVersion')
     .lean();
   return Number(updated?.tokenVersion) || 0;
+};
+
+const currentTokenVersion = async (model, id) => {
+  const doc = await model.findById(id).select('tokenVersion').lean();
+  return Number(doc?.tokenVersion) || 0;
 };
 
 export const requestUserOtp = async (phone) => {
@@ -408,7 +414,10 @@ export const issueRestaurantSession = async (restaurant) => {
   const payload = {
     userId: restaurant._id.toString(),
     role: ROLES.RESTAURANT,
-    tokenVersion: await bumpTokenVersion(FoodRestaurant, restaurant._id),
+    // Stores are NOT limited to one device (unlike customers and riders): the
+    // owner runs the phone app while staff work the web panel, and each login
+    // used to sign the other out. Carry the current version without bumping it.
+    tokenVersion: await currentTokenVersion(FoodRestaurant, restaurant._id),
   };
   const accessToken = signAccessToken(payload);
   const refreshToken = signRefreshToken(payload);
@@ -1040,5 +1049,11 @@ export const refreshAccessToken = async (token) => {
     ...(payload.adminType ? { adminType: payload.adminType } : {}),
   });
 
-  return { accessToken: newAccessToken, refreshToken: token };
+  // The renewed token carries the CURRENT session version, like the access token.
+  const renewed = await renewRefreshTokenIfAging({
+    Model: FoodRefreshToken,
+    stored,
+    payload: { ...payload, ...(tokenVersion !== undefined ? { tokenVersion } : {}) },
+  });
+  return { accessToken: newAccessToken, refreshToken: renewed || token };
 };

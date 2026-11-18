@@ -9,6 +9,7 @@ import { FoodReferralSettings } from "../../modules/food/admin/models/referralSe
 import { FoodReferralLog } from "../../modules/food/admin/models/referralLog.model.js";
 import { createOrUpdateOtp, verifyOtp } from "../otp/otp.service.js";
 import { signAccessToken, signRefreshToken } from "./token.util.js";
+import { renewRefreshTokenIfAging } from "./refreshRenewal.js";
 import { createSellerWebLogin, hashPortalPassword } from "./sellerWebLogin.js";
 import { FoodRefreshToken } from "../refreshTokens/refreshToken.model.js";
 import { ValidationError, AuthError } from "./errors.js";
@@ -1057,5 +1058,6 @@ export const refreshAccessToken = async (token) => {
     role: payload.role,
   });
 
-  return { accessToken: newAccessToken, refreshToken: token };
+  const renewed = await renewRefreshTokenIfAging({ Model: FoodRefreshToken, stored, payload });
+  return { accessToken: newAccessToken, refreshToken: renewed || token };
 };

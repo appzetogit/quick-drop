@@ -520,6 +520,14 @@ apiClient.interceptors.response.use(
       if (newAccessToken) {
         try {
           localStorage.setItem(`${module}_accessToken`, newAccessToken);
+          // The server renews a refresh token in the second half of its life
+          // (core/auth/refreshRenewal.js); keep the new one so an active
+          // session never reaches the old one's expiry.
+          const newRefreshToken = data?.data?.refreshToken || data?.refreshToken;
+          if (newRefreshToken && newRefreshToken !== refreshToken) {
+            localStorage.setItem(`${module}_refreshToken`, newRefreshToken);
+            if (module === "user" && localStorage.getItem("refreshToken")) localStorage.setItem("refreshToken", newRefreshToken);
+          }
           // Dispatch a custom event specifically for the module that refreshed
           window.dispatchEvent(new CustomEvent("authRefreshed", { 
             detail: { module, token: newAccessToken } 
