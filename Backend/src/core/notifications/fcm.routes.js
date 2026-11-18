@@ -8,6 +8,8 @@ import {
 import { verifyAccessToken as verifyCoreAccessToken } from '../auth/token.util.js';
 import { verifyAccessToken as verifyTaxiAccessToken } from '../../modules/taxi/services/tokenService.js';
 import { FoodUser } from '../users/user.model.js';
+import { AuthError } from '../auth/errors.js';
+import { logger } from '../../utils/logger.js';
 
 const router = express.Router();
 
@@ -83,6 +85,41 @@ const validateToken = (token) => {
     return null;
 };
 
+/**
+ * Save a device token wherever the account actually lives.
+ *
+ * The web panel and the apps call this one endpoint for every seller, but a
+ * quick-commerce store's account is in quick commerce, not food. Looking only
+ * in food answered "Session is stale" (401) about 500 times a week, so those
+ * stores' phones and browsers were never registered and they got no push for
+ * new orders. When food has no such account, quick commerce gets the token --
+ * the same JWT secret signed it, so it is the same identity.
+ */
+async function saveDeviceToken({ ownerType, ownerId, token, platform }) {
+    try {
+        return await upsertFirebaseDeviceToken({ ownerType, ownerId, token, platform });
+    } catch (error) {
+        if (!(error instanceof AuthError)) throw error;
+        const qc = await import('../../modules/quickCommerce/core/notifications/firebase.service.js');
+        try {
+            const result = await qc.upsertFirebaseDeviceToken({ ownerType, ownerId, token, platform });
+            logger.info(`[FCM] ${ownerType} ${ownerId} registered with quick commerce (${platform})`);
+            return result;
+        } catch (_qcError) {
+            throw error;
+        }
+    }
+}
+
+async function removeDeviceToken({ ownerType, ownerId, token, platform }) {
+    const result = await removeFirebaseDeviceToken({ ownerType, ownerId, token, platform });
+    if (result?.success === false) {
+        const qc = await import('../../modules/quickCommerce/core/notifications/firebase.service.js');
+        await qc.removeFirebaseDeviceToken({ ownerType, ownerId, token }).catch(() => {});
+    }
+    return result;
+}
+
 // Public health check for fcm-tokens service
 router.get('/check', (req, res) => {
     res.status(200).json({ 
@@ -115,7 +152,7 @@ router.post('/save', unifiedAuthMiddleware, async (req, res, next) => {
             return sendError(res, 400, tokenError);
         }
 
-        await upsertFirebaseDeviceToken({ ownerType, ownerId, token, platform: 'web' });
+        await saveDeviceToken({ ownerType, ownerId, token, platform: 'web' });
         return res.status(200).json({
             success: true,
             message: 'FCM token saved',
@@ -143,7 +180,7 @@ router.post('/mobile/save', unifiedAuthMiddleware, async (req, res, next) => {
             return sendError(res, 400, tokenError);
         }
 
-        await upsertFirebaseDeviceToken({ ownerType, ownerId, token, platform: 'mobile' });
+        await saveDeviceToken({ ownerType, ownerId, token, platform: 'mobile' });
         return res.status(200).json({
             success: true,
             message: 'Mobile FCM token saved successfully',
@@ -168,7 +205,7 @@ const handleRemoveToken = async (req, res, next) => {
             return sendError(res, 400, tokenError);
         }
 
-        await removeFirebaseDeviceToken({ ownerType, ownerId, token, platform });
+        await removeDeviceToken({ ownerType, ownerId, token, platform });
         return res.status(200).json({
             success: true,
             message: 'FCM token removed'
