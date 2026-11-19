@@ -42,6 +42,14 @@ export const SETTINGS = Object.freeze({
         label: 'Cash collection limit',
         help: 'Most platform cash a partner may hold before new cash work is refused. 0 means no ceiling. Riders have ONE limit across taxi, food and quick commerce: set it globally or per rider (a vertical value does not apply to them). Service providers read the serviceProvider vertical value. Until a value is set here, each partner keeps the limit from its own admin screen.',
     },
+    'finance.cashLimitBikeTaxi': {
+        type: 'number',
+        default: null,
+        min: 0,
+        scopes: GLOBAL_ONLY,
+        label: 'Cash collection limit: bike-taxi riders',
+        help: 'For riders who only carry passengers on a two-wheeler (Bike Taxi). Riders who also do food, daily needs or parcels keep the cash collection limit above, as do car and auto drivers. A per-rider limit still wins. Unset means bike-taxi riders use the limit above too.',
+    },
     'finance.enforceCashLimit': {
         type: 'boolean',
         default: true,

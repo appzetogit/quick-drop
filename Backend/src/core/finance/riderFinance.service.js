@@ -211,7 +211,25 @@ export const resolveSharedCashLimit = async ({ partnerId } = {}) => {
      * work one vertical, such as service providers.
      */
     const { resolveCashLimit } = await import('./cashLimit.service.js');
-    const resolved = await resolveCashLimit({ partnerId, legacy });
+    let resolved = await resolveCashLimit({ partnerId, legacy });
+    /*
+     * Bike-taxi riders hold far less cash (client, 2026-11-19: Rs 100 for bike
+     * taxi, Rs 1500 for food delivery and for riders doing both). A rider who
+     * only carries passengers on a two-wheeler gets `finance.cashLimitBikeTaxi`
+     * when it is set; a limit set for that rider personally still wins.
+     */
+    if (resolved.level !== 'partner') {
+        const bikeTaxi = await bikeTaxiCashLimit(partnerId);
+        if (bikeTaxi !== null) {
+            resolved = {
+                ...resolved,
+                configuredCashLimit: bikeTaxi,
+                cashLimit: resolved.enforce ? bikeTaxi : 0,
+                source: 'Bike-taxi riders (Platform settings)',
+                level: 'global',
+            };
+        }
+    }
     return {
         cashLimit: resolved.cashLimit,
         configuredCashLimit: resolved.configuredCashLimit,
@@ -220,6 +238,38 @@ export const resolveSharedCashLimit = async ({ partnerId } = {}) => {
         withdrawalLimit,
         securityDepositRequired,
     };
+};
+
+const TWO_WHEELER_ICONS = new Set(['bike', 'scooty', 'scooter', 'ev_bike', 'evbike', 'motorcycle']);
+
+/**
+ * The bike-taxi cash limit when it applies to this rider, else null.
+ *
+ * Applies to a linked driver whose only service is passenger rides and who
+ * rides a two-wheeler (section 'two_wheeler', or a bike-type vehicle for
+ * drivers signed up on the taxi side). Never throws: a lookup failure leaves
+ * the rider on the ordinary limit.
+ */
+export const bikeTaxiCashLimit = async (partnerId) => {
+    try {
+        if (!partnerId || !mongoose.Types.ObjectId.isValid(String(partnerId))) return null;
+        const { getMany } = await import('../config/resolver.service.js');
+        const row = (await getMany(['finance.cashLimitBikeTaxi'], {}))['finance.cashLimitBikeTaxi'];
+        const limit = Number(row?.value);
+        if (!row || row.isDefault || row.value === null || !Number.isFinite(limit) || limit < 0) return null;
+
+        const { Driver } = await import('../../modules/taxi/driver/models/Driver.js');
+        const driver = await Driver.findById(partnerId).select('serviceCapabilities driverClass vehicleType vehicleIconType').lean();
+        if (!driver) return null;
+        const caps = new Set((driver.serviceCapabilities || []).map(String));
+        const ridesOnly = caps.has('taxi') && !caps.has('delivery') && !caps.has('quickCommerce') && !caps.has('parcel');
+        const icon = String(driver.vehicleIconType || driver.vehicleType || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+        const twoWheeler = driver.driverClass === 'two_wheeler' || TWO_WHEELER_ICONS.has(icon);
+        return ridesOnly && twoWheeler ? limit : null;
+    } catch (err) {
+        logger.warn(`bikeTaxiCashLimit: ${err.message}`);
+        return null;
+    }
 };
 
 /**
