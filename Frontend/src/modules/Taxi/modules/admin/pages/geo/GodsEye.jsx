@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { GoogleMap, MarkerF, InfoWindow } from '@react-google-maps/api';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { GoogleMap, MarkerF, InfoWindow, PolygonF, CircleF } from '@react-google-maps/api';
 import {
    ChevronRight,
    Map as MapIcon,
@@ -16,11 +16,11 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppGoogleMapsLoader, HAS_VALID_GOOGLE_MAPS_KEY } from '../../utils/googleMaps';
-import { adminService } from '../../services/adminService';
-import { motion, AnimatePresence } from 'framer-motion';
+import apiClient from '@food/api/axios';
 
-const INDIA_CENTER = { lat: 22.7196, lng: 75.8577 };
+const INDIA_CENTER = { lat: 22.9734, lng: 78.6569 };
 const MAP_CONTAINER_STYLE = { width: '100%', height: '400px' };
+const ZONE_STYLE = { strokeColor: '#6366F1', strokeWeight: 2, fillColor: '#6366F1', fillOpacity: 0.08, clickable: false };
 
 const mapOptions = {
    disableDefaultUI: false,
@@ -35,10 +35,19 @@ const mapOptions = {
    ]
 };
 
+const STATUS_LABEL = { on_ride: 'On Ride', on_delivery: 'On Delivery', free: 'Online' };
+
+/*
+ * Riders online right now, from the same live feed as Master > Live Drivers
+ * (/platform/live-riders): real positions, and the zones each position is
+ * inside. This page used to place every driver in a zone by its place in the
+ * list, add made-up "Request" pins, and keep the map fixed on Indore, so
+ * riders in any other zone (Palampur) were never on screen.
+ */
 const GodsEye = () => {
    const navigate = useNavigate();
-   const [zones, setZones] = useState([]);
-   const [dbDrivers, setDbDrivers] = useState([]);
+   const [liveData, setLiveData] = useState(null);
+   const [loadError, setLoadErrorMsg] = useState('');
    const [loading, setLoading] = useState(true);
    const [searchQuery, setSearchQuery] = useState('');
    const [selectedZone, setSelectedZone] = useState('all');
@@ -48,29 +57,24 @@ const GodsEye = () => {
    const [selectedMarker, setSelectedMarker] = useState(null);
    const [mapRef, setMapRef] = useState(null);
 
-   const { isLoaded, loadError } = useAppGoogleMapsLoader();
+   const { isLoaded, loadError: mapsLoadError } = useAppGoogleMapsLoader();
 
    const inputClass = "w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm text-gray-800 bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors appearance-none cursor-pointer";
    const textInputClass = "w-full border border-gray-200 rounded-lg pl-10 pr-4 py-2.5 text-sm text-gray-800 bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors";
    const labelClass = "block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-widest";
 
-   const fetchData = async () => {
+   const fetchData = useCallback(async () => {
       setLoading(true);
       try {
-         const [response, driversRes] = await Promise.all([
-            adminService.getZones(),
-            adminService.getDrivers(1, 200)
-         ]);
-         const results = response?.data?.results || response?.data || [];
-         setZones(results);
-         const dItems = driversRes?.success ? (driversRes?.data?.results || driversRes?.data || []) : (driversRes?.data || driversRes || []);
-         setDbDrivers(Array.isArray(dItems) ? dItems : []);
+         const res = await apiClient.get('/platform/live-riders', { contextModule: 'admin' });
+         setLiveData(res?.data?.data || null);
+         setLoadErrorMsg('');
       } catch (error) {
-         console.error('Failed to fetch Gods Eye data', error);
+         setLoadErrorMsg(error?.response?.data?.message || 'Could not load live riders.');
       } finally {
          setLoading(false);
       }
-   };
+   }, []);
 
    useEffect(() => {
       fetchData();
@@ -78,131 +82,101 @@ const GodsEye = () => {
          const interval = setInterval(fetchData, 30000);
          return () => clearInterval(interval);
       }
-   }, [refreshMethod]);
+   }, [refreshMethod, fetchData]);
+
+   // Taxi zones only; their ids are "taxi:<zone id>".
+   const zones = useMemo(
+      () => (liveData?.zones || []).filter((z) => z.kind === 'Taxi'),
+      [liveData],
+   );
+   const zoneById = useMemo(() => new Map(zones.map((z) => [z.id, z])), [zones]);
+
+   // Everyone online for taxi with a known position.
+   const allMarkers = useMemo(() => (liveData?.riders || [])
+      .filter((r) => (r.services || []).includes('taxi') && r.lat != null && r.lng != null)
+      .map((r) => {
+         const zoneId = (r.zones || []).find((id) => zoneById.has(id)) || null;
+         return {
+            id: r.id,
+            type: 'driver',
+            pos: { lat: Number(r.lat), lng: Number(r.lng) },
+            title: r.name || 'Unnamed',
+            status: r.live ? (STATUS_LABEL[r.status] || 'Online') : 'Not responding',
+            live: Boolean(r.live),
+            riderId: r.phone || r.driverId || '',
+            zoneIds: r.zones || [],
+            zoneName: zoneId ? zoneById.get(zoneId).name : 'Outside taxi zones',
+            vehicle: String(r.vehicle || '').split(' · ')[0] || 'Unknown',
+            lastSeenAt: r.lastSeenAt,
+         };
+      }), [liveData, zoneById]);
+
+   const vehicleOptions = useMemo(
+      () => Array.from(new Set(allMarkers.map((m) => m.vehicle))).sort((a, b) => a.localeCompare(b)),
+      [allMarkers],
+   );
 
    const filteredMarkers = useMemo(() => {
-      if (!zones.length) return [];
-      
-      let list = [];
-
-      if (dbDrivers.length > 0) {
-         list = dbDrivers.map((driver, idx) => {
-            let matchedZone = zones.find(z => String(z._id) === String(driver.zone_id || driver.zoneId));
-            if (!matchedZone) {
-               matchedZone = zones[idx % zones.length];
-            }
-
-            const coord = matchedZone.coordinates?.[0]?.[0] || [75.8577, 22.7196];
-            const lat = Number(driver.latitude || driver.lat || (driver.location?.coordinates?.[1]) || (coord[1] + (idx * 0.002 - 0.01)));
-            const lng = Number(driver.longitude || driver.lng || (driver.location?.coordinates?.[0]) || (coord[0] + (idx * 0.002 - 0.01)));
-
-            const statusVal = driver.isOnline ? 'Online' : (driver.approve ? 'On Ride' : 'Online');
-            
-            return {
-               id: driver._id || driver.id,
-               type: 'driver',
-               pos: { lat, lng },
-               title: driver.name || `Driver ${idx + 1}`,
-               status: statusVal,
-               riderId: driver.phone || driver.mobile || `R-${1000 + idx}`,
-               zoneId: matchedZone._id,
-               zoneName: matchedZone.name || matchedZone.zoneName || `Zone ${idx + 1}`,
-               vehicle: driver.transport_type || driver.vehicle_type || 'car'
-            };
-         });
-
-         zones.forEach((zone, idx) => {
-            const coord = zone.coordinates?.[0]?.[0] || [75.8577, 22.7196];
-            const lat = Number(coord[1]);
-            const lng = Number(coord[0]);
-            list.push({
-               id: `${zone._id}-r1`,
-               type: 'demand',
-               pos: { lat: lat + 0.005, lng: lng + 0.005 },
-               title: `Request ${idx + 1}`,
-               status: 'Pending',
-               riderId: `REQ-${3000 + idx}`,
-               zoneId: zone._id,
-               zoneName: zone.name || zone.zoneName || `Zone ${idx + 1}`,
-               vehicle: 'car'
-            });
-         });
-      } else {
-         list = zones.flatMap((zone, idx) => {
-            const coord = zone.coordinates?.[0]?.[0] || [75.8577, 22.7196];
-            const lat = Number(coord[1]);
-            const lng = Number(coord[0]);
-            
-            const zoneNameVal = zone.name || zone.zoneName || `Zone ${idx + 1}`;
-            
-            return [
-               { 
-                  id: `${zone._id}-d1`, 
-                  type: 'driver', 
-                  pos: { lat: lat + 0.01, lng: lng - 0.01 }, 
-                  title: `Rider ${idx + 1}`, 
-                  status: 'Online', 
-                  riderId: `R-${1000 + idx}`, 
-                  zoneId: zone._id,
-                  zoneName: zoneNameVal,
-                  vehicle: 'car'
-               },
-               { 
-                  id: `${zone._id}-d2`, 
-                  type: 'driver', 
-                  pos: { lat: lat - 0.01, lng: lng + 0.01 }, 
-                  title: `Rider ${idx + 10}`, 
-                  status: 'On Ride', 
-                  riderId: `R-${2000 + idx}`, 
-                  zoneId: zone._id,
-                  zoneName: zoneNameVal,
-                  vehicle: 'bike'
-               },
-               { 
-                  id: `${zone._id}-r1`, 
-                  type: 'demand', 
-                  pos: { lat: lat + 0.005, lng: lng + 0.005 }, 
-                  title: `Request ${idx + 1}`, 
-                  status: 'Pending', 
-                  riderId: `REQ-${3000 + idx}`, 
-                  zoneId: zone._id,
-                  zoneName: zoneNameVal,
-                  vehicle: 'car'
-               }
-            ];
-         });
-      }
+      let list = allMarkers;
 
       if (selectedZone !== 'all') {
-         list = list.filter(m => m.zoneId === selectedZone);
+         list = list.filter(m => m.zoneIds.includes(selectedZone));
       }
 
       if (driverMode !== 'all') {
          list = list.filter(m => {
             if (driverMode === 'online') return m.status === 'Online';
             if (driverMode === 'on-ride') return m.status === 'On Ride';
+            if (driverMode === 'stale') return !m.live;
             return true;
          });
       }
 
       if (vehicleType !== 'all') {
-         list = list.filter(m => m.type !== 'driver' || m.vehicle === vehicleType);
+         list = list.filter(m => m.vehicle === vehicleType);
       }
 
       if (searchQuery.trim()) {
          const q = searchQuery.toLowerCase().trim();
-         list = list.filter(m => 
-            m.title.toLowerCase().includes(q) || 
-            m.riderId.toLowerCase().includes(q)
+         list = list.filter(m =>
+            m.title.toLowerCase().includes(q) ||
+            String(m.riderId).toLowerCase().includes(q)
          );
       }
 
       return list;
-   }, [zones, dbDrivers, selectedZone, driverMode, vehicleType, searchQuery]);
+   }, [allMarkers, selectedZone, driverMode, vehicleType, searchQuery]);
 
-   const filteredDriversList = useMemo(() => {
-      return filteredMarkers.filter(m => m.type === 'driver');
-   }, [filteredMarkers]);
+   const filteredDriversList = filteredMarkers;
+   const selectedZoneObj = selectedZone === 'all' ? null : zoneById.get(selectedZone) || null;
+   const liveCount = allMarkers.filter((m) => m.live).length;
+   const onRideCount = allMarkers.filter((m) => m.live && m.status === 'On Ride').length;
+   const staleCount = allMarkers.length - liveCount;
+
+   // Frame the chosen zone, or every rider shown when no zone is chosen.
+   // Re-framed only when the choice changes (or, for "All zones", when the set
+   // of riders changes), so the 30 s refresh does not yank the map around.
+   const markerKey = filteredMarkers.map((m) => m.id).join(',');
+   const frameKey = selectedZone === 'all' ? `all|${markerKey}` : `${selectedZone}|${selectedZoneObj ? 1 : 0}`;
+   useEffect(() => {
+      if (!mapRef || !window.google?.maps) return;
+      const bounds = new window.google.maps.LatLngBounds();
+      let points = 0;
+      const outline = selectedZoneObj?.outline;
+      if (outline?.circle) {
+         const c = new window.google.maps.Circle({ center: { lat: outline.circle.lat, lng: outline.circle.lng }, radius: outline.circle.r });
+         bounds.union(c.getBounds());
+         points += 2;
+      } else if (outline?.paths) {
+         outline.paths.forEach((path) => path.forEach(([lat, lng]) => { bounds.extend({ lat, lng }); points += 1; }));
+      }
+      if (!points) {
+         filteredMarkers.forEach((m) => { bounds.extend(m.pos); points += 1; });
+      }
+      if (points > 1) mapRef.fitBounds(bounds, 40);
+      else if (points === 1) { mapRef.setCenter(bounds.getCenter()); mapRef.setZoom(14); }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [mapRef, frameKey]);
 
    return (
       <div className="min-h-screen bg-gray-50 p-6 lg:p-8 font-sans animate-in fade-in duration-500">
@@ -264,6 +238,7 @@ const GodsEye = () => {
                               <option value="all">All Statuses</option>
                               <option value="online">Online Only</option>
                               <option value="on-ride">On Active Ride</option>
+                              <option value="stale">Not responding</option>
                            </select>
                            <User size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 group-hover:text-indigo-500 transition-colors pointer-events-none" />
                         </div>
@@ -276,8 +251,8 @@ const GodsEye = () => {
                            <select value={selectedZone} onChange={e => setSelectedZone(e.target.value)} className={inputClass}>
                               <option value="all">All Zones</option>
                               {zones.map(zone => (
-                                 <option key={zone._id} value={zone._id}>
-                                    {zone.name || zone.zoneName || "Unnamed Zone"}
+                                 <option key={zone.id} value={zone.id}>
+                                    {zone.name || "Unnamed Zone"} ({zone.online} online)
                                  </option>
                               ))}
                            </select>
@@ -291,8 +266,7 @@ const GodsEye = () => {
                         <div className="relative group">
                            <select value={vehicleType} onChange={e => setVehicleType(e.target.value)} className={inputClass}>
                               <option value="all">All Vehicles</option>
-                              <option value="car">Cars Only</option>
-                              <option value="bike">Bikes Only</option>
+                              {vehicleOptions.map(v => <option key={v} value={v}>{v}</option>)}
                            </select>
                            <Car size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 group-hover:text-indigo-500 transition-colors pointer-events-none" />
                         </div>
@@ -327,19 +301,28 @@ const GodsEye = () => {
                {/* Left side: Map Canvas */}
                <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden p-2">
                   <div className="rounded-lg overflow-hidden relative">
-                     {loadError ? (
+                     {loadError && (
+                        <div className="px-4 py-2 text-xs font-semibold text-rose-600 bg-rose-50 rounded mb-2">{loadError}</div>
+                     )}
+                     {mapsLoadError ? (
                         <div className="h-[400px] flex items-center justify-center bg-gray-50 uppercase font-semibold text-rose-500">Maps Load Failed</div>
                      ) : HAS_VALID_GOOGLE_MAPS_KEY && isLoaded ? (
                         <GoogleMap
-                           mapContainerStyle={MAP_CONTAINER_STYLE} center={INDIA_CENTER} zoom={12} options={mapOptions} onLoad={setMapRef}
+                           mapContainerStyle={MAP_CONTAINER_STYLE} center={INDIA_CENTER} zoom={5} options={mapOptions} onLoad={setMapRef}
                         >
+                           {selectedZoneObj?.outline?.circle && (
+                              <CircleF center={{ lat: selectedZoneObj.outline.circle.lat, lng: selectedZoneObj.outline.circle.lng }} radius={selectedZoneObj.outline.circle.r} options={ZONE_STYLE} />
+                           )}
+                           {(selectedZoneObj?.outline?.paths || []).map((path, i) => (
+                              <PolygonF key={i} paths={path.map(([lat, lng]) => ({ lat, lng }))} options={ZONE_STYLE} />
+                           ))}
                            {filteredMarkers.map((m) => (
                               <MarkerF
                                  key={m.id} position={m.pos} title={m.title}
                                  onClick={() => setSelectedMarker(m)}
                                  icon={{
                                     path: window.google.maps.SymbolPath.CIRCLE, scale: 8,
-                                    fillColor: m.type === 'driver' ? (m.status === 'On Ride' ? '#F59E0B' : '#00BFA5') : '#FB923C',
+                                    fillColor: !m.live ? '#9CA3AF' : (m.status === 'On Ride' ? '#F59E0B' : m.status === 'On Delivery' ? '#6366F1' : '#00BFA5'),
                                     fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3
                                  }}
                               />
@@ -350,9 +333,9 @@ const GodsEye = () => {
                                  <div className="p-3 bg-white min-w-[200px]">
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{selectedMarker.type}</p>
                                     <p className="text-sm font-black text-gray-900 mb-1">{selectedMarker.title}</p>
-                                    <p className="text-[11px] text-gray-500 mb-2">ID: {selectedMarker.riderId} | Zone: {selectedMarker.zoneName}</p>
+                                    <p className="text-[11px] text-gray-500 mb-2">{selectedMarker.vehicle} | {selectedMarker.riderId} | Zone: {selectedMarker.zoneName}</p>
                                     <div className="flex items-center gap-2">
-                                       <div className={`w-2 h-2 rounded-full ${selectedMarker.status === 'On Ride' ? 'bg-amber-500' : selectedMarker.status === 'Pending' ? 'bg-orange-400' : 'bg-emerald-500'}`} />
+                                       <div className={`w-2 h-2 rounded-full ${!selectedMarker.live ? 'bg-gray-400' : selectedMarker.status === 'On Ride' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                                        <span className="text-[11px] font-bold text-gray-600">{selectedMarker.status}</span>
                                     </div>
                                  </div>
@@ -380,7 +363,7 @@ const GodsEye = () => {
                      {filteredDriversList.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-center p-4 text-gray-400 text-xs">
                            <User size={24} className="opacity-20 mb-2" />
-                           No active riders in this filter
+                           No taxi riders online here right now
                         </div>
                      ) : (
                         filteredDriversList.map(driver => (
@@ -399,11 +382,13 @@ const GodsEye = () => {
                            >
                               <div>
                                  <p className="text-xs font-black text-gray-800">{driver.title}</p>
-                                 <p className="text-[9px] text-gray-500 mt-0.5">ID: {driver.riderId} | {driver.zoneName}</p>
+                                 <p className="text-[9px] text-gray-500 mt-0.5">{driver.vehicle} | {driver.zoneName}</p>
                               </div>
                               <span className={`px-2 py-0.5 rounded-full text-[8px] font-extrabold uppercase ${
-                                 driver.status === 'On Ride' 
-                                    ? 'bg-amber-100 text-amber-700' 
+                                 !driver.live
+                                    ? 'bg-gray-100 text-gray-500'
+                                    : driver.status === 'On Ride'
+                                    ? 'bg-amber-100 text-amber-700'
                                     : 'bg-emerald-100 text-emerald-700'
                               }`}>
                                  {driver.status}
@@ -419,19 +404,19 @@ const GodsEye = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pb-12">
                <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex items-center gap-4">
                   <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0 shadow-sm"><Activity size={22} /></div>
-                  <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Fleet Connectivity</p><p className="text-xl font-black text-gray-900 tracking-tight leading-none">98.2% Active</p></div>
+                  <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Online Now</p><p className="text-xl font-black text-gray-900 tracking-tight leading-none">{liveCount} Riders</p></div>
                </div>
                <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex items-center gap-4">
                   <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center shrink-0 shadow-sm"><Navigation size={22} /></div>
-                  <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Active Pockets</p><p className="text-xl font-black text-gray-900 tracking-tight leading-none">{zones.length} Localities</p></div>
+                  <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Taxi Zones</p><p className="text-xl font-black text-gray-900 tracking-tight leading-none">{zones.length} Zones</p></div>
                </div>
                <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex items-center gap-4">
                   <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center shrink-0 shadow-sm"><MousePointer2 size={22} /></div>
-                  <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Incoming Feed</p><p className="text-xl font-black text-amber-600 tracking-tight leading-none">Live Syncing</p></div>
+                  <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">On A Ride</p><p className="text-xl font-black text-amber-600 tracking-tight leading-none">{onRideCount} Riders</p></div>
                </div>
                <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex items-center gap-4 border-l-4 border-l-indigo-500">
                   <div className="w-12 h-12 bg-indigo-600 text-white rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-indigo-100"><Search size={22} /></div>
-                  <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Precision</p><p className="text-xl font-black text-gray-900 tracking-tight leading-none">0.8s Latency</p></div>
+                  <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Not Responding</p><p className="text-xl font-black text-gray-900 tracking-tight leading-none">{staleCount} Riders</p></div>
                </div>
             </div>
 
