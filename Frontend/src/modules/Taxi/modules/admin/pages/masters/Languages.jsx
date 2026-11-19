@@ -84,7 +84,7 @@ const Languages = () => {
       {/* Table Card */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {/* Toolbar */}
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-4">$1<div />
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-4"><div />
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input

@@ -58,7 +58,7 @@ const DriverRatings = () => {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between">$1<div />
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between"><div />
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input

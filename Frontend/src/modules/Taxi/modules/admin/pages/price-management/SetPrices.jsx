@@ -29,7 +29,8 @@ import {
    ChevronDown,
    Globe,
    Eye,
-   Menu
+   Menu,
+   RotateCw
 } from 'lucide-react';
 import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE_URL } from '../../../../shared/api/runtimeConfig';
@@ -160,6 +161,9 @@ const SetPrices = ({ mode }) => {
    const [loading, setLoading] = useState(true);
    const [saving, setSaving] = useState(false);
    const [searchTerm, setSearchTerm] = useState('');
+   const [showFilters, setShowFilters] = useState(false);
+   const [filters, setFilters] = useState({ zone: '', transport: '', vehicle: '', status: '' });
+   const [togglingId, setTogglingId] = useState(null);
 
    const [zones, setZones] = useState([]);
    const [vehicleTypes, setVehicleTypes] = useState([]);
@@ -356,11 +360,63 @@ const SetPrices = ({ mode }) => {
       } finally { setSaving(false); }
    };
 
+   const transportLabel = (t) => (t === 'both' ? 'All' : (t === 'taxi' ? 'Ride Hailing' : (t || 'All')));
+   const uniqueSorted = (values) => Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b));
+   const zoneOptions = uniqueSorted(prizes.map(p => p.zone_name || 'India'));
+   const transportOptions = uniqueSorted(prizes.map(p => transportLabel(p.transport_type)));
+   const vehicleOptions = uniqueSorted(prizes.map(p => p.vehicle_type_name || 'Premium Car'));
+   const activeFilterCount = Object.values(filters).filter(Boolean).length;
+
    const filteredPrizes = prizes.filter(p => {
-      const q = searchTerm.toLowerCase();
-      return (p.zone_name || '').toLowerCase().includes(q) || (p.vehicle_type_name || '').toLowerCase().includes(q);
+      const q = searchTerm.trim().toLowerCase();
+      const zone = p.zone_name || 'India';
+      const transport = transportLabel(p.transport_type);
+      const vehicle = p.vehicle_type_name || 'Premium Car';
+      if (q && ![zone, transport, vehicle].some(v => v.toLowerCase().includes(q))) return false;
+      if (filters.zone && zone !== filters.zone) return false;
+      if (filters.transport && transport !== filters.transport) return false;
+      if (filters.vehicle && vehicle !== filters.vehicle) return false;
+      if (filters.status === 'on' && Number(p.active) !== 1) return false;
+      if (filters.status === 'off' && Number(p.active) === 1) return false;
+      return true;
    });
-   const pagination = usePagination(filteredPrizes || [], { storageKey: "taxi-set-prices", resetOn: [searchTerm] });
+   const pagination = usePagination(filteredPrizes || [], {
+      storageKey: "taxi-set-prices",
+      resetOn: [searchTerm, filters.zone, filters.transport, filters.vehicle, filters.status],
+   });
+
+   // Flip a row on/off. The row changes at once; if the server refuses (for
+   // example a second active price for the same vehicle in the same zone),
+   // it flips back and the server's reason is shown.
+   const handleToggleActive = async (prize) => {
+      const rowId = prize.id || prize._id;
+      if (!rowId || togglingId) return;
+      const next = Number(prize.active) === 1 ? 0 : 1;
+      const setRowActive = (value) => {
+         const apply = (list) => list.map(p => ((p.id || p._id) === rowId ? { ...p, active: value } : p));
+         setPrizes(apply);
+         setPrizesFull(apply);
+      };
+      setTogglingId(rowId);
+      setRowActive(next);
+      try {
+         const res = await fetch(`${baseUrl}/types/set-prices/${rowId}`, {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ active: next })
+         });
+         const data = await res.json().catch(() => ({}));
+         if (!res.ok || data.success === false) {
+            setRowActive(prize.active);
+            alert(data.message || `Could not turn this price ${next ? 'on' : 'off'}.`);
+         }
+      } catch (e) {
+         setRowActive(prize.active);
+         alert('Could not reach the server. Please try again.');
+      } finally {
+         setTogglingId(null);
+      }
+   };
 
    return (
       <div className="min-h-screen bg-[#F8F9FD] flex flex-col font-sans">
@@ -381,19 +437,69 @@ const SetPrices = ({ mode }) => {
                   </div>
 
                   <div className="bg-white rounded-md border border-gray-100 shadow-sm overflow-hidden">
-                     <div className="p-5 flex items-center justify-between border-b border-gray-50 bg-white px-8">$1<div />
+                     <div className="p-5 flex items-center justify-between border-b border-gray-50 bg-white px-8 gap-4 flex-wrap">
+                        <div className="relative w-full max-w-xs">
+                           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                           <input
+                              type="text"
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                              placeholder="Search zone, service or vehicle"
+                              className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded text-sm text-slate-700 focus:outline-none focus:border-indigo-500"
+                           />
+                        </div>
                         <div className="flex items-center gap-3">
-                           <button onClick={() => fetchInitialData()} className={`w-10 h-10 flex items-center justify-center bg-white border border-gray-200 rounded-full text-slate-400 hover:text-indigo-600 transition-all shadow-sm ${loading ? 'animate-spin' : ''}`}>
-                              {loading ? <Loader2 size={18} /> : <Search size={18} />}
+                           <button title="Refresh" onClick={() => fetchInitialData()} className="w-10 h-10 flex items-center justify-center bg-white border border-gray-200 rounded-full text-slate-400 hover:text-indigo-600 transition-all shadow-sm">
+                              <RotateCw size={18} className={loading ? "animate-spin" : ""} />
                            </button>
-                           <button className="flex items-center gap-2 px-6 py-2 bg-[#F37048] text-white rounded text-sm font-bold shadow-sm">
-                              <Filter size={16} /> Filters
+                           <button onClick={() => setShowFilters(v => !v)} className="flex items-center gap-2 px-6 py-2 bg-[#F37048] text-white rounded text-sm font-bold shadow-sm">
+                              <Filter size={16} /> Filters{activeFilterCount ? ` (${activeFilterCount})` : ''}
                            </button>
                            <button onClick={() => navigate('/taxi/admin/pricing/set-price/create')} className="flex items-center gap-2 px-6 py-2 bg-[#44516F] text-white rounded text-sm font-bold shadow-sm">
                               <Plus size={18} /> Add Set Price
                            </button>
                         </div>
                      </div>
+
+                     {showFilters && (
+                        <div className="px-8 py-4 border-b border-gray-50 bg-[#FBFCFF] grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                           {[
+                              { key: 'zone', label: 'Zone', options: zoneOptions },
+                              { key: 'transport', label: 'Transport type', options: transportOptions },
+                              { key: 'vehicle', label: 'Vehicle type', options: vehicleOptions },
+                           ].map(({ key, label, options }) => (
+                              <label key={key} className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                 {label}
+                                 <select
+                                    value={filters[key]}
+                                    onChange={(e) => setFilters(f => ({ ...f, [key]: e.target.value }))}
+                                    className="border border-gray-200 rounded px-3 py-2 text-sm font-medium normal-case tracking-normal text-slate-700 bg-white focus:outline-none focus:border-indigo-500"
+                                 >
+                                    <option value="">All</option>
+                                    {options.map(o => <option key={o} value={o}>{o}</option>)}
+                                 </select>
+                              </label>
+                           ))}
+                           <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                              Status
+                              <select
+                                 value={filters.status}
+                                 onChange={(e) => setFilters(f => ({ ...f, status: e.target.value }))}
+                                 className="border border-gray-200 rounded px-3 py-2 text-sm font-medium normal-case tracking-normal text-slate-700 bg-white focus:outline-none focus:border-indigo-500"
+                              >
+                                 <option value="">All</option>
+                                 <option value="on">On</option>
+                                 <option value="off">Off</option>
+                              </select>
+                           </label>
+                           <button
+                              onClick={() => { setFilters({ zone: '', transport: '', vehicle: '', status: '' }); setSearchTerm(''); }}
+                              className="px-4 py-2 border border-gray-200 rounded text-sm font-bold text-slate-600 bg-white hover:bg-slate-50"
+                           >
+                              Clear
+                           </button>
+                        </div>
+                     )}
 
                      <div className={SCROLL_TABLE_CLASS}>
                         <table className="w-full text-left">
@@ -420,16 +526,7 @@ const SetPrices = ({ mode }) => {
                                        </td>
                                        <td className="px-8 py-6 text-sm text-slate-800 font-bold">{prize.vehicle_type_name || 'Premium Car'}</td>
                                        <td className="px-8 py-6">
-                                          <StatusToggle active={Number(prize.active) === 1} onToggle={async () => {
-                                             try {
-                                                await fetch(`${baseUrl}/types/set-prices/${prize.id || prize._id}`, {
-                                                   method: 'PATCH',
-                                                   headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                                                   body: JSON.stringify({ active: Number(prize.active) === 1 ? 0 : 1 })
-                                                });
-                                                fetchInitialData();
-                                             } catch (e) { }
-                                          }} />
+                                          <StatusToggle active={Number(prize.active) === 1} onToggle={() => handleToggleActive(prize)} />
                                        </td>
                                        <td className="px-8 py-6 text-right pr-12">
                                           <div className="flex items-center justify-end gap-2">
