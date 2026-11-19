@@ -537,10 +537,16 @@ export const combineDeliveryMoney = (perVertical = []) => {
  *     rider over the limit from deliveries now stops being offered rides too,
  *     which is the whole point of a shared limit.
  */
-const resolveBlockState = ({ taxiSigned, cashInHand, cashLimit, rules, snapshotBlocked, takesRides = true }) => {
+const resolveBlockState = ({ taxiSigned, cashInHand, cashLimit, rules, snapshotBlocked, takesRides = true, rideMinimumWaived = false }) => {
     if (!rules.isWalletEnabled) {
         return { isBlocked: true, reason: 'wallet_disabled' };
     }
+    // Client call, 2026-11-19: a rider who does food delivery as well as bike
+    // taxi has already paid the Rs 1,500 security deposit, and that is the money
+    // the platform holds against them. They are not asked for the Rs 100 ride
+    // minimum on top. Only a rider who just does taxi needs it. The cash ceiling
+    // below still applies to everyone.
+    if (rideMinimumWaived) takesRides = false;
     // The taxi minimum, on the taxi balance alone and only for a driver who takes
     // rides. A positive minimum used to be judged on the combined wallet, which
     // holds the security deposit, so with a Rs 1,500 deposit nobody ever fell below
@@ -586,6 +592,7 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
 
     let wallet = driverWallet;
     let takesRides = false;
+    let doesDeliveries = false;
 
     /*
      * `driverWallet` exists for callers holding a driver document that is newer
@@ -599,10 +606,15 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
      */
     if (identity.driverId) {
         const { Driver } = await import('../../modules/taxi/driver/models/Driver.js');
-        const driver = await Driver.findById(identity.driverId).select('_id wallet workMode').lean();
+        const driver = await Driver.findById(identity.driverId).select('_id wallet workMode serviceCapabilities').lean();
         if (!wallet) wallet = driver?.wallet || null;
         // Food or grocery only: the taxi minimum is none of their business.
         takesRides = ['all', 'taxi'].includes(driver?.workMode || 'all');
+        const caps = (driver?.serviceCapabilities || []).map(String);
+        doesDeliveries = caps.includes('delivery') || caps.includes('quickCommerce');
+    }
+    if (!identity.driverId) {
+        doesDeliveries = Boolean(identity.foodPartnerId || identity.qcPartnerId);
     }
 
     const [rules, limits, delivery, securityDeposited] = await Promise.all([
@@ -645,7 +657,13 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
     const withdrawableBalance = Math.max(0, round2(walletBalance - lockedSecurity));
     const securityMet = requiredSecurityDeposit <= 0 || heldSecurity >= requiredSecurityDeposit;
 
+    // Food + taxi rider with the security deposit fully paid: no ride minimum.
+    // Only when a deposit is actually required -- with none set, nothing is held
+    // against the rider and the minimum stays.
+    const rideMinimumWaived = takesRides && doesDeliveries && requiredSecurityDeposit > 0 && securityMet;
+
     const block = resolveBlockState({
+        rideMinimumWaived,
         taxiSigned: taxi.signed,
         cashInHand,
         cashLimit: limits.cashLimit,
@@ -655,7 +673,7 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
     });
 
     // How much more work they can take on: whichever of the two gates binds first.
-    const taxiHeadroom = round2(taxi.signed - rules.minimumBalanceForOrders);
+    const taxiHeadroom = rideMinimumWaived ? Infinity : round2(taxi.signed - rules.minimumBalanceForOrders);
     const cashHeadroom = limits.cashLimit > 0 ? round2(limits.cashLimit - cashInHand) : Infinity;
     const availableForOrders = Math.max(0, Math.min(taxiHeadroom, cashHeadroom));
 
@@ -673,6 +691,7 @@ export const getRiderFinance = async (anyId, { driverWallet = null } = {}) => {
         availableForOrders: Number.isFinite(availableForOrders) ? availableForOrders : 0,
         isBlocked: block.isBlocked,
         blockReason: block.reason,
+        rideMinimumWaived,
 
         // Security deposit (delivery). securityMet drives the food/quick dispatch
         // gate and the app's onboarding prompt; withdrawableBalance is what the

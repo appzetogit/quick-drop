@@ -420,6 +420,13 @@ const driverSchema = new mongoose.Schema(
         type: Boolean,
         default: false,
       },
+      // Cached from riderFinance: a food + taxi rider whose security deposit is
+      // fully paid is not held to the taxi minimum balance. Read by the
+      // isBlocked recompute in walletService, which cannot see the deposit.
+      rideMinimumWaived: {
+        type: Boolean,
+        default: false,
+      },
     },
     zoneId: {
       type: mongoose.Schema.Types.ObjectId,

@@ -26,6 +26,7 @@ import {
   startDispatchFlow,
 } from '../services/dispatchService.js';
 import { findZoneByPickup } from '../services/matchingService.js';
+import { syncDriverRideBlock } from '../driver/services/walletService.js';
 import { acceptRideAssignment, createRideRecord, getRideRoom, submitRideBid } from '../services/rideService.js';
 import { SOCKET_EVENTS } from './events.js';
 import { registerRideSocketHandlers } from './handlers/rideSocketHandler.js';
@@ -33,6 +34,9 @@ import { authorizeRideRoomAccess } from './middleware/rideRoomAuth.js';
 import { attachSocketAuth } from './middleware/socketAuth.js';
 import { resolveUnifiedDriverIdentity } from '../services/driverIdentityBridge.js';
 import { clearDriverRoute } from './services/driverRouteService.js';
+
+// driverId -> when its ride block was last re-checked (see locationUpdate).
+const rideBlockRecheckAt = new Map();
 
 const onAsync = (socket, handler) => async (payload = {}) => {
   try {
@@ -166,8 +170,24 @@ export const configureTaxiSocketServer = (io) => {
         };
         const prev = await Driver.collection.findOne(
           { _id: new mongoose.Types.ObjectId(String(identity.sub)) },
-          { projection: { location: 1, locationUpdatedAt: 1 } },
+          { projection: { location: 1, locationUpdatedAt: 1, 'wallet.isBlocked': 1 } },
         );
+
+        /*
+         * A blocked driver is re-checked against the full finance rule at most
+         * every 2 minutes while they are sending positions. The cached flag is
+         * only rewritten when the taxi wallet moves, so a security deposit paid
+         * or credited on the delivery side never reached it and the rider stayed
+         * hidden from customers although nothing was owed.
+         */
+        if (prev?.wallet?.isBlocked) {
+          const key = String(identity.sub);
+          const last = rideBlockRecheckAt.get(key) || 0;
+          if (Date.now() - last > 2 * 60 * 1000) {
+            rideBlockRecheckAt.set(key, Date.now());
+            syncDriverRideBlock(identity.sub).catch(() => {});
+          }
+        }
         const prevCoords = prev?.location?.coordinates;
         if (Array.isArray(prevCoords) && prev?.locationUpdatedAt) {
           const dist = meters(prevCoords, normalizedCoords);

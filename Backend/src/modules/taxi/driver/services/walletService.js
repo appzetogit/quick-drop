@@ -225,6 +225,7 @@ export const ensureDriverWalletCanAcceptRide = async (driverOrId, { session } = 
     await Driver.findByIdAndUpdate(driver._id, {
       'wallet.cashLimit': finance.cashLimit,
       'wallet.isBlocked': true,
+      'wallet.rideMinimumWaived': Boolean(finance.rideMinimumWaived),
     });
 
     const messages = {
@@ -236,15 +237,55 @@ export const ensureDriverWalletCanAcceptRide = async (driverOrId, { session } = 
     throw new ApiError(403, messages[finance.blockReason] || 'Driver wallet cannot accept rides right now.');
   }
 
-  if (Number(driver?.wallet?.cashLimit) !== finance.cashLimit || driver?.wallet?.isBlocked) {
+  if (
+    Number(driver?.wallet?.cashLimit) !== finance.cashLimit
+    || driver?.wallet?.isBlocked
+    || Boolean(driver?.wallet?.rideMinimumWaived) !== Boolean(finance.rideMinimumWaived)
+  ) {
     await Driver.findByIdAndUpdate(driver._id, {
       'wallet.cashLimit': finance.cashLimit,
       'wallet.isBlocked': false,
+      'wallet.rideMinimumWaived': Boolean(finance.rideMinimumWaived),
     });
   }
 
   return finance;
 };
+
+/**
+ * Re-derives one driver's ride-offer flags from the full finance view.
+ *
+ * wallet.isBlocked is otherwise recomputed from the taxi balance alone, which
+ * cannot see a security deposit paid on the delivery side. Call this after
+ * anything that changes the deposit or the delivery wallet. Never throws.
+ */
+export const syncDriverRideBlock = async (driverId) => {
+  try {
+    const finance = await getRiderFinance(driverId);
+    await Driver.updateOne(
+      { _id: driverId },
+      {
+        $set: {
+          'wallet.isBlocked': Boolean(finance.isBlocked),
+          'wallet.rideMinimumWaived': Boolean(finance.rideMinimumWaived),
+          'wallet.cashLimit': finance.cashLimit,
+        },
+      },
+    );
+    return finance;
+  } catch (error) {
+    console.error(`syncDriverRideBlock(${driverId}) failed: ${error.message}`);
+    return null;
+  }
+};
+
+/** Below the minimum and not waived: the cached half of riderFinance's rule. */
+const belowRideMinimumExpr = (minimumBalanceForOrders) => ({
+  $and: [
+    { $lt: [{ $ifNull: ['$wallet.balance', 0] }, minimumBalanceForOrders] },
+    { $ne: ['$wallet.rideMinimumWaived', true] },
+  ],
+});
 
 /**
  * Re-derives wallet.isBlocked for every driver after the minimum changes.
@@ -255,16 +296,26 @@ export const ensureDriverWalletCanAcceptRide = async (driverOrId, { session } = 
  */
 export const refreshDriverWalletBlockFlags = async () => {
   const { isWalletEnabled, minimumBalanceForOrders } = await resolveWalletRules();
-  const result = await Driver.updateMany({}, [
-    {
-      $set: {
-        'wallet.isBlocked': isWalletEnabled
-          ? { $lt: [{ $ifNull: ['$wallet.balance', 0] }, minimumBalanceForOrders] }
-          : true,
+  // Delivery riders first: whether their deposit waives the minimum needs the
+  // full finance view, which the bulk update below cannot compute.
+  const deliveryRiders = await Driver.find({
+    deletedAt: null,
+    serviceCapabilities: { $in: ['delivery', 'quickCommerce'] },
+  }).select('_id').lean();
+  for (const { _id } of deliveryRiders) {
+    await syncDriverRideBlock(_id);
+  }
+  const result = await Driver.updateMany(
+    { _id: { $nin: deliveryRiders.map((d) => d._id) } },
+    [
+      {
+        $set: {
+          'wallet.isBlocked': isWalletEnabled ? belowRideMinimumExpr(minimumBalanceForOrders) : true,
+        },
       },
-    },
-  ]);
-  return result.modifiedCount;
+    ],
+  );
+  return result.modifiedCount + deliveryRiders.length;
 };
 
 export const applyDriverWalletAdjustment = async ({
@@ -329,7 +380,8 @@ export const applyDriverWalletAdjustment = async ({
       {
         $set: {
           // Below the minimum, not at it: same rule as riderFinance.resolveBlockState.
-          'wallet.isBlocked': walletEnabled ? { $lt: ['$wallet.balance', minBal] } : true,
+          // A food + taxi rider whose deposit is paid (wallet.rideMinimumWaived) is not held to it.
+          'wallet.isBlocked': walletEnabled ? belowRideMinimumExpr(minBal) : true,
         },
       },
     ],
