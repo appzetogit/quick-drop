@@ -26,6 +26,8 @@ import { Loader2, Wallet, ChevronDown } from "lucide-react"
 
 const LIMIT_KEY = "finance.cashLimit"
 const ENFORCE_KEY = "finance.enforceCashLimit"
+// Riders who only carry passengers on a two-wheeler (core/finance/riderFinance.service.js).
+const BIKE_TAXI_KEY = "finance.cashLimitBikeTaxi"
 
 const savedValue = (setting, level) => {
   const link = (setting?.chain || []).find((l) => l.level === level)
@@ -64,7 +66,8 @@ const describe = (value) =>
 export default function CashLimitSettings() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState("")
-  const [saved, setSaved] = useState({ limit: null, enforce: true, spLimit: null })
+  const [saved, setSaved] = useState({ limit: null, enforce: true, spLimit: null, bikeLimit: null })
+  const [bikeLimit, setBikeLimit] = useState(null)
   const [limit, setLimit] = useState(null)
   const [spLimit, setSpLimit] = useState(null)
   const [spOpen, setSpOpen] = useState(false)
@@ -80,8 +83,10 @@ export default function CashLimitSettings() {
         limit: savedValue(find(base, LIMIT_KEY), "global"),
         enforce: savedValue(find(base, ENFORCE_KEY), "global") !== false,
         spLimit: savedValue(find(sp, LIMIT_KEY), "vertical"),
+        bikeLimit: savedValue(find(base, BIKE_TAXI_KEY), "global"),
       }
       setSaved(next)
+      setBikeLimit(next.bikeLimit)
       setLimit(next.limit)
       setSpLimit(next.spLimit)
       if (next.spLimit !== null) setSpOpen(true)
@@ -185,6 +190,29 @@ export default function CashLimitSettings() {
                     {text}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-neutral-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <label htmlFor="bike-cash-limit" className="text-sm font-medium text-neutral-800">
+                Bike-taxi riders
+                <span className="block text-xs font-normal text-neutral-500">
+                  Riders who only carry passengers on a two-wheeler. Riders doing food or both use the limit above. Empty = use the limit above.
+                </span>
+              </label>
+              <div className="flex items-center gap-2">
+                <LimitInput id="bike-cash-limit" value={bikeLimit} onChange={setBikeLimit} disabled={busy === "bike"} />
+                <button
+                  type="button"
+                  disabled={bikeLimit === saved.bikeLimit || busy === "bike"}
+                  onClick={() =>
+                    save(BIKE_TAXI_KEY, "global", "*", bikeLimit, "bike", bikeLimit === null ? "Bike-taxi riders now use the main limit" : "Bike-taxi limit saved")
+                  }
+                  className="inline-flex items-center gap-1 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
+                >
+                  {busy === "bike" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Save
+                </button>
               </div>
             </div>
 
