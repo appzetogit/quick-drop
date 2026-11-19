@@ -635,6 +635,9 @@ export const adminAPI = {
       params: force ? { force: 1 } : undefined,
       contextModule: "admin",
     }),
+  /** Section, services and vehicle, corrected after sign-up. */
+  updateDeliveryPartnerVehicle: (id, body) =>
+    apiClient.patch(`/food/admin/delivery/${String(id)}/vehicle`, body ?? {}, { contextModule: "admin" }),
   updateDeliveryPartnerCapabilities: (id, serviceCapabilities) =>
     apiClient.patch(
       `/food/admin/delivery/${String(id)}/capabilities`,

@@ -1611,6 +1611,18 @@ export async function approveDeliveryPartner(req, res, next) {
     }
 }
 
+export async function updateDeliveryPartnerVehicle(req, res, next) {
+    try {
+        const partner = await adminService.updateDeliveryPartnerVehicle(req.params.id, req.body || {});
+        if (!partner) {
+            return res.status(404).json({ success: false, message: 'Delivery partner not found' });
+        }
+        res.status(200).json({ success: true, message: 'Vehicle and services updated', data: partner });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export async function updateDeliveryPartnerCapabilities(req, res, next) {
     try {
         const partner = await adminService.updateDeliveryPartnerCapabilities(

@@ -3,6 +3,7 @@ import { Search, Download, ChevronDown, Eye, User, Star, ArrowUpDown, Settings, 
 import { adminAPI } from "@food/api"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@food/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@food/components/ui/dialog"
+import VehicleServicesEditor from "./VehicleServicesEditor"
 import { exportDeliverymenToExcel, exportDeliverymenToPDF } from "@food/components/admin/deliveryman/deliverymanExportUtils"
 import { toast } from "sonner"
 import { SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
@@ -890,6 +891,27 @@ availableCashLimit: deliveryman.availableCashLimit || 0,
                           Not yet linked to a unified driver {"\u2014"} saving will create the link.
                         </p>
                       )}
+                      <div className="mt-3">
+                        <VehicleServicesEditor
+                          key={viewDetails._id}
+                          partner={viewDetails}
+                          onSaved={(saved) => {
+                            setCapEdit([])
+                            setViewDetails((prev) => ({
+                              ...prev,
+                              driverClass: saved.driverClass,
+                              serviceIntents: saved.serviceIntents,
+                              vehicleType: saved.vehicleType,
+                              vehicleName: saved.vehicleName,
+                              vehicleNumber: saved.vehicleNumber,
+                              serviceCapabilities: saved.serviceCapabilities || prev.serviceCapabilities,
+                              linked: true,
+                              vehicle: { ...(prev.vehicle || {}), type: saved.vehicleTypeName || prev.vehicle?.type, brand: saved.vehicleName, model: saved.vehicleName, number: saved.vehicleNumber },
+                            }))
+                            fetchDeliverymen?.()
+                          }}
+                        />
+                      </div>
                     </div>
                     <div>
                       <label className="text-xs font-semibold text-slate-500 uppercase">Status</label>

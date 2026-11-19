@@ -5470,6 +5470,79 @@ export async function updateDeliveryPartnerCapabilities(id, serviceCapabilities)
     return { ...partner.toObject(), ...result };
 }
 
+/**
+ * Correct what a rider signed up as: the section (2 wheeler / passenger taxi /
+ * parcel vehicle), the services under it, the vehicle type and its name and
+ * number -- and with them the job streams the driver may work.
+ *
+ * There was no way to change these after sign-up. A bike rider who picked
+ * "I have a vehicle for parcels" could only choose a truck there and was then
+ * stuck as heavy parcel: the app only offers vehicles of the rider's section,
+ * and no admin screen touched the section at all (Deepak Singh, 2026-11-19).
+ *
+ * The vehicle must be one the section and services allow (vehicleIconTypesFor),
+ * so a bike cannot be filed under trucks the other way round. Everything is
+ * then carried onto the linked driver record through applyPartnerCapabilities,
+ * the same path approval uses, so dispatch follows at once.
+ */
+export async function updateDeliveryPartnerVehicle(id, body = {}) {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+    const partner = await FoodDeliveryPartner.findById(id);
+    if (!partner) return null;
+
+    const {
+        normalizeDriverClass, normalizeDriverIntents, vehicleIconTypesFor, capabilitiesForIntents, DRIVER_INTENTS,
+    } = await import('../../../taxi/shared/driverClasses.js');
+
+    const driverClass = normalizeDriverClass(body.driverClass ?? partner.driverClass);
+    if (!driverClass) throw new ValidationError('Choose what the rider drives: 2 wheeler, passenger taxi or parcel vehicle');
+    const intents = normalizeDriverIntents(body.serviceIntents ?? partner.serviceIntents, driverClass);
+    if (!intents.length) throw new ValidationError('Choose at least one service for this vehicle');
+
+    const vehicleId = String(body.vehicleType ?? partner.vehicleType ?? '').trim();
+    if (!mongoose.Types.ObjectId.isValid(vehicleId)) throw new ValidationError('Choose the vehicle type');
+    const { Vehicle } = await import('../../../taxi/admin/models/Vehicle.js');
+    const vehicle = await Vehicle.findById(vehicleId).select('name icon_types').lean();
+    if (!vehicle) throw new ValidationError('That vehicle type no longer exists');
+    const allowed = vehicleIconTypesFor({ driverClass, intents });
+    const icons = (Array.isArray(vehicle.icon_types) ? vehicle.icon_types : [vehicle.icon_types])
+        .map((v) => String(v || '').trim().toLowerCase().replace(/[\s-]+/g, '_'));
+    if (!icons.some((icon) => allowed.includes(icon))) {
+        throw new ValidationError(`${vehicle.name} is not a vehicle for ${intents.map((k) => DRIVER_INTENTS[k].label).join(' / ')}`);
+    }
+
+    partner.driverClass = driverClass;
+    partner.serviceIntents = intents;
+    partner.vehicleType = String(vehicle._id);
+    if (body.vehicleName !== undefined) partner.vehicleName = String(body.vehicleName || '').trim();
+    if (body.vehicleNumber !== undefined) partner.vehicleNumber = String(body.vehicleNumber || '').trim().toUpperCase();
+    await partner.save();
+
+    // What the driver may be sent: the admin's ticks, else what the services grant.
+    const { applyPartnerCapabilities } = await import('../../../../core/identity/driverCapabilities.service.js');
+    const result = await applyPartnerCapabilities(
+        partner,
+        Array.isArray(body.serviceCapabilities) && body.serviceCapabilities.length
+            ? body.serviceCapabilities
+            : capabilitiesForIntents(intents),
+        { approved: partner.status === 'approved' },
+    );
+    if (partner.driverId) {
+        const { Driver } = await import('../../../taxi/driver/models/Driver.js');
+        await Driver.updateOne(
+            { _id: partner.driverId },
+            {
+                $set: {
+                    'delivery.vehicleType': String(vehicle._id),
+                    'delivery.vehicleName': partner.vehicleName || '',
+                    'delivery.vehicleNumber': partner.vehicleNumber || '',
+                },
+            },
+        );
+    }
+    return { ...partner.toObject(), ...result, vehicleTypeName: vehicle.name };
+}
+
 export async function rejectDeliveryPartner(id, reason) {
     if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
     const updated = await FoodDeliveryPartner.findByIdAndUpdate(
