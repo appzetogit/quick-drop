@@ -71,6 +71,7 @@ await check('the linked driver follows: bike, two wheeler, food + daily + parcel
     assert.deepEqual([...d.serviceCapabilities].sort(), ['delivery', 'parcel', 'quickCommerce']);
     assert.equal(d.delivery?.vehicleType, String(bike));
     assert.equal(d.delivery?.vehicleNumber, 'HP37C 8476');
+    assert.equal(d.workMode, 'all', 'comes online for food, groceries and parcels, not stuck in taxi');
 });
 await check('a vehicle that does not fit the section is refused', async () => {
     await assert.rejects(
