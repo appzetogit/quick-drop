@@ -192,7 +192,7 @@ check('a disabled wallet blocks before anything else is considered', () => {
 check('falling to the taxi minimum balance blocks, unchanged behaviour', () => {
     const state = gate({ taxiSigned: -500 });
     assert.equal(state.isBlocked, true);
-    assert.equal(state.reason, 'below_minimum_balance');
+    assert.equal(state.reason, 'below_ride_minimum');
 });
 
 check('one rupee above the minimum still works', () => {
@@ -235,7 +235,7 @@ check('an admin hold blocks a rider who passes both money gates', () => {
 check('a money problem is reported ahead of an admin hold', () => {
     // Both are true here; the actionable reason is the one the rider can fix.
     const state = gate({ taxiSigned: -500, snapshotBlocked: true });
-    assert.equal(state.reason, 'below_minimum_balance');
+    assert.equal(state.reason, 'below_ride_minimum');
 });
 
 console.log(failed ? `\n${failed} check(s) failed\n` : '\nall checks passed\n');

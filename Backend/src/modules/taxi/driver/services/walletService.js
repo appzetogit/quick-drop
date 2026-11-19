@@ -229,7 +229,7 @@ export const ensureDriverWalletCanAcceptRide = async (driverOrId, { session } = 
 
     const messages = {
       wallet_disabled: 'Driver wallet is disabled by admin.',
-      below_minimum_balance: 'Driver wallet minimum balance is not met. Please top up to accept rides.',
+      below_ride_minimum: 'Driver wallet minimum balance is not met. Please top up to accept rides.',
       cash_limit_reached: `Cash in hand of Rs ${finance.cashInHand} has reached the limit of Rs ${finance.cashLimit}. Please deposit collected cash to continue.`,
       blocked_by_admin: 'Driver wallet is blocked by admin.',
     };

@@ -548,7 +548,12 @@ const resolveBlockState = ({ taxiSigned, cashInHand, cashLimit, rules, snapshotB
     // which uses this same taxi balance: a driver at Rs 64 against a Rs 100 minimum
     // passed here and was silently offered nothing.
     if (takesRides && taxiSigned < rules.minimumBalanceForOrders) {
-        return { isBlocked: true, reason: 'below_minimum_balance' };
+        // 'below_ride_minimum', not 'below_minimum_balance': released rider apps
+        // map that old code to "Your wallet needs a top-up before you can receive
+        // orders", which every rider saw although food and grocery orders never
+        // check this rule -- only taxi rides do. Apps that do not know the new
+        // code show no notice; ride offers and the ride accept refusal are unchanged.
+        return { isBlocked: true, reason: 'below_ride_minimum' };
     }
     if (cashLimit > 0 && cashInHand >= cashLimit) {
         return { isBlocked: true, reason: 'cash_limit_reached' };
