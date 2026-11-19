@@ -20,6 +20,8 @@ export default function Coupons() {
   const [updatingCartVisibility, setUpdatingCartVisibility] = useState({})
   const [deletingOffer, setDeletingOffer] = useState({})
   const [errors, setErrors] = useState({})
+  // The coupon being edited (a row from the list), or null when creating.
+  const [editingOffer, setEditingOffer] = useState(null)
   const [formData, setFormData] = useState({
     couponCode: "",
     discountType: "percentage",
@@ -182,6 +184,44 @@ export default function Coupons() {
     })
   }
 
+  const toDateInput = (value) => {
+    if (!value) return ""
+    const d = new Date(value)
+    return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10)
+  }
+  const blankIfNull = (value) => (value === null || value === undefined ? "" : String(value))
+
+  // Open the form filled in with this coupon.
+  const startEdit = (offer) => {
+    setEditingOffer(offer)
+    setErrors({})
+    setSubmitError("")
+    setSubmitSuccess("")
+    setFormData({
+      couponCode: offer.couponCode || "",
+      discountType: offer.discountType || "percentage",
+      discountValue: offer.discountType === "free-delivery" ? "" : blankIfNull(offer.discountValue),
+      customerScope: offer.customerScope || (offer.customerGroup === "new" ? "first-time" : "all"),
+      restaurantScope: offer.restaurantScope || "all",
+      restaurantId: offer.restaurantId || "",
+      endDate: toDateInput(offer.endDate),
+      startDate: toDateInput(offer.startDate),
+      minOrderValue: Number(offer.minOrderValue) ? String(offer.minOrderValue) : "",
+      maxDiscount: offer.discountType === "percentage" ? blankIfNull(offer.maxDiscount) : "",
+      usageLimit: blankIfNull(offer.usageLimit),
+      perUserLimit: blankIfNull(offer.perUserLimit),
+      isFirstOrderOnly: Boolean(offer.isFirstOrderOnly),
+    })
+    setIsAddOpen(true)
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  const stopEdit = () => {
+    setEditingOffer(null)
+    setErrors({})
+    resetForm()
+  }
+
   const handleCreateCoupon = async (e) => {
     e.preventDefault()
     setSubmitError("")
@@ -226,14 +266,29 @@ export default function Coupons() {
         perUserLimit: formData.perUserLimit !== "" ? Number(formData.perUserLimit) : undefined,
         isFirstOrderOnly: Boolean(formData.isFirstOrderOnly),
       }
-      await adminAPI.createAdminOffer(payload)
-
-      setSubmitSuccess("Coupon created successfully")
+      if (editingOffer) {
+        // Keep what this form cannot show: a Quick coupon's extra restaurants
+        // (when the first one is unchanged) and who bears the discount.
+        const keptIds = Array.isArray(editingOffer.restaurantIds) ? editingOffer.restaurantIds : []
+        if (payload.restaurantScope === "selected" && keptIds.length > 1 && keptIds[0] === payload.restaurantId) {
+          payload.restaurantIds = keptIds
+        }
+        if (editingOffer.adminBearPercentage !== undefined && payload.discountType !== "free-delivery") {
+          payload.adminBearPercentage = Number(editingOffer.adminBearPercentage)
+          payload.restaurantBearPercentage = Number(editingOffer.restaurantBearPercentage ?? 100 - Number(editingOffer.adminBearPercentage))
+        }
+        await adminAPI.updateAdminOffer(editingOffer.offerId, payload)
+        setSubmitSuccess("Coupon updated successfully")
+        setEditingOffer(null)
+      } else {
+        await adminAPI.createAdminOffer(payload)
+        setSubmitSuccess("Coupon created successfully")
+      }
       resetForm()
       await fetchOffers()
     } catch (err) {
-      debugError("Error creating coupon:", err)
-      setSubmitError(err?.response?.data?.message || "Failed to create coupon")
+      debugError("Error saving coupon:", err)
+      setSubmitError(err?.response?.data?.message || (editingOffer ? "Failed to update coupon" : "Failed to create coupon"))
     } finally {
       setIsSubmitting(false)
     }
@@ -299,6 +354,7 @@ export default function Coupons() {
             <button
               type="button"
               onClick={() => {
+                if (isAddOpen) stopEdit()
                 setIsAddOpen((prev) => !prev)
                 setSubmitError("")
                 setSubmitSuccess("")
@@ -314,7 +370,9 @@ export default function Coupons() {
               onSubmit={handleCreateCoupon}
               className="border border-slate-200 rounded-xl p-4 mb-5 bg-slate-50"
             >
-              <h3 className="text-base font-semibold text-slate-900 mb-3">Create Coupon</h3>
+              <h3 className="text-base font-semibold text-slate-900 mb-3">
+                {editingOffer ? `Edit Coupon ${editingOffer.couponCode}` : "Create Coupon"}
+              </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
@@ -507,14 +565,25 @@ export default function Coupons() {
                 </div>
               )}
 
-              <div className="mt-4">
+              <div className="mt-4 flex items-center gap-2">
                 <button
                   type="submit"
                   disabled={isSubmitting || Object.keys(errors).length > 0}
                   className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                 >
-                  {isSubmitting ? "Creating..." : "Create Coupon"}
+                  {editingOffer
+                    ? (isSubmitting ? "Saving..." : "Save Changes")
+                    : (isSubmitting ? "Creating..." : "Create Coupon")}
                 </button>
+                {editingOffer && (
+                  <button
+                    type="button"
+                    onClick={() => { stopEdit(); setIsAddOpen(false) }}
+                    className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                )}
               </div>
             </form>
           )}
@@ -690,6 +759,14 @@ export default function Coupons() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(offer)}
+                          className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
+                        >
+                          Edit
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleDeleteOffer(offer.offerId)}
@@ -698,6 +775,7 @@ export default function Coupons() {
                         >
                           {deletingOffer[offer.offerId] ? "Deleting..." : "Delete"}
                         </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

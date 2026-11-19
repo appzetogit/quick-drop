@@ -4192,7 +4192,14 @@ export async function getAllOffers(_query = {}) {
             maxDiscount: o.maxDiscount ?? null,
             usageLimit: o.usageLimit ?? null,
             usedCount: o.usedCount ?? 0,
-            restaurantScope: o.restaurantScope
+            restaurantScope: o.restaurantScope,
+            // Everything the edit form needs to open filled in.
+            discountValue: Number(o.discountValue ?? 0),
+            customerScope: o.customerScope || 'all',
+            restaurantId: o.restaurantId?._id ? String(o.restaurantId._id) : (o.restaurantId ? String(o.restaurantId) : ''),
+            perUserLimit: o.perUserLimit ?? null,
+            startDate: o.startDate || null,
+            isFirstOrderOnly: Boolean(o.isFirstOrderOnly),
         };
     });
 
@@ -4246,6 +4253,42 @@ export async function createAdminOffer(body) {
     }
 
     return doc.toObject();
+}
+
+/**
+ * Edit a coupon. Takes the same fields as create (validated by the same
+ * DTO); the times it has been used and who created it are kept. A code
+ * already taken by another coupon is refused.
+ */
+export async function updateAdminOffer(id, body) {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+    const clash = await FoodOffer.findOne({ couponCode: body.couponCode, _id: { $ne: id } }).select('_id').lean();
+    if (clash) {
+        throw new ValidationError('Coupon code already exists');
+    }
+    const selected = body.restaurantScope === 'selected';
+    return FoodOffer.findByIdAndUpdate(
+        id,
+        {
+            $set: {
+                couponCode: body.couponCode,
+                discountType: body.discountType,
+                discountValue: body.discountValue,
+                customerScope: body.customerScope,
+                restaurantScope: body.restaurantScope,
+                restaurantId: selected ? body.restaurantId : null,
+                minOrderValue: body.minOrderValue ?? 0,
+                maxDiscount: body.maxDiscount ?? null,
+                usageLimit: body.usageLimit ?? null,
+                perUserLimit: body.perUserLimit ?? null,
+                startDate: body.startDate ?? null,
+                endDate: body.endDate ?? null,
+                isFirstOrderOnly: body.isFirstOrderOnly ?? false,
+                status: body.endDate && new Date(body.endDate).getTime() <= Date.now() ? 'inactive' : 'active',
+            },
+        },
+        { new: true, runValidators: true },
+    ).lean();
 }
 
 export async function updateAdminOfferCartVisibility(offerId, itemId, showInCart) {

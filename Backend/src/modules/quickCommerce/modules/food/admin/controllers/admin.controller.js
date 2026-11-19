@@ -789,6 +789,23 @@ export async function createAdminOffer(req, res, next) {
     }
 }
 
+export async function updateAdminOffer(req, res, next) {
+    try {
+        const { id } = req.params;
+        if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid offer id' });
+        }
+        const body = validateCreateOfferDto(req.body || {}, { allowFreeDelivery: true });
+        const updated = await adminService.updateAdminOffer(id, body);
+        if (!updated) {
+            return res.status(404).json({ success: false, message: 'Offer not found' });
+        }
+        res.status(200).json({ success: true, message: 'Offer updated successfully', data: { offer: updated } });
+    } catch (error) {
+        next(error);
+    }
+}
+
 export async function updateAdminOfferCartVisibility(req, res, next) {
     try {
         const { id } = req.params;

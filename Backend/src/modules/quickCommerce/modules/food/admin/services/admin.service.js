@@ -4580,7 +4580,15 @@ export async function getAllOffers(_query = {}) {
             restaurantScope: o.restaurantScope,
             createdByRole: o.createdByRole || 'ADMIN',
             adminBearPercentage: Number(o.adminBearPercentage ?? (o.createdByRole === 'RESTAURANT' ? 0 : 100)),
-            restaurantBearPercentage: Number(o.restaurantBearPercentage ?? (o.createdByRole === 'RESTAURANT' ? 100 : 0))
+            restaurantBearPercentage: Number(o.restaurantBearPercentage ?? (o.createdByRole === 'RESTAURANT' ? 100 : 0)),
+            // Everything the edit form needs to open filled in.
+            discountValue: Number(o.discountValue ?? 0),
+            customerScope: o.customerScope || 'all',
+            restaurantId: selectedRestaurants[0]?._id ? String(selectedRestaurants[0]._id) : (selectedRestaurants[0] ? String(selectedRestaurants[0]) : ''),
+            restaurantIds: selectedRestaurants.map((r) => String(r?._id || r)).filter(Boolean),
+            perUserLimit: o.perUserLimit ?? null,
+            startDate: o.startDate || null,
+            isFirstOrderOnly: Boolean(o.isFirstOrderOnly),
         };
     });
 
@@ -4640,6 +4648,46 @@ export async function createAdminOffer(body) {
     }
 
     return doc.toObject();
+}
+
+/**
+ * Edit a coupon. Takes the same fields as create (validated by the same
+ * DTO); the times it has been used and who created it are kept. A code
+ * already taken by another coupon is refused.
+ */
+export async function updateAdminOffer(id, body) {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) return null;
+    const clash = await FoodOffer.findOne({ couponCode: body.couponCode, _id: { $ne: id } }).select('_id').lean();
+    if (clash) {
+        throw new ValidationError('Coupon code already exists');
+    }
+    const selected = body.restaurantScope === 'selected';
+    const restaurantIds = selected ? (body.restaurantIds || []) : [];
+    return FoodOffer.findByIdAndUpdate(
+        id,
+        {
+            $set: {
+                couponCode: body.couponCode,
+                discountType: body.discountType,
+                discountValue: body.discountValue,
+                customerScope: body.customerScope,
+                restaurantScope: body.restaurantScope,
+                restaurantId: selected ? (body.restaurantId || restaurantIds[0] || null) : null,
+                restaurantIds,
+                minOrderValue: body.minOrderValue ?? 0,
+                maxDiscount: body.maxDiscount ?? null,
+                usageLimit: body.usageLimit ?? null,
+                perUserLimit: body.perUserLimit ?? null,
+                startDate: body.startDate ?? null,
+                endDate: body.endDate ?? null,
+                isFirstOrderOnly: body.isFirstOrderOnly ?? false,
+                status: body.endDate && new Date(body.endDate).getTime() <= Date.now() ? 'inactive' : 'active',
+                adminBearPercentage: body.adminBearPercentage ?? 100,
+                restaurantBearPercentage: body.restaurantBearPercentage ?? 0,
+            },
+        },
+        { new: true, runValidators: true },
+    ).lean();
 }
 
 export async function updateAdminOfferCartVisibility(offerId, itemId, showInCart) {
