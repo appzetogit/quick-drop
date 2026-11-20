@@ -40,6 +40,9 @@ const schema = new mongoose.Schema(
     raw: { type: mongoose.Schema.Types.Mixed, default: null },
     // Outgoing: who or what sent it ('admin:<id>', 'food-invoice', ...).
     sentBy: { type: String, default: '' },
+    // Outgoing template messages: which template, and the campaign that sent it (if any).
+    templateName: { type: String, default: '' },
+    campaignId: { type: mongoose.Schema.Types.ObjectId, default: null },
     readByAdmin: { type: Boolean, default: false },
   },
   { timestamps: true, minimize: false },
@@ -48,6 +51,7 @@ const schema = new mongoose.Schema(
 schema.index({ phone: 1, createdAt: -1 });
 schema.index({ createdAt: -1 });
 schema.index({ direction: 1, readByAdmin: 1 });
+schema.index({ campaignId: 1, status: 1 }, { partialFilterExpression: { campaignId: { $type: 'objectId' } } });
 
 export const WhatsAppMessage = mongoose.models.WhatsAppMessage
   || mongoose.model('WhatsAppMessage', schema, 'whatsapp_messages');

@@ -59,6 +59,7 @@ import {
   releaseCouponUse,
 } from './couponUsage.service.js';
 import { alertAdmins, alertOrderEvent, ALERT_KINDS, line } from '../../../../core/notifications/adminAlerts.js';
+import { queueOrderWhatsApp } from '../../../../core/whatsapp/whatsappNotifications.service.js';
 // 🗑️ Moved to foodTransaction.service.js to centralize finance logic.
 
 async function getZoneSurgeSnapshot(zoneId) {
@@ -1469,6 +1470,10 @@ export async function updateOrderStatusRestaurant(
   if (String(orderStatus).startsWith('cancel')) {
     alertOrderEvent(order, { module: 'food', cancelled: true, by: isAdmin ? 'admin' : 'restaurant' });
   }
+  // Accepted (straight to preparing counts too): WhatsApp order alert, if one is set up.
+  if (['confirmed', 'preparing'].includes(String(orderStatus)) && !['confirmed', 'preparing'].includes(String(from))) {
+    queueOrderWhatsApp('food', 'confirmed', order);
+  }
 
   // Custom messages / titles for status updates
   let title = `Order ${order._id.toString()} updated`;
@@ -1680,11 +1685,33 @@ export async function confirmPickupDelivery(
   deliveryPartnerId,
   billImageUrl,
 ) {
-  return deliveryService.confirmPickupDelivery(
+  const result = await deliveryService.confirmPickupDelivery(
     orderId,
     deliveryPartnerId,
     billImageUrl,
   );
+  whatsappAfterRiderStep(orderId);
+  return result;
+}
+
+/**
+ * Picked up / delivered: WhatsApp order alert, if one is set up. Every rider
+ * pickup and delivery goes through these wrappers; the alert reads the order's
+ * saved status, so a step that did not happen sends nothing, and each order
+ * gets each alert once.
+ */
+function whatsappAfterRiderStep(orderId) {
+  const id = String(orderId || '').trim();
+  if (!id) return;
+  // The rider app sends either the database id or the display order id.
+  FoodOrder.findOne(mongoose.Types.ObjectId.isValid(id) && id.length === 24 ? { _id: id } : { order_id: id })
+    .lean()
+    .then((order) => {
+      if (order && ['picked_up', 'delivered'].includes(String(order.orderStatus))) {
+        queueOrderWhatsApp('food', String(order.orderStatus), order);
+      }
+    })
+    .catch(() => {});
 }
 
 export async function confirmReachedDropDelivery(orderId, deliveryPartnerId) {
@@ -1698,13 +1725,17 @@ export async function verifyDropOtpDelivery(orderId, deliveryPartnerId, otp) {
 }
 
 export async function completeDelivery(orderId, deliveryPartnerId, body = {}) {
-  return deliveryService.completeDelivery(orderId, deliveryPartnerId, body);
+  const result = await deliveryService.completeDelivery(orderId, deliveryPartnerId, body);
+  whatsappAfterRiderStep(orderId);
+  return result;
 }
 
 
 
 export async function updateOrderStatusDelivery(orderId, deliveryPartnerId, orderStatus) {
-  return deliveryService.updateOrderStatusDelivery(orderId, deliveryPartnerId, orderStatus);
+  const result = await deliveryService.updateOrderStatusDelivery(orderId, deliveryPartnerId, orderStatus);
+  whatsappAfterRiderStep(orderId);
+  return result;
 }
 
 // ----- COD QR collection -----

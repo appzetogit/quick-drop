@@ -47,6 +47,7 @@ import appServicesRoutes from '../core/appServices/appServices.routes.js';
 import platformAdminRoutes from '../core/admin/platformAdmins.routes.js';
 import supportInboxRoutes from '../core/support/supportInbox.routes.js';
 import whatsappInboxRoutes from '../core/whatsapp/whatsappInbox.routes.js';
+import whatsappMarketingRoutes from '../core/whatsapp/whatsappMarketing.routes.js';
 import couponListRoutes from '../core/promotions/couponList.routes.js';
 import platformPnlRoutes from '../core/finance/platformPnl.routes.js';
 import homeContentRoutes from '../core/cms/homeContent.routes.js';
@@ -132,6 +133,9 @@ router.use('/v1/platform/admins', platformAdminRoutes);
 // One support inbox over every service's tickets (Master > Help & Support).
 router.use('/v1/platform/support', supportInboxRoutes);
 // WhatsApp messages from customers and receipts for ours (Master > WhatsApp).
+// Campaigns, templates, opt-outs and order alerts (Master > WhatsApp Marketing).
+// Before the inbox router, whose path it extends.
+router.use('/v1/platform/whatsapp/marketing', whatsappMarketingRoutes);
 router.use('/v1/platform/whatsapp', whatsappInboxRoutes);
 // Every service's coupons in one list (Master > Coupons).
 router.use('/v1/platform/coupons', couponListRoutes);

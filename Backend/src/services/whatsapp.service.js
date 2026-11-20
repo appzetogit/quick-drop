@@ -61,7 +61,7 @@ async function resolveUserWhatsAppDetails(user, fallbackPhone = '') {
  * delivered / read receipts then land on it. Returns the Meta message id
  * (truthy) on success, false when WhatsApp is not set up; throws on a Meta error.
  */
-export async function sendWhatsAppMessage(to, payload, { sentBy = '' } = {}) {
+export async function sendWhatsAppMessage(to, payload, { sentBy = '', campaignId = null } = {}) {
   const creds = whatsappCredentials();
   const whatsappAccessToken = creds.accessToken;
   const whatsappPhoneNumberId = creds.phoneNumberId;
@@ -99,14 +99,17 @@ export async function sendWhatsAppMessage(to, payload, { sentBy = '' } = {}) {
     const wamid = response.data?.messages?.[0]?.id;
     logger.info(`[WhatsApp] Message successfully sent to ${cleanPhone}. ID: ${wamid}`);
     if (wamid) {
-      await recordOutgoingWhatsApp({ wamid, phone: response.data?.contacts?.[0]?.wa_id || cleanPhone, payload, phoneNumberId: whatsappPhoneNumberId, sentBy })
+      await recordOutgoingWhatsApp({ wamid, phone: response.data?.contacts?.[0]?.wa_id || cleanPhone, payload, phoneNumberId: whatsappPhoneNumberId, sentBy, campaignId })
         .catch((err) => logger.warn(`[WhatsApp] sent ${wamid} but could not record it: ${err.message}`));
     }
     return wamid || true;
   } catch (error) {
     const errData = error.response?.data || error.message;
     logger.error(`[WhatsApp] Send error to ${cleanPhone}:`, JSON.stringify(errData));
-    throw new Error(error.response?.data?.error?.message || error.message);
+    // metaCode lets callers tell a rate limit (130429, 131056...) from a real failure.
+    throw Object.assign(new Error(error.response?.data?.error?.message || error.message), {
+      metaCode: Number(error.response?.data?.error?.code) || 0,
+    });
   }
 }
 
