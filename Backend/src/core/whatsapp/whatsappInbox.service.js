@@ -7,6 +7,7 @@
  * "failed" always lands, with Meta's reason.
  */
 import { WhatsAppMessage } from './whatsappMessage.model.js';
+import { handleInboundForContacts } from './whatsappContacts.service.js';
 import { logger } from '../../utils/logger.js';
 
 const RANK = { accepted: 0, sent: 1, delivered: 2, read: 3 };
@@ -40,11 +41,19 @@ const outgoingText = (payload = {}) => {
 };
 
 /** A message we sent. The receipts may already be here (they can beat the API response). */
-export async function recordOutgoingWhatsApp({ wamid, phone, payload = {}, phoneNumberId = '', sentBy = '' }) {
+export async function recordOutgoingWhatsApp({ wamid, phone, payload = {}, phoneNumberId = '', sentBy = '', campaignId = null }) {
   await WhatsAppMessage.updateOne(
     { wamid },
     {
-      $set: { type: payload.type || 'unknown', text: outgoingText(payload), sentBy, phoneNumberId, readByAdmin: true },
+      $set: {
+        type: payload.type || 'unknown',
+        text: outgoingText(payload),
+        sentBy,
+        phoneNumberId,
+        readByAdmin: true,
+        templateName: payload.type === 'template' ? String(payload.template?.name || '') : '',
+        campaignId: campaignId || null,
+      },
       $setOnInsert: { wamid, direction: 'out', phone: digits(phone), status: 'accepted', sentAt: new Date() },
     },
     { upsert: true },
@@ -112,6 +121,10 @@ export async function processWhatsAppWebhook(body = {}) {
       const names = new Map((v.contacts || []).map((c) => [digits(c.wa_id), c.profile?.name || '']));
       for (const m of v.messages || []) {
         await storeIncoming(m, { contactName: names.get(digits(m.from)), phoneNumberId });
+        // STOP / START keywords and the last-seen time for the contact list.
+        // Never fails the webhook: the message itself is already stored.
+        await handleInboundForContacts(m, names.get(digits(m.from)))
+          .catch((err) => logger.warn(`[WhatsApp] contact update failed for ${digits(m.from)}: ${err.message}`));
         out.messages += 1;
       }
       for (const st of v.statuses || []) {

@@ -21,6 +21,7 @@ const AdminSettings = lazy(() => import("@food/pages/admin/AdminSettings"));
 const PlatformSettings = lazy(() => import("@food/pages/admin/master/PlatformSettings"))
 const SupportInbox = lazy(() => import("@food/pages/admin/master/SupportInbox"))
 const WhatsAppInbox = lazy(() => import("@food/pages/admin/master/WhatsAppInbox"))
+const WhatsAppMarketing = lazy(() => import("@food/pages/admin/master/WhatsAppMarketing"))
 const MasterReferral = lazy(() => import("@food/pages/admin/master/MasterReferral"))
 const MasterCoupons = lazy(() => import("@food/pages/admin/master/MasterCoupons"))
 const PlatformEarnings = lazy(() => import("@food/pages/admin/master/PlatformEarnings"))
@@ -460,6 +461,7 @@ export default function AdminRouter() {
           <Route path="master/settings/:tab" element={<PlatformSettings />} />
           <Route path="master/support" element={<SupportInbox />} />
           <Route path="master/whatsapp" element={<WhatsAppInbox />} />
+          <Route path="master/whatsapp-marketing" element={<WhatsAppMarketing />} />
           <Route path="master/referral" element={<MasterReferral />} />
           <Route path="master/coupons" element={<MasterCoupons />} />
           <Route path="master/platform-earnings" element={<PlatformEarnings />} />

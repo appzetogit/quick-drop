@@ -25,6 +25,7 @@ import * as paymentService from './order-payment.service.js';
 // orders, so a rider on a grocery order still read as free to food and to taxi,
 // and both would claim them. See core/assignment/assignment.service.js.
 import { claimAssignment, releaseAssignment } from '../../../../../../core/assignment/assignment.service.js';
+import { queueOrderWhatsApp } from '../../../../../../core/whatsapp/whatsappNotifications.service.js';
 import { config } from '../../../../../../config/env.js';
 
 import {
@@ -121,6 +122,10 @@ function mergeTransactionIntoOrder(orderDoc, txDoc) {
 }
 
 function emitOrderUpdate(order, deliveryPartnerId) {
+  // Picked up / delivered: WhatsApp order alert, if one is set up (sent once per order).
+  if (['picked_up', 'delivered'].includes(String(order?.orderStatus))) {
+    queueOrderWhatsApp('quick', String(order.orderStatus), order);
+  }
   try {
     const io = getIO();
     if (io) {

@@ -419,6 +419,30 @@ export const whatsappInboxAPI = {
     apiClient.post(`/platform/whatsapp/conversations/${encodeURIComponent(phone)}/reply`, { text }, { contextModule: "admin" }),
 };
 
+// Master > WhatsApp Marketing: campaigns, templates, opt-outs, order alerts (core/whatsapp).
+const WAM = "/platform/whatsapp/marketing"
+export const whatsappMarketingAPI = {
+  status: () => apiClient.get(`${WAM}/status`, { contextModule: "admin" }),
+  templates: (fresh = false) => apiClient.get(`${WAM}/templates`, { params: fresh ? { fresh: 1 } : {}, contextModule: "admin" }),
+  createTemplate: (body) => apiClient.post(`${WAM}/templates`, body, { contextModule: "admin" }),
+  uploadMedia: (file) => {
+    const form = new FormData()
+    form.append("file", file)
+    return apiClient.post(`${WAM}/media`, form, { contextModule: "admin", headers: { "Content-Type": "multipart/form-data" } })
+  },
+  previewAudience: (audience) => apiClient.post(`${WAM}/audience/preview`, { audience }, { contextModule: "admin" }),
+  sendTest: (body) => apiClient.post(`${WAM}/campaigns/test`, body, { contextModule: "admin" }),
+  campaigns: (params) => apiClient.get(`${WAM}/campaigns`, { params, contextModule: "admin" }),
+  createCampaign: (body) => apiClient.post(`${WAM}/campaigns`, body, { contextModule: "admin" }),
+  campaign: (id) => apiClient.get(`${WAM}/campaigns/${encodeURIComponent(id)}`, { contextModule: "admin" }),
+  cancelCampaign: (id) => apiClient.post(`${WAM}/campaigns/${encodeURIComponent(id)}/cancel`, {}, { contextModule: "admin" }),
+  report: (days) => apiClient.get(`${WAM}/report`, { params: { days }, contextModule: "admin" }),
+  contacts: (params) => apiClient.get(`${WAM}/contacts`, { params, contextModule: "admin" }),
+  setContact: (phone, marketing) => apiClient.post(`${WAM}/contacts`, { phone, marketing }, { contextModule: "admin" }),
+  notifications: () => apiClient.get(`${WAM}/notifications`, { contextModule: "admin" }),
+  saveNotifications: (body) => apiClient.put(`${WAM}/notifications`, body, { contextModule: "admin" }),
+};
+
 // Master > Help & Support: every service's tickets in one inbox (core/support).
 export const supportInboxAPI = {
   list: (params) => apiClient.get("/platform/support/tickets", { params, contextModule: "admin" }),

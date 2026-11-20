@@ -165,6 +165,15 @@ export const masterSidebarMenu = [
       },
       {
         type: "expandable",
+        label: "WhatsApp Marketing",
+        icon: "Megaphone",
+        subItems: [
+          { label: "Campaigns, Templates & Alerts", path: "/admin/master/whatsapp-marketing" },
+          { label: "WhatsApp Inbox (replies)", path: "/admin/master/whatsapp" },
+        ],
+      },
+      {
+        type: "expandable",
         label: "Customer Management",
         icon: "Users",
         subItems: [

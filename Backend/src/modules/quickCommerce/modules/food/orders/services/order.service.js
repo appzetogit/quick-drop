@@ -79,6 +79,7 @@ import {
   STATUS_PRIORITY,
 } from './order.helpers.js';
 import { alertAdmins, alertOrderEvent, ALERT_KINDS, line } from '../../../../../../core/notifications/adminAlerts.js';
+import { queueOrderWhatsApp } from '../../../../../../core/whatsapp/whatsappNotifications.service.js';
 
 
 
@@ -2227,6 +2228,10 @@ export async function updateOrderStatusRestaurant(
 
   await order.save();
   if (isSellerCancel) alertOrderEvent(order, { cancelled: true, by: 'store' });
+  // Accepted (straight to preparing counts too): WhatsApp order alert, if one is set up.
+  if (['confirmed', 'preparing'].includes(String(orderStatus)) && !['confirmed', 'preparing'].includes(String(from))) {
+    queueOrderWhatsApp('quick', 'confirmed', order);
+  }
 
   if (String(orderStatus) === "delivered") {
     try {
@@ -3000,6 +3005,12 @@ export async function updateOrderStatusAdmin(orderId, orderStatus, note = "", ad
 
     await order.save();
     if (String(orderStatus).includes('cancel')) alertOrderEvent(order, { cancelled: true, by: 'admin' });
+    // WhatsApp order alerts for an admin status change (each sent once per order).
+    if (['confirmed', 'preparing'].includes(String(orderStatus)) && !['confirmed', 'preparing'].includes(String(from))) {
+      queueOrderWhatsApp('quick', 'confirmed', order);
+    } else if (['picked_up', 'delivered'].includes(String(orderStatus))) {
+      queueOrderWhatsApp('quick', String(orderStatus), order);
+    }
 
     if (String(orderStatus) === "delivered") {
         try {
@@ -3137,6 +3148,7 @@ export async function markOrderDeliveredAdmin(orderId, adminId, note = "") {
     });
 
     await order.save();
+    queueOrderWhatsApp('quick', 'delivered', order);
 
     try {
         const ledgerKind =
