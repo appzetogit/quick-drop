@@ -61,8 +61,8 @@ export async function handleInboundForContacts(m, contactName = '') {
     try {
       const { sendWhatsAppMessage } = await import('../../services/whatsapp.service.js');
       const body = optOut
-        ? 'You will no longer receive offers from Quickdrops India on WhatsApp. Order updates will still reach you. Reply START to get offers again.'
-        : 'You are subscribed to offers from Quickdrops India on WhatsApp. Reply STOP any time to stop them.';
+        ? 'You will no longer receive offers from Quickdrops on WhatsApp. Order updates will still reach you. Reply START to get offers again.'
+        : 'You are subscribed to offers from Quickdrops on WhatsApp. Reply STOP any time to stop them.';
       await sendWhatsAppMessage(p, { type: 'text', text: { preview_url: false, body } }, { sentBy: 'opt-confirmation' });
     } catch (err) {
       logger.warn(`[WhatsApp] could not confirm ${optOut ? 'opt-out' : 'opt-in'} to ${p}: ${err.message}`);

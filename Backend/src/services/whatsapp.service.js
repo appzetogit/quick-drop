@@ -174,7 +174,7 @@ export async function sendFoodInvoiceWhatsApp(order, user) {
   } else {
     // Free-form Receipt Fallback Mode
     const itemsListText = items.map(i => `• _${i.name}_ x${i.quantity} - *₹${i.total.toFixed(2)}*${i.addonsText ? `\n   + ${i.addonsText}` : ''}`).join('\n');
-    const invoiceText = `*K9 RIDES - FOOD INVOICE* 🍔
+    const invoiceText = `*QUICKDROPS - FOOD INVOICE* 🍔
 ---------------------------------------------
 *Hi ${customerName},*
 Thank you for your order! Here is your receipt.
@@ -192,7 +192,7 @@ ${itemsListText}
 ${tax > 0 ? `• ${Number(order.pricing?.bill?.gstRate) > 0 ? `GST @ ${Number(order.pricing.bill.gstRate)}%${Number(order.pricing?.bill?.taxableAmount) > 0 ? ` on ₹${Number(order.pricing.bill.taxableAmount).toFixed(2)}` : ''}` : 'GST'}: ₹${tax.toFixed(2)}\n` : ''}${packagingFee > 0 ? `• Packaging Fee: ₹${packagingFee.toFixed(2)}\n` : ''}${deliveryFee > 0 ? `• Delivery Fee: ₹${deliveryFee.toFixed(2)}\n` : ''}${platformFee > 0 ? `• Platform Fee: ₹${platformFee.toFixed(2)}\n` : ''}${discount > 0 ? `• Discount: -₹${discount.toFixed(2)}\n` : ''}---------------------------------------------
 *Total Paid: ₹${total.toFixed(2)}*
 
-If you have any questions, reach out to our customer support.`;
+Thank you for ordering with Quickdrops! For help, reply to this message.`;
 
     const textPayload = {
       type: 'text',
@@ -268,7 +268,7 @@ export async function sendTaxiInvoiceWhatsApp(ride, user) {
     return sendWhatsAppMessage(recipientPhone, templatePayload, { sentBy: 'taxi-invoice' });
   } else {
     // Free-form Receipt Fallback Mode
-    const invoiceText = `*K9 RIDES - TRIP INVOICE* 🚖
+    const invoiceText = `*QUICKDROPS - TRIP INVOICE* 🚖
 ---------------------------------------------
 *Hi ${customerName},*
 Thanks for riding with us! Here is your trip receipt.
@@ -290,7 +290,7 @@ Thanks for riding with us! Here is your trip receipt.
 ${distanceCharge > 0 ? `• Distance Fare: ₹${distanceCharge.toFixed(2)}\n` : ''}${timeCharge > 0 ? `• Time Fare: ₹${timeCharge.toFixed(2)}\n` : ''}${waitingCharge > 0 ? `• Waiting Charges: ₹${waitingCharge.toFixed(2)}\n` : ''}${additionalCharge > 0 ? `• Tolls/Additional Charges: ₹${additionalCharge.toFixed(2)}\n` : ''}${adminExtraCharge > 0 ? `• Surcharges: ₹${adminExtraCharge.toFixed(2)}\n` : ''}${discount > 0 ? `• Promo Discount: -₹${discount.toFixed(2)}\n` : ''}---------------------------------------------
 *Total Fare Paid: ₹${total.toFixed(2)}*
 
-We hope you had a pleasant trip! Support: support@k9rides.com`;
+We hope you had a pleasant trip! For help, reply to this message.`;
 
     const textPayload = {
       type: 'text',
