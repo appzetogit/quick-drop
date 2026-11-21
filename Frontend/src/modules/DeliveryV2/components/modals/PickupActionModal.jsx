@@ -198,7 +198,16 @@ export const PickupActionModal = ({
                     >
                       {items.map((item, idx) => (
                         <div key={idx} className="flex justify-between items-center p-4 bg-gray-50/30 rounded-2xl border border-gray-50">
-                          <span className="text-gray-800 text-sm font-bold uppercase tracking-tight">{item.name || 'Item Name'}</span>
+                          <span className="text-gray-800 text-sm font-bold uppercase tracking-tight">
+                            {item.name || 'Item Name'}
+                            {item.variantName ? <span className="ml-1 normal-case font-medium text-gray-500">({item.variantName})</span> : null}
+                            {/* Add-ons, so the rider checks they are in the bag. */}
+                            {Array.isArray(item.addons) && item.addons.length > 0 ? (
+                              <span className="block text-xs normal-case font-medium text-gray-500">
+                                + {item.addons.map((a) => `${a?.name || 'Add-on'}${Number(a?.quantity) > 1 ? ` x${Number(a.quantity)}` : ''}`).join(', ')}
+                              </span>
+                            ) : null}
+                          </span>
                           <span className="text-emerald-700 font-black bg-emerald-100/50 px-3 py-1 rounded-xl text-xs">x{item.quantity || 1}</span>
                         </div>
                       ))}

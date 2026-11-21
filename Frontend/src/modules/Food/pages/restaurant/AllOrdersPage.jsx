@@ -18,6 +18,7 @@ import api, { restaurantAPI } from "@food/api"
 import { useRestaurantNotifications } from "@food/hooks/useRestaurantNotifications"
 import { printZomatoInvoice } from "@food/utils/printZomatoInvoice"
 import { Download } from "lucide-react"
+import { addonsLabel, unitPriceWithAddons } from "@food/utils/orderItemPricing"
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
 const debugError = (...args) => { }
@@ -212,7 +213,9 @@ export default function AllOrdersPage() {
     const items = (order.items || []).map(item => ({
       name: item.name || 'Item',
       quantity: item.quantity || 1,
-      price: item.price || 0
+      // Per dish with its add-ons (food keeps them apart from price).
+      price: unitPriceWithAddons(item),
+      addonsText: addonsLabel(item)
     }))
 
     // Determine status (backend: orderStatus)
@@ -717,8 +720,9 @@ export default function AllOrdersPage() {
                     <div key={idx} className="flex items-center justify-between">
                       <span className="text-sm text-gray-900">
                         {item.quantity} x {item.name}
+                        {item.addonsText ? <span className="block text-xs text-gray-500">+ {item.addonsText}</span> : null}
                       </span>
-                      <span className="text-sm font-medium text-gray-900">{formatMoney(item.price)}</span>
+                      <span className="text-sm font-medium text-gray-900">{formatMoney(item.price * item.quantity)}</span>
                     </div>
                   ))}
                   {order.items.length > 1 && (

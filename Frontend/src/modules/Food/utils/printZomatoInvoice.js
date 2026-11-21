@@ -1,3 +1,5 @@
+import { addonsLabel, unitPriceWithAddons } from "@food/utils/orderItemPricing"
+
 export const printZomatoInvoice = (order, companyName, termsHtml = "") => {
   const printWindow = window.open("", "_blank")
   if (!printWindow) {
@@ -56,8 +58,10 @@ export const printZomatoInvoice = (order, companyName, termsHtml = "") => {
   const items = (order.items || []).map(item => ({
     name: item.name || "Item",
     quantity: item.quantity || item.qty || 1,
-    price: item.price || 0,
-    variantName: item.variantName || ""
+    // Per dish with its add-ons (a raw food order keeps them apart from price).
+    price: unitPriceWithAddons(item),
+    variantName: item.variantName || "",
+    addonsText: item.addonsText || addonsLabel(item)
   }))
 
   const html = `
@@ -195,7 +199,7 @@ export const printZomatoInvoice = (order, companyName, termsHtml = "") => {
             .map(
               (item) => `
             <tr>
-              <td>${item.name} ${item.variantName ? `<br><small>(${item.variantName})</small>` : ""}</td>
+              <td>${item.name} ${item.variantName ? `<br><small>(${item.variantName})</small>` : ""}${item.addonsText ? `<br><small>+ ${item.addonsText}</small>` : ""}</td>
               <td class="text-center">${item.quantity}</td>
               <td class="text-right">${formatCurrency(item.price)}</td>
               <td class="text-right">${formatCurrency(item.price * item.quantity)}</td>

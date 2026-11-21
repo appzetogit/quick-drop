@@ -21,6 +21,7 @@ import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 import { getCompanyNameAsync } from "@food/utils/businessSettings"
 import { printZomatoInvoice } from "@food/utils/printZomatoInvoice"
+import { addonsLabel, itemAddons, lineTotalWithAddons, unitPriceWithAddons } from "@food/utils/orderItemPricing"
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
 const debugError = (...args) => { }
@@ -292,7 +293,9 @@ export default function UserOrderDetails() {
           name: item.name || 'Item',
           variantName: item.variantName || '',
           quantity: item.quantity || item.qty || 1,
-          price: item.price || 0
+          // Per dish, with add-ons (food keeps them apart from `price`).
+          price: unitPriceWithAddons(item),
+          addonsText: addonsLabel(item)
         })),
         subtotal: pricing.subtotal || pricing.originalItemTotal || 0,
         deliveryFee: pricing.deliveryFee || 0,
@@ -456,10 +459,13 @@ export default function UserOrderDetails() {
                 </div>
                 <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
                   {item.quantity || item.qty || 1} x {item.name}{item.variantName ? ` (${item.variantName})` : ""}
+                  {itemAddons(item).length > 0 && (
+                    <span className="block text-xs font-normal text-gray-500 dark:text-gray-400">+ {addonsLabel(item)}</span>
+                  )}
                 </span>
               </div>
               <span className="text-sm text-gray-800 dark:text-gray-200 font-medium">
-                ₹{(item.price || 0).toFixed(2)}
+                ₹{lineTotalWithAddons({ ...item, quantity: item.quantity || item.qty || 1 }).toFixed(2)}
               </span>
             </div>
           ))}

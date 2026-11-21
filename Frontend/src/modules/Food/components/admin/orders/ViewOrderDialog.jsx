@@ -7,6 +7,15 @@ import {
   DialogDescription,
 } from "@food/components/ui/dialog"
 import RiderAssignmentSection from "@food/components/admin/orders/manual-assign/RiderAssignmentSection"
+import { addonsPerUnit } from "@food/utils/orderItemPricing"
+
+// The coupon on an order, whichever field it was saved in.
+const couponOf = (order) => order?.pricing?.appliedCoupon || order?.appliedCoupon || null
+const couponCodeOf = (order) => String(couponOf(order)?.code || order?.pricing?.couponCode || order?.couponCode || "").trim()
+const isFreeDeliveryCoupon = (order) => String(couponOf(order)?.type || "").toLowerCase() === "free-delivery"
+// Delivery fee a coupon (or a free-delivery offer) waived.
+const deliveryWaivedOf = (order) =>
+  Number(couponOf(order)?.deliveryFeeWaived) || Number(order?.pricing?.deliveryFeeBreakdown?.waivedDeliveryFee) || 0
 const debugLog = (...args) => {}
 const debugWarn = (...args) => {}
 const debugError = (...args) => {}
@@ -355,7 +364,13 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
                           )}
                           {Array.isArray(item.addons) && item.addons.length > 0 && (
                             <span className="block text-xs font-normal text-slate-500">
-                              + {item.addons.map((a) => a?.name || a?.title).filter(Boolean).join(", ")}
+                              {item.addons.map((a, i) => (
+                                <span key={i} className="block">
+                                  + {a?.name || a?.title || "Add-on"}
+                                  {Number(a?.quantity) > 1 ? ` x${Number(a.quantity)}` : ""}
+                                  {Number(a?.price) > 0 ? ` (₹${(Number(a.price) * (Number(a?.quantity) || 1)).toFixed(2)})` : ""}
+                                </span>
+                              ))}
                             </span>
                           )}
                         </p>
@@ -370,7 +385,8 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
                       )}
                     </div>
                     <p className="text-sm font-semibold text-slate-900">
-                      ₹{((item.price || 0) * (item.quantity || 1)).toFixed(2)}
+                      {/* Add-ons are billed on top of the item price, per unit. */}
+                      ₹{(((Number(item.price) || 0) + addonsPerUnit(item)) * (Number(item.quantity) || 1)).toFixed(2)}
                     </p>
                   </div>
                 ))}
@@ -649,8 +665,26 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
               )}
               {order.couponDiscount !== undefined && order.couponDiscount > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Coupon Discount</span>
+                  <span className="text-slate-600">
+                    Coupon Discount{couponCodeOf(order) ? ` (${couponCodeOf(order)})` : ""}
+                  </span>
                   <span className="font-medium text-emerald-600">-₹{order.couponDiscount.toFixed(2)}</span>
+                </div>
+              )}
+              {/* A free-delivery coupon takes nothing off the items (discount 0):
+                  it waives the delivery fee, so it is shown on its own line. */}
+              {isFreeDeliveryCoupon(order) && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Coupon ({couponCodeOf(order)}): free delivery</span>
+                  <span className="font-medium text-emerald-600">
+                    {deliveryWaivedOf(order) > 0 ? `-₹${deliveryWaivedOf(order).toFixed(2)} delivery` : "Applied"}
+                  </span>
+                </div>
+              )}
+              {couponCodeOf(order) && !isFreeDeliveryCoupon(order) && !(order.couponDiscount > 0) && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Coupon used</span>
+                  <span className="font-medium text-slate-900">{couponCodeOf(order)}</span>
                 </div>
               )}
               {order.deliveryCharge !== undefined && (
@@ -658,9 +692,9 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
                   <span className="text-slate-600">Delivery Fee</span>
                   <span className="font-medium text-slate-900">
                     {/* Waived: the fee it would have been, struck through, then Free. */}
-                    {!(order.deliveryCharge > 0) && Number(order.pricing?.deliveryFeeBreakdown?.waivedDeliveryFee) > 0 && (
+                    {!(order.deliveryCharge > 0) && deliveryWaivedOf(order) > 0 && (
                       <span className="mr-1.5 text-slate-400 line-through">
-                        ₹{Number(order.pricing.deliveryFeeBreakdown.waivedDeliveryFee).toFixed(2)}
+                        ₹{deliveryWaivedOf(order).toFixed(2)}
                       </span>
                     )}
                     {order.deliveryCharge > 0 ? `₹${order.deliveryCharge.toFixed(2)}` : <span className="text-emerald-600">Free delivery</span>}

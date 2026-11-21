@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { emailCredentials } from '../core/settings/platformProfile.service.js';
+import { orderLineWithAddons, escapeHtml } from '../utils/orderItemAddons.js';
 
 let transporter = null;
 let transporterKey = '';
@@ -87,12 +88,8 @@ export async function sendFoodInvoiceEmail(order, user) {
   });
 
   // Normalize items
-  const items = (order.items || []).map(item => {
-    const itemName = item.name || item.menuItem?.name || 'Item';
-    const quantity = item.quantity || 1;
-    const price = item.price || item.menuItem?.price || 0;
-    return { name: itemName, quantity, price, total: quantity * price };
-  });
+  // Each line includes its add-ons, so the lines add up to the subtotal.
+  const items = (order.items || []).map(orderLineWithAddons);
 
   const subtotal = order.pricing?.subtotal || order.subtotal || items.reduce((sum, i) => sum + i.total, 0);
   const tax = order.pricing?.tax || 0;
@@ -115,7 +112,7 @@ export async function sendFoodInvoiceEmail(order, user) {
 
   const itemsHtml = items.map(item => `
     <tr>
-      <td style="padding: 12px 0; border-bottom: 1px solid #f0f0f0; color: #333333; font-size: 15px;">${item.name} <span style="color: #888888; font-size: 13px;">x ${item.quantity}</span></td>
+      <td style="padding: 12px 0; border-bottom: 1px solid #f0f0f0; color: #333333; font-size: 15px;">${item.name}${item.variantName ? ` (${escapeHtml(item.variantName)})` : ''} <span style="color: #888888; font-size: 13px;">x ${item.quantity}</span>${item.addonsText ? `<br><span style="color: #888888; font-size: 13px;">+ ${escapeHtml(item.addonsText)}</span>` : ''}</td>
       <td style="padding: 12px 0; border-bottom: 1px solid #f0f0f0; text-align: right; color: #333333; font-size: 15px; font-weight: 500;">₹${item.total.toFixed(2)}</td>
     </tr>
   `).join('');

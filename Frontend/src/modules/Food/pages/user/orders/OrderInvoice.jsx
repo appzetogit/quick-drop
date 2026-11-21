@@ -9,6 +9,7 @@ import { Button } from "@food/components/ui/button"
 import { Badge } from "@food/components/ui/badge"
 import { useOrders } from "@food/context/OrdersContext"
 import { useCompanyName } from "@food/hooks/useCompanyName"
+import { addonsLabel, itemAddons, lineTotalWithAddons, unitPriceWithAddons } from "@food/utils/orderItemPricing"
 
 export default function OrderInvoice() {
   const companyName = useCompanyName()
@@ -293,15 +294,18 @@ export default function OrderInvoice() {
                                 {item.variantName ? (
                                   <span className="text-xs text-gray-500">{item.variantName}</span>
                                 ) : null}
+                                {itemAddons(item).length > 0 ? (
+                                  <span className="block text-xs text-gray-500">+ {addonsLabel(item)}</span>
+                                ) : null}
                                 <span className="text-muted-foreground sm:hidden text-xs">
-                                  Qty: {item.quantity} � ${item.price.toFixed(2)}
+                                  Qty: {item.quantity} x ₹{unitPriceWithAddons(item).toFixed(2)}
                                 </span>
                               </div>
                             </div>
                           </td>
                           <td className="px-2 sm:px-3 py-2 sm:py-3 text-center hidden sm:table-cell">{item.quantity}</td>
-                          <td className="px-2 sm:px-3 py-2 sm:py-3 text-right hidden md:table-cell">${item.price.toFixed(2)}</td>
-                          <td className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium">${(item.price * item.quantity).toFixed(2)}</td>
+                          <td className="px-2 sm:px-3 py-2 sm:py-3 text-right hidden md:table-cell">₹{unitPriceWithAddons(item).toFixed(2)}</td>
+                          <td className="px-2 sm:px-3 py-2 sm:py-3 text-right font-medium">₹{lineTotalWithAddons(item).toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>

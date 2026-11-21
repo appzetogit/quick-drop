@@ -5,6 +5,7 @@ import { orderAPI } from "@food/api"
 import { useCart } from "@food/context/CartContext"
 import { toast } from "sonner"
 import { getCompanyNameAsync } from "@food/utils/businessSettings"
+import { addonsLabel, itemAddons, unitPriceWithAddons } from "@food/utils/orderItemPricing"
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
 const debugError = (...args) => { }
@@ -817,7 +818,8 @@ Order again from this restaurant in the ${companyName} app.`
                       const isVeg = item.isVeg !== undefined ? item.isVeg : (item.category === 'veg' || item.type === 'veg')
                       const itemName = item.name || item.foodName || 'Item'
                       const itemQuantity = item.quantity || 1
-                      const itemPrice = item.price || 0
+                      // Per dish with its add-ons (food keeps them apart from price).
+                      const itemPrice = unitPriceWithAddons(item)
                       const itemTotal = itemQuantity * itemPrice
                       const itemImage = item.image || null
 
@@ -849,6 +851,9 @@ Order again from this restaurant in the ${companyName} app.`
                                 </span>
                                 {item.variantName ? (
                                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{item.variantName}</p>
+                                ) : null}
+                                {itemAddons(item).length > 0 ? (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">+ {addonsLabel(item)}</p>
                                 ) : null}
                                 {item.description && (
                                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{item.description}</p>

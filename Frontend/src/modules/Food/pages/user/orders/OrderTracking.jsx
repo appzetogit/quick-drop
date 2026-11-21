@@ -42,6 +42,7 @@ import { useCompanyName } from "@food/hooks/useCompanyName"
 import { useUserNotifications } from "@food/hooks/useUserNotifications"
 import circleIcon from "@food/assets/circleicon.png"
 import { RESTAURANT_PIN_SVG, CUSTOMER_PIN_SVG, RIDER_BIKE_SVG } from "@food/constants/mapIcons"
+import { addonsLabel, unitPriceWithAddons } from "@food/utils/orderItemPricing"
 
 // Fallback definitions in case imports fail at runtime or are shadowed
 const DEFAULT_CUSTOMER_PIN = `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="#10B981"><path d="M12 2C8.13 2 5 5.13 5 9c0 4.17 4.42 9.92 6.24 12.11.4.48 1.08.48 1.52 0C14.58 18.92 19 13.17 19 9c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5 14.5 7.62 14.5 9 13.38 11.5 12 11.5z"/><circle cx="12" cy="9" r="3" fill="#FFFFFF"/></svg>`;
@@ -318,7 +319,10 @@ const transformOrderForTracking = (apiOrder, previousOrder = null, explicitResta
       name: item.name,
       variantName: item.variantName || '',
       quantity: item.quantity,
-      price: item.price
+      // Per dish with its add-ons; the names ride along for display.
+      price: unitPriceWithAddons(item),
+      addons: item.addons || [],
+      addonsText: addonsLabel(item)
     })) || previousOrder?.items || [],
     total: apiOrder?.pricing?.total || previousOrder?.total || 0,
     // Backend canonical field is orderStatus; keep legacy `status` for UI compatibility.
@@ -1596,7 +1600,10 @@ export default function OrderTracking() {
           <div className="space-y-3">
             {order?.items?.map((item, i) => (
               <div key={i} className="flex items-center justify-between">
-                <span className="text-sm text-gray-600 dark:text-gray-400">{item.quantity} x {item.name}</span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  {item.quantity} x {item.name}
+                  {item.addonsText ? <span className="block text-xs text-gray-500">+ {item.addonsText}</span> : null}
+                </span>
                 <span className="text-sm font-bold text-gray-900 dark:text-white">{"\u20B9"}{((item?.price || 0) * (item?.quantity || 0)).toFixed(0)}</span>
               </div>
             ))}

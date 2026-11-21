@@ -4,6 +4,7 @@ import { config } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { whatsappCredentials } from '../core/settings/platformProfile.service.js';
 import { recordOutgoingWhatsApp } from '../core/whatsapp/whatsappInbox.service.js';
+import { orderLineWithAddons } from '../utils/orderItemAddons.js';
 
 /**
  * Normalizes any phone number format (local, international, leading plus or zeros)
@@ -134,12 +135,8 @@ export async function sendFoodInvoiceWhatsApp(order, user) {
   });
 
   // Normalize items
-  const items = (order.items || []).map(item => {
-    const itemName = item.name || item.menuItem?.name || 'Item';
-    const qty = item.quantity || 1;
-    const price = item.price || item.menuItem?.price || 0;
-    return { name: itemName, quantity: qty, price, total: qty * price };
-  });
+  // Each line includes its add-ons, so the lines add up to the subtotal.
+  const items = (order.items || []).map(orderLineWithAddons);
 
   const subtotal = order.pricing?.subtotal || order.subtotal || items.reduce((sum, i) => sum + i.total, 0);
   const tax = order.pricing?.tax || 0;
@@ -150,7 +147,7 @@ export async function sendFoodInvoiceWhatsApp(order, user) {
   const total = order.pricing?.total || order.totalAmount || order.total || (subtotal + tax + packagingFee + deliveryFee + platformFee - discount);
   const paymentMethod = String(order.payment?.method || order.paymentMethod || 'Paid').toUpperCase();
 
-  const itemsSummary = items.map(item => `${item.name} x${item.quantity}`).join(', ');
+  const itemsSummary = items.map(item => `${item.name} x${item.quantity}${item.addonsText ? ` (+ ${item.addonsText})` : ''}`).join(', ');
 
   if (config.whatsappUseTemplate) {
     // Structured Template Mode
@@ -176,7 +173,7 @@ export async function sendFoodInvoiceWhatsApp(order, user) {
     return sendWhatsAppMessage(recipientPhone, templatePayload, { sentBy: 'food-invoice' });
   } else {
     // Free-form Receipt Fallback Mode
-    const itemsListText = items.map(i => `• _${i.name}_ x${i.quantity} - *₹${i.total.toFixed(2)}*`).join('\n');
+    const itemsListText = items.map(i => `• _${i.name}_ x${i.quantity} - *₹${i.total.toFixed(2)}*${i.addonsText ? `\n   + ${i.addonsText}` : ''}`).join('\n');
     const invoiceText = `*K9 RIDES - FOOD INVOICE* 🍔
 ---------------------------------------------
 *Hi ${customerName},*

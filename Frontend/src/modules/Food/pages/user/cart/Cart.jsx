@@ -22,6 +22,7 @@ import { useCompanyName } from "@food/hooks/useCompanyName"
 import { getRestaurantAvailabilityStatus } from "@food/utils/restaurantAvailability"
 import useAppBackNavigation from "@food/hooks/useAppBackNavigation"
 import zoopSound from "@food/assets/audio/zomato_sms.mp3"
+import { addonsLabel, itemAddons, lineTotalWithAddons } from "@food/utils/orderItemPricing"
 const debugLog = (...args) => { }
 const debugWarn = (...args) => { }
 const debugError = (...args) => { }
@@ -1344,7 +1345,9 @@ export default function Cart() {
           quantity: item.quantity || 1,
           image: item.image,
           description: item.description,
-          isVeg: item.isVeg !== false
+          isVeg: item.isVeg !== false,
+          // Without these the coupon quote drops the add-ons the order is charged for.
+          addonIds: Array.isArray(item.addonIds) ? item.addonIds : []
         }))
 
         const response = await orderAPI.calculateOrder({
@@ -1401,7 +1404,9 @@ export default function Cart() {
         quantity: item.quantity || 1,
         image: item.image,
         description: item.description,
-        isVeg: item.isVeg !== false
+        isVeg: item.isVeg !== false,
+        // Without these the coupon quote drops the add-ons the order is charged for.
+        addonIds: Array.isArray(item.addonIds) ? item.addonIds : []
       }))
 
       const response = await orderAPI.calculateOrder({
@@ -1461,7 +1466,9 @@ export default function Cart() {
           quantity: item.quantity || 1,
           image: item.image,
           description: item.description,
-          isVeg: item.isVeg !== false
+          isVeg: item.isVeg !== false,
+          // Without these the coupon quote drops the add-ons the order is charged for.
+          addonIds: Array.isArray(item.addonIds) ? item.addonIds : []
         }))
 
         const response = await orderAPI.calculateOrder({
@@ -2070,6 +2077,9 @@ export default function Cart() {
                         {item.variantName ? (
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.variantName}</p>
                         ) : null}
+                        {itemAddons(item).length > 0 ? (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">+ {addonsLabel(item)}</p>
+                        ) : null}
                       </div>
 
                       <div className="flex items-center gap-3 md:gap-4">
@@ -2093,7 +2103,7 @@ export default function Cart() {
                         </div>
 
                         <p className="text-sm md:text-base font-medium text-gray-800 dark:text-gray-200 min-w-[50px] md:min-w-[70px] text-right">
-                          {RUPEE_SYMBOL}{((item.price || 0) * (item.quantity || 1)).toFixed(0)}
+                          {RUPEE_SYMBOL}{lineTotalWithAddons(item).toFixed(0)}
                         </p>
                       </div>
                     </div>

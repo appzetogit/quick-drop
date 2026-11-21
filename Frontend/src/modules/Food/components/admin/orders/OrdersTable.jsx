@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react"
 import { Eye, Printer, ArrowUpDown, Loader2, Check, X, Trash2 } from "lucide-react"
+import { addonsLabel, unitPriceWithAddons } from "@food/utils/orderItemPricing"
 
 const getStatusColor = (orderStatus) => {
   const colors = {
@@ -333,15 +334,15 @@ export default function OrdersTable({
                               )}
                               {Array.isArray(item.addons) && item.addons.length > 0 && (
                                 <span className="block text-xs font-normal text-slate-500">
-                                  + {item.addons.map((a) => a?.name || a?.title).filter(Boolean).join(', ')}
+                                  + {addonsLabel(item)}
                                 </span>
                               )}
                             </span>
-                            {item.price && (
+                            {item.price ? (
                               <span className="text-xs text-slate-500">
-                                ₹{item.price}
+                                ₹{unitPriceWithAddons(item)}
                               </span>
-                            )}
+                            ) : null}
                           </div>
                         ))
                       ) : (

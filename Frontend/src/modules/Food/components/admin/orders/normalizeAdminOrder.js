@@ -96,6 +96,9 @@ export const normalizeOrder = (order) => {
         // (Full / Half) and add-ons; dropping them here hid them everywhere.
         variantName: item.variantName || item.variant?.name || "",
         addons: Array.isArray(item.addons) ? item.addons : [],
+        // Food orders bill add-ons on top of `price` (per unit); quick-commerce
+        // orders have none here because their price already includes them.
+        ...(item.addonsTotal !== undefined && item.addonsTotal !== null ? { addonsTotal: Number(item.addonsTotal) || 0 } : {}),
       }))
     : []
 

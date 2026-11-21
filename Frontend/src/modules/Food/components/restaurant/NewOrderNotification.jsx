@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, X, ShoppingBag, MapPin, Clock, IndianRupee } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { addonsLabel, itemAddons, lineTotalWithAddons } from '@food/utils/orderItemPricing';
 
 /**
  * New Order Notification Component
@@ -71,9 +72,10 @@ export default function NewOrderNotification({ order, onClose, onViewOrder }) {
                     <div key={index} className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">
                         {item.name} × {item.quantity}
+                        {itemAddons(item).length > 0 ? <span className="block text-xs text-gray-500">+ {addonsLabel(item)}</span> : null}
                       </span>
                       <span className="text-gray-800 font-medium">
-                        ₹{(item.price * item.quantity).toFixed(2)}
+                        ₹{lineTotalWithAddons(item).toFixed(2)}
                       </span>
                     </div>
                   ))}
