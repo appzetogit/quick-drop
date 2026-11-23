@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
-import { Check, Eye, Loader2, Search, Trash2, Pencil, X } from "lucide-react"
+import { Check, Eye, Loader2, Search, Trash2, Pencil, X, Plus } from "lucide-react"
+import { useLocation } from "react-router-dom"
+import { adminMenuApiFor } from "@food/context/MenuEditorContext"
 import { Switch } from "@food/components/ui/switch"
 import { adminAPI, uploadAPI } from "@food/api"
 import { toast } from "sonner"
@@ -61,6 +63,39 @@ export default function AddonsList() {
   const [editForm, setEditForm] = useState({ name: "", price: "", description: "", isAvailable: true })
   const [editImagePreview, setEditImagePreview] = useState("")
   const [editImageFile, setEditImageFile] = useState(null)
+  /*
+   * Food panel: the admin works on add-ons through the restaurant's own rules
+   * (MenuEditorContext's admin API), so a new add-on or a change waits for
+   * approval like the restaurant's (client call, 2026-11-23). Quick commerce /
+   * Medical keep the direct edit.
+   */
+  const { pathname } = useLocation()
+  const isFoodPanel = !/^\/admin\/(quick-commerce|medical)(\/|$)/.test(pathname)
+  const [createMode, setCreateMode] = useState(false)
+  const [createRestaurantId, setCreateRestaurantId] = useState("")
+  const [restaurantOptions, setRestaurantOptions] = useState([])
+
+  const openCreate = async () => {
+    setEditingAddon(null)
+    setCreateMode(true)
+    setCreateRestaurantId("")
+    setEditForm({ name: "", price: "", description: "", isAvailable: true })
+    setEditImagePreview("")
+    setEditImageFile(null)
+    setShowEditModal(true)
+    if (!restaurantOptions.length) {
+      try {
+        const res = await adminAPI.getRestaurants({ page: 1, limit: 500 })
+        const list = res?.data?.data?.restaurants || res?.data?.restaurants || []
+        setRestaurantOptions((Array.isArray(list) ? list : []).map((r) => ({
+          id: String(r._id || r.id),
+          name: r.restaurantName || r.name || "Restaurant",
+        })).sort((a, b) => a.name.localeCompare(b.name)))
+      } catch {
+        toast.error("Could not load restaurants")
+      }
+    }
+  }
 
   useEffect(() => {
     const fetchAddons = async () => {
@@ -104,6 +139,7 @@ export default function AddonsList() {
   }
 
   const handleEdit = (addon) => {
+    setCreateMode(false)
     setEditingAddon(addon)
     setEditForm({
       name: addon?.draft?.name || addon?.name || "",
@@ -124,7 +160,11 @@ export default function AddonsList() {
 
   const handleSaveEdit = async () => {
     const id = editingAddon?.id || editingAddon?._id
-    if (!id) return
+    if (!id && !createMode) return
+    if (createMode && !createRestaurantId) {
+      toast.error("Choose the restaurant")
+      return
+    }
     if (!editForm.name.trim()) {
       toast.error("Name is required")
       return
@@ -143,14 +183,32 @@ export default function AddonsList() {
         imageUrl = uploadRes?.data?.data?.url || uploadRes?.data?.url || imageUrl
       }
 
-      await adminAPI.updateRestaurantAddon(String(id), {
+      const draft = {
         name: editForm.name.trim(),
         price: priceNum,
         description: editForm.description.trim(),
-        isAvailable: editForm.isAvailable,
         image: imageUrl,
         images: imageUrl ? [imageUrl] : [],
-      })
+      }
+      if (createMode) {
+        await adminMenuApiFor(createRestaurantId).addAddon(draft)
+        toast.success("Add-on created. Approve it under Pending to make it live.")
+        setShowEditModal(false)
+        setCreateMode(false)
+        setEditImageFile(null)
+        setRefreshKey((k) => k + 1)
+        return
+      }
+      if (isFoodPanel && editingAddon?.restaurantId) {
+        // Same rules as the restaurant's edit: a new draft for approval; the
+        // approved version stays on record until the change is approved.
+        await adminMenuApiFor(editingAddon.restaurantId).updateAddon(String(id), {
+          draft,
+          isAvailable: editForm.isAvailable,
+        })
+      } else {
+        await adminAPI.updateRestaurantAddon(String(id), { ...draft, isAvailable: editForm.isAvailable })
+      }
       setAddons((prev) =>
         (prev || []).map((a) =>
           String(a.id || a._id) === String(id)
@@ -162,11 +220,12 @@ export default function AddonsList() {
                 description: editForm.description.trim(),
                 image: imageUrl || a.image,
                 images: imageUrl ? [imageUrl] : a.images,
+                ...(isFoodPanel && editingAddon?.restaurantId ? { approvalStatus: "pending" } : {}),
               }
             : a,
         ),
       )
-      toast.success("Add-on updated")
+      toast.success(isFoodPanel && editingAddon?.restaurantId ? "Changes saved and sent for approval" : "Add-on updated")
       setShowEditModal(false)
       setEditingAddon(null)
       setEditImageFile(null)
@@ -242,7 +301,17 @@ export default function AddonsList() {
             <div className="text-sm text-slate-500 mt-1">Manage add-ons submitted by restaurants.</div>
           </div>
 
-          <div className="flex items-center gap-2" />
+          <div className="flex items-center gap-2">
+            {isFoodPanel && (
+              <button
+                type="button"
+                onClick={openCreate}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                <Plus className="h-4 w-4" /> Add add-on
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -484,9 +553,29 @@ export default function AddonsList() {
       <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
         <DialogContent aria-describedby={undefined} className="max-w-md p-0 overflow-hidden">
           <DialogHeader className="px-6 py-4 border-b border-slate-200 bg-slate-50">
-            <DialogTitle className="text-lg font-semibold text-slate-900">Edit Add-on</DialogTitle>
+            <DialogTitle className="text-lg font-semibold text-slate-900">{createMode ? "Add Add-on" : "Edit Add-on"}</DialogTitle>
           </DialogHeader>
           <div className="p-6 space-y-4">
+            {createMode && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Restaurant</label>
+                <select
+                  value={createRestaurantId}
+                  onChange={(e) => setCreateRestaurantId(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm bg-white"
+                >
+                  <option value="">Choose…</option>
+                  {restaurantOptions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+              </div>
+            )}
+            {isFoodPanel && (
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                {createMode
+                  ? "The add-on is created as Pending, like a restaurant's, and goes live once approved."
+                  : "Changes go for approval, like the restaurant's own; the current version stays on record until approved."}
+              </p>
+            )}
             <div className="flex items-start gap-3">
               {editImagePreview ? (
                 <img
@@ -568,7 +657,7 @@ export default function AddonsList() {
               disabled={submittingAction}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submittingAction ? "Saving..." : "Save"}
+              {submittingAction ? "Saving..." : createMode ? "Create" : "Save"}
             </button>
           </div>
         </DialogContent>

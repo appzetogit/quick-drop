@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
-import { useLocation, useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { Search, Trash2, Loader2, Eye, Pencil, Plus, Save, ChevronDown, ThumbsUp } from "lucide-react"
 import TablePagination, { usePagination, SCROLL_TABLE_CLASS, STICKY_THEAD_CLASS } from "@food/components/admin/TablePagination"
 import { adminAPI, uploadAPI } from "@food/api"
@@ -178,7 +178,17 @@ export default function FoodsList() {
   const [pairingSearch, setPairingSearch] = useState("")
   // Stock is counted in quick commerce and medical, not food (dishes aren't).
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const isStockPanel = /^\/admin\/(quick-commerce|medical)(\/|$)/.test(pathname)
+  /*
+   * Food panel: Add / Edit open the restaurant portal's own item editor, run
+   * for that restaurant (client call, 2026-11-23: "the admin's item screen
+   * should look like the restaurant portal", and the change goes to approval).
+   * The admin-only fields stay in this form, under "Admin fields".
+   */
+  const usePortalEditor = !isStockPanel
+  const portalItemPath = (restaurantId, itemId) =>
+    `/admin/food/restaurants/${encodeURIComponent(String(restaurantId))}/menu/item/${encodeURIComponent(String(itemId))}`
   /** Product-level stock for the save: only what changed since the form opened. */
   const productStockPayload = () => {
     const was = (v) => (v === null || v === undefined ? "" : String(v))
@@ -487,6 +497,14 @@ export default function FoodsList() {
   }, [shelfPrice, shelfCap, shelfTouched, showFoodFormModal, foodFormMode])
 
   const openAddFoodModal = () => {
+    if (usePortalEditor) {
+      if (selectedRestaurant === "all") {
+        toast.error("Choose the restaurant in the filter first, then Add Food")
+        return
+      }
+      navigate(portalItemPath(selectedRestaurant, "new"))
+      return
+    }
     setShelfTouched(false)
     setFoodFormMode("add")
     setEditingFood(null)
@@ -1111,12 +1129,23 @@ export default function FoodsList() {
                           <Eye className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => openEditFoodModal(food)}
+                          onClick={() => (usePortalEditor && food.restaurantId
+                            ? navigate(portalItemPath(food.restaurantId, food.id || food._id))
+                            : openEditFoodModal(food))}
                           className="p-1.5 rounded text-amber-600 hover:bg-amber-50 transition-colors"
                           title="Edit"
                         >
                           <Pencil className="w-4 h-4" />
                         </button>
+                        {usePortalEditor && (
+                          <button
+                            onClick={() => openEditFoodModal(food)}
+                            className="px-1.5 py-1 rounded text-[11px] font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                            title="Admin-only fields: other price, 99 store, free delivery"
+                          >
+                            Admin fields
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDelete(food.id)}
                           disabled={deleting}

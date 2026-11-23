@@ -15,6 +15,7 @@ import {
   X,
   ThumbsUp,
   Pencil,
+  Trash2,
   FileUp,
   Download,
   AlertTriangle,
@@ -911,6 +912,9 @@ export default function Inventory() {
   const [addonPrice, setAddonPrice] = useState("")
   const [addonImageFile, setAddonImageFile] = useState(null)
   const [addonImagePreview, setAddonImagePreview] = useState("")
+  // The add-on being edited (its id), or null when adding a new one.
+  const [editingAddonId, setEditingAddonId] = useState(null)
+  const [deletingAddonId, setDeletingAddonId] = useState(null)
   const [savingAddon, setSavingAddon] = useState(false)
   const [recommendedMap, setRecommendedMap] = useState(() => {
     try {
@@ -1127,6 +1131,7 @@ export default function Inventory() {
     setAddonPrice("")
     setAddonImageFile(null)
     setAddonImagePreview("")
+    setEditingAddonId(null)
     if (addonImageInputRef.current) {
       addonImageInputRef.current.value = ""
     }
@@ -1173,6 +1178,9 @@ export default function Inventory() {
       if (addonImageFile) {
         const uploadRes = await uploadAPI.uploadMedia(addonImageFile, { folder: "restaurant/addons" })
         imageUrl = uploadRes?.data?.data?.url || uploadRes?.data?.url || ""
+      } else if (editingAddonId && addonImagePreview && !addonImagePreview.startsWith("blob:")) {
+        // Editing without a new photo keeps the one it has.
+        imageUrl = addonImagePreview
       }
       const payload = {
         name: addonName.trim(),
@@ -1181,8 +1189,15 @@ export default function Inventory() {
         image: imageUrl,
         images: imageUrl ? [imageUrl] : [],
       }
-      await restaurantAPI.addAddon(payload)
-      toast.success("Add-on submitted to admin for approval")
+      if (editingAddonId) {
+        // An edit is a new draft for approval; the server keeps the approved
+        // version on record until the admin approves the change.
+        await restaurantAPI.updateAddon(editingAddonId, { draft: payload })
+        toast.success("Changes submitted to admin for approval")
+      } else {
+        await restaurantAPI.addAddon(payload)
+        toast.success("Add-on submitted to admin for approval")
+      }
       resetAddonForm()
       setIsAddAddonOpen(false)
       fetchMenuAndAddons()
@@ -1191,6 +1206,38 @@ export default function Inventory() {
       toast.error(error?.response?.data?.message || "Failed to save add-on")
     } finally {
       setSavingAddon(false)
+    }
+  }
+
+  // Open the form filled in with this add-on.
+  const startEditAddon = (addon) => {
+    resetAddonForm()
+    setEditingAddonId(addon.id)
+    setAddonName(addon.name || "")
+    setAddonDescription(addon.description || "")
+    setAddonPrice(addon.price !== undefined && addon.price !== null ? String(addon.price) : "")
+    setAddonImagePreview((addon.images && addon.images[0]) || addon.image || "")
+    setIsAddAddonOpen(true)
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  const handleDeleteAddon = async (addon) => {
+    if (!addon?.id || deletingAddonId) return
+    if (!window.confirm(`Delete "${addon.name}"? Customers will no longer see it on any dish.`)) return
+    setDeletingAddonId(addon.id)
+    try {
+      await restaurantAPI.deleteAddon(addon.id)
+      setAddons((prev) => prev.filter((a) => a.id !== addon.id))
+      if (editingAddonId === addon.id) {
+        resetAddonForm()
+        setIsAddAddonOpen(false)
+      }
+      toast.success("Add-on deleted")
+    } catch (error) {
+      debugError("Error deleting add-on:", error)
+      toast.error(error?.response?.data?.message || "Failed to delete add-on")
+    } finally {
+      setDeletingAddonId(null)
     }
   }
 
@@ -2171,7 +2218,7 @@ export default function Inventory() {
                         className="px-4 py-2 bg-black text-white rounded-md text-sm font-medium hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                       >
                         {savingAddon && <Loader2 className="h-4 w-4 animate-spin" />}
-                        <span>{savingAddon ? "Saving..." : "Submit for approval"}</span>
+                        <span>{savingAddon ? "Saving..." : editingAddonId ? "Save changes (needs approval)" : "Submit for approval"}</span>
                       </button>
                     </div>
                   </div>
@@ -2227,6 +2274,29 @@ export default function Inventory() {
                           {addon.approvalStatus === 'rejected' && addon.rejectionReason && (
                             <p className="mt-2 text-xs font-medium text-red-600">Reason: {addon.rejectionReason}</p>
                           )}
+                          <div className="mt-3 flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => startEditAddon(addon)}
+                              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors ${
+                                addon.approvalStatus === 'rejected'
+                                  ? "bg-red-600 text-white hover:bg-red-700"
+                                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                              }`}
+                            >
+                              <Pencil className="h-3 w-3" />
+                              {addon.approvalStatus === 'rejected' ? "Fix & resubmit" : "Edit"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAddon(addon)}
+                              disabled={deletingAddonId === addon.id}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              {deletingAddonId === addon.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                              Delete
+                            </button>
+                          </div>
                         </div>
                         <div className="flex items-start gap-3">
                           {addon.images && addon.images.length > 0 && addon.images[0] && (

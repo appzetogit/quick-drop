@@ -228,7 +228,11 @@ export async function loadSellableAddons(FoodAddon, restaurantId, ids = []) {
         _id: { $in: ids.map((id) => new mongoose.Types.ObjectId(String(id))) },
         restaurantId: new mongoose.Types.ObjectId(String(restaurantId)),
         isDeleted: { $ne: true },
-        approvalStatus: 'approved',
+        // The APPROVED version (published) is what is sold. An edit waiting for
+        // approval -- or one that was rejected -- leaves it in place, so the
+        // add-on stays on sale meanwhile instead of vanishing from every dish.
+        // A brand-new add-on has no published version until approved.
+        approvalStatus: { $in: ['approved', 'pending', 'rejected'] },
         isAvailable: true,
         published: { $ne: null },
     })

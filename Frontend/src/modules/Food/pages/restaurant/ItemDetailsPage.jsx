@@ -30,6 +30,7 @@ import { Switch } from "@food/components/ui/switch"
 import ItemAvailabilityScheduleEditor, { buildScheduleState, isScheduleEmpty } from "@food/components/ItemAvailabilityScheduleEditor"
 import api from "@food/api"
 import { restaurantAPI, uploadAPI } from "@food/api"
+import { useMenuEditor } from "@food/context/MenuEditorContext"
 import { toast } from "sonner"
 import { ImageSourcePicker } from "@food/components/ImageSourcePicker"
 import { isFlutterBridgeAvailable } from "@food/utils/imageUploadUtils"
@@ -226,7 +227,14 @@ function AddonPicker({ addons, picked = [], onChange, size = "md" }) {
 
 export default function ItemDetailsPage() {
   const navigate = useNavigate()
-  const goBack = useRestaurantBackNavigation()
+  const restaurantGoBack = useRestaurantBackNavigation()
+  // Run by the admin for one restaurant (MenuEditorContext), or by the
+  // restaurant itself (no provider): same screen, different API and paths.
+  const menuEditor = useMenuEditor()
+  const menuApi = menuEditor?.api || restaurantAPI
+  const goBack = menuEditor?.onBack || restaurantGoBack
+  const itemEditorPath = (itemId) => (menuEditor?.itemPath ? menuEditor.itemPath(itemId) : `/food/restaurant/hub-menu/item/${itemId}`)
+  const categoriesPath = menuEditor?.categoriesPath || "/food/restaurant/menu-categories"
   const { id } = useParams()
   const location = useLocation()
   const isNewItem = id === "new"
@@ -274,6 +282,7 @@ export default function ItemDetailsPage() {
    * A product with sizes counts each size instead (the size rows below).
    */
   const isQcStore = (() => {
+    if (menuEditor) return Boolean(menuEditor.isQcStore)
     try { return localStorage.getItem("restaurant_vertical") === "qc" } catch { return false }
   })()
   const [stockQty, setStockQty] = useState("")
@@ -532,7 +541,7 @@ export default function ItemDetailsPage() {
   // new items too, which the edit fetch below skips.
   useEffect(() => {
     let cancelled = false
-    restaurantAPI.getMenu()
+    menuApi.getMenu()
       .then((res) => {
         if (cancelled) return
         const sections = res?.data?.data?.menu?.sections || []
@@ -562,7 +571,7 @@ export default function ItemDetailsPage() {
       if (!isNewItem && id) {
         try {
           setLoadingItem(true)
-          const menuResponse = await restaurantAPI.getMenu()
+          const menuResponse = await menuApi.getMenu()
           const menu = menuResponse.data?.data?.menu
           const sections = menu?.sections || []
 
@@ -614,7 +623,7 @@ export default function ItemDetailsPage() {
     const fetchCategories = async () => {
       try {
         setLoadingCategories(true)
-        const response = await restaurantAPI.getCategories()
+        const response = await menuApi.getCategories()
         if (response.data.success && response.data.data.categories) {
           const formattedCategories = response.data.data.categories.map(cat => ({
             id: cat._id || cat.id,
@@ -652,7 +661,7 @@ export default function ItemDetailsPage() {
     let cancelled = false
     const fetchAddons = async () => {
       try {
-        const response = await restaurantAPI.getAddons()
+        const response = await menuApi.getAddons()
         const list =
           response?.data?.data?.addons ||
           response?.data?.addons ||
@@ -675,7 +684,7 @@ export default function ItemDetailsPage() {
     let cancelled = false
     const fetchCommission = async () => {
       try {
-        const response = await restaurantAPI.getCommission()
+        const response = await menuApi.getCommission()
         const data = response?.data?.data || response?.data || null
         if (!cancelled && data && data.commissionValue !== undefined) {
           setCommission({
@@ -693,7 +702,7 @@ export default function ItemDetailsPage() {
 
     const fetchTaxSettings = async () => {
       try {
-        const response = await restaurantAPI.getTaxSettings()
+        const response = await menuApi.getTaxSettings()
         const data = response?.data?.data || response?.data || null
         if (!cancelled && data) {
           setTaxSettings({
@@ -1067,7 +1076,7 @@ export default function ItemDetailsPage() {
 
       let itemId
       if (isNewItem) {
-        const createRes = await restaurantAPI.createFood({
+        const createRes = await menuApi.createFood({
           name: itemName.trim(),
           description: itemDescription.trim(),
           basePrice: hasVariants ? undefined : parsedBasePrice,
@@ -1092,7 +1101,7 @@ export default function ItemDetailsPage() {
         if (!itemId) {
           throw new Error("Invalid item id")
         }
-        await restaurantAPI.updateFood(itemId, {
+        await menuApi.updateFood(itemId, {
           name: itemName.trim(),
           description: itemDescription.trim(),
           basePrice: hasVariants ? undefined : parsedBasePrice,
@@ -1143,7 +1152,7 @@ export default function ItemDetailsPage() {
       // for its real id (replace, so Back does not return to a stale form);
       // an existing dish just stays put with its state already current.
       if (isNewItem && itemId) {
-        navigate(`/food/restaurant/hub-menu/item/${itemId}`, { replace: true })
+        navigate(itemEditorPath(itemId), { replace: true })
       }
     } catch (error) {
       debugError('Error saving menu:', error)
@@ -2339,7 +2348,7 @@ export default function ItemDetailsPage() {
                   <button
                     onClick={() => {
                       setIsCategoryPopupOpen(false)
-                      navigate('/food/restaurant/menu-categories')
+                      navigate(categoriesPath)
                     }}
                     className="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-xs font-semibold hover:bg-black transition-colors flex items-center gap-1"
                   >
@@ -2384,7 +2393,7 @@ export default function ItemDetailsPage() {
                     <button
                       onClick={() => {
                         setIsCategoryPopupOpen(false)
-                        navigate('/food/restaurant/menu-categories')
+                        navigate(categoriesPath)
                       }}
                       className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-xs font-semibold hover:bg-black transition-colors"
                     >

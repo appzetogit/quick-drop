@@ -298,6 +298,9 @@ const STORE_ADMIN_RULES = [
   rule(/^\/dashboard-stats(\/|$)/, 'dashboard'),
 
   rule(/^\/restaurants\/complaints(\/|$)/, 'support'),
+  // A restaurant's item editor and add-ons, run by the admin (restaurantPortal.routes.js):
+  // menu work, so the Menu & products permission, not Restaurants.
+  rule(/^\/restaurants\/[^/]+\/portal(\/|$)/, 'foods'),
   rule(/^\/(support-tickets|safety-emergency-reports|contact-messages|delivery\/support-tickets)(\/|$)/, 'support'),
 
   rule(/^\/(reports|feedback-experiences)(\/|$)/, 'reports'),

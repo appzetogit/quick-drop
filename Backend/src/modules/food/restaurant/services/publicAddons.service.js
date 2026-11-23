@@ -26,7 +26,11 @@ export async function getPublicApprovedRestaurantAddons(restaurantIdOrSlug) {
     const addons = await FoodAddon.find({
         restaurantId: new mongoose.Types.ObjectId(String(restaurant._id)),
         isDeleted: { $ne: true },
-        approvalStatus: 'approved',
+        // The APPROVED version (published) is what is sold. An edit waiting for
+        // approval -- or one that was rejected -- leaves it in place, so the
+        // add-on stays on sale meanwhile instead of vanishing from every dish.
+        // A brand-new add-on has no published version until approved.
+        approvalStatus: { $in: ['approved', 'pending', 'rejected'] },
         isAvailable: true,
         published: { $ne: null }
     })

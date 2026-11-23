@@ -4,6 +4,7 @@ const foodRiderModel = async () => (await import('../../delivery/models/delivery
 const inZone = riderInZoneGuard('food', foodRiderModel);
 const bonusInZone = riderInZoneGuard('food', foodRiderModel, { idFrom: (req) => req.body?.deliveryPartnerId });
 import express from 'express';
+import restaurantPortalRouter from './restaurantPortal.routes.js';
 import { sellerDocuments } from '../../restaurant/services/restaurant.service.js';
 import { sendResponse } from '../../../../utils/response.js';
 import { setDeliveryWalletFigures } from '../services/deliveryWalletAdjust.service.js';
@@ -173,6 +174,10 @@ router.patch('/map-settings', updateMapSettingsController);
 });
 
 // ----- Foods -----
+// The restaurant portal's item editor and add-on tools, run by an admin for one
+// restaurant (same handlers, same approval rules). See restaurantPortal.routes.js.
+router.use('/restaurants/:restaurantId/portal', restaurantPortalRouter());
+
 router.get('/foods', adminController.getFoods);
 router.post('/foods', adminController.createFood);
 router.patch('/foods/:id', adminController.updateFood);
