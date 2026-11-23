@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react"
+import { createContext, useContext, useEffect, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { stockAPI } from "@food/api"
+import { stockAPI, inventoryAPI } from "@food/api"
+import apiClient from "@food/api/axios"
 
 /**
  * Shared by the inventory pages (Admin > Quick Commerce > Inventory): the page
@@ -9,6 +10,62 @@ import { stockAPI } from "@food/api"
  */
 
 export const BASE = "/admin/quick-commerce"
+
+/*
+ * Who is looking: the admin (every store, picker shown) or one store from its
+ * own dashboard (that store only, no picker, no Excel import, prices read-only
+ * on the fresh sheet; the server enforces the same). The store's requests go
+ * to /qc/restaurant/inventory (written /food/ and moved to /qc/ by the axios
+ * layer for a store's session, like its other dashboard calls).
+ */
+const SELLER_INV = "/food/restaurant/inventory"
+const sellerCtx = { contextModule: "restaurant" }
+export const sellerInventoryAPI = {
+  summary: (params) => apiClient.get(`${SELLER_INV}/summary`, { params, ...sellerCtx }),
+  report: (params) => apiClient.get(`${SELLER_INV}/report`, { params, ...sellerCtx }),
+  suppliers: (params) => apiClient.get(`${SELLER_INV}/suppliers`, { params, ...sellerCtx }),
+  addSupplier: (data) => apiClient.post(`${SELLER_INV}/suppliers`, data, sellerCtx),
+  updateSupplier: (id, data) => apiClient.patch(`${SELLER_INV}/suppliers/${id}`, data, sellerCtx),
+  purchases: (params) => apiClient.get(`${SELLER_INV}/purchases`, { params, ...sellerCtx }),
+  addPurchase: (data) => apiClient.post(`${SELLER_INV}/purchases`, data, sellerCtx),
+  wastage: (data) => apiClient.post(`${SELLER_INV}/wastage`, data, sellerCtx),
+  freshSheet: (params) => apiClient.get(`${SELLER_INV}/fresh-sheet`, { params, ...sellerCtx }),
+  saveFreshSheet: (data) => apiClient.post(`${SELLER_INV}/fresh-sheet`, data, sellerCtx),
+}
+
+// invPath: where the inventory pages live; stockPath: the Products & stock page.
+const ADMIN_SCOPE = {
+  isSeller: false,
+  base: BASE,
+  invPath: `${BASE}/inventory`,
+  stockPath: `${BASE}/stock`,
+  api: inventoryAPI,
+  stockScope: "admin",
+  ownStoreId: "",
+}
+export const InventoryScopeContext = createContext(ADMIN_SCOPE)
+export const useInventoryScope = () => useContext(InventoryScopeContext) || ADMIN_SCOPE
+
+/** The signed-in store's id, from the restaurant session (the server uses the login anyway). */
+export const ownStoreIdFromSession = () => {
+  try {
+    const u = JSON.parse(localStorage.getItem("restaurant_user") || "null")
+    return String(u?._id || u?.id || u?.restaurantId || "")
+  } catch {
+    return ""
+  }
+}
+
+export const sellerInventoryScope = () => ({
+  isSeller: true,
+  base: "/food/restaurant",
+  // /food/restaurant/inventory is the store's menu screen, so these live apart.
+  invPath: "/food/restaurant/store-inventory",
+  stockPath: "/food/restaurant/stock",
+  api: sellerInventoryAPI,
+  stockScope: "restaurant",
+  ownStoreId: ownStoreIdFromSession(),
+})
 
 export const money = (n) =>
   `₹${(Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
@@ -22,9 +79,11 @@ export const errText = (err, fallback) => err?.response?.data?.message || err?.m
 /** The section and store in the URL (?section=fresh&store=…), with setters that keep the rest. */
 export function useInventoryParams() {
   const location = useLocation()
+  const scope = useInventoryScope()
   const params = new URLSearchParams(location.search)
   const section = params.get("section") === "fresh" ? "fresh" : "grocery"
-  const store = params.get("store") || ""
+  // A store only ever sees itself.
+  const store = scope.isSeller ? scope.ownStoreId : (params.get("store") || "")
   const href = (path, changes = {}) => {
     const next = new URLSearchParams(location.search)
     for (const [k, v] of Object.entries(changes)) {
@@ -40,7 +99,9 @@ export function useInventoryParams() {
 /** Stores that sell products, for the picker. */
 export function useStores() {
   const [stores, setStores] = useState([])
+  const { isSeller } = useInventoryScope()
   useEffect(() => {
+    if (isSeller) return undefined
     let live = true
     stockAPI
       .list("admin", { limit: 1 })
@@ -49,23 +110,25 @@ export function useStores() {
     return () => {
       live = false
     }
-  }, [])
+  }, [isSeller])
   return stores
 }
 
-const TABS = [
-  { label: "Dashboard", path: `${BASE}/inventory` },
-  { label: "Products & stock", path: `${BASE}/stock` },
-  { label: "Fruits & Veg daily sheet", path: `${BASE}/inventory/fresh` },
-  { label: "Purchases & suppliers", path: `${BASE}/inventory/purchases` },
-  { label: "Import from Excel", path: `${BASE}/inventory/import` },
-  { label: "Reports", path: `${BASE}/inventory/reports` },
+const tabsFor = ({ invPath, stockPath, isSeller }) => [
+  { label: "Dashboard", path: invPath },
+  { label: "Products & stock", path: stockPath },
+  { label: "Fruits & Veg daily sheet", path: `${invPath}/fresh` },
+  { label: "Purchases & suppliers", path: `${invPath}/purchases` },
+  ...(isSeller ? [] : [{ label: "Import from Excel", path: `${invPath}/import` }]),
+  { label: "Reports", path: `${invPath}/reports` },
 ]
 
 export function InventoryHeader({ title, subtitle, showSection = true, actions = null }) {
   const { section, store, href, path } = useInventoryParams()
   const stores = useStores()
   const navigate = useNavigate()
+  const scope = useInventoryScope()
+  const TABS = tabsFor(scope)
   return (
     <div className="space-y-4">
       <nav aria-label="Inventory pages" className="flex gap-1 overflow-x-auto rounded-xl border border-neutral-200 bg-white p-1">
@@ -103,7 +166,9 @@ export function InventoryHeader({ title, subtitle, showSection = true, actions =
               ))}
             </div>
           )}
-          <StorePicker stores={stores} value={store} onPick={(id) => navigate(href(path, { store: id }))} />
+          {!scope.isSeller && (
+            <StorePicker stores={stores} value={store} onPick={(id) => navigate(href(path, { store: id }))} />
+          )}
           {actions}
         </div>
       </div>

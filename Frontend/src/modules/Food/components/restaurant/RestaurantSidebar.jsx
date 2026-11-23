@@ -22,7 +22,11 @@ const getNavSections = (base) => [
       { label: "Inventory", path: `${base}/inventory`, icon: Package },
       { label: "Menu overview", path: `${base}/menu-overview`, icon: ClipboardList },
       // Stores and medical stores count stock per size; restaurants do not.
-      ...(isQcStore() ? [{ label: "Stock", path: `${base}/stock`, icon: Boxes }] : []),
+      ...(isQcStore() ? [
+        { label: "Stock", path: `${base}/stock`, icon: Boxes },
+        // The admin's inventory screens for this store: dashboard, daily sheet, purchases, reports.
+        { label: "Store inventory", path: `${base}/store-inventory`, icon: BarChart3 },
+      ] : []),
       { label: "Menu categories", path: `${base}/menu-categories`, icon: Utensils },
       { label: "Reservations", path: `${base}/reservations`, icon: Store },
     ],

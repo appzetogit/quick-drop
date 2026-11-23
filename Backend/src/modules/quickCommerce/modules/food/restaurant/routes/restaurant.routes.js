@@ -88,6 +88,7 @@ import {
 } from '../../orders/controllers/prescriptionRequest.controller.js';
 import { authMiddleware, optionalAuth } from '../../../../core/auth/auth.middleware.js';
 import { stockRouter } from '../../admin/routes/stock.routes.js';
+import { inventoryRouter } from '../../inventory/inventory.routes.js';
 import { sendError, sendResponse } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
 import { sellerDocuments } from '../services/restaurant.service.js';
@@ -467,5 +468,8 @@ router.delete('/my-offers/:id', authMiddleware, requireRestaurant, deleteRestaur
 
 // The store's own stock page: its products only (admin/services/stock.service.js).
 router.use('/stock', authMiddleware, requireRestaurant, stockRouter({ scope: 'restaurant' }));
+// The admin's inventory screens (dashboard, fresh sheet, purchases, reports) for
+// this store only; see inventory/inventory.routes.js for what a store may change.
+router.use('/inventory', authMiddleware, requireRestaurant, inventoryRouter({ scope: 'restaurant' }));
 
 export default router;

@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { toast } from "sonner"
 import { Loader2, RefreshCw } from "lucide-react"
-import { inventoryAPI } from "@food/api"
-import { BASE, Card, InventoryHeader, REASON_LABEL, errText, money, qtyText, useInventoryParams } from "./inventoryShared"
+import { Card, InventoryHeader, REASON_LABEL, errText, money, qtyText, useInventoryParams, useInventoryScope } from "./inventoryShared"
 
 const STATUS = {
   low: { label: "Low", cls: "bg-amber-50 text-amber-900 ring-amber-200" },
@@ -12,6 +11,7 @@ const STATUS = {
 
 /** Inventory today, per section: counts, money in and out, and what needs restocking. */
 export default function InventoryDashboard() {
+  const { api: inventoryAPI, invPath, stockPath } = useInventoryScope()
   const { section, store, href } = useInventoryParams()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -75,7 +75,7 @@ export default function InventoryDashboard() {
               <Card
                 title="Needs attention"
                 className="flex-[999_1_560px]"
-                actions={<Link to={href(`${BASE}/stock`)} className="text-sm font-medium text-emerald-700">All products</Link>}
+                actions={<Link to={href(stockPath)} className="text-sm font-medium text-emerald-700">All products</Link>}
               >
                 {data.attention.length === 0 ? (
                   <p className="px-4 py-8 text-center text-sm text-neutral-500">Nothing low or out of stock.</p>
@@ -114,7 +114,7 @@ export default function InventoryDashboard() {
               <Card
                 title="Latest stock moves"
                 className="flex-[1_1_320px]"
-                actions={<Link to={href(`${BASE}/inventory/reports`)} className="text-sm font-medium text-emerald-700">Reports</Link>}
+                actions={<Link to={href(`${invPath}/reports`)} className="text-sm font-medium text-emerald-700">Reports</Link>}
               >
                 <ul className="divide-y divide-neutral-100">
                   {data.recentMoves.length === 0 && <li className="px-4 py-8 text-center text-sm text-neutral-500">No moves yet.</li>}
