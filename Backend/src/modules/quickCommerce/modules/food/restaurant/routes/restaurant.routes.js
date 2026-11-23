@@ -155,6 +155,51 @@ router.get('/categories/public', cacheResponse(600, 'categories'), listCategorie
 
 // Restaurant dashboard/profile (Bearer token + RESTAURANT role)
 router.get('/current', authMiddleware, requireRestaurant, getCurrentRestaurantController);
+
+/*
+ * The store dashboard's item editor shows "what you take home" from these two,
+ * as the restaurant one does. Neither existed here, so every store item page
+ * logged two 404s and showed no commission or GST.
+ */
+router.get('/commission', authMiddleware, requireRestaurant, async (req, res, next) => {
+    try {
+        const { getRestaurantCommissionSnapshot } = await import('../../orders/services/foodTransaction.service.js');
+        // A synthetic order of 100: a percentage reads directly, a flat rate as its amount.
+        const snapshot = await getRestaurantCommissionSnapshot({ restaurantId: req.user?.userId, pricing: { subtotal: 100 } });
+        return res.status(200).json({
+            success: true,
+            message: 'Commission fetched successfully',
+            data: {
+                commissionType: snapshot.commissionType,
+                commissionValue: snapshot.commissionValue,
+                commissionLabel: snapshot.commissionLabel || '',
+                commissionSource: snapshot.commissionSource,
+            },
+        });
+    } catch (error) {
+        return next(error);
+    }
+});
+router.get('/tax-settings', authMiddleware, requireRestaurant, async (req, res, next) => {
+    try {
+        const { FoodFeeSettings } = await import('../../admin/models/feeSettings.model.js');
+        const fee = await FoodFeeSettings.findOne({ isActive: true }).sort({ createdAt: -1 }).lean();
+        const gstRate = Number(fee?.gstRate);
+        // Quick commerce adds GST on top of the listed price (the order's
+        // gstFallbackRate, unless the product's category has its own slab).
+        return res.status(200).json({
+            success: true,
+            message: 'Tax settings fetched successfully',
+            data: {
+                priceIncludesGst: false,
+                gstRate: Number.isFinite(gstRate) && gstRate >= 0 ? gstRate : 0,
+                platformFeeGstRate: 18,
+            },
+        });
+    } catch (error) {
+        return next(error);
+    }
+});
 /**
  * Account deletion, initiated by the seller themselves.
  *
@@ -366,11 +411,16 @@ router.patch('/foods/:id', authMiddleware, requireRestaurant, async (req, res, n
 router.get('/bulk-upload/template', authMiddleware, requireRestaurant, downloadBulkMenuTemplateController);
 router.post('/bulk-upload', authMiddleware, requireRestaurant, upload.single('file'), uploadBulkMenuController);
 
-// Add-ons (restaurant dashboard) - approval handled by admin
-router.get('/addons', authMiddleware, requireRestaurant, listAddonsController);
-router.post('/addons', authMiddleware, requireRestaurant, createAddonController);
-router.patch('/addons/:id', authMiddleware, requireRestaurant, updateAddonController);
-router.delete('/addons/:id', authMiddleware, requireRestaurant, deleteAddonController);
+// Add-ons (restaurant dashboard) - approval handled by admin.
+// Also under /item-extras, which the store dashboard calls (the web app uses
+// that path everywhere because ad blockers drop "addons" requests); without it
+// a store's add-on list and the item form's add-on picker were empty (404).
+['/addons', '/item-extras'].forEach((base) => {
+    router.get(base, authMiddleware, requireRestaurant, listAddonsController);
+    router.post(base, authMiddleware, requireRestaurant, createAddonController);
+    router.patch(`${base}/:id`, authMiddleware, requireRestaurant, updateAddonController);
+    router.delete(`${base}/:id`, authMiddleware, requireRestaurant, deleteAddonController);
+});
 
 // Orders (restaurant dashboard)
 router.get('/orders', authMiddleware, requireRestaurant, orderController.listOrdersRestaurantController);

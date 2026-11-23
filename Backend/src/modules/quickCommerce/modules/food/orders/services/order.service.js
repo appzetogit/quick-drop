@@ -2197,6 +2197,11 @@ export async function updateOrderStatusRestaurant(
     }
   }
   const from = order.orderStatus;
+  // Already there (a second tap on Accept, or the admin accepted it first):
+  // nothing to do, so say so successfully instead of 'cannot be moved backwards'.
+  if (String(from) === String(orderStatus)) {
+    return normalizeOrderForClient(order);
+  }
   if (!isStatusAdvance(from, orderStatus)) {
     throw new ValidationError(
       `Current order status '${from}' is further ahead than '${orderStatus}'. Order cannot be moved backwards.`

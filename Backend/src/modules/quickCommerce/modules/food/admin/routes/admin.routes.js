@@ -94,7 +94,7 @@ const resolveSectionFromRequest = (path = '', method = '') => {
         path.startsWith('/restaurant-subscriptions') ||
         path.startsWith('/zones')
     ) return 'restaurant_management';
-    if (path.startsWith('/categories') || path.startsWith('/addons') || path.startsWith('/foods')) return 'food_management';
+    if (path.startsWith('/categories') || path.startsWith('/addons') || path.startsWith('/item-extras') || path.startsWith('/foods')) return 'food_management';
     if (path.startsWith('/offers')) return 'promotions_management';
     if (path.startsWith('/orders') || path.startsWith('/order-detect-delivery')) return 'order_management';
     if (path.startsWith('/delivery')) return 'delivery_management';
@@ -137,6 +137,7 @@ router.use('/restaurant-subscription-settings', requireAdminPermission('restaura
 router.use('/restaurant-subscriptions', requireAdminPermission('restaurant_management', 'view'));
 router.use('/categories', requireAdminPermission('food_management', 'view'));
 router.use('/addons', requireAdminPermission('food_management', 'view'));
+router.use('/item-extras', requireAdminPermission('food_management', 'view'));
 router.use('/foods', requireAdminPermission('food_management', 'view'));
 router.use('/offers', requireAdminPermission('promotions_management', 'view'));
 router.use('/delivery', requireAdminPermission('delivery_management', 'view'));
@@ -301,10 +302,15 @@ router.patch('/categories/:id/reject', adminController.rejectCategory);
 router.patch('/categories/:id/make-global', adminController.makeCategoryGlobal);
 
 // ----- Restaurant Add-ons Approval -----
-router.get('/addons', addonsApprovalController.getRestaurantAddons);
-router.patch('/addons/:id', addonsApprovalController.updateRestaurantAddon);
-router.patch('/addons/:id/approve', addonsApprovalController.approveRestaurantAddon);
-router.patch('/addons/:id/reject', addonsApprovalController.rejectRestaurantAddon);
+// Also under /item-extras: the admin web app calls that path (ad blockers drop
+// any request with "addons" in it), and only /addons existed here, so the
+// Quick / Medical add-on screens came back empty (404).
+['/addons', '/item-extras'].forEach((base) => {
+    router.get(base, addonsApprovalController.getRestaurantAddons);
+    router.patch(`${base}/:id`, addonsApprovalController.updateRestaurantAddon);
+    router.patch(`${base}/:id/approve`, addonsApprovalController.approveRestaurantAddon);
+    router.patch(`${base}/:id/reject`, addonsApprovalController.rejectRestaurantAddon);
+});
 
 // ----- Foods -----
 router.get('/foods', adminController.getFoods);
