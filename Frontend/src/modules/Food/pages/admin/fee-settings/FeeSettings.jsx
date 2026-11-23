@@ -11,6 +11,9 @@ const toNum = (v, fallback = 0) => {
 }
 
 export default function FeeSettings() {
+  // This page is mounted by the Food, Quick commerce and Medical panels; the
+  // minimum order amount exists only for Quick commerce / Medical.
+  const isQuickPanel = typeof window !== "undefined" && /^\/admin\/(quick-commerce|medical)(\/|$)/.test(window.location.pathname)
   const [feeSettings, setFeeSettings] = useState({
     deliveryFeeComputationMode: "distance_order_value",
     distanceSlabAdminDeliveryCommission: [],
@@ -119,6 +122,7 @@ export default function FeeSettings() {
           gstRate: saved.gstRate ?? "",
           platformFeeGstRate: saved.platformFeeGstRate ?? "",
           codOrderLimit: saved.codOrderLimit ?? "",
+          minOrderAmount: saved.minOrderAmount ?? "",
           maxOrderQuantityCeiling: saved.maxOrderQuantityCeiling ?? "",
         })
       } else {
@@ -361,6 +365,12 @@ export default function FeeSettings() {
         toast.error("COD Order Limit must be 0 or greater")
         return
       }
+      // Quick commerce / Medical only: smallest item total an order may be placed for.
+      const minOrderAmount = Number(feeSettings.minOrderAmount)
+      if (isQuickPanel && feeSettings.minOrderAmount !== "" && feeSettings.minOrderAmount !== undefined && (!Number.isFinite(minOrderAmount) || minOrderAmount < 0)) {
+        toast.error("Minimum order amount must be 0 or greater")
+        return
+      }
       // A ceiling of 0 would make every item unorderable, so the floor is 1.
       const maxOrderQuantityCeiling = Number(feeSettings.maxOrderQuantityCeiling)
       if (feeSettings.maxOrderQuantityCeiling !== "" && (!Number.isFinite(maxOrderQuantityCeiling) || maxOrderQuantityCeiling < 1 || maxOrderQuantityCeiling > 9999)) {
@@ -391,6 +401,9 @@ export default function FeeSettings() {
         platformFeeGstRate: feeSettings.platformFeeGstRate === "" ? null : platformFeeGstRate,
         codOrderLimit: feeSettings.codOrderLimit === "" ? null : codOrderLimit,
         maxOrderQuantityCeiling: feeSettings.maxOrderQuantityCeiling === "" ? null : maxOrderQuantityCeiling,
+        ...(isQuickPanel
+          ? { minOrderAmount: feeSettings.minOrderAmount === "" || feeSettings.minOrderAmount === undefined ? null : minOrderAmount }
+          : {}),
         isActive: true,
       })
       if (response?.data?.success) {
@@ -774,6 +787,23 @@ export default function FeeSettings() {
                     Leave blank for the statutory 18%.
                   </p>
                 </div>
+                {isQuickPanel && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-slate-700">Minimum Order Amount (₹)</label>
+                    <input
+                      type="number"
+                      value={feeSettings.minOrderAmount ?? ""}
+                      onChange={(e) => setFeeSettings((s) => ({ ...s, minOrderAmount: e.target.value }))}
+                      min="0"
+                      step="1"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
+                      placeholder="e.g. 99"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      Customers cannot place a grocery or medical order whose item total is below this amount. Leave blank or 0 for no minimum.
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <label className="block text-sm font-semibold text-slate-700">COD Order Limit (₹)</label>
                   <input

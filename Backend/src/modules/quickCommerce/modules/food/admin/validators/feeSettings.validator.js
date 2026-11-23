@@ -14,6 +14,7 @@ const feeSettingsUpsertSchema = z.object({
     deliveryFeeRanges: z.array(rangeSchema).optional(),
     platformFee: z.number().min(0).nullable().optional(),
     quickDeliveryFee: z.number().min(0).nullable().optional(),
+    minOrderAmount: z.number().min(0, 'Minimum order amount cannot be negative').nullable().optional(),
     gstRate: z.number().min(0).max(100).nullable().optional(),
     isActive: z.boolean().optional()
 });
@@ -42,6 +43,12 @@ export const validateFeeSettingsUpsertDto = (body) => {
                 ? null
                 : body?.quickDeliveryFee !== undefined
                     ? Number(body.quickDeliveryFee)
+                    : undefined,
+        minOrderAmount:
+            body?.minOrderAmount === null || body?.minOrderAmount === ''
+                ? null
+                : body?.minOrderAmount !== undefined
+                    ? Number(body.minOrderAmount)
                     : undefined,
         gstRate:
             body?.gstRate === null ? null : body?.gstRate !== undefined ? Number(body.gstRate) : undefined,

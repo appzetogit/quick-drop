@@ -18,6 +18,9 @@ const feeSettingsSchema = new mongoose.Schema(
         deliveryFeeRanges: { type: [deliveryFeeRangeSchema], default: [] },
         platformFee: { type: Number, min: 0 },
         quickDeliveryFee: { type: Number, min: 0 },
+        // Smallest item total (₹) a grocery / medical order may be placed for.
+        // Unset or 0: no minimum.
+        minOrderAmount: { type: Number, min: 0 },
         gstRate: { type: Number, min: 0, max: 100 },
         isActive: { type: Boolean, default: true, index: true }
     },

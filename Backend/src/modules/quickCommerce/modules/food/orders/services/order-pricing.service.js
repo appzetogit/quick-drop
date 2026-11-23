@@ -501,6 +501,8 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
 
   const packagingFee = 0;
   const platformFee = Number(feeSettings.platformFee || 0);
+  // Smallest item total an order may be placed for (admin: Fee settings). 0 = none.
+  const minOrderAmount = Math.max(0, round2(Number(feeSettings.minOrderAmount) || 0));
 
   let distanceKm = await getDeliveryDistanceKm(restaurant, deliveryAddress);
   const straightLineKm = calculateDistanceKm(restaurant, deliveryAddress);
@@ -692,6 +694,10 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
     // afterwards. Packing plus the ride, from the same numbers the live
     // countdown uses, so the quote and the tracking screen agree.
     deliveryPromiseMinutes: estimateDeliveryPromiseMinutes(distanceKm),
+    // Admin's minimum order (item total). The quote reports it so the cart can
+    // say "add ₹X more"; placing an order below it is refused (createOrder).
+    minOrderAmount,
+    amountToMinimum: minOrderAmount > 0 ? Math.max(0, round2(minOrderAmount - subtotal)) : 0,
   };
 
   const pricing = applyDeliveryModePricing(

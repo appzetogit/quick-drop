@@ -725,6 +725,17 @@ export async function createOrder(userId, dto) {
       { at: orderAt, restaurant, skipAvailabilityCheck: true },
     );
 
+    // Admin's minimum order (Fee settings). Checked here, on placement only: the
+    // quote reports the shortfall instead, so the cart can keep showing prices.
+    const minOrderAmount = Number(pricingResult.pricing?.minOrderAmount) || 0;
+    const itemTotal = Number(pricingResult.pricing?.subtotal) || 0;
+    if (minOrderAmount > 0 && itemTotal + 0.001 < minOrderAmount) {
+      const short = Math.round((minOrderAmount - itemTotal) * 100) / 100;
+      throw new ValidationError(
+        `Minimum order is ₹${minOrderAmount}. Add items worth ₹${short} more to place this order.`,
+      );
+    }
+
     const resolvedItems = pricingResult.items || [];
     const normalizedPricing = {
       subtotal: Number(pricingResult.pricing?.subtotal) || 0,
