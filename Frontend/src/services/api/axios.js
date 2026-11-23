@@ -440,7 +440,19 @@ apiClient.interceptors.request.use(
     // After the rewrite, so the path it matches is the one actually being sent.
     applyZoneVertical(config);
     config.contextModule = getModuleFromConfig(config);
-    if (config.contextModule === "restaurant" && restaurantOnQc() && typeof config.url === "string") {
+    /*
+     * The restaurant sign-in is never sent to quick commerce. A browser that
+     * once signed a store in through /partner keeps the qc mark, and the mark
+     * is only cleared by a successful restaurant login -- so the restaurant's
+     * OTP request went to /qc/auth/restaurant/web-login (which does not exist,
+     * 404) and the restaurant could never sign in again on that browser, while
+     * its dashboard read the store's data and showed no orders. Starting a
+     * restaurant sign-in means this is a restaurant: the mark goes.
+     */
+    const restaurantSignIn = typeof config.url === "string" && /(^|\/)food\/auth\/restaurant\/web-login\//.test(config.url)
+    if (restaurantSignIn) {
+      try { localStorage.removeItem(RESTAURANT_VERTICAL_KEY) } catch { /* storage blocked */ }
+    } else if (config.contextModule === "restaurant" && restaurantOnQc() && typeof config.url === "string") {
       config.url = config.url.replace(/(^|\/)food\//, "$1qc/");
     }
 
