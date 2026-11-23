@@ -786,7 +786,10 @@ export default function ExploreMore() {
       { id: "combos-nav", label: "Combos", icon: FileCheck, route: "/restaurant/combos" },
     { id: "analytics-nav", label: "Analytics", icon: BarChart2, route: "/restaurant/analytics" },
     // Stores and medical stores (quick commerce) count stock per size.
-    ...(isQcStore ? [{ id: "stock-nav", label: "Stock", icon: Settings, route: "/restaurant/stock" }] : []),
+    ...(isQcStore ? [
+      { id: "stock-nav", label: "Stock", icon: Settings, route: "/restaurant/stock" },
+      { id: "store-inventory-nav", label: "Store inventory", icon: BarChart2, route: "/restaurant/store-inventory" },
+    ] : []),
   ]
 
   const settingsItems = [

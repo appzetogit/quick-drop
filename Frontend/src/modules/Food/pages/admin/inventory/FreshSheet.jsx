@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
-import { inventoryAPI } from "@food/api"
-import { Card, InventoryHeader, errText, money, qtyText, useInventoryParams } from "./inventoryShared"
+import { Card, InventoryHeader, errText, money, qtyText, useInventoryParams, useInventoryScope } from "./inventoryShared"
 
 const WASTE = [
   ["spoiled", "Spoiled"],
@@ -18,6 +17,8 @@ const num = (v) => (v === "" || v === undefined || v === null ? null : Number(v)
  * typed into are saved. Quantities take decimals (0.25 kg = 250 g).
  */
 export default function FreshSheet() {
+  // A store sets stock here; its selling price changes go through approval on the product.
+  const { api: inventoryAPI, isSeller } = useInventoryScope()
   const { store } = useInventoryParams()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -178,6 +179,8 @@ export default function FreshSheet() {
                             className={`${input} ${String(priceNow) !== String(r.price) ? "border-amber-500" : ""}`}
                             value={priceNow ?? ""}
                             onChange={(e) => set(r.itemId, "price", e.target.value)}
+                            disabled={isSeller}
+                            title={isSeller ? "Change the price on the product itself; it goes for approval" : undefined}
                           />
                         </td>
                         <td className="px-3 py-2">

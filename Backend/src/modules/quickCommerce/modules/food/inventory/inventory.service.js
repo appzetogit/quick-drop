@@ -60,8 +60,10 @@ async function itemIdsOf({ restaurantId, section }) {
 /* Suppliers                                                           */
 /* ------------------------------------------------------------------ */
 
-export async function listSuppliers({ restaurantId } = {}) {
-    const suppliers = await InventorySupplier.find({}).sort({ isActive: -1, name: 1 }).lean();
+export async function listSuppliers({ restaurantId, ownOnly = false } = {}) {
+    // A store's dashboard lists only the suppliers that store added.
+    const supplierFilter = ownOnly && restaurantId && isId(restaurantId) ? { restaurantId: oid(restaurantId) } : {};
+    const suppliers = await InventorySupplier.find(supplierFilter).sort({ isActive: -1, name: 1 }).lean();
     const monthStart = (() => {
         const d = new Date(Date.now() + IST_MS);
         return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - IST_MS);
@@ -97,7 +99,7 @@ export async function listSuppliers({ restaurantId } = {}) {
     });
 }
 
-export async function saveSupplier(body = {}, id = null) {
+export async function saveSupplier(body = {}, id = null, { ownerStoreId = null } = {}) {
     const name = String(body.name || '').trim();
     if (!id && !name) throw new ValidationError('Supplier name is required');
     const fields = {};
@@ -106,9 +108,14 @@ export async function saveSupplier(body = {}, id = null) {
     }
     if (fields.name === '') throw new ValidationError('Supplier name is required');
     if (body.isActive !== undefined) fields.isActive = body.isActive !== false;
-    if (!id) return (await InventorySupplier.create(fields)).toObject();
+    if (!id) {
+        if (ownerStoreId) fields.restaurantId = oid(ownerStoreId);
+        return (await InventorySupplier.create(fields)).toObject();
+    }
     if (!isId(id)) throw new ValidationError('Unknown supplier');
-    const updated = await InventorySupplier.findByIdAndUpdate(id, { $set: fields }, { new: true }).lean();
+    // A store may only change a supplier it added.
+    const scope = ownerStoreId ? { _id: id, restaurantId: oid(ownerStoreId) } : { _id: id };
+    const updated = await InventorySupplier.findOneAndUpdate(scope, { $set: fields }, { new: true }).lean();
     if (!updated) throw new ApiError(404, 'Supplier not found');
     return updated;
 }

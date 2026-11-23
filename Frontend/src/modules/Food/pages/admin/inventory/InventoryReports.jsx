@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Download, Loader2 } from "lucide-react"
-import { inventoryAPI } from "@food/api"
-import { Card, InventoryHeader, errText, money, qtyText, useInventoryParams } from "./inventoryShared"
+import { Card, InventoryHeader, errText, money, qtyText, useInventoryParams, useInventoryScope } from "./inventoryShared"
 
 const csvCell = (v) => {
   const s = v === null || v === undefined ? "" : String(v)
@@ -20,6 +19,7 @@ const dayLabel = (key) => new Date(`${key}T00:00:00`).toLocaleDateString("en-IN"
 
 /** Sales, purchases and wastage per day, stock value by category, and what was wasted. */
 export default function InventoryReports() {
+  const { api: inventoryAPI } = useInventoryScope()
   const { section, store } = useInventoryParams()
   const [days, setDays] = useState(7)
   const [data, setData] = useState(null)

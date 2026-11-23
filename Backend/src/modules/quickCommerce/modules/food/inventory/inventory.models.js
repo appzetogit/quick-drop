@@ -17,6 +17,9 @@ const supplierSchema = new mongoose.Schema(
         /** What they supply, as staff describe it: "Atta, rice, oil". */
         supplies: { type: String, trim: true, default: '', maxlength: 200 },
         isActive: { type: Boolean, default: true },
+        // The store that added it from its own dashboard; null = the admin's list.
+        // A store sees and edits only its own suppliers.
+        restaurantId: { type: mongoose.Schema.Types.ObjectId, default: null, index: true },
     },
     { collection: 'qc_inventory_suppliers', timestamps: true },
 );

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { Loader2, Plus, Trash2 } from "lucide-react"
-import { inventoryAPI, stockAPI } from "@food/api"
-import { Card, InventoryHeader, errText, money, useInventoryParams, useStores } from "./inventoryShared"
+import { stockAPI } from "@food/api"
+import { Card, InventoryHeader, errText, money, useInventoryParams, useInventoryScope, useStores } from "./inventoryShared"
 
 const today = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10)
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100
@@ -18,6 +18,7 @@ const field = "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 te
 
 /** Find a product or size of the chosen store to add to the bill. */
 function ProductSearch({ storeId, onPick }) {
+  const { stockScope } = useInventoryScope()
   const [q, setQ] = useState("")
   const [rows, setRows] = useState([])
   useEffect(() => {
@@ -27,7 +28,7 @@ function ProductSearch({ storeId, onPick }) {
     }
     const t = setTimeout(async () => {
       try {
-        const res = await stockAPI.list("admin", { restaurantId: storeId, q: q.trim(), limit: 12 })
+        const res = await stockAPI.list(stockScope, { restaurantId: storeId, q: q.trim(), limit: 12 })
         setRows(res?.data?.data?.rows || [])
       } catch {
         setRows([])
@@ -75,6 +76,7 @@ function ProductSearch({ storeId, onPick }) {
 }
 
 function SupplierForm({ onSaved }) {
+  const { api: inventoryAPI } = useInventoryScope()
   const [form, setForm] = useState({ name: "", phone: "", gstin: "", supplies: "" })
   const [busy, setBusy] = useState(false)
   const save = async (e) => {
@@ -116,9 +118,10 @@ function SupplierForm({ onSaved }) {
  * to stock and makes each rate the product's purchase price.
  */
 export default function Purchases() {
+  const { api: inventoryAPI, isSeller } = useInventoryScope()
   const { store: storeParam } = useInventoryParams()
   const stores = useStores()
-  const [storeId, setStoreId] = useState(storeParam)
+  const [storeId, setStoreId] = useState(storeParam || (isSeller ? "self" : ""))
   const [suppliers, setSuppliers] = useState([])
   const [recent, setRecent] = useState([])
   const [supplierId, setSupplierId] = useState("")
@@ -131,7 +134,7 @@ export default function Purchases() {
   const [saving, setSaving] = useState(false)
   const [showSupplierForm, setShowSupplierForm] = useState(false)
 
-  useEffect(() => setStoreId(storeParam), [storeParam])
+  useEffect(() => setStoreId(storeParam || (isSeller ? "self" : "")), [storeParam, isSeller])
 
   const loadSide = useCallback(async () => {
     try {
@@ -210,12 +213,14 @@ export default function Purchases() {
           <Card title="Record a purchase" className="flex-[999_1_640px]">
             <div className="space-y-4 p-4">
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                <label className="text-xs font-medium text-neutral-600">Store *
-                  <select value={storeId} onChange={(e) => { setStoreId(e.target.value); setLines([]) }} className={`${field} mt-1`}>
-                    <option value="">Pick the store</option>
-                    {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </label>
+                {!isSeller && (
+                  <label className="text-xs font-medium text-neutral-600">Store *
+                    <select value={storeId} onChange={(e) => { setStoreId(e.target.value); setLines([]) }} className={`${field} mt-1`}>
+                      <option value="">Pick the store</option>
+                      {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </label>
+                )}
                 <label className="text-xs font-medium text-neutral-600">Supplier
                   <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className={`${field} mt-1`}>
                     <option value="">No supplier / mandi</option>

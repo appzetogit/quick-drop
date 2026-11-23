@@ -6,6 +6,8 @@ import RestaurantLayout from "@food/components/restaurant/RestaurantLayout"
 
 // Lazy Loading Components
 const AllOrdersPage = lazy(() => import("@food/pages/restaurant/AllOrdersPage"))
+// A store's own copy of the admin's inventory screens (stores and medical stores).
+const StoreInventory = lazy(() => import("@food/pages/restaurant/StoreInventory"))
 const OrdersMain = lazy(() => import("@food/pages/restaurant/OrdersMain"))
 const RestaurantNotifications = lazy(() => import("@food/pages/restaurant/Notifications"))
 const RestaurantOnboarding = lazy(() => import("@food/pages/restaurant/Onboarding"))
@@ -102,6 +104,10 @@ export default function RestaurantRouter() {
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><Inventory /></ProtectedRoute>} path="inventory" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><MenuOverview /></ProtectedRoute>} path="menu-overview" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><StockManager scope="restaurant" /></ProtectedRoute>} path="stock" />
+        <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><StoreInventory page="dashboard" /></ProtectedRoute>} path="store-inventory" />
+        <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><StoreInventory page="fresh" /></ProtectedRoute>} path="store-inventory/fresh" />
+        <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><StoreInventory page="purchases" /></ProtectedRoute>} path="store-inventory/purchases" />
+        <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><StoreInventory page="reports" /></ProtectedRoute>} path="store-inventory/reports" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><Feedback /></ProtectedRoute>} path="feedback" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><ShareFeedback /></ProtectedRoute>} path="share-feedback" />
         <Route element={<ProtectedRoute requiredRole="restaurant" loginPath="/food/restaurant/login"><DishRatings /></ProtectedRoute>} path="dish-ratings" />
