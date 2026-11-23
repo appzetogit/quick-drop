@@ -183,6 +183,10 @@ export function clearRestaurantSessionCache() {
     "restaurant_name",
     "restaurantName",
     "restaurant_pendingPhone",
+    // Store / medical-store mark (RESTAURANT_VERTICAL_KEY in services/api/axios.js).
+    // Left behind by a store's logout, it sent the next restaurant to sign in
+    // on this browser to quick commerce: login 404 and an empty dashboard.
+    "restaurant_vertical",
   ];
 
   keys.forEach((key) => localStorage.removeItem(key));
