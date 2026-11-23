@@ -867,6 +867,24 @@ export default function HubMenu() {
   const isRejectedApproval = (status) =>
     String(status || '').toLowerCase() === 'rejected'
 
+  /*
+   * Every dish can be edited. Edit used to show only while a dish was pending,
+   * so an approved dish's price could never change and a rejected one could
+   * never be fixed. Changing an approved dish's name, price, photo and similar
+   * sends it back for approval (restaurantFood.service), and it is hidden from
+   * customers until approved again -- the restaurant is told that first.
+   */
+  const openItemEditor = (item, groupId) => {
+    if (String(item?.approvalStatus || '').toLowerCase() === 'approved') {
+      const ok = window.confirm(
+        "This dish is live. Changing its name, price, photo, description or category sends it for approval again, and customers will not see it until it is approved.\n\nSwitching it in or out of stock does not need approval.\n\nEdit it?"
+      )
+      if (!ok) return false
+    }
+    navigate(`/restaurant/hub-menu/item/${item.id}`, { state: { item, groupId } })
+    return true
+  }
+
   const filteredMenuGroups = useMemo(() => {
     let filtered = menuData
 
@@ -1584,17 +1602,15 @@ export default function HubMenu() {
                         </div>
 
                         {/* Action buttons - below image */}
-                        {isPendingApproval(item.approvalStatus) && (
-                          <div className="flex items-center justify-center gap-3 mt-4">
-                            <button
-                              onClick={() => navigate(`/restaurant/hub-menu/item/${item.id}`, { state: { item, groupId: group.id } })}
-                              className="flex items-center gap-1.5 bg-transparent text-gray-700 text-sm font-medium"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                              <span>Edit</span>
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex items-center justify-center gap-3 mt-4">
+                          <button
+                            onClick={() => openItemEditor(item, group.id)}
+                            className="flex items-center gap-1.5 bg-transparent text-gray-700 text-sm font-medium"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                            <span>{isRejectedApproval(item.approvalStatus) ? "Edit and resubmit" : "Edit"}</span>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2294,20 +2310,9 @@ export default function HubMenu() {
                               <div
                                 key={item.id}
                                 onClick={() => {
-                                  if (!isPendingApproval(item.approvalStatus)) {
-                                    toast.error("Approved or rejected items cannot be edited")
-                                    return
-                                  }
-                                  setIsSearchOpen(false)
-                                  navigate(`/restaurant/hub-menu/item/${item.id}`, { 
-                                    state: { item, groupId: group.id } 
-                                  })
+                                  if (openItemEditor(item, group.id)) setIsSearchOpen(false)
                                 }}
-                                className={`flex items-start gap-3 p-3 rounded-lg border border-gray-200 transition-colors ${
-                                  isPendingApproval(item.approvalStatus)
-                                    ? "hover:bg-gray-50 cursor-pointer"
-                                    : "bg-gray-50/60 cursor-not-allowed"
-                                }`}
+                                className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 transition-colors hover:bg-gray-50 cursor-pointer"
                               >
                                 <img
                                   src={item.image}
