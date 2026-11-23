@@ -1083,6 +1083,13 @@ export const adminAPI = {
       {},
       { contextModule: "admin" },
     ),
+  /** Kitchen-side status from the admin: confirmed (accept), preparing, ready_for_pickup. */
+  setOrderStatus: (vertical, orderId, orderStatus, note = "") =>
+    apiClient.patch(
+      `${adminOrdersBase(vertical)}/${encodeURIComponent(String(orderId))}/status`,
+      { orderStatus, ...(note ? { note } : {}) },
+      { contextModule: "admin" },
+    ),
   /** Create restaurant (admin). Single API: POST /food/admin/restaurants. Body: JSON with image URLs. */
   createRestaurant: (body) =>
     apiClient.post("/food/admin/restaurants", body ?? {}, {

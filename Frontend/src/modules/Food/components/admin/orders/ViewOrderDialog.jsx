@@ -7,6 +7,7 @@ import {
   DialogDescription,
 } from "@food/components/ui/dialog"
 import RiderAssignmentSection from "@food/components/admin/orders/manual-assign/RiderAssignmentSection"
+import OrderStatusActions from "@food/components/admin/orders/OrderStatusActions"
 import { addonsPerUnit } from "@food/utils/orderItemPricing"
 
 // The coupon on an order, whichever field it was saved in.
@@ -467,6 +468,11 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
                 )}
               </div>
             </div>
+          )}
+
+          {/* Accept / Processing / Ready from the admin (kitchen steps only). */}
+          {isOpen && (
+            <OrderStatusActions order={order} vertical={vertical} onChanged={onOrderChanged} />
           )}
 
           {/* Manual rider assignment: status, countdown, Assign / Reassign / Unassign. */}
