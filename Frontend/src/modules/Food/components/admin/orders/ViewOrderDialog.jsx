@@ -17,7 +17,7 @@ const isFreeDeliveryCoupon = (order) => String(couponOf(order)?.type || "").toLo
 // A code can be saved on an order that refused it (e.g. a first-order coupon on a
 // later order): applied means the server recorded it or it took money off.
 const couponWasApplied = (order) =>
-  Boolean(couponOf(order)) || Number(order?.pricing?.discount) > 0 || Number(order?.couponDiscount) > 0
+  Boolean(couponOf(order)) || order?.pricing?.couponFreeDelivery === true || Number(order?.pricing?.discount) > 0 || Number(order?.couponDiscount) > 0
 
 // Delivery fee a coupon (or a free-delivery offer) waived.
 const deliveryWaivedOf = (order) =>
