@@ -14,6 +14,11 @@ import { addonsPerUnit } from "@food/utils/orderItemPricing"
 const couponOf = (order) => order?.pricing?.appliedCoupon || order?.appliedCoupon || null
 const couponCodeOf = (order) => String(couponOf(order)?.code || order?.pricing?.couponCode || order?.couponCode || "").trim()
 const isFreeDeliveryCoupon = (order) => String(couponOf(order)?.type || "").toLowerCase() === "free-delivery"
+// A code can be saved on an order that refused it (e.g. a first-order coupon on a
+// later order): applied means the server recorded it or it took money off.
+const couponWasApplied = (order) =>
+  Boolean(couponOf(order)) || Number(order?.pricing?.discount) > 0 || Number(order?.couponDiscount) > 0
+
 // Delivery fee a coupon (or a free-delivery offer) waived.
 const deliveryWaivedOf = (order) =>
   Number(couponOf(order)?.deliveryFeeWaived) || Number(order?.pricing?.deliveryFeeBreakdown?.waivedDeliveryFee) || 0
@@ -689,7 +694,7 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
               )}
               {couponCodeOf(order) && !isFreeDeliveryCoupon(order) && !(order.couponDiscount > 0) && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Coupon used</span>
+                  <span className="text-slate-600">{couponWasApplied(order) ? "Coupon used" : "Coupon tried, not applied"}</span>
                   <span className="font-medium text-slate-900">{couponCodeOf(order)}</span>
                 </div>
               )}

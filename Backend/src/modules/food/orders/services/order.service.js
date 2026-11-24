@@ -278,7 +278,11 @@ export async function createOrder(userId, dto) {
       totalBeforeTip: Number(pricingResult.pricing.totalBeforeTip ?? 0) || 0,
       total: Number(pricingResult.pricing.total ?? 0) || 0,
       currency: String(pricingResult.pricing.currency || "INR"),
-      couponCode: pricingResult.pricing.couponCode || null,
+      // Pricing echoes a refused code back; only a code that counted is saved.
+      couponCode:
+        pricingResult.pricing.appliedCoupon?.code ||
+        (Number(pricingResult.pricing.discount) > 0 ? pricingResult.pricing.couponCode : null) ||
+        null,
       appliedCoupon: pricingResult.pricing.appliedCoupon || null,
     };
 
