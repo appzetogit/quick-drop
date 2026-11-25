@@ -852,7 +852,6 @@ export default function OrdersMain() {
   const [showCancelPopup, setShowCancelPopup] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [orderToCancel, setOrderToCancel] = useState(null);
-  const [acceptSwipeProgress, setAcceptSwipeProgress] = useState(0);
   const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
   const [isVerifyingPrescription, setIsVerifyingPrescription] = useState(false);
   // A medical order the pharmacy hasn't reviewed yet: the popup shows only the
@@ -864,9 +863,6 @@ export default function OrdersMain() {
     orderLike?.prescription?.status === "pending_review";
   const audioRef = useRef(null);
   const shownOrdersRef = useRef(new Set()); // Track orders already shown in popup
-  const acceptSliderRef = useRef(null);
-  const acceptSwipeStartXRef = useRef(0);
-  const acceptSwipeActiveRef = useRef(false);
   const [restaurantStatus, setRestaurantStatus] = useState({
     isActive: null,
     rejectionReason: null,
@@ -1337,100 +1333,14 @@ export default function OrdersMain() {
   }, [showNewOrderPopup, countdown]);
 
   useEffect(() => {
-    if (!showNewOrderPopup) {
-      setAcceptSwipeProgress(0);
-      setIsAcceptingOrder(false);
-      acceptSwipeActiveRef.current = false;
-      acceptSwipeStartXRef.current = 0;
-    }
+    if (!showNewOrderPopup) setIsAcceptingOrder(false);
   }, [showNewOrderPopup]);
-
-  useEffect(() => {
-    const handleMouseMove = (event) => {
-      if (acceptSwipeActiveRef.current) {
-        handleAcceptSwipeMove(event.clientX);
-      }
-    };
-
-    const handleTouchMove = (event) => {
-      if (acceptSwipeActiveRef.current && event.touches[0]) {
-        // Prevent page scroll while swiping the slider
-        if (typeof event.preventDefault === "function") event.preventDefault();
-        handleAcceptSwipeMove(event.touches[0].clientX);
-      }
-    };
-
-    const handlePointerEnd = () => {
-      if (acceptSwipeActiveRef.current) {
-        handleAcceptSwipeEnd();
-      }
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handlePointerEnd);
-    // passive: false is required to allow preventDefault() during swipe
-    window.addEventListener("touchmove", handleTouchMove, { passive: false });
-    window.addEventListener("touchend", handlePointerEnd);
-    window.addEventListener("touchcancel", handlePointerEnd);
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handlePointerEnd);
-      window.removeEventListener("touchmove", handleTouchMove);
-      window.removeEventListener("touchend", handlePointerEnd);
-      window.removeEventListener("touchcancel", handlePointerEnd);
-    };
-  }, [isAcceptingOrder]);
 
   // Format countdown time
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  const getAcceptSliderMetrics = () => {
-    const sliderWidth = acceptSliderRef.current?.offsetWidth || 320;
-    const handleWidth = 56;
-    const horizontalPadding = 8;
-    const maxTravel = Math.max(
-      sliderWidth - handleWidth - horizontalPadding * 2,
-      1,
-    );
-    return { maxTravel };
-  };
-
-  const triggerSwipeAccept = () => {
-    if (isAcceptingOrder) return;
-    setAcceptSwipeProgress(1);
-    setTimeout(() => {
-      handleAcceptOrder();
-    }, 160);
-  };
-
-  const handleAcceptSwipeStart = (clientX) => {
-    if (isAcceptingOrder) return;
-    acceptSwipeStartXRef.current = clientX;
-    acceptSwipeActiveRef.current = true;
-  };
-
-  const handleAcceptSwipeMove = (clientX) => {
-    if (!acceptSwipeActiveRef.current || isAcceptingOrder) return;
-    const deltaX = Math.max(clientX - acceptSwipeStartXRef.current, 0);
-    const { maxTravel } = getAcceptSliderMetrics();
-    setAcceptSwipeProgress(Math.min(deltaX / maxTravel, 1));
-  };
-
-  const handleAcceptSwipeEnd = () => {
-    if (!acceptSwipeActiveRef.current || isAcceptingOrder) return;
-    acceptSwipeActiveRef.current = false;
-
-    if (acceptSwipeProgress >= 0.45) {
-      triggerSwipeAccept();
-      return;
-    }
-
-    setAcceptSwipeProgress(0);
   };
 
   // Handle accept order
@@ -1475,7 +1385,6 @@ export default function OrdersMain() {
           toast.error(errorMessage);
         }
         setIsAcceptingOrder(false);
-        setAcceptSwipeProgress(0);
         return;
       }
     }
@@ -1485,7 +1394,6 @@ export default function OrdersMain() {
     clearNewOrder();
     setCountdown(240);
     setPrepTime(11);
-    setAcceptSwipeProgress(0);
     setIsAcceptingOrder(false);
 
     // Note: PreparingOrders component will automatically refresh orders via its own useEffect
@@ -2618,55 +2526,24 @@ export default function OrdersMain() {
                     </div>
                   ) : (
                   <div className="space-y-3">
-                    <div
-                      ref={acceptSliderRef}
-                      className="relative h-14 rounded-2xl bg-gray-900 overflow-hidden select-none touch-pan-y">
-                      <motion.div
-                        className="absolute inset-y-0 left-0 bg-blue-600"
+                    <button
+                      type="button"
+                      onClick={handleAcceptOrder}
+                      disabled={isAcceptingOrder}
+                      className="relative w-full h-14 rounded-2xl bg-gray-900 overflow-hidden text-white font-semibold text-sm hover:bg-gray-800 active:scale-[0.99] transition disabled:cursor-not-allowed disabled:opacity-80">
+                      <motion.span
+                        aria-hidden="true"
+                        className="absolute inset-y-0 left-0 bg-green-600"
                         initial={{ width: "100%" }}
                         animate={{ width: `${(countdown / 240) * 100}%` }}
                         transition={{ duration: 1, ease: "linear" }}
                       />
-                      <div className="absolute inset-0 flex items-center justify-center px-16">
-                        <span className="relative z-10 text-sm font-semibold text-white text-center">
-                          {isAcceptingOrder
-                            ? "Accepting order..."
-                            : `Slide to accept (${formatTime(countdown)})`}
-                        </span>
-                      </div>
-                      <motion.button
-                        type="button"
-                        className="absolute left-2 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-xl bg-white text-gray-900 shadow-md disabled:cursor-not-allowed"
-                        style={{
-                          x: (() => {
-                            const sliderWidth =
-                              acceptSliderRef.current?.offsetWidth || 320;
-                            const handleWidth = 40;
-                            const maxTravel = Math.max(
-                              sliderWidth - handleWidth - 16,
-                              0,
-                            );
-                            return acceptSwipeProgress * maxTravel;
-                          })(),
-                        }}
-                        onMouseDown={(e) => handleAcceptSwipeStart(e.clientX)}
-                        onTouchStart={(e) =>
-                          handleAcceptSwipeStart(e.touches[0].clientX)
-                        }
-                        onMouseMove={(e) => {
-                          if (acceptSwipeActiveRef.current)
-                            handleAcceptSwipeMove(e.clientX);
-                        }}
-                        onTouchMove={(e) =>
-                          handleAcceptSwipeMove(e.touches[0].clientX)
-                        }
-                        onMouseUp={handleAcceptSwipeEnd}
-                        onTouchEnd={handleAcceptSwipeEnd}
-                        onTouchCancel={handleAcceptSwipeEnd}
-                        disabled={isAcceptingOrder}>
-                        <span className="text-lg font-bold">›</span>
-                      </motion.button>
-                    </div>
+                      <span className="relative z-10">
+                        {isAcceptingOrder
+                          ? "Accepting order..."
+                          : `Accept Order (${formatTime(countdown)})`}
+                      </span>
+                    </button>
 
                     <button
                       onClick={handleRejectClick}

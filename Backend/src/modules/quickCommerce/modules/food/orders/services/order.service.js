@@ -2744,6 +2744,9 @@ export async function listOrdersAdmin(query) {
         // Placed by customer; restaurant has not accepted yet.
         filter.orderStatus = "created";
         break;
+      case "accepted":
+        filter.orderStatus = "confirmed";
+        break;
       case "processing":
         // Active orders not delivered/cancelled, delivery partner not accepted yet.
         filter.orderStatus = {

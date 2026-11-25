@@ -532,13 +532,14 @@ export default function OrdersPage({ statusKey = "all" }) {
   }, [fetchOrders])
 
   useEffect(() => {
-    if (statusKey !== "all") return undefined
-
     // Refresh only. New orders ring from the admin alert centre on every
     // page (shared/adminAlerts); ringing here as well rang twice.
+    // Every tab polls, so a status change made by the store or a rider
+    // shows up (and moves the order between tabs) without a reload.
     const pollId = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return
       fetchOrders({ silent: true, withRingCheck: false })
-    }, 5000)
+    }, statusKey === "all" ? 5000 : 8000)
 
     return () => clearInterval(pollId)
   }, [statusKey, fetchOrders])
