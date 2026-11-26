@@ -396,6 +396,17 @@ export async function createRestaurantFood(restaurantId, body = {}) {
     return doc.toObject();
 }
 
+// How a dish was switched off, so the app can show the choice back and the
+// customer sees when it returns. Mirrors the quick-commerce seller flow.
+const STOCK_OFF_MODES = new Set(['manual', 'specific-time', 'next-business-day', 'custom-date-time']);
+
+const parseStockResumeAt = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date;
+};
+
 export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
     const context = await getRestaurantContext(restaurantId);
     if (!foodId || !mongoose.Types.ObjectId.isValid(String(foodId))) {
@@ -444,6 +455,26 @@ export async function updateRestaurantFood(restaurantId, foodId, body = {}) {
             : body.isAvailable !== false;
         update.isActive = nextIsActive;
         update.isAvailable = nextIsActive;
+    }
+    // Out-of-stock schedule: when switched OFF the restaurant can say when the
+    // dish comes back (a time, the next opening, or manually). The expiry is
+    // read back lazily by restoreExpiredFoodAvailability. Set explicitly here,
+    // then cleared below whenever the dish is switched back ON.
+    if (body.stockResumeAt !== undefined) {
+        update.stockResumeAt = parseStockResumeAt(body.stockResumeAt);
+    }
+    if (body.stockOffMode !== undefined) {
+        const mode = String(body.stockOffMode || '').trim();
+        update.stockOffMode = STOCK_OFF_MODES.has(mode) ? mode : null;
+    }
+    if (body.isActive !== undefined || body.isAvailable !== undefined) {
+        const turningOn = body.isActive !== undefined
+            ? body.isActive !== false
+            : body.isAvailable !== false;
+        if (turningOn) {
+            update.stockResumeAt = null;
+            update.stockOffMode = null;
+        }
     }
     if (body.isRecommended !== undefined) {
         update.isRecommended = normalizeRecommendedFlag(body.isRecommended);

@@ -3,6 +3,7 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
+import { restoreExpiredFoodAvailability } from './foodAvailability.service.js';
 import { getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
 import { formatOrderQuantityLimits } from '../../shared/orderQuantityRules.js';
 import { resolveItemPackagingAmount, resolveItemPackagingUnits } from '../../shared/packagingCharge.js';
@@ -210,6 +211,9 @@ export const buildMenuFromFoods = async (foods = [], { forCustomer = false } = {
             // time, and cleared automatically once that moment has passed so
             // a stale promise is never shown.
             stockResumeAt: resolveStockResumeAt(food),
+            // How it was switched off (manual / specific-time / next-business-day
+            // / custom-date-time), so the app can show the restaurant's choice.
+            stockOffMode: food.stockOffMode || null,
             isRecommended: food.isRecommended === true,
             approvalStatus: food.approvalStatus || 'approved',
             rejectionReason: food.rejectionReason || '',
@@ -281,6 +285,9 @@ export async function getRestaurantMenu(restaurantId) {
     if (!restaurantId || !mongoose.Types.ObjectId.isValid(String(restaurantId))) {
         throw new ValidationError('Invalid restaurant id');
     }
+    // Bring back any dish whose scheduled out-of-stock window has passed before
+    // the menu is read, so the restaurant never sees a stale "off" switch.
+    await restoreExpiredFoodAvailability({ restaurantId });
     const foods = await FoodItem.find({ restaurantId })
         .sort({ createdAt: -1 })
         .limit(5000)
@@ -314,6 +321,9 @@ export async function getPublicApprovedRestaurantMenu(restaurantIdOrSlug) {
     if (!restaurant?._id) {
         return null;
     }
+    // Restore dishes whose out-of-stock window has elapsed before the customer
+    // menu is built, so a dish is back the moment its timer passes.
+    await restoreExpiredFoodAvailability({ restaurantId: restaurant._id });
     /*
      * Out-of-stock dishes are STILL SENT.
      *

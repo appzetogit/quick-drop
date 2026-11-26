@@ -2666,13 +2666,50 @@ export const listPublicOffers = async (query = {}) => {
         }, {});
 
         allOffers = allOffers.filter((o) => {
-            const perUserLimit = Number(o.perUserLimit || 0);
+            // Unset means once, not unlimited: coupons are one-time per user.
+            const perUserLimit = Number(o.perUserLimit) > 0 ? Number(o.perUserLimit) : 1;
             if (perUserLimit > 0) {
                 const used = usageMap[String(o.id)] || 0;
                 return used < perUserLimit;
             }
             return true;
         });
+
+        /*
+         * The home-screen nudge (query.forNudge) wants a stricter list than the
+         * cart's coupon sheet: once the user has redeemed ANY coupon, it goes
+         * quiet until the admin launches a NEWER one. So, only for the nudge,
+         * drop coupons the user has used at all and coupons created on/before
+         * their last redemption. The cart list (no forNudge) is untouched.
+         */
+        if (query.forNudge) {
+            const redeemed = usages.filter((u) => Number(u.count || 0) > 0);
+            const usedIds = new Set(redeemed.map((u) => String(u.offerId)));
+            const nudgeSince = redeemed.length
+                ? new Date(Math.max(...redeemed.map((u) => new Date(u.lastUsedAt || u.updatedAt || 0).getTime())))
+                : null;
+
+            let createdMap = {};
+            if (nudgeSince && allOffers.length) {
+                const ids = allOffers
+                    .map((o) => o.id)
+                    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+                    .map((id) => new mongoose.Types.ObjectId(id));
+                const rows = ids.length
+                    ? await FoodOffer.find({ _id: { $in: ids } }).select('createdAt').lean()
+                    : [];
+                createdMap = rows.reduce((m, r) => { m[String(r._id)] = r.createdAt; return m; }, {});
+            }
+
+            allOffers = allOffers.filter((o) => {
+                if (usedIds.has(String(o.id))) return false;
+                if (nudgeSince) {
+                    const c = createdMap[String(o.id)];
+                    if (c && new Date(c) <= nudgeSince) return false;
+                }
+                return true;
+            });
+        }
     }
 
     return { allOffers, groupedByOffer: {} };

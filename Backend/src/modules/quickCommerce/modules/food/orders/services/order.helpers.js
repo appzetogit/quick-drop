@@ -501,6 +501,14 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
     ),
     userName: order?.customerName || order?.deliveryAddress?.fullName || order?.deliveryAddress?.name || order?.userId?.name || "",
     userPhone: order?.customerPhone || order?.deliveryAddress?.phone || order?.userId?.phone || "",
+    // Who placed the order vs who receives it. When it was ordered for someone
+    // else the recipient (customerName/Phone) and the account holder differ, so
+    // the driver's call button offers both numbers at the drop.
+    isForSomeoneElse: order?.isForSomeoneElse === true,
+    orderedByName: order?.userId?.name || order?.userId?.fullName || "",
+    orderedByPhone: order?.userId?.phone || "",
+    recipientName: order?.recipientDetails?.name || order?.customerName || "",
+    recipientPhone: order?.recipientDetails?.phone || order?.customerPhone || "",
     note: order?.deliveryInstructions || "",
     cookingNote: order?.note || "",
     deliveryInstructions: order?.deliveryInstructions || "",

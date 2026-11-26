@@ -120,6 +120,16 @@ export async function listPublicFoods(query = {}) {
         isActive: { $ne: false }
     };
 
+    // Admin home sections curate an explicit set of dishes (by id).
+    if (Array.isArray(query.itemIds) && query.itemIds.length) {
+        foodFilter._id = {
+            $in: query.itemIds
+                .map((x) => String(x))
+                .filter((x) => mongoose.Types.ObjectId.isValid(x))
+                .map((x) => new mongoose.Types.ObjectId(x)),
+        };
+    }
+
     // Prefer the dish's categoryId — the authoritative link to the category a
     // chip represents. A dish's denormalized categoryName can drift from the
     // category's real name (e.g. a "Roti" chip whose dishes carry categoryName

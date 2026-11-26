@@ -24,6 +24,7 @@ const WhatsAppInbox = lazy(() => import("@food/pages/admin/master/WhatsAppInbox"
 const WhatsAppMarketing = lazy(() => import("@food/pages/admin/master/WhatsAppMarketing"))
 const MasterReferral = lazy(() => import("@food/pages/admin/master/MasterReferral"))
 const MasterCoupons = lazy(() => import("@food/pages/admin/master/MasterCoupons"))
+const MasterHomeSections = lazy(() => import("@food/pages/admin/master/MasterHomeSections"))
 const PlatformEarnings = lazy(() => import("@food/pages/admin/master/PlatformEarnings"))
 const MasterFees = lazy(() => import("@food/pages/admin/master/MasterFees"))
 const MasterCancellation = lazy(() => import("@food/pages/admin/master/MasterCancellation"))
@@ -466,6 +467,7 @@ export default function AdminRouter() {
           <Route path="master/whatsapp-marketing" element={<WhatsAppMarketing />} />
           <Route path="master/referral" element={<MasterReferral />} />
           <Route path="master/coupons" element={<MasterCoupons />} />
+          <Route path="master/home-sections" element={<MasterHomeSections />} />
           <Route path="master/platform-earnings" element={<PlatformEarnings />} />
           <Route path="master/fees" element={<MasterFees />} />
           <Route path="master/cancellation" element={<MasterCancellation />} />

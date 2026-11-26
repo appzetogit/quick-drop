@@ -27,6 +27,7 @@ import { requireFinancePermission } from '../../../../core/admin/requireFinanceP
 import { settlementRouter } from '../settlements/settlement.routes.js';
 import { enforceAdminAccess } from '../../../../core/admin/enforceAdminAccess.middleware.js';
 import { resolveStoreAdminResource } from '../../../../core/admin/adminAccessPolicy.js';
+import * as homeSectionController from '../controllers/homeSection.controller.js';
 
 const router = express.Router();
 
@@ -207,6 +208,12 @@ router.post('/offers', adminController.createAdminOffer);
 router.patch('/offers/:id/cart-visibility', adminController.updateAdminOfferCartVisibility);
 router.patch('/offers/:id', adminController.updateAdminOffer);
 router.delete('/offers/:id', adminController.deleteAdminOffer);
+
+// ----- Custom home sections (curated chips on the food home) -----
+router.post('/home-sections', homeSectionController.createHomeSectionController);
+router.get('/home-sections', homeSectionController.listHomeSectionsAdminController);
+router.patch('/home-sections/:id', homeSectionController.updateHomeSectionController);
+router.delete('/home-sections/:id', homeSectionController.deleteHomeSectionController);
 
 // ----- Feedback Experience (Admin) -----
 router.get('/feedback-experiences', feedbackExperienceController.getFeedbackExperiences);

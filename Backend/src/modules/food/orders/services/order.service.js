@@ -1806,7 +1806,8 @@ export async function listOrdersAdmin(query) {
   if (rawStatus && rawStatus !== "all") {
     switch (rawStatus) {
       case "pending":
-        filter.orderStatus = { $in: ["created", "confirmed"] };
+        // Not accepted yet; an accepted ("confirmed") order is on the Accepted tab.
+        filter.orderStatus = "created";
         break;
       case "accepted":
         filter.orderStatus = "confirmed";

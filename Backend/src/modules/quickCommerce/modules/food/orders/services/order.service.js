@@ -134,8 +134,10 @@ async function claimCouponForCustomer(order, userId, awaitingOnline) {
   const couponCode = order?.pricing?.couponCode ? String(order.pricing.couponCode).trim().toUpperCase() : "";
   if (!couponCode || !couponApplied(order)) return false;
   const offer = await FoodOffer.findOne({ couponCode }).select("_id perUserLimit").lean();
-  const perUser = Number(offer?.perUserLimit) || 0;
-  if (!offer || perUser <= 0) return false;
+  // Unset means once, not unlimited -- without this the claim never ran and
+  // no per-user usage row was written, so nothing could be hidden afterwards.
+  const perUser = Number(offer?.perUserLimit) > 0 ? Number(offer.perUserLimit) : 1;
+  if (!offer) return false;
   const uid = toObjectId(userId, "User ID");
 
   if (awaitingOnline) {
@@ -2743,6 +2745,9 @@ export async function listOrdersAdmin(query) {
       case "pending":
         // Placed by customer; restaurant has not accepted yet.
         filter.orderStatus = "created";
+        break;
+      case "accepted":
+        filter.orderStatus = "confirmed";
         break;
       case "processing":
         // Active orders not delivered/cancelled, delivery partner not accepted yet.

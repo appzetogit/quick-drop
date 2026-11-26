@@ -58,8 +58,11 @@ export const normalizeOrder = (order) => {
 
   const backendStatus = String(order.orderStatus || "").toLowerCase()
   let displayStatus = order.orderStatus
-  if (!backendStatus || backendStatus === "created" || backendStatus === "confirmed") {
+  if (!backendStatus || backendStatus === "created") {
     displayStatus = "Pending"
+  } else if (backendStatus === "confirmed") {
+    // Accepted (by the store or an admin) but not yet being prepared.
+    displayStatus = "Accepted"
   } else if (backendStatus === "preparing" || backendStatus === "ready_for_pickup") {
     displayStatus = "Processing"
   } else if (backendStatus === "picked_up") {

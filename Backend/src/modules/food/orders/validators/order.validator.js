@@ -163,7 +163,14 @@ export function validateCreateOrderDto(body) {
         // right after claiming a free item drops the claim silently and
         // re-prices without it, since order-pricing.service.js re-runs the
         // same freebie resolution at placement time.
-        claimFreebie: z.boolean().optional()
+        claimFreebie: z.boolean().optional(),
+        // "Order for someone else": the app sends these flat fields. Undeclared,
+        // zod stripped all three before createOrder saw them, so isForSomeoneElse
+        // was always false and recipientDetails empty — the driver's two-number
+        // call popup (Receiver / Ordered by) therefore never appeared.
+        isForSomeoneElse: z.boolean().optional(),
+        recipientName: z.string().optional(),
+        recipientPhone: z.string().optional()
     });
     const result = schema.safeParse(body);
     if (!result.success) {

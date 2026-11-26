@@ -20,6 +20,8 @@ const foodOfferSchema = new mongoose.Schema(
         endDate: { type: Date },
         status: { type: String, enum: ['active', 'paused', 'inactive'], default: 'active', index: true },
         showInCart: { type: Boolean, default: true },
+        // Zones this coupon works in. Empty = every zone.
+        zoneIds: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'FoodZone' }], default: [], index: true },
         createdByRole: { type: String, enum: ['ADMIN', 'RESTAURANT'], default: 'ADMIN', index: true }
     },
     { collection: 'food_offers', timestamps: true }

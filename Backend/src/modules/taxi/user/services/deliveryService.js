@@ -105,6 +105,7 @@ export const createDeliveryRecord = async ({
   vehicleIconUrl,
   paymentMethod,
   parcel,
+  paidBy,
 }) => {
   await ensureDeliveryVehicleAllowed({ vehicleTypeId, parcel });
 
@@ -124,6 +125,15 @@ export const createDeliveryRecord = async ({
     serviceType: 'parcel',
     parcel,
   });
+
+  // Who settles the fare (sender at pickup, or receiver at drop). Parcel-only,
+  // set after creation so the shared createRideRecord stays ride/parcel-agnostic.
+  // Default 'receiver' preserves the original collect-at-drop flow.
+  const normalizedPaidBy = String(paidBy || '').trim().toLowerCase();
+  if (normalizedPaidBy === 'sender' || normalizedPaidBy === 'receiver') {
+    ride.paidBy = normalizedPaidBy;
+    await ride.save();
+  }
 
   await startDispatchFlow(ride);
 

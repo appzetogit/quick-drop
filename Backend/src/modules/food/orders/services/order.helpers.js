@@ -189,6 +189,13 @@ export function normalizeOrderForClient(orderDoc) {
     deliveryPartnerId:
       order?.dispatch?.deliveryPartnerId || order?.deliveryPartnerId || null,
     rating: order?.ratings?.restaurant?.rating ?? order?.rating ?? null,
+    // The delivery ETA, so the user's order list / active-order card shows a
+    // time instead of a perpetual "Calculating…". sanitizeOrderForExternal
+    // already did this for other consumers; the user-facing list/single reads
+    // go through here and were missing it. Needs restaurantId populated with
+    // `location` (listOrdersUser/getOrderById do) to produce an estimate; falls
+    // back to a null-ish eta object gracefully when it cannot.
+    eta: buildOrderEta(order),
     deliveryState: {
       ...(order?.deliveryState || {}),
       currentLocation: order?.lastRiderLocation?.coordinates?.length >= 2 ? {
@@ -286,6 +293,14 @@ export function buildDeliverySocketPayload(orderDoc, restaurantDoc = null) {
     customerPhone: order?.customerPhone || order?.deliveryAddress?.phone || order?.userId?.phone || "",
     userName: order?.customerName || order?.deliveryAddress?.fullName || order?.deliveryAddress?.name || order?.userId?.name || "",
     userPhone: order?.customerPhone || order?.deliveryAddress?.phone || order?.userId?.phone || "",
+    // Who placed the order vs who receives it. When it was ordered for someone
+    // else the recipient (customerName/Phone) and the account holder differ, so
+    // the driver's call button offers both numbers at the drop.
+    isForSomeoneElse: order?.isForSomeoneElse === true,
+    orderedByName: order?.userId?.name || order?.userId?.fullName || "",
+    orderedByPhone: order?.userId?.phone || "",
+    recipientName: order?.recipientDetails?.name || order?.customerName || "",
+    recipientPhone: order?.recipientDetails?.phone || order?.customerPhone || "",
     note: order?.note || "",
     deliveryInstructions: order?.deliveryInstructions || [],
     riderEarning: order?.riderEarning || 0,

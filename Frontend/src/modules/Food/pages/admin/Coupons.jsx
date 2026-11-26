@@ -36,7 +36,26 @@ export default function Coupons() {
     usageLimit: "",
     perUserLimit: "",
     isFirstOrderOnly: false,
+    zoneIds: [],
   })
+  const [zones, setZones] = useState([])
+
+  useEffect(() => {
+    adminAPI.getZones({ page: 1, limit: 1000 })
+      .then((response) => {
+        const list = response?.data?.data?.zones || []
+        setZones(Array.isArray(list) ? list : [])
+      })
+      .catch((err) => debugError("Error fetching zones:", err))
+  }, [])
+
+  const toggleZone = (zoneId) =>
+    setFormData((prev) => ({
+      ...prev,
+      zoneIds: prev.zoneIds.includes(zoneId)
+        ? prev.zoneIds.filter((id) => id !== zoneId)
+        : [...prev.zoneIds, zoneId],
+    }))
 
   const fetchOffers = useCallback(async () => {
     try {
@@ -181,6 +200,7 @@ export default function Coupons() {
       usageLimit: "",
       perUserLimit: "",
       isFirstOrderOnly: false,
+      zoneIds: [],
     })
   }
 
@@ -211,6 +231,7 @@ export default function Coupons() {
       usageLimit: blankIfNull(offer.usageLimit),
       perUserLimit: blankIfNull(offer.perUserLimit),
       isFirstOrderOnly: Boolean(offer.isFirstOrderOnly),
+      zoneIds: Array.isArray(offer.zoneIds) ? offer.zoneIds.map(String) : [],
     })
     setIsAddOpen(true)
     window.scrollTo({ top: 0, behavior: "smooth" })
@@ -265,6 +286,8 @@ export default function Coupons() {
         usageLimit: formData.usageLimit !== "" ? Number(formData.usageLimit) : undefined,
         perUserLimit: formData.perUserLimit !== "" ? Number(formData.perUserLimit) : undefined,
         isFirstOrderOnly: Boolean(formData.isFirstOrderOnly),
+        // Empty = every zone.
+        zoneIds: formData.zoneIds,
       }
       if (editingOffer) {
         // Keep what this form cannot show: a Quick coupon's extra restaurants
@@ -538,6 +561,31 @@ export default function Coupons() {
                   className="h-4 w-4"
                 />
                 <label htmlFor="isFirstOrderOnly" className="text-sm text-slate-700">First order only</label>
+              </div>
+
+              <div className="md:col-span-2 lg:col-span-3">
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Zones</label>
+                <p className="text-xs text-slate-500 mb-2">
+                  {formData.zoneIds.length === 0
+                    ? "No zone ticked: this coupon works in all zones."
+                    : "This coupon works only in the ticked zones."}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {zones.map((zone) => {
+                    const id = String(zone._id || zone.id)
+                    const checked = formData.zoneIds.includes(id)
+                    return (
+                      <label
+                        key={id}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer ${checked ? "border-blue-500 bg-blue-50 text-blue-800" : "border-slate-300 bg-white text-slate-700"}`}
+                      >
+                        <input type="checkbox" className="h-4 w-4" checked={checked} onChange={() => toggleZone(id)} />
+                        {zone.name || zone.zoneName || "Zone"}
+                      </label>
+                    )
+                  })}
+                  {zones.length === 0 && <span className="text-xs text-slate-400">No zones found.</span>}
+                </div>
               </div>
 
                 {formData.restaurantScope === "selected" && (

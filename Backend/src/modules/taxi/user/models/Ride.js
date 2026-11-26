@@ -367,6 +367,22 @@ const rideSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    /*
+     * Parcel (porter) jobs only: who settles the fare — the sender at pickup or
+     * the receiver at drop. 'receiver' keeps the original flow (collected at the
+     * drop, like every ride). 'sender' moves the collection to pickup: the
+     * driver collects from the sender before carrying the parcel, and nothing is
+     * collected at the drop. The money ledger is unchanged either way — the fare
+     * still settles on completion from paymentMethod and the agreed fare; this
+     * only decides where the driver's app shows the collection step.
+     */
+    paidBy: {
+      type: String,
+      enum: ['sender', 'receiver'],
+      default: 'receiver',
+      lowercase: true,
+      trim: true,
+    },
     otp: {
       type: String,
       trim: true,

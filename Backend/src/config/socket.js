@@ -62,6 +62,40 @@ async function loadOrderParties(orderId) {
     }
 }
 
+/**
+ * Like {@link loadOrderParties}, but also returns the order document with the
+ * fields {@link buildOrderEta} needs — status, delivery address, and the
+ * restaurant's location — so the live-location handler can compute a fresh ETA
+ * from the incoming GPS point in the same round trip. One findOne plus a lean
+ * restaurant populate; it runs at most once per 2s per order (the broadcast
+ * throttle), so the extra populate is cheap at current volume.
+ */
+async function loadOrderForTracking(orderId) {
+    try {
+        const [{ FoodOrder }, { buildOrderIdentityFilter }] = await Promise.all([
+            import('../modules/food/orders/models/order.model.js'),
+            import('../modules/food/orders/services/order.helpers.js'),
+        ]);
+        const identity = buildOrderIdentityFilter(orderId);
+        if (!identity) return null;
+        const order = await FoodOrder.findOne(identity)
+            .select('userId restaurantId dispatch.deliveryPartnerId orderStatus deliveryAddress lastRiderLocation')
+            .populate({ path: 'restaurantId', select: 'location address name' })
+            .lean();
+        if (!order) return null;
+        const restaurant = order.restaurantId;
+        return {
+            userId: String(order.userId || ''),
+            restaurantId: String(restaurant?._id || restaurant || ''),
+            deliveryPartnerId: String(order.dispatch?.deliveryPartnerId || ''),
+            order,
+        };
+    } catch (err) {
+        logger.warn(`Order tracking lookup failed for ${orderId}: ${err?.message || err}`);
+        return null;
+    }
+}
+
 const roomNames = {
     restaurant: (id) => `restaurant:${String(id)}`,
     user: (id) => `user:${String(id)}`,
@@ -283,7 +317,7 @@ export const initSocket = async (server) => {
             // and a token without a userId is also '', so '' === '' would let an
             // unidentified socket publish to any unassigned order.
             const me = String(userId || '');
-            const parties = await loadOrderParties(data.orderId);
+            const parties = await loadOrderForTracking(data.orderId);
             if (!me || !parties || !parties.deliveryPartnerId || parties.deliveryPartnerId !== me) {
                 logDeliverySocket('Rejected update-location for unassigned order', {
                     socketId: socket.id,
@@ -306,6 +340,25 @@ export const initSocket = async (server) => {
                 accuracy,
                 timestamp: now
             };
+
+            // Ride a freshly-computed ETA on the frame so the customer app ticks
+            // the number down with the marker, instead of waiting for its next
+            // REST refetch (and for lastRiderLocation's ~30s-debounced write).
+            // Measured from THIS incoming point, not the stored one.
+            try {
+                const { buildOrderEta } = await import('../modules/food/orders/services/orderEta.service.js');
+                const eta = buildOrderEta(parties.order, { riderOverride: { lat, lng } });
+                if (eta && Number.isFinite(eta.minutes)) {
+                    payload.eta = {
+                        minutes: eta.minutes,
+                        distanceKm: eta.distanceKm,
+                        source: eta.source,
+                        target: eta.target,
+                    };
+                }
+            } catch (err) {
+                logger.warn(`live ETA compute failed for ${data.orderId}: ${err?.message || err}`);
+            }
 
             logDeliverySocket('Location update received', {
                 socketId: socket.id,

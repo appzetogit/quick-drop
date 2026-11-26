@@ -257,6 +257,19 @@ const foodSchema = new mongoose.Schema(
          * Only meaningful while isAvailable is false.
          */
         stockResumeAt: { type: Date, default: null },
+        /**
+         * How the restaurant switched the dish off, so the app can show the
+         * same choice back and the customer sees when it returns: 'manual'
+         * (off until switched on), 'specific-time' (back at stockResumeAt
+         * today), 'next-business-day' (back at the next opening) or
+         * 'custom-date-time'. Mirrors the quick-commerce sellers.
+         * Only meaningful while isAvailable is false.
+         */
+        stockOffMode: {
+            type: String,
+            enum: ['manual', 'specific-time', 'next-business-day', 'custom-date-time'],
+            default: undefined
+        },
         isRecommended: { type: Boolean, default: false, index: true },
         // When the dish was last recommended from Admin > Food List: orders the
         // app's Trending Now, which lists the isRecommended dishes

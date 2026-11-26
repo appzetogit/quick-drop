@@ -207,6 +207,10 @@ export async function listNearbyPharmacies(userId, { lat, lng } = {}) {
                 rating: Number(seller.rating) || 0,
                 totalRatings: Number(seller.totalRatings) || 0,
                 isAcceptingOrders: seller.isAcceptingOrders !== false,
+                // The shop's own contact number, for the app's "Call to order"
+                // shortcut on the pharmacy card. The store number first;
+                // ownerPhone is the owner's login number as a last resort.
+                phone: String(seller.primaryContactNumber || seller.ownerPhone || seller.phone || ''),
                 estimatedDeliveryTimeMinutes: seller.estimatedDeliveryTimeMinutes ?? null,
                 /*
                  * Enough for the customer to decide, without a second call.
