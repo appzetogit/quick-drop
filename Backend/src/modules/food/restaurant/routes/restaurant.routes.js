@@ -3,12 +3,14 @@ import { createSellerPhoneChange } from '../../../../core/auth/sellerPhoneChange
 import { OTP_SERVICES } from '../../../../core/otp/otpRateLimit.service.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import express from 'express';
+import * as homeSectionController from '../../admin/controllers/homeSection.controller.js';
 import { upload } from '../../../../middleware/upload.js';
 import {
     registerRestaurantController,
     listApprovedRestaurantsController,
     getApprovedRestaurantController,
     listPublicOffersController,
+    listUnusedOffersController,
     getCurrentRestaurantController,
     getRestaurantCommissionRateController,
     getRestaurantTaxSettingsController,
@@ -77,7 +79,7 @@ import {
     uploadBulkMenuController
 } from '../controllers/bulkUpload.controller.js';
 import * as orderController from '../../orders/controllers/order.controller.js';
-import { authMiddleware } from '../../../../core/auth/auth.middleware.js';
+import { authMiddleware, optionalAuthMiddleware } from '../../../../core/auth/auth.middleware.js';
 import { sendError, sendResponse } from '../../../../utils/response.js';
 import { getRestaurantFinanceController } from '../controllers/restaurantFinance.controller.js';
 import { sellerDocuments } from '../services/restaurant.service.js';
@@ -140,7 +142,20 @@ router.get('/restaurants/:id', cacheResponse(PRICE_TTL, 'restaurant_detail'), ge
 router.get('/restaurants/:id/menu', cacheResponse(PRICE_TTL, 'restaurant_menu'), getPublicRestaurantMenuController);
 router.get('/restaurants/:id/reviews', getRestaurantPublicReviewsController);
 router.get('/restaurants/:id/outlet-timings', cacheResponse(SLOW_TTL, 'restaurant_timings'), getOutletTimingsByRestaurantIdController);
-router.get('/offers', cacheResponse(PRICE_TTL, 'offers'), listPublicOffersController);
+// Coupons are one-time per user, so this list is per-caller: a coupon the
+// signed-in user has already redeemed is dropped. That makes it uncacheable --
+// the food cacheResponse keys on the URL alone, so a cached copy would leak one
+// user's list to the next caller. Anonymous callers still get the full list.
+router.get('/offers', optionalAuthMiddleware, listPublicOffersController);
+// Per-user unused coupons for the home-screen nudge. Authenticated and
+// deliberately uncached (the public /offers above is cached and user-agnostic).
+router.get('/offers/unused', authMiddleware, listUnusedOffersController);
+
+// Admin-curated home sections (chips) for the food home — zone-aware via the
+// `zoneId` query, and the one section's restaurants + dishes. Uncached because
+// the list depends on the caller's zone.
+router.get('/home-sections', homeSectionController.listHomeSectionsUserController);
+router.get('/home-sections/:id', homeSectionController.getHomeSectionDetailController);
 // Public: cross-restaurant dish feed, used by the home screen's category rails and
 // the under-250 promo. Declared before the ':id' routes above cannot swallow it --
 // '/public/foods' has two segments, so there is no collision either way.

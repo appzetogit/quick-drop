@@ -15,7 +15,9 @@ const createOfferSchema = z.object({
     maxDiscount: z.number().min(0).optional(),
     usageLimit: z.number().min(0).optional(),
     perUserLimit: z.number().min(0).optional(),
-    isFirstOrderOnly: z.boolean().optional()
+    isFirstOrderOnly: z.boolean().optional(),
+    // Empty = every zone.
+    zoneIds: z.array(z.string()).optional()
 });
 
 /**
@@ -38,7 +40,8 @@ export const validateCreateOfferDto = (body, { allowFreeDelivery = false } = {})
         maxDiscount: body?.maxDiscount !== undefined ? Number(body.maxDiscount) : undefined,
         usageLimit: body?.usageLimit !== undefined ? Number(body.usageLimit) : undefined,
         perUserLimit: body?.perUserLimit !== undefined ? Number(body.perUserLimit) : undefined,
-        isFirstOrderOnly: body?.isFirstOrderOnly !== undefined ? Boolean(body.isFirstOrderOnly) : undefined
+        isFirstOrderOnly: body?.isFirstOrderOnly !== undefined ? Boolean(body.isFirstOrderOnly) : undefined,
+        zoneIds: Array.isArray(body?.zoneIds) ? body.zoneIds.map(String) : undefined
     };
 
     const result = createOfferSchema.safeParse(normalized);
@@ -57,6 +60,11 @@ export const validateCreateOfferDto = (body, { allowFreeDelivery = false } = {})
         if (!result.data.restaurantId || !mongoose.Types.ObjectId.isValid(result.data.restaurantId)) {
             throw new ValidationError('Valid restaurantId is required for selected restaurant scope');
         }
+    }
+
+    const zoneIds = [...new Set(result.data.zoneIds || [])];
+    if (zoneIds.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
+        throw new ValidationError('Invalid zone selected');
     }
 
     const endDate = result.data.endDate ? new Date(`${result.data.endDate}T00:00:00.000Z`) : undefined;
@@ -97,7 +105,9 @@ export const validateCreateOfferDto = (body, { allowFreeDelivery = false } = {})
         maxDiscount,
         usageLimit: result.data.usageLimit,
         perUserLimit: result.data.perUserLimit,
-        isFirstOrderOnly: result.data.isFirstOrderOnly
+        isFirstOrderOnly: result.data.isFirstOrderOnly,
+        // undefined (not sent) leaves an existing coupon's zones as they are.
+        zoneIds: result.data.zoneIds !== undefined ? zoneIds : undefined
     };
 };
 

@@ -135,7 +135,7 @@ const riderPoint = (order) =>
  * `tripDistanceKm` is the restaurant-to-customer leg on its own, which is what
  * a rider judges an offer by.
  */
-export const buildOrderEta = (order, { prepMinutes = DEFAULT_PREP_MINUTES } = {}) => {
+export const buildOrderEta = (order, { prepMinutes = DEFAULT_PREP_MINUTES, riderOverride = null } = {}) => {
   const nothing = {
     source: 'unavailable',
     target: null,
@@ -163,7 +163,11 @@ export const buildOrderEta = (order, { prepMinutes = DEFAULT_PREP_MINUTES } = {}
 
   if (!customer) return nothing;
 
-  const rider = riderPoint(order);
+  // A caller holding the rider's live position (the socket location frame) can
+  // pass it directly as `riderOverride`, bypassing `order.lastRiderLocation` —
+  // that field is written on a ~30s-debounced job, so it lags the live stream
+  // the frame came from.
+  const rider = readPoint(riderOverride) || riderPoint(order);
 
   if (rider) {
     if (CARRYING_STATUSES.has(status)) {

@@ -1,5 +1,5 @@
 import { ApiError } from '../../../../utils/ApiError.js';
-import { listAvailablePromosForUser, validatePromoForContext } from '../../services/promoService.js';
+import { listAvailablePromosForUser, listUnusedPromosForUser, validatePromoForContext } from '../../services/promoService.js';
 
 export const validatePromo = async (req, res) => {
   const { code, fare, service_location_id, transport_type } = req.body || {};
@@ -10,6 +10,18 @@ export const validatePromo = async (req, res) => {
     fare,
     service_location_id,
     transport_type,
+  });
+
+  res.json({ success: true, data: result });
+};
+
+// Per-user unused coupons for the home nudge. service_location_id is optional.
+export const getUnusedPromos = async (req, res) => {
+  const result = await listUnusedPromosForUser({
+    userId: req.auth?.sub,
+    service_location_id: req.query.service_location_id || null,
+    transport_type: req.query.transport_type,
+    limit: req.query.limit,
   });
 
   res.json({ success: true, data: result });

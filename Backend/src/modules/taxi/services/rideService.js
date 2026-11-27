@@ -1798,6 +1798,8 @@ export const serializeRideRealtime = (ride) => ({
   estimatedDistanceMeters: ride.estimatedDistanceMeters || 0,
   estimatedDurationMinutes: ride.estimatedDurationMinutes || 0,
   paymentMethod: ride.paymentMethod,
+  // Parcel-only: who settles the fare (sender at pickup / receiver at drop).
+  paidBy: ride.paidBy || 'receiver',
   subscriptionUsage: ride.subscriptionUsage?.covered
     ? {
       covered: true,
@@ -2092,6 +2094,7 @@ export const listRideHistoryForIdentity = async ({ role, entityId, limit = 50, p
       estimatedDistanceMeters: ride.estimatedDistanceMeters || 0,
       estimatedDurationMinutes: ride.estimatedDurationMinutes || 0,
       paymentMethod: ride.paymentMethod,
+      paidBy: ride.paidBy || 'receiver',
       otp: ride.otp || '',
       parcel: ride.deliveryId?.parcel || ride.parcel || null,
       intercity: ride.intercity || null,

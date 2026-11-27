@@ -314,6 +314,15 @@ export const updateDeliveryPartnerDetails = async (userId, payload) => {
         throw new ValidationError('Delivery partner not found');
     }
 
+    // The Edit Profile screen sends { name }; without this the name was
+    // silently dropped here (only vehicle/photo were handled), so the save
+    // "succeeded" but getMe kept returning the old name and the UI never
+    // reflected the change.
+    if (payload?.name !== undefined) {
+        const trimmedName = String(payload.name || '').trim();
+        if (trimmedName) partner.name = trimmedName;
+    }
+
     const vehicle = payload?.vehicle;
     if (vehicle && typeof vehicle === 'object') {
         if (vehicle.number !== undefined) partner.vehicleNumber = String(vehicle.number || '').trim();
@@ -692,6 +701,22 @@ const toTripDto = (order) => {
         earningAmount;
     const codAmount = paymentMethod === 'cash' ? Number(order?.payment?.amountDue) || 0 : 0;
     const codCollectedAmount = paymentMethod === 'cash' && order?.payment?.status === 'paid' ? codAmount : 0;
+
+    // How far the trip ran (restaurant ↔ customer km), so the rider's History
+    // shows the distance for every food/QC/medical order the same way the app
+    // already shows it for taxi/parcel rides. Reuses what pricing already
+    // measured: QC stores road/straight-line km on `pricing`; food stores the
+    // priced distance in the delivery-fee breakdown. Null when none was
+    // measured (e.g. a flat-fee order) — the card then simply omits the km.
+    const tripDistanceKm = (() => {
+        const p = order?.pricing || {};
+        const candidates = [p.roadDistanceKm, p.distanceKm, p.deliveryFeeBreakdown?.distanceKm];
+        for (const c of candidates) {
+            const n = Number(c);
+            if (Number.isFinite(n) && n > 0) return Math.round(n * 10) / 10;
+        }
+        return null;
+    })();
     return {
         id: order?._id,
         _id: order?._id,
@@ -718,6 +743,7 @@ const toTripDto = (order) => {
         deliveredAt: deliveredAt,
         completedAt: deliveredAt,
         date: dateForUi,
+        tripDistanceKm,
         time
     };
 };

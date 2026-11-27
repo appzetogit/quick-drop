@@ -12,6 +12,7 @@ import {
     uploadRestaurantMenuImages,
     uploadRestaurantAttachment,
     listPublicOffers,
+    listUnusedOffersForUser,
     getRestaurantComplaints,
     deleteCurrentRestaurantAccount
 } from '../services/restaurant.service.js';
@@ -418,8 +419,17 @@ export const uploadRestaurantMenuImagesController = async (req, res, next) => {
 
 export const listPublicOffersController = async (req, res, next) => {
     try {
-        const data = await listPublicOffers(req.query || {});
+        const data = await listPublicOffers(req.query || {}, req.user?.userId || null);
         return sendResponse(res, 200, 'Offers fetched successfully', data);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listUnusedOffersController = async (req, res, next) => {
+    try {
+        const data = await listUnusedOffersForUser(req.user?.userId, req.query || {});
+        return sendResponse(res, 200, 'Unused offers fetched successfully', data);
     } catch (error) {
         next(error);
     }

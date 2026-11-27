@@ -295,6 +295,62 @@ async function resolveDistanceRule(distanceKm, zoneId) {
   return { ...band, _id: band.distanceRuleId || band._id || null };
 }
 
+/**
+ * The best first-order coupon to auto-apply for a brand-new customer.
+ *
+ * Returns a couponCode only when the signed-in user has NO counted orders yet
+ * (a genuine first order) and there is an active, in-window, in-scope, min-met,
+ * not-globally-exhausted first-order coupon. The caller feeds the returned code
+ * through the normal coupon path, so every other rule is still enforced there.
+ * Prefers the biggest food discount; a free-delivery first-order coupon is used
+ * when it is the only one. Null for returning customers / nothing eligible.
+ */
+/** A coupon with no zones works everywhere; a zoned one only in those zones. */
+export const offerAllowsZone = (offer, zoneId) => {
+  const zones = (offer?.zoneIds || []).map(String);
+  return zones.length === 0 || (Boolean(zoneId) && zones.includes(String(zoneId)));
+};
+
+async function resolveFirstOrderAutoCoupon({ userId, restaurantId, subtotal, zoneId = null, now = new Date() }) {
+  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) return null;
+  const uid = new mongoose.Types.ObjectId(userId);
+
+  const priorOrders = await FoodOrder.countDocuments({
+    userId: uid,
+    orderStatus: { $nin: ORDER_STATUSES_NOT_COUNTED_FOR_COUPONS },
+  });
+  if (priorOrders > 0) return null;
+
+  const offers = await FoodOffer.find({
+    status: 'active',
+    $or: [{ customerScope: 'first-time' }, { isFirstOrderOnly: true }],
+    $and: [
+      { $or: [{ startDate: { $exists: false } }, { startDate: null }, { startDate: { $lte: now } }] },
+      { $or: [{ endDate: { $exists: false } }, { endDate: null }, { endDate: { $gt: now } }] },
+    ],
+  }).lean();
+
+  const eligible = offers.filter((o) => {
+    if ((Number(o.minOrderValue) || 0) > subtotal) return false;
+    if (o.restaurantScope === 'selected' && String(o.restaurantId || '') !== String(restaurantId || '')) return false;
+    if (o.usageLimit != null && Number(o.usedCount || 0) >= Number(o.usageLimit)) return false;
+    if (!offerAllowsZone(o, zoneId)) return false;
+    return true;
+  });
+  if (!eligible.length) return null;
+
+  const savingOf = (o) => {
+    if (o.discountType === 'percentage') {
+      const raw = subtotal * (Number(o.discountValue) || 0) / 100;
+      return Number(o.maxDiscount) ? Math.min(raw, Number(o.maxDiscount)) : raw;
+    }
+    if (o.discountType === 'flat-price') return Number(o.discountValue) || 0;
+    return 0; // free-delivery: no food discount, ranked last but still usable
+  };
+  eligible.sort((a, b) => savingOf(b) - savingOf(a));
+  return eligible[0].couponCode;
+}
+
 export async function calculateOrderPricing(userId, dto) {
   const restaurant = await FoodRestaurant.findById(dto.restaurantId)
     .select("status zoneId location freeDeliveryRule priceIncludesGst serviceRadiusKm")
@@ -777,9 +833,27 @@ export async function calculateOrderPricing(userId, dto) {
   // The app used to say only "not applicable", so a first-order coupon tried
   // on an account with past orders looked like a broken coupon.
   let couponRejectedReason = null;
-  const codeRaw = dto.couponCode
+  let codeRaw = dto.couponCode
     ? String(dto.couponCode).trim().toUpperCase()
     : "";
+
+  // Auto-apply the first-order coupon for a brand-new customer who hasn't
+  // chosen one. The resolver only returns a code for a genuine first order, and
+  // the normal validation below still runs on it — so if it fails a rule it is
+  // simply not applied. `couponAutoApplied` is surfaced so the app can label it.
+  let couponAutoApplied = false;
+  if (!codeRaw && userId) {
+    const autoCode = await resolveFirstOrderAutoCoupon({
+      userId,
+      restaurantId: dto.restaurantId,
+      subtotal,
+      zoneId: orderZoneId,
+    });
+    if (autoCode) {
+      codeRaw = autoCode;
+      couponAutoApplied = true;
+    }
+  }
 
   if (codeRaw) {
     const now = new Date();
@@ -792,6 +866,7 @@ export async function calculateOrderPricing(userId, dto) {
         offer.restaurantScope !== "selected" ||
         String(offer.restaurantId || "") === String(dto.restaurantId || "");
       const minOk = subtotal >= (Number(offer.minOrderValue) || 0);
+      const zoneOk = offerAllowsZone(offer, orderZoneId);
 
       /*
        * The same ceiling the claim applies (couponUsage.service.js). Checked
@@ -801,7 +876,13 @@ export async function calculateOrderPricing(userId, dto) {
        */
       const promoCeiling = await resolvePromoCeiling({ vertical: 'food' });
       const effectiveUsageLimit = tighten(offer.usageLimit, promoCeiling.total);
-      const effectivePerUserLimit = tighten(offer.perUserLimit, promoCeiling.perUser);
+      /*
+       * Coupons are one-time per user. An offer created without an explicit
+       * perUserLimit used to mean "unlimited", so the same code could be
+       * re-applied on every order; unset now means once.
+       */
+      const declaredPerUserLimit = Number(offer.perUserLimit) > 0 ? Number(offer.perUserLimit) : 1;
+      const effectivePerUserLimit = tighten(declaredPerUserLimit, promoCeiling.perUser);
 
       let usageOk = true;
       if (
@@ -859,6 +940,7 @@ export async function calculateOrderPricing(userId, dto) {
       if (!statusOk || !endOk) couponRejectedReason = 'This coupon has expired.';
       else if (!startOk) couponRejectedReason = 'This coupon is not active yet.';
       else if (!scopeOk) couponRejectedReason = 'This coupon is not valid for this restaurant.';
+      else if (!zoneOk) couponRejectedReason = 'This coupon is not available in your area.';
       else if (!firstOrderOk) couponRejectedReason = 'This coupon is only for your first order.';
       else if (!minOk) couponRejectedReason = `Add items worth Rs ${Math.ceil(minOrder - subtotal)} more to use this coupon (minimum order Rs ${minOrder}).`;
       else if (!perUserOk) couponRejectedReason = 'You have already used this coupon the maximum number of times.';
@@ -869,6 +951,7 @@ export async function calculateOrderPricing(userId, dto) {
         startOk &&
         endOk &&
         scopeOk &&
+        zoneOk &&
         minOk &&
         usageOk &&
         perUserOk &&
@@ -923,6 +1006,13 @@ export async function calculateOrderPricing(userId, dto) {
     } else {
       couponRejectedReason = 'This coupon code does not exist.';
     }
+  }
+
+  // An auto-applied first-order coupon that did not stick must not leave a code
+  // or a rejection message the customer never triggered.
+  if (couponAutoApplied && !appliedCoupon) {
+    codeRaw = "";
+    couponRejectedReason = null;
   }
 
   const zoneIdForSurge = orderZoneId;
@@ -1074,6 +1164,8 @@ export async function calculateOrderPricing(userId, dto) {
       totalBeforeTip: bill.totalBeforeTip,
       currency: "INR",
       couponCode: appliedCoupon?.code || codeRaw || null,
+      // True when the system (not the customer) applied this first-order coupon.
+      couponAutoApplied: Boolean(appliedCoupon) && couponAutoApplied,
       appliedCoupon,
       couponRejectedReason: appliedCoupon ? null : couponRejectedReason,
       /**

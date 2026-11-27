@@ -123,3 +123,30 @@ export const authMiddleware = (req, res, next) => {
         return sendError(res, 401, 'Invalid or expired token');
     }
 };
+
+/*
+ * For routes that are public but read better for a signed-in caller — the
+ * offers list drops coupons this user has already used (coupons are one-time
+ * per user). Unlike authMiddleware this NEVER answers 401: no token, or a
+ * token that does not verify, simply leaves req.user unset and the route
+ * serves its anonymous shape.
+ */
+export const optionalAuthMiddleware = (req, _res, next) => {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
+    if (!token) return next();
+    try {
+        const decoded = verifyAccessToken(token);
+        const userId = decoded.userId || decoded.sub || '';
+        if (userId) {
+            req.user = {
+                ...(decoded || {}),
+                userId: String(userId),
+                role: String(decoded.role || '').toUpperCase(),
+            };
+        }
+    } catch {
+        // Anonymous. A stale access token must not break a public list.
+    }
+    return next();
+};

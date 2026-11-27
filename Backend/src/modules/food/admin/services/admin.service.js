@@ -4200,6 +4200,7 @@ export async function getAllOffers(_query = {}) {
             perUserLimit: o.perUserLimit ?? null,
             startDate: o.startDate || null,
             isFirstOrderOnly: Boolean(o.isFirstOrderOnly),
+            zoneIds: (o.zoneIds || []).map(String),
         };
     });
 
@@ -4225,6 +4226,7 @@ export async function createAdminOffer(body) {
         perUserLimit: body.perUserLimit ?? null,
         startDate: body.startDate,
         isFirstOrderOnly: body.isFirstOrderOnly ?? false,
+        zoneIds: body.zoneIds ?? [],
         endDate: body.endDate,
         status: body.endDate && new Date(body.endDate).getTime() <= Date.now() ? 'inactive' : 'active',
         showInCart: true,
@@ -4284,6 +4286,7 @@ export async function updateAdminOffer(id, body) {
                 startDate: body.startDate ?? null,
                 endDate: body.endDate ?? null,
                 isFirstOrderOnly: body.isFirstOrderOnly ?? false,
+                ...(body.zoneIds !== undefined ? { zoneIds: body.zoneIds } : {}),
                 status: body.endDate && new Date(body.endDate).getTime() <= Date.now() ? 'inactive' : 'active',
             },
         },

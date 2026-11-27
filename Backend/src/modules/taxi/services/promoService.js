@@ -499,3 +499,107 @@ export const listAvailablePromosForUser = async ({
     }));
 };
 
+/**
+ * Active taxi promos THIS user has not used yet — powers the home-screen
+ * "you have an unused coupon, apply it" nudge.
+ *
+ * Like [listAvailablePromosForUser] but (a) service_location_id is OPTIONAL —
+ * the nudge only asks "does the rider have any unused coupon", so it must not
+ * 400 when the app has no city yet — and (b) it drops any promo the rider has
+ * already redeemed (PromoUserCounter.uses_count > 0), so the nudge disappears
+ * the moment they use it. Also drops globally exhausted promos and new-user
+ * promos once the rider has completed a ride. Returns { count, coupons }.
+ */
+export const listUnusedPromosForUser = async ({
+  userId,
+  service_location_id = null,
+  transport_type = 'taxi',
+  now = new Date(),
+  limit = 50,
+}) => {
+  if (!userId || !mongoose.isValidObjectId(userId)) return { count: 0, coupons: [] };
+  const userObjectId = toObjectIdOrThrow(userId, 'user id');
+  const transportType = normalizeTransportType(transport_type);
+  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+
+  const query = {
+    active: true,
+    from_date: { $lte: now },
+    to_date: { $gte: now },
+    transport_type: { $in: ['all', transportType] },
+    $and: [
+      {
+        $or: [
+          { audience_type: 'all' },
+          { audience_type: { $exists: false }, user_specific: { $ne: true } },
+          { audience_type: 'specific_user', user_id: String(userId) },
+          { audience_type: { $exists: false }, user_specific: true, user_id: String(userId) },
+          { audience_type: 'new_users' },
+        ],
+      },
+      // Global usage cap not reached (0 / unset = unlimited).
+      {
+        $or: [
+          { max_uses_total: { $in: [null, 0] } },
+          { max_uses_total: { $exists: false } },
+          { $expr: { $lt: ['$usage_count', '$max_uses_total'] } },
+        ],
+      },
+    ],
+  };
+
+  // Optional city scope: keep it when the app knows the rider's location.
+  if (service_location_id && mongoose.isValidObjectId(service_location_id)) {
+    const loc = toObjectIdOrThrow(service_location_id, 'service location id');
+    query.$and.push({ $or: [{ service_location_id: loc }, { service_location_ids: loc }] });
+  }
+
+  const promos = await PromoCode.find(query).sort({ createdAt: -1 }).limit(safeLimit).lean();
+  if (!promos.length) return { count: 0, coupons: [] };
+
+  const promoIds = promos.map((p) => p._id);
+  const counters = await PromoUserCounter
+    .find({ user_id: userObjectId, promo_id: { $in: promoIds } })
+    .select('promo_id uses_count')
+    .lean();
+  const usedById = new Map(counters.map((c) => [String(c.promo_id), Number(c.uses_count || 0)]));
+
+  // Once the rider has redeemed ANY promo, the nudge stays quiet until a NEWER
+  // promo is launched — so it never re-pesters about offers that already
+  // existed. Only promos created after the rider's last redemption still nudge.
+  const lastCounterRows = await PromoUserCounter
+    .find({ user_id: userObjectId, uses_count: { $gt: 0 } })
+    .sort({ updatedAt: -1 })
+    .limit(1)
+    .select('updatedAt')
+    .lean();
+  const nudgeSince = lastCounterRows[0]?.updatedAt
+    ? new Date(lastCounterRows[0].updatedAt)
+    : null;
+
+  const coupons = [];
+  for (const promo of promos) {
+    const audienceType = getPromoAudienceType(promo);
+    // By product choice the nudge is shown to EVERY user who hasn't used the
+    // coupon — new-user-only promos included — so no completed-ride filter.
+    // A promo targeted at ONE specific user still only nudges that user.
+    if (audienceType === 'specific_user' && String(promo.user_id || '') !== String(userId)) continue;
+    if ((usedById.get(String(promo._id)) || 0) > 0) continue; // "until used"
+    // Older-than-last-redemption promos stay silent until a newer one lands.
+    if (nudgeSince && promo.createdAt && new Date(promo.createdAt) <= nudgeSince) continue;
+    const pct = Number(promo.discount_percentage || 0);
+    const maxD = Number(promo.maximum_discount_amount || 0);
+    const title = pct > 0 ? `${pct}% OFF` : (maxD > 0 ? `Flat ₹${maxD} OFF` : 'Ride offer');
+    coupons.push({
+      id: String(promo._id),
+      code: promo.code,
+      title,
+      discountPercent: pct,
+      maxDiscount: maxD,
+      minTripAmount: Number(promo.minimum_trip_amount || 0),
+      expiresAt: promo.to_date || null,
+    });
+  }
+  return { count: coupons.length, coupons };
+};
+

@@ -83,7 +83,13 @@ export async function takeCouponUse(code, userId, { enforceLimit = true } = {}) 
      * `tighten` never loosens, and keeps 0 meaning unlimited on both sides.
      */
     const ceiling = await resolvePromoCeiling({ vertical: 'food' });
-    const perUser = tighten(offer.perUserLimit, ceiling.perUser) || 0;
+    /*
+     * Coupons are one-time per user. An offer saved with no perUserLimit used
+     * to mean "unlimited", which skipped the atomic claim below entirely and
+     * let the same code ride on every order; unset now means once.
+     */
+    const declaredPerUser = Number(offer.perUserLimit) > 0 ? Number(offer.perUserLimit) : 1;
+    const perUser = tighten(declaredPerUser, ceiling.perUser) || declaredPerUser;
     const claimUserId = toObjectId(userId);
     let perUserClaimed = false;
     if (enforceLimit && perUser > 0 && claimUserId) {

@@ -159,6 +159,20 @@ async function syncRazorpayQrPayment(orderDoc) {
 
 
 
+// When an order was placed for someone else, the driver's call button offers
+// two numbers: the recipient (customerName/Phone, kept by sanitizeOrderForExternal)
+// and the account holder who placed it. The app reads the latter from flat
+// `orderedByName`/`orderedByPhone` fields, which the REST payload omitted — only
+// the dispatch socket payload had them — so the popup never appeared. Add them
+// here from the populated userId, matching buildDeliverySocketPayload.
+function attachOrdererContact(out, order) {
+  if (!out) return out;
+  out.isForSomeoneElse = order?.isForSomeoneElse === true;
+  out.orderedByName = order?.userId?.name || order?.userId?.fullName || '';
+  out.orderedByPhone = order?.userId?.phone || '';
+  return out;
+}
+
 export async function getCurrentTripDelivery(deliveryPartnerId) {
   if (!deliveryPartnerId) {
     throw new ValidationError('Delivery partner ID required');
@@ -182,7 +196,7 @@ export async function getCurrentTripDelivery(deliveryPartnerId) {
 
   if (!order) return null;
   const tx = await FoodTransaction.findOne({ orderId: order._id }).lean();
-  const out = sanitizeOrderForExternal(order);
+  const out = attachOrdererContact(sanitizeOrderForExternal(order), order);
   if (tx) {
     out.paymentMethod = tx.payment?.method || tx.paymentMethod || out.paymentMethod;
     out.payment = tx.payment || out.payment;
@@ -217,7 +231,7 @@ export async function getCurrentTripsDelivery(deliveryPartnerId) {
   const txs = await FoodTransaction.find({ orderId: { $in: orders.map((o) => o._id) } }).lean();
   const txOf = new Map(txs.map((t) => [String(t.orderId), t]));
   return orders.map((order) => {
-    const out = sanitizeOrderForExternal(order);
+    const out = attachOrdererContact(sanitizeOrderForExternal(order), order);
     const tx = txOf.get(String(order._id));
     if (tx) {
       out.paymentMethod = tx.payment?.method || tx.paymentMethod || out.paymentMethod;

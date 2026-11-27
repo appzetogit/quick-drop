@@ -3453,3 +3453,21 @@ export const diningAPI = {
 };
 export const heroBannerAPI = createStubAPI();
 export const publicAPI = createStubAPI();
+
+/**
+ * Master > Home Sections: admin-curated chips on the food home. CRUD plus the
+ * pickers' data (zones, restaurants, a restaurant's menu for the dish picker).
+ */
+export const homeSectionAPI = {
+  list: () => apiClient.get("/food/admin/home-sections", { contextModule: "admin" }),
+  create: (body) => apiClient.post("/food/admin/home-sections", body ?? {}, { contextModule: "admin" }),
+  update: (id, body) => apiClient.patch(`/food/admin/home-sections/${id}`, body ?? {}, { contextModule: "admin" }),
+  remove: (id) => apiClient.delete(`/food/admin/home-sections/${id}`, { contextModule: "admin" }),
+  zones: () => apiClient.get("/platform/settings/zones/food", { contextModule: "admin" }),
+  restaurants: () => apiClient.get("/food/admin/restaurants", { params: { limit: 1000 }, contextModule: "admin" }),
+  // The PUBLIC menu endpoint returns the real dishes (from the FoodItem
+  // catalogue), grouped as { menu: { sections: [{ items, subsections }] } }.
+  // The admin /menu endpoint only has the restaurant's denormalized menu field,
+  // which is usually empty — hence "no dishes found".
+  menu: (restaurantId) => apiClient.get(`/food/restaurant/restaurants/${restaurantId}/menu`, { contextModule: "admin" }),
+};

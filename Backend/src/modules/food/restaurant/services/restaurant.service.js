@@ -1833,6 +1833,23 @@ export const listApprovedRestaurants = async (query = {}) => {
         filter.zoneId = new mongoose.Types.ObjectId(zoneIdRaw);
     }
 
+    // Admin home sections curate an explicit set of restaurants. Intersect with
+    // the approved-menu gate already on filter._id so a curated-but-unorderable
+    // restaurant is still not shown.
+    if (Array.isArray(query.restaurantIds) && query.restaurantIds.length) {
+        const wanted = new Set(
+            query.restaurantIds
+                .map((x) => String(x))
+                .filter((x) => mongoose.Types.ObjectId.isValid(x))
+        );
+        const approved = (filter._id?.$in || []).map((id) => String(id));
+        filter._id = {
+            $in: approved
+                .filter((id) => wanted.has(id))
+                .map((id) => new mongoose.Types.ObjectId(id)),
+        };
+    }
+
     const lat = toFiniteNumber(query.lat);
     const lng = toFiniteNumber(query.lng);
     // Accept both radiusKm (preferred) and maxDistance (legacy frontend param).
@@ -2064,7 +2081,48 @@ export const getApprovedRestaurantByIdOrSlug = async (idOrSlug) => {
     };
 };
 
-export const listPublicOffers = async () => {
+/**
+ * The zone a coupon list is for: the app's zoneId, else the cart restaurant's
+ * zone. Null when neither is known -- older apps send nothing, and those see
+ * every zone's coupons as before (checkout still enforces the zone).
+ */
+const resolveOfferListZoneId = async (query = {}) => {
+    const zoneId = String(query.zoneId || '').trim();
+    if (mongoose.Types.ObjectId.isValid(zoneId)) return zoneId;
+    const restaurantId = String(query.restaurantId || '').trim();
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) return null;
+    const r = await FoodRestaurant.findById(restaurantId).select('zoneId').lean();
+    return r?.zoneId ? String(r.zoneId) : null;
+};
+
+const isFirstOrderOffer = (offer) =>
+    offer?.customerScope === 'first-time' || offer?.isFirstOrderOnly === true;
+
+/**
+ * Whether this customer already has an order that counts for coupons -- the
+ * same rule checkout uses (cancelled / unpaid ones do not count). Such a
+ * customer is no longer new, so first-order coupons are hidden from them.
+ */
+const hasCountedOrder = async (userId) => {
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) return false;
+    const [{ FoodOrder }, { ORDER_STATUSES_NOT_COUNTED_FOR_COUPONS }] = await Promise.all([
+        import('../../orders/models/order.model.js'),
+        import('../../orders/services/couponUsage.service.js'),
+    ]);
+    const found = await FoodOrder.exists({
+        userId: new mongoose.Types.ObjectId(userId),
+        orderStatus: { $nin: ORDER_STATUSES_NOT_COUNTED_FOR_COUPONS },
+    });
+    return Boolean(found);
+};
+
+const offerInZone = (offer, zoneId) => {
+    const zones = (offer?.zoneIds || []).map(String);
+    return !zoneId || zones.length === 0 || zones.includes(String(zoneId));
+};
+
+export const listPublicOffers = async (_query = {}, userId = null) => {
+    const listZoneId = await resolveOfferListZoneId(_query);
     const now = new Date();
     const filter = {
         status: 'active',
@@ -2079,7 +2137,39 @@ export const listPublicOffers = async () => {
         .populate({ path: 'restaurantId', select: 'restaurantName restaurantNameNormalized profileImage estimatedDeliveryTime rating' })
         .lean();
 
-    const allOffers = list.map((o) => {
+    /*
+     * One-time per user: a coupon this customer has already redeemed is gone
+     * from their list, so it cannot be re-applied and cannot come back in the
+     * nudge. Anonymous callers (userId null) see every active coupon.
+     */
+    let usageByOffer = null;
+    if (userId && mongoose.Types.ObjectId.isValid(userId) && list.length) {
+        const { FoodOfferUsage } = await import('../../admin/models/offerUsage.model.js');
+        const usages = await FoodOfferUsage
+            .find({
+                userId: new mongoose.Types.ObjectId(userId),
+                offerId: { $in: list.map((o) => o._id) },
+            })
+            .select('offerId count')
+            .lean();
+        usageByOffer = new Map(usages.map((u) => [String(u.offerId), Number(u.count) || 0]));
+    }
+
+    /*
+     * The same limit pricing enforces, so the list can never show a coupon that
+     * applying would refuse -- nor hide one the customer may still use. An offer
+     * saved with no perUserLimit means once; an explicit limit is the admin's
+     * word and stands.
+     */
+    const returningCustomer = await hasCountedOrder(userId);
+    const allOffers = list.filter((o) => {
+        if (!offerInZone(o, listZoneId)) return false;
+        // First-order coupons (e.g. new-user free delivery) are for new customers only.
+        if (returningCustomer && isFirstOrderOffer(o)) return false;
+        if (!usageByOffer) return true;
+        const limit = Number(o.perUserLimit) > 0 ? Number(o.perUserLimit) : 1;
+        return (usageByOffer.get(String(o._id)) || 0) < limit;
+    }).map((o) => {
         const restaurant = o.restaurantId && typeof o.restaurantId === 'object' ? o.restaurantId : null;
         const restaurantSlug = restaurant?.restaurantNameNormalized || undefined;
         const restaurantName =
@@ -2118,6 +2208,105 @@ export const listPublicOffers = async () => {
     });
 
     return { allOffers, groupedByOffer: {} };
+};
+
+/**
+ * Active coupons THIS user has not used yet — powers the home-screen
+ * "you have an unused coupon, apply it" nudge.
+ *
+ * Unlike [listPublicOffers] (a cached, public list), this is per-user and must
+ * never be cached: it drops any coupon the signed-in user has already redeemed
+ * (FoodOfferUsage.count > 0), so the nudge disappears the moment they use it.
+ * Also drops globally exhausted coupons and first-order-only coupons once the
+ * user has ordered. Returns the same coupon shape the offers list uses, so the
+ * app reuses its CouponModel, plus a `count`.
+ */
+export const listUnusedOffersForUser = async (userId, query = {}) => {
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+        return { count: 0, coupons: [] };
+    }
+    const uid = new mongoose.Types.ObjectId(userId);
+    const listZoneId = await resolveOfferListZoneId(query);
+    const now = new Date();
+    const filter = {
+        status: 'active',
+        $and: [
+            { $or: [{ startDate: { $exists: false } }, { startDate: null }, { startDate: { $lte: now } }] },
+            { $or: [{ endDate: { $exists: false } }, { endDate: null }, { endDate: { $gt: now } }] },
+            // Global usage cap (if any) not yet reached.
+            { $or: [{ usageLimit: { $exists: false } }, { usageLimit: null }, { $expr: { $lt: ['$usedCount', '$usageLimit'] } }] }
+        ]
+    };
+
+    const list = await FoodOffer.find(filter)
+        .sort({ createdAt: -1 })
+        .populate({ path: 'restaurantId', select: 'restaurantName restaurantNameNormalized profileImage estimatedDeliveryTime rating' })
+        .lean();
+    if (!list.length) return { count: 0, coupons: [] };
+
+    const { FoodOfferUsage } = await import('../../admin/models/offerUsage.model.js');
+    const offerIds = list.map((o) => o._id);
+    const usages = await FoodOfferUsage
+        .find({ userId: uid, offerId: { $in: offerIds }, count: { $gt: 0 } })
+        .select('offerId')
+        .lean();
+    const usedIds = new Set(usages.map((u) => String(u.offerId)));
+
+    // Once the user has redeemed ANY coupon, the nudge goes quiet until the
+    // admin launches a NEWER one — so it never re-pesters about offers that
+    // already existed. We only nudge for coupons created AFTER the user's most
+    // recent redemption. Never redeemed → nudgeSince is null → nudge for any
+    // unused coupon, as before.
+    const lastUsageRows = await FoodOfferUsage
+        .find({ userId: uid, count: { $gt: 0 } })
+        .sort({ lastUsedAt: -1, updatedAt: -1 })
+        .limit(1)
+        .select('lastUsedAt updatedAt')
+        .lean();
+    const lastUsage = lastUsageRows[0];
+    const nudgeSince = lastUsage
+        ? new Date(lastUsage.lastUsedAt || lastUsage.updatedAt)
+        : null;
+
+    const returningCustomer = await hasCountedOrder(userId);
+    const coupons = [];
+    for (const o of list) {
+        if (usedIds.has(String(o._id))) continue;
+        if (!offerInZone(o, listZoneId)) continue;
+        if (returningCustomer && isFirstOrderOffer(o)) continue;
+        // Older-than-last-redemption coupons stay silent until a newer one lands.
+        // Free delivery is the exception: it keeps showing to every customer
+        // until THEY have used it, however many other coupons they redeemed.
+        const isFreeDelivery = o.discountType === 'free-delivery';
+        if (!isFreeDelivery && nudgeSince && o.createdAt && new Date(o.createdAt) <= nudgeSince) continue;
+        const restaurant = o.restaurantId && typeof o.restaurantId === 'object' ? o.restaurantId : null;
+        const restaurantName =
+            o.restaurantScope === 'selected'
+                ? (restaurant?.restaurantName || 'Selected Restaurant')
+                : 'All Restaurants';
+        const title =
+            o.discountType === 'free-delivery'
+                ? 'FREE DELIVERY'
+                : o.discountType === 'percentage'
+                ? `${Number(o.discountValue) || 0}% OFF`
+                : `Flat ₹${Number(o.discountValue) || 0} OFF`;
+        coupons.push({
+            id: String(o._id),
+            offerId: String(o._id),
+            couponCode: o.couponCode,
+            title,
+            discountType: o.discountType,
+            discountValue: o.discountValue,
+            maxDiscount: o.maxDiscount ?? null,
+            restaurantName,
+            endDate: o.endDate || null,
+            minOrderValue: o.minOrderValue ?? 0
+        });
+    }
+    // The app's popup shows the first coupon: an unused free-delivery one leads.
+    coupons.sort((a, b) =>
+        (b.discountType === 'free-delivery') - (a.discountType === 'free-delivery'));
+    return { count: coupons.length, coupons };
 };
 
 /**

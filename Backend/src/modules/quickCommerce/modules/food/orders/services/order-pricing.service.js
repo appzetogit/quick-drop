@@ -552,13 +552,15 @@ export async function calculateOrderPricing(userId, dto, options = {}) {
         usageOk = false;
       }
 
+      // Unset means once, not unlimited: coupons are one-time per user.
+      const effPerUserLimit = Number(offer.perUserLimit) > 0 ? Number(offer.perUserLimit) : 1;
       let perUserOk = true;
-      if (userId && mongoose.Types.ObjectId.isValid(userId) && Number(offer.perUserLimit) > 0) {
+      if (userId && mongoose.Types.ObjectId.isValid(userId)) {
         const usage = await FoodOfferUsage.findOne({
           offerId: offer._id,
           userId: new mongoose.Types.ObjectId(userId),
         }).lean();
-        if (usage && Number(usage.count) >= Number(offer.perUserLimit)) {
+        if (usage && Number(usage.count) >= effPerUserLimit) {
           perUserOk = false;
         }
       }
