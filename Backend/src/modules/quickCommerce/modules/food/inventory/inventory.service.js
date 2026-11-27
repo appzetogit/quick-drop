@@ -151,6 +151,16 @@ export async function listPurchases({ restaurantId, section, limit = 30 } = {}) 
  * One vendor bill. Every line is checked before anything is written, so a bad
  * line refuses the whole bill instead of leaving half of it in stock.
  */
+/**
+ * Record that a purchase has put these products in stock: from now on a dark
+ * store shows them to customers (shared/storeModel.js). Only the first time.
+ */
+async function markStocked(itemIds) {
+    const ids = [...new Set((itemIds || []).map(String))].filter(isId).map(oid);
+    if (!ids.length) return;
+    await FoodItem.updateMany({ _id: { $in: ids }, firstStockedAt: null }, { $set: { firstStockedAt: new Date() } });
+}
+
 export async function createPurchase(body = {}, actor = null) {
     const restaurantId = await storeIdsOrThrow(body.restaurantId);
     if (!restaurantId) throw new ValidationError('Pick the store the goods came into');
@@ -252,6 +262,7 @@ export async function createPurchase(body = {}, actor = null) {
             await FoodItem.updateOne({ _id: l.itemId }, { $set: { purchasePrice: l.rate, purchaseGstRate: l.gstRate } });
         }
     }
+    await markStocked(lines.map((l) => l.itemId));
     invalidateStockCaches(restaurantId);
     return { id: String(purchase._id), total: purchase.total, lines: lines.length };
 }
@@ -401,6 +412,7 @@ export async function saveFreshSheet(body = {}, actor = null) {
                     note: 'Daily sheet', unitCost: rate ?? doc.purchasePrice ?? null, actor: actorOf(actor),
                 });
                 if (rate !== null) await FoodItem.updateOne({ _id: doc._id }, { $set: { purchasePrice: rate } });
+                await markStocked([doc._id]);
             }
             const wasted = round3(row.wasted);
             if (wasted > 0) {

@@ -38,6 +38,7 @@ import {
     normalizeDrugLicenceInput,
     normalizeStoreTypeInput,
 } from '../../shared/storeType.js';
+import { normalizeStoreModelInput, forgetDarkStores } from '../../shared/storeModel.js';
 import { normalizeStoreTypeFilter, storeTypeCondition, sellerIdsOfStoreType, applySellerScope } from '../../shared/storeScope.js';
 import { FoodEarningAddon } from '../models/earningAddon.model.js';
 import { FoodEarningAddonHistory } from '../models/earningAddonHistory.model.js';
@@ -3166,6 +3167,31 @@ export async function updateRestaurantById(id, body = {}) {
         }
     }
 
+    // Normal store or dark store, and who runs a dark store. See shared/storeModel.js.
+    {
+        const model = normalizeStoreModelInput(body, doc);
+        if (model) {
+            const becomesDark = model.operatingModel === 'dark_store' && doc.operatingModel !== 'dark_store';
+            doc.operatingModel = model.operatingModel;
+            doc.darkStoreOwner = model.darkStoreOwner;
+            forgetDarkStores();
+            const stock = await import('../../orders/services/inventory.service.js');
+            stock.invalidateStockCaches(String(doc._id));
+            // A store turned into a dark store keeps showing what it has already
+            // bought stock of: its earlier purchases count as the first stocking.
+            if (becomesDark) {
+                const { QCStockMovement } = await import('../models/stockMovement.model.js');
+                const bought = await QCStockMovement.distinct('itemId', { restaurantId: doc._id, reason: 'purchase' });
+                if (bought.length) {
+                    await FoodItem.updateMany(
+                        { _id: { $in: bought }, restaurantId: doc._id, firstStockedAt: null },
+                        { $set: { firstStockedAt: new Date() } },
+                    );
+                }
+            }
+        }
+    }
+
     // Bank Details
     if (body.accountNumber !== undefined) doc.accountNumber = toStr(body.accountNumber);
     if (body.ifscCode !== undefined) doc.ifscCode = toStr(body.ifscCode);
@@ -4319,6 +4345,13 @@ export async function createRestaurantByAdmin(body) {
     doc.drugLicenseNumber = resolvedStore.drugLicenseNumber;
     doc.drugLicenseImage = resolvedStore.drugLicenseImage;
     doc.drugLicenseExpiry = resolvedStore.drugLicenseExpiry;
+
+    const storeModel = normalizeStoreModelInput(body, {});
+    if (storeModel) {
+        doc.operatingModel = storeModel.operatingModel;
+        if (storeModel.darkStoreOwner) doc.darkStoreOwner = storeModel.darkStoreOwner;
+        forgetDarkStores();
+    }
 
     if (body.zoneId !== undefined) {
         const zoneId = String(body.zoneId || '').trim();

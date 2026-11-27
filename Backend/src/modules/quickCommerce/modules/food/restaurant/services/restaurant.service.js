@@ -9,6 +9,7 @@ import { FoodOffer } from '../../admin/models/offer.model.js';
 import { FoodOfferUsage } from '../../admin/models/offerUsage.model.js';
 import { FoodRestaurantMenu } from '../models/restaurantMenu.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
+import { applyStockedGate, darkStoreIds } from '../../shared/storeModel.js';
 import { FoodOrder } from '../../orders/models/order.model.js';
 import { FoodRestaurantOutletTimings } from '../models/outletTimings.model.js';
 import { attachOutletTimingsToRestaurants } from './outletTimings.service.js';
@@ -2340,11 +2341,11 @@ export const listApprovedRestaurants = async (query = {}) => {
         const restaurants = pageDocs || [];
         const restaurantIds = restaurants.map(r => r._id);
         const recommendedItemsRaw = restaurantIds.length
-            ? await FoodItem.find({
+            ? await FoodItem.find(applyStockedGate({
                 restaurantId: { $in: restaurantIds },
                 isRecommended: true,
                 approvalStatus: 'approved'
-            })
+            }, await darkStoreIds(FoodRestaurant)))
                 .select('restaurantId name price image')
                 .sort({ createdAt: -1 })
                 .lean()
@@ -2422,11 +2423,11 @@ export const listApprovedRestaurants = async (query = {}) => {
 
     const restaurantIds = restaurants.map(r => r._id);
     const recommendedItemsRaw = restaurantIds.length
-        ? await FoodItem.find({
+        ? await FoodItem.find(applyStockedGate({
             restaurantId: { $in: restaurantIds },
             isRecommended: true,
             approvalStatus: 'approved'
-        })
+        }, await darkStoreIds(FoodRestaurant)))
             .select('restaurantId name price image')
             .sort({ createdAt: -1 })
             .lean()

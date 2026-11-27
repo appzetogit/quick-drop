@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { QUICK_SHOP_SELLER_FILTER } from '../../shared/storeType.js';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
+import { applyStockedGate, isDarkStore } from '../../shared/storeModel.js';
 import { getFoodDisplayOtherPrice, getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
 import { restoreExpiredFoodAvailability } from './foodAvailability.service.js';
 
@@ -40,7 +41,7 @@ export async function listPublicFoods(query = {}) {
     }
 
     const restaurants = await FoodRestaurant.find(restaurantFilter)
-        .select('_id restaurantName slug zoneId profileImage rating totalRatings ratingCount estimatedDeliveryTime estimatedDeliveryTimeMinutes location coverImages menuImages isActive isAcceptingOrders outletTimings openDays deliveryTimings openingTime closingTime')
+        .select('_id restaurantName slug zoneId profileImage rating totalRatings ratingCount estimatedDeliveryTime estimatedDeliveryTimeMinutes location coverImages menuImages isActive isAcceptingOrders outletTimings openDays deliveryTimings openingTime closingTime operatingModel')
         .lean();
 
     if (!restaurants.length) {
@@ -59,6 +60,8 @@ export async function listPublicFoods(query = {}) {
         approvalStatus: 'approved',
         isAvailable: { $ne: false }
     };
+    // A dark store shows only products a purchase has stocked.
+    applyStockedGate(foodFilter, restaurants.filter(isDarkStore).map((r) => r._id));
 
     const keywords = buildCategoryKeywords(categorySlug);
     if (keywords.length > 0) {

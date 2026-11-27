@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import { config } from '../../../config/env.js';
 import { FoodRestaurant } from '../restaurant/models/restaurant.model.js';
 import { FoodItem } from '../admin/models/food.model.js';
+import { isVisibleToCustomers } from '../shared/storeModel.js';
 
 const router = express.Router();
 
@@ -213,11 +214,12 @@ router.get('/food-detail', async (req, res, next) => {
         }
 
         const food = await FoodItem.findOne({ _id: id, approvalStatus: 'approved' })
-            .select('name description price image images restaurantId')
-            .populate('restaurantId', 'restaurantName')
+            .select('name description price image images restaurantId firstStockedAt')
+            .populate('restaurantId', 'restaurantName operatingModel')
             .lean();
 
-        if (!food) return notFoundPage(req, res, 'dish');
+        // A dark-store product nobody has bought stock of yet is not on sale.
+        if (!food || !isVisibleToCustomers(food, food.restaurantId)) return notFoundPage(req, res, 'dish');
 
         const restaurantName = food.restaurantId?.restaurantName || '';
         const price = Number(food.price);

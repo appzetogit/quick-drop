@@ -3,6 +3,7 @@ import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
 import mongoose from 'mongoose';
 import { QUICK_SHOP_SELLER_FILTER } from '../../shared/storeType.js';
+import { applyStockedGate, darkStoreIds } from '../../shared/storeModel.js';
 import { findZoneForPoint, ZONE_VERTICALS } from '../../shared/zoneServiceability.js';
 import { serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
 
@@ -120,10 +121,10 @@ export const searchUnified = async (query = {}, options = {}) => {
 
     // 2. Handle Category Filtering (Restaurants don't have categoryId, FoodItems do)
     if (categoryId && mongoose.Types.ObjectId.isValid(categoryId)) {
-        const catFoodItems = await FoodItem.find({
+        const catFoodItems = await FoodItem.find(applyStockedGate({
             categoryId: new mongoose.Types.ObjectId(categoryId),
             approvalStatus: 'approved'
-        }).select('restaurantId').limit(fetchLimit * 4).lean();
+        }, await darkStoreIds(FoodRestaurant))).select('restaurantId').limit(fetchLimit * 4).lean();
 
         const catRestaurantIds = [...new Set(catFoodItems.map((food) => food.restaurantId.toString()))];
         if (catRestaurantIds.length > 0) {
@@ -154,7 +155,7 @@ export const searchUnified = async (query = {}, options = {}) => {
             restaurantDetailsMap.set(restaurant._id.toString(), { ...restaurant, matchType: 'restaurant' });
         });
 
-        const foodFilters = { approvalStatus: 'approved' };
+        const foodFilters = applyStockedGate({ approvalStatus: 'approved' }, await darkStoreIds(FoodRestaurant));
         if (isVeg === 'true') foodFilters.foodType = 'Veg';
 
         const matchedFoods = await FoodItem.find({
@@ -344,6 +345,8 @@ export const searchProducts = async (query = {}) => {
     if (inStockOnly === 'true' || inStockOnly === true) {
         productFilter.isAvailable = { $ne: false };
     }
+    // A dark store's product shows only once a purchase has stocked it.
+    applyStockedGate(productFilter, await darkStoreIds(FoodRestaurant));
 
     // Ranked, paged and counted by the database in one pass.
     //

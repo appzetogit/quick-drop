@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodRestaurant } from '../models/restaurant.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
+import { stockedCondition } from '../../shared/storeModel.js';
 import { FoodCategory } from '../../admin/models/category.model.js';
 import { getFoodDisplayOtherPrice, getFoodDisplayPrice, serializeFoodVariants } from '../../admin/services/foodVariant.service.js';
 import { restoreExpiredFoodAvailability } from './foodAvailability.service.js';
@@ -147,12 +148,12 @@ export async function getPublicApprovedRestaurantMenu(restaurantIdOrSlug) {
     let restaurant = null;
     if (/^[0-9a-fA-F]{24}$/.test(value)) {
         restaurant = await FoodRestaurant.findOne({ _id: value, status: 'approved' })
-            .select('_id status')
+            .select('_id status operatingModel')
             .lean();
     } else {
         const normalized = value.trim().toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ');
         restaurant = await FoodRestaurant.findOne({ restaurantNameNormalized: normalized, status: 'approved' })
-            .select('_id status')
+            .select('_id status operatingModel')
             .lean();
     }
 
@@ -160,7 +161,7 @@ export async function getPublicApprovedRestaurantMenu(restaurantIdOrSlug) {
         return null;
     }
     await restoreExpiredFoodAvailability({ restaurantId: restaurant._id });
-    const foods = await FoodItem.find({ restaurantId: restaurant._id, approvalStatus: 'approved' })
+    const foods = await FoodItem.find({ restaurantId: restaurant._id, approvalStatus: 'approved', ...stockedCondition(restaurant) })
         .sort({ createdAt: -1 })
         .limit(2000)
         .lean();

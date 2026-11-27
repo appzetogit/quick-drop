@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import { FoodItem } from '../../admin/models/food.model.js';
 import { FoodAddon } from '../../restaurant/models/foodAddon.model.js';
+import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
+import { stockedConditionForStore } from '../../shared/storeModel.js';
 import { ValidationError } from '../../../../core/auth/errors.js';
 import { assertOrderQuantity, resolveOrderQuantityRules } from '../../../../../food/shared/orderQuantityRules.js';
 import { getOrderQuantityCeiling } from '../../../../../food/shared/orderQuantityCeiling.js';
@@ -67,6 +69,9 @@ export async function resolveOrderCartItems(restaurantId, rawItems = []) {
           restaurantId: rId,
           _id: { $in: itemIds },
           approvalStatus: 'approved',
+          // A dark store sells only what a purchase has stocked; an old link or
+          // cart line for anything else reads as no longer available.
+          ...(await stockedConditionForStore(FoodRestaurant, rId)),
         }).lean()
       : [],
     itemIds.length

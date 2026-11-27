@@ -16,6 +16,7 @@ import {
   isQuickCommerceAdminPath,
   medicalLicenceError,
 } from "@food/utils/quickCommerceStoreType"
+import StoreModelFields from "@food/components/admin/StoreModelFields"
 const debugLog = (...args) => {}
 const debugWarn = (...args) => { console.warn(...args) }
 const debugError = (...args) => { console.error(...args) }
@@ -223,6 +224,8 @@ export default function AddRestaurant() {
     fssaiExpiry: "",
     fssaiImage: null,
     storeType: DEFAULT_STORE_TYPE,
+    operatingModel: "marketplace",
+    darkStoreOwner: "platform",
     drugLicenseNumber: "",
     drugLicenseExpiry: "",
     drugLicenseImage: null,
@@ -635,6 +638,8 @@ export default function AddRestaurant() {
         ...(isQuickCommerce
           ? {
               storeType: step3.storeType || DEFAULT_STORE_TYPE,
+              operatingModel: step3.operatingModel || "marketplace",
+              ...(step3.operatingModel === "dark_store" ? { darkStoreOwner: step3.darkStoreOwner || "platform" } : {}),
               drugLicenseNumber: step3.drugLicenseNumber || "",
               drugLicenseExpiry: step3.drugLicenseExpiry || "",
               drugLicenseImage: drugLicenseImageData?.url || drugLicenseImageData || "",
@@ -1471,6 +1476,11 @@ export default function AddRestaurant() {
               customer prescription before they can be accepted.
             </p>
           </div>
+
+          <StoreModelFields
+            value={{ operatingModel: step3.operatingModel, darkStoreOwner: step3.darkStoreOwner }}
+            onChange={(next) => setStep3({ ...step3, ...next })}
+          />
 
           {isMedicalStore(step3.storeType) && (
             <div className="space-y-4 rounded-md border border-amber-200 bg-amber-50 p-4">

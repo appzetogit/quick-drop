@@ -144,6 +144,28 @@ const restaurantSchema = new mongoose.Schema(
     },
 
     /**
+     * How the store is run, separate from what it sells (storeType).
+     *
+     * marketplace: an outside shop. It lists its own products, which go live once
+     * approved, and bills the customer itself.
+     * dark_store: a Quickdrops store. Its products reach customers only once a
+     * purchase has put them in stock, and Quickdrops bills the customer.
+     * See shared/storeModel.js.
+     */
+    operatingModel: {
+      type: String,
+      enum: ['marketplace', 'dark_store'],
+      default: 'marketplace',
+      index: true,
+    },
+    /** Who runs a dark store: the admin, or a partner signed in with this seller login. */
+    darkStoreOwner: {
+      type: String,
+      enum: ['platform', 'partner'],
+      default: undefined,
+    },
+
+    /**
      * The temperature bands this seller can actually hold stock in.
      *
      * A product's `perishability` says what it needs; this says what the shop has.

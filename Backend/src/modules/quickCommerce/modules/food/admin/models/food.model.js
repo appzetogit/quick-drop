@@ -191,6 +191,12 @@ const foodSchema = new mongoose.Schema(
         purchaseGstRate: { type: Number, default: null, min: 0, max: 100 },
         /** The selling price before the latest change, for the daily price sheet. */
         previousPrice: { type: Number, default: null, min: 0 },
+        /**
+         * When a purchase (bill or fresh-sheet stock entry) first put this product
+         * in stock. A dark store's product reaches customers only once this is set;
+         * it is never cleared. See shared/storeModel.js.
+         */
+        firstStockedAt: { type: Date, default: null },
         /** Seasonal produce: shown as seasonal until this date. */
         seasonalUntil: { type: Date, default: null },
         approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'approved', index: true },

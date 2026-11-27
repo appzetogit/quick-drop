@@ -3,6 +3,7 @@ import { ValidationError } from '../../../../core/auth/errors.js';
 import { FoodUserFavorite } from '../models/userFavorite.model.js';
 import { FoodRestaurant } from '../../restaurant/models/restaurant.model.js';
 import { FoodItem } from '../../admin/models/food.model.js';
+import { applyStockedGate, darkStoreIds } from '../../shared/storeModel.js';
 
 const toObjectId = (value, label) => {
     const raw = String(value || '').trim();
@@ -49,10 +50,10 @@ export const getUserFavorites = async (userId) => {
                   .lean()
             : [],
         foodIds.length
-            ? FoodItem.find({
+            ? FoodItem.find(applyStockedGate({
                   _id: { $in: foodIds },
                   approvalStatus: 'approved'
-              })
+              }, await darkStoreIds(FoodRestaurant)))
                   .select(
                       'name description price otherPrice image images foodType restaurantId rating totalRatings isAvailable variants'
                   )

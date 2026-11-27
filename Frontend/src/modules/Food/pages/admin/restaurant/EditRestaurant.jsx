@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { verticalAdminPath } from "../../../components/admin/AdminSidebar"
-import { useNavigate, useParams } from "react-router-dom"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { adminAPI } from "@food/api"
 import { Input } from "@food/components/ui/input"
 import { Button } from "@food/components/ui/button"
@@ -8,6 +8,8 @@ import { Label } from "@food/components/ui/label"
 import { getGoogleMapsApiKey } from "@food/utils/googleMapsApiKey"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import AdminRestaurantDocuments from "@food/components/admin/AdminRestaurantDocuments"
+import StoreModelFields from "@food/components/admin/StoreModelFields"
+import { isQuickCommerceAdminPath } from "@food/utils/quickCommerceStoreType"
 
 const debugError = (..._args) => {}
 
@@ -90,6 +92,8 @@ const normalizeDetailsFormFromRestaurant = (restaurant) => {
     openingTime: restaurant?.openingTime || restaurant?.deliveryTimings?.openingTime || "",
     closingTime: restaurant?.closingTime || restaurant?.deliveryTimings?.closingTime || "",
     isActive: restaurant?.isActive !== false,
+    operatingModel: restaurant?.operatingModel || "marketplace",
+    darkStoreOwner: restaurant?.darkStoreOwner || "platform",
   }
 }
 
@@ -131,6 +135,8 @@ export default function EditRestaurant() {
   const { id } = useParams()
   const navigate = useNavigate()
 
+  const { pathname } = useLocation()
+  const isQuickCommerce = isQuickCommerceAdminPath(pathname)
   const [loading, setLoading] = useState(true)
   const [savingDetails, setSavingDetails] = useState(false)
   const [savingLocation, setSavingLocation] = useState(false)
@@ -327,6 +333,13 @@ export default function EditRestaurant() {
         openingTime: detailsForm.openingTime,
         closingTime: detailsForm.closingTime,
         isActive: detailsForm.isActive !== false,
+        // Quick commerce only: normal store or dark store, and a dark store's owner.
+        ...(isQuickCommerce
+          ? {
+              operatingModel: detailsForm.operatingModel || "marketplace",
+              ...(detailsForm.operatingModel === "dark_store" ? { darkStoreOwner: detailsForm.darkStoreOwner || "platform" } : {}),
+            }
+          : {}),
       }
 
       const res = await adminAPI.updateRestaurant(restaurantId, payload)
@@ -580,6 +593,17 @@ export default function EditRestaurant() {
                 </div>
               </div>
             </section>
+
+            {isQuickCommerce && (
+              <section className="bg-white rounded-xl border border-slate-200 p-6">
+                <h2 className="text-lg font-semibold text-slate-900 mb-4">Store model</h2>
+                <StoreModelFields
+                  value={{ operatingModel: detailsForm.operatingModel, darkStoreOwner: detailsForm.darkStoreOwner }}
+                  onChange={(next) => setDetailsForm((p) => ({ ...p, ...next }))}
+                />
+                <p className="mt-3 text-xs text-slate-500">Saved with the Save button under Basic Details.</p>
+              </section>
+            )}
 
             <AdminRestaurantDocuments
               restaurantId={restaurantId}
