@@ -435,10 +435,9 @@ export const matchDrivers = async (pickupCoords, options = {}) => {
     serviceType,
   } = options;
   const normalizedVehicleTypeIds = normalizeVehicleTypeIds(vehicleTypeIds, vehicleTypeId);
-  const allowedVehicles = normalizedVehicleTypeIds.length
-    ? await Vehicle.find({ _id: { $in: normalizedVehicleTypeIds } }).select('name vehicle_type icon_types').lean()
-    : [];
-  const vehicleTypeKeys = normalizeVehicleKeys(allowedVehicles);
+  // Match strictly on vehicleTypeId when specific vehicle type IDs are requested
+  // (e.g. Bike, Scooty, EV Scooty all share icon_types="bike" and must not cross-match).
+  const vehicleTypeKeys = [];
 
   const zone = await findZoneByPickup(coordinates);
   const zoneBoundaryCapMeters = zone ? getZoneBoundaryCapMeters(zone, coordinates) : null;

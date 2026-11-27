@@ -5575,16 +5575,32 @@ export async function updateDeliveryPartnerVehicle(id, body = {}) {
     );
     if (partner.driverId) {
         const { Driver } = await import('../../../taxi/driver/models/Driver.js');
+        const iconType = Array.isArray(vehicle.icon_types)
+            ? String(vehicle.icon_types[0] || '').trim()
+            : String(vehicle.icon_types || '').trim();
         await Driver.updateOne(
             { _id: partner.driverId },
             {
                 $set: {
+                    vehicleTypeId: vehicle._id,
+                    ...(iconType ? { vehicleType: iconType, vehicleIconType: iconType } : {}),
+                    ...(body.vehicleNumber !== undefined ? { vehicleNumber: partner.vehicleNumber || '' } : {}),
                     'delivery.vehicleType': String(vehicle._id),
                     'delivery.vehicleName': partner.vehicleName || '',
                     'delivery.vehicleNumber': partner.vehicleNumber || '',
                 },
             },
         );
+    }
+    try {
+        const { syncQcRiderFromFood } = await import('../../../../core/delivery/qcRiderLink.js');
+        await syncQcRiderFromFood(String(partner._id), {
+            vehicleType: String(vehicle._id),
+            vehicleName: partner.vehicleName || '',
+            ...(body.vehicleNumber !== undefined ? { vehicleNumber: partner.vehicleNumber || '' } : {}),
+        });
+    } catch (_) {
+        // Best-effort sync to QC partner mirror
     }
     return { ...partner.toObject(), ...result, vehicleTypeName: vehicle.name };
 }
