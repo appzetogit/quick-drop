@@ -1131,8 +1131,8 @@ const buildDriverVehicleAcceptFilter = async (ride) => {
     { vehicleTypeId: { $in: vehicleTypeIds } },
     ...(vehicleTypeKeys.length
       ? [
-        { vehicleType: { $in: vehicleTypeKeys } },
-        { vehicleIconType: { $in: vehicleTypeKeys } },
+        { vehicleTypeId: null, vehicleType: { $in: vehicleTypeKeys } },
+        { vehicleTypeId: null, vehicleIconType: { $in: vehicleTypeKeys } },
       ]
       : []),
   ];
