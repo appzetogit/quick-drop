@@ -253,7 +253,6 @@ export default function MasterOrders() {
   const [customDates, setCustomDates] = useState({ from: "", to: "" })
   const [payment, setPayment] = useState("")
   const [rider, setRider] = useState("")
-  const filtered = Boolean(status || datePreset || payment || rider || search)
   const clearFilters = () => {
     setPage(1)
     setStatus("")
@@ -265,6 +264,8 @@ export default function MasterOrders() {
   }
   const [search, setSearch] = useState("")
   const [query, setQuery] = useState("")
+  // After `search`: reading it before its declaration blanked the whole page.
+  const filtered = Boolean(status || datePreset || payment || rider || search)
   const [loading, setLoading] = useState(true)
   const [deletingKey, setDeletingKey] = useState("")
   // The row whose details are open, and what the server returned for it.
