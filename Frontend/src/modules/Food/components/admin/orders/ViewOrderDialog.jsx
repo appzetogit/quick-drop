@@ -284,11 +284,11 @@ export default function ViewOrderDialog({ isOpen, onOpenChange, order, vertical,
                   </p>
                   <p className={`text-sm font-medium ${getPaymentStatusColor(
                     order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod'
-                      ? (order.paymentCollectionStatus ? 'Collected' : (order.status === 'delivered' ? 'Collected' : 'Not Collected'))
+                      ? (order.paymentCollectionStatus ? 'Collected' : ([order.rawOrderStatus, order.status, order.orderStatus].some((v) => String(v || '').toLowerCase() === 'delivered') ? 'Collected' : 'Not Collected'))
                       : order.paymentStatus
                   )}`}>
                     {order.paymentType === 'Cash on Delivery' || order.payment?.method === 'cash' || order.payment?.method === 'cod'
-                      ? (order.paymentCollectionStatus ? 'Collected' : (order.status === 'delivered' ? 'Collected' : 'Not Collected'))
+                      ? (order.paymentCollectionStatus ? 'Collected' : ([order.rawOrderStatus, order.status, order.orderStatus].some((v) => String(v || '').toLowerCase() === 'delivered') ? 'Collected' : 'Not Collected'))
                       : order.paymentStatus}
                   </p>
                 </div>

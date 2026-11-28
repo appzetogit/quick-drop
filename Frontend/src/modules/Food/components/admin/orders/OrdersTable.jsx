@@ -22,7 +22,7 @@ const getStatusColor = (orderStatus) => {
 }
 
 const getPaymentStatusColor = (paymentStatus) => {
-  if (paymentStatus === "Paid") return "text-emerald-600"
+  if (paymentStatus === "Paid" || paymentStatus === "Collected") return "text-emerald-600"
   if (paymentStatus === "Refunded") return "text-sky-600"
   if (paymentStatus === "Unpaid" || paymentStatus === "Failed") return "text-red-600"
   return "text-slate-600"

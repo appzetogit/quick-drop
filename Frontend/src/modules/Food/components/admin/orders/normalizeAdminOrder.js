@@ -53,6 +53,13 @@ export const normalizeOrder = (order) => {
     if (s === "refunded") paymentStatus = "Refunded"
     else if (s === "paid" || s === "authorized" || s === "captured" || s === "settled") paymentStatus = "Paid"
     else if (s === "failed") paymentStatus = "Failed"
+    // Cash is taken by the rider at the door. The order keeps cod_pending after
+    // delivery (only the transaction ledger moves to captured), so read the
+    // order's own state: delivered means the cash was collected.
+    else if (s === "cod_pending") {
+      const st = String(order.orderStatus || "").toLowerCase()
+      paymentStatus = st === "delivered" ? "Collected" : st.startsWith("cancelled") ? "Not Collected" : "Cash on delivery"
+    }
     else paymentStatus = "Pending"
   }
 

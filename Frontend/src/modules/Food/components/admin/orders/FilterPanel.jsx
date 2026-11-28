@@ -26,7 +26,7 @@ export default function FilterPanel({ isOpen, onClose, filters, setFilters, onAp
               Payment Status
             </label>
             <div className="flex flex-wrap gap-2">
-              {["All", "Paid", "Pending", "Failed", "Refunded", "Processing"].map((status) => (
+              {["All", "Paid", "Collected", "Cash on delivery", "Pending", "Failed", "Refunded", "Processing"].map((status) => (
                 <button
                   key={status}
                   onClick={() => setFilters(prev => ({ ...prev, paymentStatus: status === "All" ? "" : status }))}
