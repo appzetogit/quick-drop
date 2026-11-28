@@ -2095,6 +2095,27 @@ const resolveOfferListZoneId = async (query = {}) => {
     return r?.zoneId ? String(r.zoneId) : null;
 };
 
+const isFirstOrderOffer = (offer) =>
+    offer?.customerScope === 'first-time' || offer?.isFirstOrderOnly === true;
+
+/**
+ * Whether this customer already has an order that counts for coupons -- the
+ * same rule checkout uses (cancelled / unpaid ones do not count). Such a
+ * customer is no longer new, so first-order coupons are hidden from them.
+ */
+const hasCountedOrder = async (userId) => {
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) return false;
+    const [{ FoodOrder }, { ORDER_STATUSES_NOT_COUNTED_FOR_COUPONS }] = await Promise.all([
+        import('../../orders/models/order.model.js'),
+        import('../../orders/services/couponUsage.service.js'),
+    ]);
+    const found = await FoodOrder.exists({
+        userId: new mongoose.Types.ObjectId(userId),
+        orderStatus: { $nin: ORDER_STATUSES_NOT_COUNTED_FOR_COUPONS },
+    });
+    return Boolean(found);
+};
+
 const offerInZone = (offer, zoneId) => {
     const zones = (offer?.zoneIds || []).map(String);
     return !zoneId || zones.length === 0 || zones.includes(String(zoneId));
@@ -2140,8 +2161,11 @@ export const listPublicOffers = async (_query = {}, userId = null) => {
      * saved with no perUserLimit means once; an explicit limit is the admin's
      * word and stands.
      */
+    const returningCustomer = await hasCountedOrder(userId);
     const allOffers = list.filter((o) => {
         if (!offerInZone(o, listZoneId)) return false;
+        // First-order coupons (e.g. new-user free delivery) are for new customers only.
+        if (returningCustomer && isFirstOrderOffer(o)) return false;
         if (!usageByOffer) return true;
         const limit = Number(o.perUserLimit) > 0 ? Number(o.perUserLimit) : 1;
         return (usageByOffer.get(String(o._id)) || 0) < limit;
@@ -2244,10 +2268,12 @@ export const listUnusedOffersForUser = async (userId, query = {}) => {
         ? new Date(lastUsage.lastUsedAt || lastUsage.updatedAt)
         : null;
 
+    const returningCustomer = await hasCountedOrder(userId);
     const coupons = [];
     for (const o of list) {
         if (usedIds.has(String(o._id))) continue;
         if (!offerInZone(o, listZoneId)) continue;
+        if (returningCustomer && isFirstOrderOffer(o)) continue;
         // Older-than-last-redemption coupons stay silent until a newer one lands.
         // Free delivery is the exception: it keeps showing to every customer
         // until THEY have used it, however many other coupons they redeemed.
