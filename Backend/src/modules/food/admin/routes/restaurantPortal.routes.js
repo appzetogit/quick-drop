@@ -72,10 +72,23 @@ export default function restaurantPortalRouter() {
     router.post('/foods', clearMenuCaches, createRestaurantFoodController);
     router.patch('/foods/:id', clearMenuCaches, updateRestaurantFoodController);
 
-    router.get('/item-extras', listAddonsController);
-    router.post('/item-extras', clearAddonCache, createAddonController);
-    router.patch('/item-extras/:id', clearAddonCache, updateAddonController);
-    router.delete('/item-extras/:id', clearAddonCache, deleteAddonController);
+    // Both names: routes/index.js rewrites "/item-extras" to "/addons" before
+    // routing (the ad-blocker alias), so the add-on calls the screens make
+    // arrive here as /addons. Listening on /item-extras alone let every one of
+    // them fall through to the admin check below with the restaurant's id.
+    for (const base of ['/addons', '/item-extras']) {
+        router.get(base, listAddonsController);
+        router.post(base, clearAddonCache, createAddonController);
+        router.patch(`${base}/:id`, clearAddonCache, updateAddonController);
+        router.delete(`${base}/:id`, clearAddonCache, deleteAddonController);
+    }
+
+    // Anything not handled here goes on to the admin routes as the admin again,
+    // not as the restaurant whose id was swapped in above.
+    router.use((req, res, next) => {
+        if (req.adminUser) req.user = req.adminUser;
+        next();
+    });
 
     return router;
 }
