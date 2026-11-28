@@ -41,7 +41,38 @@ const models = async () => {
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Filters per source for one tab; null = the tab does not read that source. */
-const filtersFor = (tab, { status, search }) => {
+/*
+ * Date (IST calendar days, YYYY-MM-DD), payment (cash / online) and rider
+ * (assigned / unassigned). Each is one extra $and clause per source, so it
+ * never collides with the $or the search and the Medical split already use.
+ */
+const IST_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const dateClause = (from, to) => {
+    const range = {};
+    if (IST_DAY.test(String(from || ''))) range.$gte = new Date(`${from}T00:00:00.000+05:30`);
+    if (IST_DAY.test(String(to || ''))) range.$lte = new Date(`${to}T23:59:59.999+05:30`);
+    return Object.keys(range).length ? { createdAt: range } : null;
+};
+const extraClauses = ({ from, to, payment, rider }, kind) => {
+    const out = [];
+    const date = dateClause(from, to);
+    if (date) out.push(date);
+    if (kind === 'ride') {
+        if (payment === 'cash') out.push({ paymentMethod: 'cash' });
+        if (payment === 'online') out.push({ paymentMethod: { $ne: 'cash' } });
+        if (rider === 'assigned') out.push({ driverId: { $ne: null } });
+        if (rider === 'unassigned') out.push({ driverId: null });
+    } else {
+        if (payment === 'cash') out.push({ 'payment.method': { $in: ['cash', 'cod'] } });
+        if (payment === 'online') out.push({ 'payment.method': { $nin: ['cash', 'cod'] } });
+        if (rider === 'assigned') out.push({ 'dispatch.deliveryPartnerId': { $ne: null } });
+        if (rider === 'unassigned') out.push({ 'dispatch.deliveryPartnerId': null });
+    }
+    return out;
+};
+const withExtra = (filter, extra) => (filter && extra.length ? { ...filter, $and: [...(filter.$and || []), ...extra] } : filter);
+
+const filtersFor = (tab, { status, search, ...more }) => {
     const orderStatus = status && ORDER_STATUS_GROUPS[status];
     const rideStatus = status && RIDE_STATUS_GROUPS[status];
     const term = String(search || '').trim().slice(0, 40);
@@ -75,6 +106,9 @@ const filtersFor = (tab, { status, search }) => {
     };
     // An order-number search never matches a ride (rides have no order number).
     if (term && !mongoose.Types.ObjectId.isValid(term)) { out.taxi = null; out.parcel = null; }
+    const orderExtra = extraClauses(more, 'order');
+    const rideExtra = extraClauses(more, 'ride');
+    for (const key of Object.keys(out)) out[key] = withExtra(out[key], key === 'taxi' || key === 'parcel' ? rideExtra : orderExtra);
     return out;
 };
 
@@ -306,7 +340,15 @@ export async function listMasterOrders(query = {}) {
         taxi: { model: Ride },
         parcel: { model: Ride },
     };
-    const filters = filtersFor(tab, { status, search });
+    const pickOne = (v, allowed) => (allowed.includes(String(v)) ? String(v) : '');
+    const filters = filtersFor(tab, {
+        status,
+        search,
+        from: query.from,
+        to: query.to,
+        payment: pickOne(query.payment, ['cash', 'online']),
+        rider: pickOne(query.rider, ['assigned', 'unassigned']),
+    });
 
     // Newest page*limit of each source is enough to know the merged page.
     const need = page * limit;

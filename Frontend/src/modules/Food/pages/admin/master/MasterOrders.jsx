@@ -58,6 +58,39 @@ const STATUS_STYLE = (s) => {
   return "bg-blue-50 text-blue-700"
 }
 
+const DATES = [
+  { id: "", label: "Any date" },
+  { id: "today", label: "Today" },
+  { id: "yesterday", label: "Yesterday" },
+  { id: "7d", label: "Last 7 days" },
+  { id: "30d", label: "Last 30 days" },
+  { id: "custom", label: "Pick dates" },
+]
+const PAYMENTS = [
+  { id: "", label: "Any payment" },
+  { id: "cash", label: "Cash" },
+  { id: "online", label: "Online" },
+]
+const RIDERS = [
+  { id: "", label: "Any rider" },
+  { id: "assigned", label: "Rider assigned" },
+  { id: "unassigned", label: "No rider yet" },
+]
+
+/** YYYY-MM-DD for a day in India, `daysAgo` days before today. */
+const istDay = (daysAgo = 0) =>
+  new Date(Date.now() + 5.5 * 3600e3 - daysAgo * 86400e3).toISOString().slice(0, 10)
+
+/** The from/to the server takes for a date choice. */
+const dateRange = (preset, custom) => {
+  if (preset === "today") return { from: istDay(0), to: istDay(0) }
+  if (preset === "yesterday") return { from: istDay(1), to: istDay(1) }
+  if (preset === "7d") return { from: istDay(6), to: istDay(0) }
+  if (preset === "30d") return { from: istDay(29), to: istDay(0) }
+  if (preset === "custom") return { from: custom.from || undefined, to: custom.to || undefined }
+  return {}
+}
+
 const prettyStatus = (s) =>
   String(s || "-").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 
@@ -216,6 +249,20 @@ export default function MasterOrders() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState("")
+  const [datePreset, setDatePreset] = useState("")
+  const [customDates, setCustomDates] = useState({ from: "", to: "" })
+  const [payment, setPayment] = useState("")
+  const [rider, setRider] = useState("")
+  const filtered = Boolean(status || datePreset || payment || rider || search)
+  const clearFilters = () => {
+    setPage(1)
+    setStatus("")
+    setDatePreset("")
+    setCustomDates({ from: "", to: "" })
+    setPayment("")
+    setRider("")
+    setSearch("")
+  }
   const [search, setSearch] = useState("")
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
@@ -243,7 +290,12 @@ export default function MasterOrders() {
     const ticket = ++inFlight.current
     if (!quiet) setLoading(true)
     try {
-      const res = await platformSettingsAPI.getMasterOrders({ tab, page, limit: PAGE_SIZE, status, search: query })
+      const res = await platformSettingsAPI.getMasterOrders({
+        tab, page, limit: PAGE_SIZE, status, search: query,
+        ...dateRange(datePreset, customDates),
+        ...(payment ? { payment } : {}),
+        ...(rider ? { rider } : {}),
+      })
       if (ticket !== inFlight.current) return
       const data = res?.data?.data || {}
       setOrders(data.orders || [])
@@ -254,7 +306,7 @@ export default function MasterOrders() {
     } finally {
       if (ticket === inFlight.current) setLoading(false)
     }
-  }, [tab, page, status, query])
+  }, [tab, page, status, query, datePreset, customDates, payment, rider])
 
   const removeOrder = async (o) => {
     if (!window.confirm(`Delete ${o.orderId}? It disappears from every admin list. This cannot be undone.`)) return
@@ -347,6 +399,60 @@ export default function MasterOrders() {
           >
             {STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
+          <select
+            aria-label="Date"
+            value={datePreset}
+            onChange={(e) => { setPage(1); setDatePreset(e.target.value) }}
+            className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+          >
+            {DATES.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+          </select>
+          {datePreset === "custom" && (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                aria-label="From date"
+                value={customDates.from}
+                max={customDates.to || undefined}
+                onChange={(e) => { setPage(1); setCustomDates((d) => ({ ...d, from: e.target.value })) }}
+                className="rounded-lg border border-neutral-300 bg-white px-2 py-2 text-sm"
+              />
+              <span className="text-sm text-neutral-500">to</span>
+              <input
+                type="date"
+                aria-label="To date"
+                value={customDates.to}
+                min={customDates.from || undefined}
+                onChange={(e) => { setPage(1); setCustomDates((d) => ({ ...d, to: e.target.value })) }}
+                className="rounded-lg border border-neutral-300 bg-white px-2 py-2 text-sm"
+              />
+            </div>
+          )}
+          <select
+            aria-label="Payment"
+            value={payment}
+            onChange={(e) => { setPage(1); setPayment(e.target.value) }}
+            className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+          >
+            {PAYMENTS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+          <select
+            aria-label="Rider"
+            value={rider}
+            onChange={(e) => { setPage(1); setRider(e.target.value) }}
+            className="rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+          >
+            {RIDERS.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
+          {filtered && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-200"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
 
         <div ref={listTopRef} className="scroll-mt-4 overflow-clip rounded-xl border border-neutral-200 bg-white">
