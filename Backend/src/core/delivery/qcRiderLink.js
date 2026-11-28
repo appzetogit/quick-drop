@@ -160,7 +160,7 @@ export async function mirrorQcOfferToFoodRider(qcRiderId, { event, payload, push
  * so Quick's own distance checks (available list, accept) see where they are.
  * Called on every go-online / heartbeat. Never throws.
  */
-export async function syncQcRiderFromFood(foodRiderId, { availabilityStatus, lat, lng, status } = {}) {
+export async function syncQcRiderFromFood(foodRiderId, { availabilityStatus, lat, lng, status, vehicleType, vehicleName, vehicleNumber } = {}) {
   try {
     const qcId = await qcRiderIdForFoodRider(foodRiderId);
     if (!qcId) return false;
@@ -171,13 +171,28 @@ export async function syncQcRiderFromFood(foodRiderId, { availabilityStatus, lat
     // re-approved there was left "approved" on the Quick side, so the Quick
     // rider list kept counting people who no longer work.
     if (status) set.status = status;
+    // The vehicle, when the admin edits it on the Food rider. The Quick copy
+    // kept the vehicle it was created with. vehicleNumber is unique (sparse) on
+    // the Quick side, so a blank one is left alone rather than stored as ''.
+    if (vehicleType !== undefined) set.vehicleType = String(vehicleType || '');
+    if (vehicleName !== undefined) set.vehicleName = String(vehicleName || '');
+    if (vehicleNumber) set.vehicleNumber = String(vehicleNumber).trim();
     if (typeof lat === 'number' && typeof lng === 'number') {
       Object.assign(set, {
         lastLat: lat, lastLng: lng, lastLocationAt: new Date(),
         lastLocation: { type: 'Point', coordinates: [lng, lat] },
       });
     }
-    if (Object.keys(set).length) await QcRider.updateOne({ _id: qcId }, { $set: set });
+    if (Object.keys(set).length) {
+      try {
+        await QcRider.updateOne({ _id: qcId }, { $set: set });
+      } catch (err) {
+        // Another Quick rider holds that vehicle number: save the rest.
+        if (err?.code !== 11000 || !set.vehicleNumber) throw err;
+        delete set.vehicleNumber;
+        await QcRider.updateOne({ _id: qcId }, { $set: set });
+      }
+    }
     return true;
   } catch (err) {
     logger.warn(`[qcRiderLink] sync to Quick rider failed for ${foodRiderId}: ${err.message}`);
